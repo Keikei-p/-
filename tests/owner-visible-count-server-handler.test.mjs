@@ -222,3 +222,52 @@ test("opt-in atomic snapshot path serves count-only ranking without legacy publi
  });
  assert.equal((await bad(request())).status,503);
 });
+
+
+test("authenticated canonical month snapshots answer exact day and same-month week without modifying ledgers",async()=>{
+ const f=fake(),run=handler(f);
+ const originals=[...f.state].map(([k,v])=>[k,copy(v)]);
+ const day=await run(request("partner","day=2026-11-08"));
+ assert.equal(day.status,200);
+ const dp=await day.json();
+ assert.equal(dp.period,"day");
+ assert.equal(dp.range.start,"2026-11-08");
+ assert.equal(dp.range.end,"2026-11-08");
+ assert.equal(dp.own.count,5);
+ assert.equal(dp.publicRanking.products[0].count,7);
+ const week=await run(request("hub","week=2026-11-08"));
+ assert.equal(week.status,200);
+ const wp=await week.json();
+ assert.equal(wp.period,"week");
+ assert.equal(wp.range.start,"2026-11-02");
+ assert.equal(wp.range.end,"2026-11-08");
+ assert.equal(wp.summary.total,7);
+ const empty=await run(request("hub","day=2026-11-09"));
+ assert.equal(empty.status,200);
+ const ep=await empty.json();
+ assert.equal(ep.summary.total,0,"no report must not be summed from the whole month");
+ const partial=await run(request("partner","week=2026-11-09"));
+ assert.equal(partial.status,200);
+ assert.equal((await partial.json()).range.end,"2026-11-09");
+ assert.deepEqual([...f.state],originals,"read-only period selection never alters source data");
+ assert(!f.ops.some(op=>/write|create|update|delete/.test(op.kind)));
+});
+
+test("cross-month weeks, future days and invalid query never return a misleading count",async()=>{
+ const f=fake(),run=handler(f);
+ for(const query of [
+  "week=2026-11-01", // starts October 26
+  "week=2026-11-30", // finishes December 6
+  "day=2026-11-10", // beyond trusted asOf November 9
+  "week=2026-11-10", // beyond trusted asOf
+  "day=2026-11-31",
+  "week=2026-11-32",
+  "day=2026-11-08&month=2026-11",
+  "day=2026-11-08&day=2026-11-08",
+  "kind=month"
+ ]){
+  const result=await run(request("hub",query));
+  assert.equal(result.status,400,"must fail closed: "+query);
+  assert.deepEqual(await result.json(),{error:"request_blocked"});
+ }
+});
