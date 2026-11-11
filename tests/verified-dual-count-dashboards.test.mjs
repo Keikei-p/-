@@ -286,3 +286,42 @@ test("joint leaderboard ranks submitted zero, never scores unreported staff",()=
    "rank projection must not mutate source, counts or historical data");
  }
 });
+
+test("SKU-filtered rankings retain submitted markers: zero is ranked, missing is not",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2),before=structuredClone(input);
+  const hub=buildFn({...input,filters:{productId:"nuro"}});
+  const submitted=hub.memberRanking.find(x=>x.id==="partner:p1");
+  const savedZero=hub.memberRanking.find(x=>x.id==="partner:p2");
+  const unreported=hub.memberRanking.find(x=>x.id==="partner:p3");
+  assert.equal(submitted.count,2);
+  assert.equal(submitted.reportStatus,"報告済");
+  assert.equal(savedZero.count,0);
+  assert.equal(savedZero.reportStatus,"確定0件");
+  assert(Number.isSafeInteger(savedZero.rank));
+  assert.equal(unreported.reportStatus,"未報告");
+  assert.equal(unreported.rank,null);
+  const partner=buildFn({...input,context:auth("partner_owner"),
+   filters:{productId:"nuro"}});
+  assert(partner.publicRanking.members.some(x=>x.name==="協力店0件"&&x.count===0));
+  assert(!partner.publicRanking.members.some(x=>x.name==="協力店未報告"));
+  assert.deepEqual(input,before,"SKU selection never changes original ledger");
+ }
+});
+
+test("a company without a submitted record never ties a submitted zero in public ranks",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2);
+  input.sources[1].records=[];
+  input.sources[1].lines=[];
+  const before=structuredClone(input);
+  const hub=buildFn(input);
+  assert.equal(hub.companyBreakdown.find(x=>x.id==="partner").count,0);
+  const partner=buildFn({...input,context:auth("partner_owner")});
+  assert.equal(partner.own.count,0);
+  assert.deepEqual(partner.publicRanking.companies,
+   [{rank:1,name:"自社",count:1}]);
+  assert(!partner.publicRanking.members.some(x=>x.company==="協力店A"));
+  assert.deepEqual(input,before,"unreported companies are never zero-filled");
+ }
+});
