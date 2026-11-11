@@ -176,6 +176,42 @@ test("server-bound controller refresh uses only period/filters and supports owne
  assert.equal(calls.at(-1).period.kind,"month");
  ctrl.destroy();assert.equal(root.children.length,0);
 });
+test("same local team IDs in two companies never collide in the Owner filter UI",async()=>{
+ const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>""}};
+ const root=new Node("main"),calls=[];
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,asOf:"2026-11-08",
+  load:async ({period,filters})=>{
+   calls.push({...filters});
+   return buildVerifiedCountDashboard({...input("hub_owner"),period,filters});
+  }
+ });
+ assert.equal(await ctrl.refresh(),true);
+ const selections=()=>walk(find(root,"nico-dual-controls"))
+  .filter(node=>node.tagName==="select");
+ const get=(index)=>selections()[index];
+ assert.deepEqual(get(3).children.map(x=>x.value),[""],
+  "unscoped team IDs cannot silently merge two companies");
+ assert.deepEqual(get(4).children.map(x=>x.value),[""],
+  "unscoped staff identifiers are not cross-company selections");
+ assert.throws(()=>ctrl.setFilter("teamId","team"),/件数の権限/);
+ assert.throws(()=>ctrl.setFilter("uid","owner"),/件数の権限/);
+ assert.equal(await ctrl.setFilter("companyId","partner"),true);
+ assert.deepEqual(get(3).children.map(x=>x.value),["","team"]);
+ assert.deepEqual(get(4).children.map(x=>x.value),["","partnerOwner"]);
+ assert.equal(await ctrl.setFilter("teamId","team"),true);
+ assert.equal(calls.at(-1).companyId,"partner");
+ assert.equal(calls.at(-1).teamId,"team");
+ assert.equal(await ctrl.setFilter("uid","partnerOwner"),true);
+ assert.equal(await ctrl.setFilter("companyId","hub"),true);
+ assert.deepEqual(calls.at(-1),{companyId:"hub"},
+  "old company team/staff filter must be removed atomically");
+ assert.deepEqual(get(3).children.map(x=>x.value),["","team"]);
+ assert.deepEqual(get(4).children.map(x=>x.value),["","owner"]);
+ assert(!words(root).includes("単価"));
+ ctrl.destroy();
+});
+
 test("canonical month-only controller renders month picker without unsupported daily/filter actions",async()=>{
  const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>{}}};
  const root=new Node("main"),calls=[];
