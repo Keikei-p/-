@@ -1218,6 +1218,26 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        existing.hubCompanyId!==target.hubId||existing.date!==date)
      fail("data-loss");
    }
+   // A partner's normal edit must not silently repair or overwrite an
+   // aliased historical entry. Owner correction already validates the full
+   // day; apply the same saved identity boundary to partner edits.
+   if(oldSnap.exists&&!ownerCorrection){
+    const saved=validateCounts(old.counts);
+    if(old.companyId!==target.cid||old.hubCompanyId!==target.hubId||
+       old.staffId!==staffId||old.date!==date||
+       old.totalCount!==saved.total||
+       !Number.isSafeInteger(old.version)||old.version<1||old.version>999)
+     fail("data-loss");
+   }
+   // Even a new staff report must not extend a foreign or corrupt day
+   // summary. This is a read-only precondition, never an auto-repair.
+   if(totalSnap.exists&&!ownerCorrection){
+    const savedDay=validateCounts(existing.counts);
+    if(existing.partnerCompanyId!==target.cid||
+       existing.hubCompanyId!==target.hubId||existing.date!==date||
+       existing.totalCount!==savedDay.total)
+     fail("data-loss");
+   }
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
    const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};

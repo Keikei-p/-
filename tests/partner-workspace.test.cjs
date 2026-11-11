@@ -1628,6 +1628,38 @@ test("all published SKUs OFF forbids new or repeated partner saves without ledge
   "/reports/partner").totalCount,2);
 });
 
+test("normal partner count edit rejects aliased saved ledger identity without rewriting history",async()=>{
+ for(const [kind,field,value] of [
+  ["entry","companyId","foreign"],
+  ["entry","hubCompanyId","foreign"],
+  ["entry","staffId","other"],
+  ["entry","date","2026-10-30"],
+  ["entry","totalCount",999],
+  ["summary","partnerCompanyId","foreign"],
+  ["summary","hubCompanyId","foreign"],
+  ["summary","date","2026-10-30"],
+  ["summary","totalCount",999]
+ ]){
+  const {db,api,req,zero}=setup();
+  const team=(await api.manage(req("p",{action:"addTeam",name:"安全確認班"}))).teamId;
+  const staff=(await api.manage(req("p",{action:"addManaged",name:"保存担当",teamId:team}))).staffId;
+  const date="2026-10-31";
+  await api.submit(req("p",{date,staffId:staff,
+   counts:{...zero(),NURO:2},expectedVersion:0}));
+  const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+  const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+  const path=kind==="entry"?entryPath:summaryPath;
+  db.store.get(path)[field]=value;
+  const before=clone([...db.store]);
+  await assert.rejects(api.submit(req("p",{date,staffId:staff,
+   counts:{...zero(),NURO:3},expectedVersion:1})),
+   e=>e.code==="data-loss",kind+":"+field+" must fail closed");
+  assert.deepEqual([...db.store],before,
+   "corrupt partner history must not be silently corrected");
+  assert.equal(db.store.get(entryPath).version,1);
+ }
+});
+
 test("hub Owner correction rejects mismatched saved ledger identity without writing",async()=>{
  for(const mismatch of [
   ["entry","companyId","other"],
