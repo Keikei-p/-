@@ -1496,6 +1496,32 @@ test("hub Owner can correct an approved partner's ON counts without changing OFF
  assert.deepEqual(db.store.get("products/money"),originalFinance);
  assert.deepEqual(db.store.get("records/old"),originalRecord);
  assert.deepEqual(db.store.get("users/h"),originalIdentity);
+ // An Owner must never repair malformed historical source identity by
+ // overwriting it with an unrelated company/summary on correction.
+ const path="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ for(const [corruptPath,patch] of [
+  [path,{companyId:"foreign"}],
+  [path,{staffId:"someone-else"}],
+  [path,{date:"2026-10-30"}],
+  [path,{totalCount:999}],
+  [summaryPath,{partnerCompanyId:"foreign"}],
+  [summaryPath,{hubCompanyId:"foreign"}]
+ ]){
+  const original=clone(db.store.get(corruptPath));
+  db.seed(corruptPath,{...original,...patch});
+  const locked=clone([...db.store]);
+  await assert.rejects(api.submit(req("h",{date,staffId:staff,
+    counts:{...row.counts,NURO:5},ownerPartnerCompanyId:"partner",
+    expectedVersion:2})),e=>e.code==="data-loss");
+  assert.deepEqual([...db.store],locked,"corrupt ledger must not be changed");
+  db.seed(corruptPath,original);
+ }
+ const bogusPath="companies/partner/partnerWorkEntries/incorrect-path";
+ db.seed(bogusPath,{...clone(db.store.get(path))});
+ await assert.rejects(api.view(req("h",{date,partnerCompanyId:"partner",
+  includeOwnerCorrectionEntries:true})),e=>e.code==="data-loss");
+ db.store.delete(bogusPath);
  const beforeRevocation=clone([...db.store]);
  db.store.get("partnerRelations/partner").countSharingApproved=false;
  const snapshot=clone([...db.store]);
