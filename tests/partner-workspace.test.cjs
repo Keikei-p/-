@@ -1249,6 +1249,33 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  assert.equal(mixed.peopleComplete,false);
  assert.equal(mixed.companies[0].totalCount,7);
  assert.doesNotMatch(JSON.stringify(mixed),/cashback|unitPrice|123456|50000|999/);
+ // The old partner-only ranking path also reads the exact same day ledger
+ // for a full Monday-Sunday week, including company-only legacy reports.
+ const weekly=await api.view(req("p",{
+  date,sharedCountRankings:true,rankingPeriod:"week"
+ }));
+ assert.equal(weekly.start,"2026-10-26");
+ assert.equal(weekly.end,"2026-10-31","current week is clipped at server JST today");
+ assert.equal(weekly.period,"week");
+ assert.equal(weekly.totalCount,7);
+ assert.equal(weekly.people[0].totalCount,3);
+ // Cross-month week: Sep 28 - Oct 4. An aggregate based on only October
+ // would silently drop Sep 30, so require the legacy September day report.
+ db.seed("companies/hub/partnerQuickCountDays/2026-09-30/reports/partner",{
+  hubCompanyId:"hub",partnerCompanyId:"partner",date:"2026-09-30",
+  partnerCompanyName:"協力店",version:1,
+  counts:{...zero(),NURO:2},totalCount:2
+ });
+ const across=await api.view(req("h",{
+  date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"week"
+ }));
+ assert.equal(across.start,"2026-09-28");
+ assert.equal(across.end,"2026-10-04");
+ assert.equal(across.period,"week");
+ assert.equal(across.totalCount,2,"September count must not disappear");
+ assert.equal(across.historicalCompanyOnlyCount,2);
+ assert.deepEqual(across.people,[],"legacy report cannot invent an individual");
+ assert.doesNotMatch(JSON.stringify(across),/unitPrice|totalRevenue|cashback/);
  db.store.get("companies/hub/rankingProductVisibility/shared").partnerOverrides.partner=[];
  const off=await api.view(req("p",{date,sharedCountRankings:true}));
  assert.equal(off.companies.length,0,"OFF must not masquerade as saved 0");
