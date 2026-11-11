@@ -105,8 +105,14 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     unverifiedPersonCount=sum(unverifiedPersonCount,c.total);
    }
   }
-  let companyCount=0,reportedDays=0,
+  let companyCount=0,reportedDays=0,hasMissingDay=false,
    verifiedPeople=!companyPersonIdentityMissing;const companyProducts=zero();
+  // The production reader supplies one daily status for every day of a
+  // requested month. Reject truncated partial source arrays, which otherwise
+  // could silently appear complete with a lower month total.
+  const expectedDays=Math.round(
+   (Date.parse(end+"T00:00:00Z")-Date.parse(start+"T00:00:00Z"))/86400000)+1;
+  if(s.reports.length&&s.reports.length!==expectedDays)fail();
   for(const r of s.reports){
    if(!r||!date(r.date)||r.date<start||r.date>end||reports.has(r.date))fail();
    reports.add(r.date);
@@ -114,6 +120,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    // Otherwise orphan entries could appear in team/person ranks while company totals stay zero.
    if(r.data==null){
     if([...entries.values()].some(e=>e.date===r.date))fail();
+    hasMissingDay=true;
     continue;
    }
    const x=r.data;
@@ -141,8 +148,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   totalCount=sum(totalCount,companyCount);
   // A fully unpublished company must not leak its name even through the
   // no-report list. Hide OFF companies consistently with the rank lists.
-  if(!reportedDays&&allowed.size)unreportedCompanies.push({
-   key:key("company",hubId,s.cid),name:companyName,status:"not_reported"
+  // A month with one submitted day and another missing day is PARTIAL,
+  // not a complete month; an actual submitted zero remains submitted.
+  if(allowed.size&&(!reportedDays||hasMissingDay))unreportedCompanies.push({
+   key:key("company",hubId,s.cid),name:companyName,
+   status:reportedDays?"partial_report":"not_reported"
   });
   const safeCounts=raw=>Object.fromEntries(s.allowedCategories.map(k=>[k,raw[k]]));
   if(reportedDays&&allowed.size){
