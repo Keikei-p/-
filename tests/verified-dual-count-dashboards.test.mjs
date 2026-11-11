@@ -385,3 +385,18 @@ test("colon-containing company and team IDs never combine different companies' t
   assert.deepEqual(input,before,"ranking never changes original team snapshots");
  }
 });
+
+test("reviewed group ID cannot collide with an unmatched partner SKU",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2),before=structuredClone(input);
+  // A verified internal SKU and a different unmatched partner SKU would
+  // otherwise share this display/aggregation ID and inflate a product rank.
+  input.productGroups[0].groupId="unmapped:partner:partnerSku05";
+  input.productGroups[0].groupName="SB光・AIR";
+  input.sources[1].lines[0].count=1;
+  input.sources[1].lines.push(ln(input.sources[1].records[0],"partnerSku05",1,1));
+  const original=structuredClone(input);
+  assert.throws(()=>buildFn(input),/VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED/);
+  assert.deepEqual(input,original,"reject without modifying any original count lines");
+ }
+});

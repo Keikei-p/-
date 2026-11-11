@@ -171,7 +171,11 @@ function mappings(groups,sku) {
  if(!Array.isArray(groups)||groups.length>5000)stop();
  const lookup=new Map(),names=new Map();
  for(const r of groups){
-  if(!r||!id(r.companyId)||!id(r.productId)||!id(r.groupId))stop();
+  // "unmapped:" is reserved for unmatched source SKUs. A reviewed group
+   // using that prefix would silently merge an unrelated unmapped product
+   // into a confirmed SKU rank, so reject the entire ranking.
+   if(!r||!id(r.companyId)||!id(r.productId)||!id(r.groupId)||
+      r.groupId.startsWith("unmapped:"))stop();
   const key=r.companyId+":"+r.productId;
   if(!sku.has(key)||lookup.has(key))stop();
   const name=label(r.groupName);
