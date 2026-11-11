@@ -334,6 +334,40 @@ test("partner public ranking never accepts hub-only IDs, finance fields or inter
  }
 });
 
+test("role envelopes reject allowlisted but unauthorized partner aggregates and nested data",async()=>{
+ const mutations=[
+  p=>{p.partner=99;},
+  p=>{p.total=99;},
+  p=>{p.people=[{name:"other company",count:5}];},
+  p=>{p.own.partner=99;},
+  p=>{p.own.products=[{id:"sku",name:"NURO",count:5,partnerCount:99}];},
+  p=>{p.own.people=[{id:"other:uid",name:"他社",count:5}];},
+  p=>{p.own.count=-1;},
+  p=>{p.own.unidentifiedCount=6;}
+ ];
+ for(const mutate of mutations){
+  const p=data();mutate(p);
+  const adapter=createJointCountHttpAdapter({enabled:()=>true,
+   loadHandler:()=>make(200,p)});
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+test("exact partner own product and person projections remain accepted",async()=>{
+ const p=data();p.own={company:"協力店",count:5,unidentifiedCount:0,
+  products:[{id:"sku",name:"NURO光",count:5}],
+  people:[{id:"company:uid",name:"営業担当",companyId:"company",
+   companyName:"協力店",teamId:null,teamName:null,count:5,
+   reportStatus:"報告済",reportedDays:1,previousCount:0,change:5,
+   growth:"増加",topProduct:"NURO光",remainingToGoal:0,
+   personalBestStatus:"比較不可",rank:1}]};
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,
+  loadHandler:()=>make(200,p)});
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,200);
+ assert.deepEqual(JSON.parse(out.body),p);
+});
 test("NFKC-normalized money labels cannot cross the partner ranking HTTP boundary",async()=>{
  for(const name of ["担当者 ＣＢ５０００","商品 cash back 3000",
   "担当者 unit price 2500","担当者 ＲＥＶＥＮＵＥ９０００"]){
