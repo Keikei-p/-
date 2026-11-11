@@ -1135,8 +1135,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const er=entryRef(target.cid,date,staffId),summary=summaryRef(target.hubId,date,target.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
+   const dayQuery=ownerCorrection?
+    collection(target.cid,"partnerWorkEntries").where("date","==",date).limit(201):null;
+   const [oldSnap,totalSnap,dayEntries,...productSnapshots]=await Promise.all([
     tx.get(er),tx.get(summary),
+    ownerCorrection?tx.get(dayQuery):Promise.resolve(null),
     ...privateProductIds.map(id=>tx.get(privateProductRef(target.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
@@ -1154,6 +1157,45 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(ownerCorrection&&(!oldSnap.exists||!totalSnap.exists))
     fail("failed-precondition");
    if(ownerCorrection){
+    // A corrected staff day updates the entire partner day summary. Before
+    // any writes, prove that every saved staff entry already reconciles
+    // with each original category total, not just the grand total. Otherwise
+    // a stale/corrupt aggregate could be perpetuated by a valid correction.
+    if(!Array.isArray(dayEntries?.docs)||dayEntries.size>200)
+     fail("resource-exhausted");
+    const dailyCounts=Object.fromEntries(KEYS.map(key=>[key,0]));
+    const staffDays=new Set();
+    let dailyTotal=0,targetFound=false;
+    for(const doc of dayEntries.docs){
+     const entry=doc.data()||{};
+     if(!ID.test(entry.staffId||"")||
+        doc.id!==date+"__"+entry.staffId||
+        entry.companyId!==target.cid||entry.hubCompanyId!==target.hubId||
+        entry.date!==date||staffDays.has(entry.staffId)||
+        !Number.isSafeInteger(entry.version)||entry.version<1||
+        entry.version>999)fail("data-loss");
+     staffDays.add(entry.staffId);
+     const checked=validateCounts(entry.counts);
+     if(checked.total!==entry.totalCount)fail("data-loss");
+     dailyTotal+=checked.total;
+     if(!Number.isSafeInteger(dailyTotal))fail("data-loss");
+     for(const key of KEYS){
+      dailyCounts[key]+=checked.counts[key];
+      if(!Number.isSafeInteger(dailyCounts[key]))fail("data-loss");
+     }
+     if(entry.staffId===staffId){
+      targetFound=true;
+      if(entry.version!==old.version||
+         KEYS.some(key=>checked.counts[key]!==old.counts?.[key]))
+       fail("data-loss");
+     }
+    }
+    const daySummary=validateCounts(existing.counts);
+    if(!targetFound||existing.source!=="staff-entries-v1"||
+       daySummary.total!==dailyTotal||
+       existing.totalCount!==dailyTotal||
+       KEYS.some(key=>daySummary.counts[key]!==dailyCounts[key]))
+     fail("data-loss");
     // Historical ledger identity must match its document paths before any
     // Owner correction; never "heal" foreign / corrupt source documents.
     const saved=validateCounts(old.counts);
