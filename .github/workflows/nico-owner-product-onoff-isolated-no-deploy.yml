@@ -5,6 +5,8 @@ on:
     paths:
       - 'owner-product-publication.html'
       - 'tests/owner-product-onoff-single-release.test.mjs'
+      - 'tools/hosting/owner-product-onoff-additive-guard.mjs'
+      - 'tests/owner-product-onoff-additive-guard.test.mjs'
       - '.github/workflows/nico-owner-product-onoff-isolated-no-deploy.yml'
 permissions:
   contents: read
@@ -40,11 +42,12 @@ jobs:
             echo 'STOP_UNREVIEWED_CHANGE_SCOPE'
             exit 1
           fi
-          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 3
+          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 5
           git diff --exit-code origin/main...HEAD -- index.html firestore.rules firebase.json functions functions-ranking-approvals functions-partner-workspace ranking partner
-      - name: Test isolated page, Owner callables, exact source data safety and login
+      - name: Test isolated page, complete Hosting asset closure, Owner callables and data safety
         run: |
-          node --test tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          node --check tools/hosting/owner-product-onoff-additive-guard.mjs
+          node --test tests/owner-product-onoff-additive-guard.test.mjs tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
           echo 'OWNER_ONOFF_STAGING_TESTED_ONLY=true'
           echo 'PRODUCTION_DEPLOYED=false'
           echo 'PARTNER_COUNT_ENABLED=false'
