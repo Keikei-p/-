@@ -71,6 +71,42 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
    Issue #352 has one historical saved total vs product-row mismatch:
    preserve provisional ranks rather than automatically editing history.
 
+## 2026-11-12 15:37 JST — Fresh complete production inventory / LOCAL restore PASS (NO DEPLOY)
+
+This is **live GET-only Firestore document inventory and a disposable local
+Firestore Emulator restore**, **not** a restored Firestore managed-backup
+payload, and not Firebase Auth/Storage recovery. Do not assume historical
+record content was repaired or update production based on this proof.
+
+- [Reviewed VERIFY_ONLY GitHub Actions run #42036092110, attempt 4](https://github.com/Keikei-p/-/actions/runs/42036092110):
+  immutable original main commit `17681e69d3ebd7271cc9a58e138fd0e202db7294`,
+  original protected `controlled` job **SUCCESS**, final
+  `RELEASE_MODE=verify`, `NICO_RULES_APPROVAL=VERIFY_ONLY`. Offline
+  prerequisite SUCCESS. The reviewed source does not run production
+  Rules writes in verify mode.
+- Exactly **512 Firestore documents** discovered from current production
+  `sales-management-cc116` (the prior Nov 6 snapshot had 391).
+  `fieldsAndIdsRestored=true`; `fullInventoryStableBefore=true`;
+  isolated emulator restoration matches complete field+ID fingerprint
+  `608584ea5160ba0c48e582b37e8cfb452996c8dfdb078b6d19e91318fffcb8d8`.
+- `metadataTimestampsRestored=false`,
+  `managedBackupRestored=false`, `productionDocumentWrites=0`,
+  `applied=false`. The code did not update Cloud Firestore Rules,
+  Hosting, Functions, Auth, history, financial originals, or customer
+  counts. No managed-backup payload or Auth/Storage recovery was tested.
+- This **satisfies the current live-data field+ID parity / isolated
+  emulator restoration evidence**, but not the production **managed
+  backup's recoverability**, independent human signoff, or real
+  partner's user-token finance GET/LIST deny. Reviewer must decide whether
+  the separate managed-backup payload restore is required before any
+  nonreversible production change; do not waive or self-sign it.
+- Full snapshot is current **as of this run only**: recheck production
+  backup READY age, baseline Rules, document inventory and session
+  freshness at actual cutover. The 512-vs-391 count difference is not a
+  signal to modify or erase any data.
+
+---
+
 ## Latest verified LIVE GET-only status — 2026-11-12 JST (NOT a release approval)
 
 This supersedes the **historical 2026-11-05 observations** below,
