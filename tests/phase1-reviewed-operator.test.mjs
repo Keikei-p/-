@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateOperatorIntent,assertReviewedCodeGate} from '../tools/production/phase1-reviewed-operator.mjs';
+import {validateOperatorIntent,assertReviewedCodeGate,assertIndependentPRApprovalGate} from '../tools/production/phase1-reviewed-operator.mjs';
 
 const baseline='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
 const candidate='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
@@ -188,4 +188,78 @@ test('reviewed checkout accepts only the exact GitHub origin and clean untracked
   assert.equal(assertReviewedCodeGate({env:approved,git,gh}).sourceReviewed,true);
   assert.equal(statusChecked,true);
  }
+});
+
+const independentPR={state:'open',draft:false,
+ head:{sha:head},user:{login:'Keikei-p'}};
+const humanApproval={id:100,state:'APPROVED',commit_id:head,
+ author_association:'COLLABORATOR',
+ user:{login:'trusted-reviewer',type:'User'}};
+function fakeIndependentReview({
+ pr=independentPR,reviews=[humanApproval],
+ permission='write',apiError=''
+}={}){
+ const calls=[];
+ const gh=(command,args)=>{
+  assert.equal(command,'api');
+  const endpoint=args[0];calls.push(endpoint);
+  if(endpoint.includes(apiError)&&apiError)throw Error('private Github API down');
+  if(endpoint==='repos/Keikei-p/-/pulls/380')return JSON.stringify(pr);
+  if(endpoint==='repos/Keikei-p/-/pulls/380/reviews?per_page=100')
+   return JSON.stringify(reviews);
+  if(endpoint==='repos/Keikei-p/-/collaborators/trusted-reviewer/permission')
+   return JSON.stringify({permission});
+  if(endpoint==='repos/Keikei-p/-/collaborators/Keikei-p/permission')
+   return JSON.stringify({permission:'admin'});
+  throw Error('unsupported reviewer endpoint');
+ };
+ return {gh,calls};
+}
+test('apply needs an actual separate authorized human GitHub review on the exact non-draft HEAD',()=>{
+ const {gh,calls}=fakeIndependentReview();
+ assert.deepEqual(assertIndependentPRApprovalGate({env:approved,gh}),{
+  independentHumanApproved:true,approvedCommitExact:true,
+  reviewedByAuthorizedCollaborator:true
+ });
+ assert.deepEqual(calls,[
+  'repos/Keikei-p/-/pulls/380',
+  'repos/Keikei-p/-/pulls/380/reviews?per_page=100',
+  'repos/Keikei-p/-/collaborators/trusted-reviewer/permission'
+ ]);
+});
+test('an environment string or green CI cannot fabricate a real independent approval',()=>{
+ const scenarios=[
+  {reviews:[]},
+  {reviews:[{...humanApproval,state:'COMMENTED'}]},
+  {reviews:[{...humanApproval,commit_id:'b'.repeat(40)}]},
+  {reviews:[{...humanApproval,user:{login:'Keikei-p',type:'User'}}]},
+  {reviews:[{...humanApproval,user:{login:'automated-bot',type:'Bot'}}]},
+  {reviews:[{...humanApproval,author_association:'NONE'}]},
+  {permission:'read'},
+  {permission:'triage'},
+  {pr:{...independentPR,draft:true}},
+  {pr:{...independentPR,state:'closed'}},
+  {pr:{...independentPR,head:{sha:'b'.repeat(40)}}},
+  {reviews:[...Array.from({length:100},(_,i)=>({...humanApproval,id:i+1}))]},
+  {apiError:'pulls/380/reviews'}
+ ];
+ for(const scenario of scenarios){
+  const {gh}=fakeIndependentReview(scenario);
+  assert.throws(()=>assertIndependentPRApprovalGate({env:approved,gh}),
+   /STOP_PHASE1_OPERATOR_INDEPENDENT_REVIEW_/);
+ }
+});
+test('revoked or change-requested reviews veto old approval, but normal comments do not revoke it',()=>{
+ const invalid=[
+  {...humanApproval,id:101,state:'CHANGES_REQUESTED'},
+  {...humanApproval,id:101,state:'DISMISSED'}
+ ];
+ for(const later of invalid){
+  const {gh}=fakeIndependentReview({reviews:[humanApproval,later]});
+  assert.throws(()=>assertIndependentPRApprovalGate({env:approved,gh}),
+   /STOP_PHASE1_OPERATOR_INDEPENDENT_REVIEW_/);
+ }
+ const {gh}=fakeIndependentReview({reviews:[
+  humanApproval,{...humanApproval,id:101,state:'COMMENTED'}]});
+ assert.equal(assertIndependentPRApprovalGate({env:approved,gh}).independentHumanApproved,true);
 });
