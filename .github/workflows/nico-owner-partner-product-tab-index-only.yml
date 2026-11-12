@@ -57,6 +57,7 @@ jobs:
           node --test tests/owner-partner-product-tab.test.mjs tests/surgical-existing-index.test.mjs
           node --test tests/sales-regressions.cjs
           node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/legacy-finance-entry-guard.test.mjs tests/partner-money-free-workspace.test.cjs
           echo 'OWNER_PARTNER_PRODUCT_TAB_INDEX_ONLY_STAGED=true'
           echo 'PRODUCTION_DEPLOYED=false'
   publish-index-only:
