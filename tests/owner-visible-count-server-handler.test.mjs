@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {createRequire} from "node:module";
 import {createStagedOwnerVisibleCountHandler}
  from "../ranking/owner-visible-count-server-handler.mjs";
+const require=createRequire(import.meta.url);
+const {createJointCountHttpAdapter}=require(
+ "../functions-ranking-approvals/joint-count-http-adapter.cjs");
 
 const DAY="2026-11-08",MONTH="2026-11",TIME="2026-11-08T12:00:00Z";
 const copy=x=>structuredClone(x);
@@ -211,6 +215,54 @@ test("approved hub owner can scope all four ranking filters without touching sou
  assert.equal(detail.memberRanking.length,1);
  assert.deepEqual([...f.state],stateBefore,"reporting filters cannot change stored counts");
  assert(f.ops.every(x=>x.kind!=="transaction"||x.options?.readOnly===true));
+});
+test("real filtered owner API crosses the strict Functions HTTP finance gate intact",async()=>{
+ const f=fake(),load=handler(f);
+ const http=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>load
+ });
+ const send=async(path,actor="hub")=>{
+  const req={method:"GET",originalUrl:path,
+   headers:{origin:"https://nico-factory.web.app",
+    authorization:"Bearer "+actor.repeat(8)}};
+  const res={statusCode:null,body:"",headers:{},
+   setHeader(k,v){this.headers[k.toLowerCase()]=v;},
+   status(n){this.statusCode=n;return this;},
+   send(x){this.body=x;return this;}};
+  await http(req,res);
+  return res;
+ };
+ for(const [path,counts,filters] of [
+  ["/getVerifiedJointCountRanking?month=2026-11",
+   {own:2,partner:5,total:7,unidentified:0},{}],
+  ["/getVerifiedJointCountRanking?month=2026-11&companyId=partner",
+   {own:0,partner:5,total:5,unidentified:0},
+   {companyId:"partner"}],
+  ["/v1/owner-visible-counts?month=2026-11&companyId=partner&teamId=team&uid=partnerStaff&productId=nuro",
+   {own:0,partner:5,total:5,unidentified:0},
+   {companyId:"partner",teamId:"team",uid:"partnerStaff",productId:"nuro"}]
+ ]){
+  const res=await send(path);
+  assert.equal(res.statusCode,200,path+" must reach the real role-verified response");
+  const output=JSON.parse(res.body);
+  assert.equal(output.role,"hub_owner");
+  assert.deepEqual(output.summary,counts);
+  assert.deepEqual(output.filters,filters);
+  assert.equal(output.companyBreakdown.length,2,
+   "Owner's verified company registry is preserved for the company selector");
+  assert.equal(output.productRanking.reduce((n,r)=>n+r.count,0),counts.total);
+  assert.equal(output.teamBreakdown.reduce((n,r)=>n+r.count,0),counts.total);
+  assert.equal(output.memberRanking.reduce((n,r)=>n+r.count,0),counts.total);
+  assert(!/revenue|unitPrice|cashback|salary|10000|20000/.test(res.body),
+   "no financial source field or amount may be published");
+ }
+ // A partner token cannot transform an Owner filter into another firm's view,
+ // even when it reaches the direct Cloud Functions ingress.
+ const blocked=await send(
+  "/getVerifiedJointCountRanking?month=2026-11&companyId=hub","partner");
+ assert.equal(blocked.statusCode,403);
+ assert.deepEqual(JSON.parse(blocked.body),{error:"request_blocked"});
+ assert(f.ops.every(op=>op.kind!=="transaction"||op.options?.readOnly===true));
 });
 test("unapproved filter IDs, cross-account and duplicate query are denied before reading counts",async()=>{
  const f=fake();let countReads=0;
