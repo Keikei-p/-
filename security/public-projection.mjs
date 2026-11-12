@@ -14,7 +14,7 @@ function safeProductName(value){
  const original=text(value,80);
  // Legacy product labels can embed financial tiers (CB or Yen amounts).
  // Fail closed instead of trying to guess and inadvertently exposing a tier.
- return /(?:CB|キャッシュバック|単価|売上|[¥￥]|[0-9０-９]+\s*(?:万|千)?円)/i.test(original)
+ return /(?:CB|キャッシュバック|単価|売上|[¥￥]|[0-9０-９]+\s*(?:万|千)?円)/i.test(original.normalize("NFKC"))
   ? "商材名はオーナー確認中" : original;
 }
 function id(value){
@@ -89,7 +89,7 @@ export function auditNoFinancialKeys(output){
  const visit=(v,path)=>{
   if(v==null||typeof v!=="object")return;
   for(const [k,x] of Object.entries(v)){
-   if(forbidden.test(k))throw Error("Private financial key leaked at "+path+"."+k);
+   if(forbidden.test(k.normalize("NFKC")))throw Error("Private financial key leaked at "+path+"."+k);
    visit(x,path+"."+k);
   }
  };
@@ -133,7 +133,7 @@ export function projectRankOnly({companyId,period,kind,participants}){
  */
 const safePublicLabel=(value,max=80)=>{
  const candidate=text(value,max);
- if(/(?:売上|単価|キャッシュバック|CB|税込|税抜|報酬|[¥￥$€]|[0-9０-９]+\s*(?:万|千)?円)/i.test(candidate))return "名称は管理者確認中";
+ if(/(?:売上|単価|キャッシュバック|CB|税込|税抜|報酬|[¥￥$€]|[0-9０-９]+\s*(?:万|千)?円)/i.test(candidate.normalize("NFKC")))return "名称は管理者確認中";
  return candidate.replace(/[\r\n\t]/g," ").trim();
 };
 export function projectPublicRecordHeader(record){
@@ -177,7 +177,7 @@ export function projectPublicRankEntries(params){
 const moneyLikeText=/(?:[¥￥$€]|(?:\d|[０-９])[\d０-９,.，]*\s*(?:万円|千円|円)|(?:\d|[０-９])[\d０-９,.，]*\s*万(?:\D|$)|(?:CB|cashback|キャッシュバック|売上|単価|報酬|利益|commission|unitprice|revenue)[\s:_=－-]*(?:\d|[０-９]))/i;
 function assertNoMoneyEmbeddedInStrings(item){
   for(const value of Object.values(item)){
-    if(typeof value==="string" && moneyLikeText.test(value))
+    if(typeof value==="string" && moneyLikeText.test(value.normalize("NFKC")))
       throw Error("Public document may embed monetary details in text or IDs");
   }
 }
