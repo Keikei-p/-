@@ -28,7 +28,8 @@ const hashes=new Map(initial.map(x=>[x.path,x.hash]));
 const target=new Map([...hashes,...MISSING.map(p=>[p,hostingAssetHash(sources[p])])]);
 function fixture({files=initial,concurrent=false,required=true,badUpload=false,
   badFinal=false,badMeta=false,paginate=false,unknownHash=false,metaPending=0,
-  omitEmptyUploadList=false,missingUploadContract=false}={}){
+  omitEmptyUploadList=false,missingUploadContract=false,
+  finalizedCountOmitted=false}={}){
  const calls=[];
  let live=LIVE,created=false,published=false,reads=0,uploaded=0,newMetaReads=0;
  const request=async(method,url,body=null,type="application/json")=>{
@@ -74,8 +75,9 @@ function fixture({files=initial,concurrent=false,required=true,badUpload=false,
    }))};
   if(method==="GET"&&url===BASE+"/"+NEW){
    newMetaReads++;
-   return {name:NEW,status:"FINALIZED",config:conf,
-    ...(newMetaReads<=metaPending?{}:
+   const pending=newMetaReads<=metaPending;
+   return {name:NEW,status:pending?"CREATED":"FINALIZED",config:conf,
+    ...(pending||finalizedCountOmitted?{}:
      {fileCount:target.size+(badMeta?1:0)})};
   }
   if(method==="POST"&&url===BASE+"/sites/nico-factory/releases?versionName="+encodeURIComponent(NEW)){
@@ -102,6 +104,20 @@ test("read-only preflight validates existing version and never writes a byte",as
  assert.equal(f.writes.length,0);
  assert.equal(f.published,false);
 });
+test("FINALIZED response may omit fileCount after complete immutable manifest match",async()=>{
+ const f=fixture({finalizedCountOmitted:true,required:false,omitEmptyUploadList:true});
+ const messages=[];
+ const result=await prepareOwnerOnOffTwoAssetRelease({
+  request:f.request,sources,release:true,releaseAuthorized:true,
+  log:x=>messages.push(x),sleep:async()=>{}
+ });
+ assert.equal(result.released,true);
+ assert.equal(f.published,true);
+ assert(messages.some(x=>x.includes("FULL_MANIFEST_VERIFIED_COUNT_OMITTED")));
+ assert(f.calls.some(x=>x.method==="GET"&&x.url===BASE+"/"+NEW+"/files?pageSize=1000"));
+ assert.equal(f.writes.filter(x=>x.url.includes("/releases?versionName")).length,1);
+});
+
 test("finalized Hosting metadata may appear after exact file-hash verification, then publish once",async()=>{
  const f=fixture({metaPending:2});
  const report=await prepareOwnerOnOffTwoAssetRelease({
