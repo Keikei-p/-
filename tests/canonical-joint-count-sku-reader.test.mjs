@@ -71,6 +71,87 @@ test("shared owner-reviewed exact product IDs drive company, individual and SKU 
  assert.deepEqual(input,before,"no source-count or original history may be changed");
  assert(!/revenue|cashback|unitPrice|totalRevenue/.test(JSON.stringify(input)));
 });
+test("two partners and hub share four exact ranks, ON/OFF and correction without double counting",()=>{
+ const input=sources(),second=structuredClone(input.partnerSources[0]);
+ second.companyId="partner2";second.companyLabel="協力店B";
+ second.records[0].companyId="partner2";
+ second.records[0].memberNameSnapshot="協力店員B";
+ second.lines[0].companyId="partner2";
+ second.products[0].companyId="partner2";
+ // Same local staff/team/report IDs across the two companies are legal.
+ assert.equal(second.records[0].uid,input.partnerSources[0].records[0].uid);
+ assert.equal(second.records[0].teamId,input.partnerSources[0].records[0].teamId);
+ const allPartners=[...input.partnerSources,second];
+ const approved={...context,approvedCompanyIds:["hub","partner","partner2"]};
+ const skuMap={...map,bindings:[
+  ...map.bindings,
+  {companyId:"partner2",productId:"partnerSku01",hubProductId:"nuro"}
+ ]};
+ const saved=structuredClone({input,allPartners,approved,skuMap});
+ const canonical=composeCanonicalMonthlyRankingInput({
+  context:approved,hubSource:input.hubSource,partnerSources:allPartners,
+  skuMap,hubOwnerUid:"owner",month:"2026-11",serverAsOf:"2026-11-09"
+ });
+ const calculate=(role,publication)=>buildOwnerVisibleCountRanking({
+  input:{...canonical,context:role},publication
+ });
+ const baseline=calculate(approved,pub(["nuro"]));
+ assert.deepEqual(baseline.summary,{own:2,partner:10,total:12,unidentified:0});
+ assert.equal(baseline.productRanking.length,1);
+ assert.equal(baseline.productRanking[0].count,12);
+ assert.deepEqual(baseline.productRanking[0].companies.map(x=>x.count)
+  .sort((a,b)=>b-a),[5,5,2]);
+ for(const [key,id] of [["companyBreakdown","id"],["teamBreakdown","companyId"]]){
+  const partnerRanks=baseline[key].filter(r=>
+   key==="companyBreakdown"?r.kind==="協力店":r.companyId!=="hub");
+  assert.equal(partnerRanks.length,2);
+  assert.deepEqual(partnerRanks.map(r=>r.count),[5,5]);
+  assert(partnerRanks.every(r=>r.rank===1),
+   "equal partner counts share rank 1 in "+key);
+ }
+ assert.equal(baseline.memberRanking.filter(r=>r.companyId!=="hub"&&r.rank===1).length,2);
+ assert.equal(baseline.memberRanking.filter(r=>r.companyId!=="hub")
+  .reduce((sum,r)=>sum+r.count,0),baseline.summary.partner);
+ assert.equal(baseline.teamBreakdown.reduce((sum,r)=>sum+r.count,0),baseline.summary.total);
+ assert.equal(baseline.companyBreakdown.reduce((sum,r)=>sum+r.count,0),baseline.summary.total);
+ const partnerScope={...approved,role:"partner_owner",
+  viewerUid:"partnerOwner",viewerCompanyId:"partner"};
+ const partnerDashboard=calculate(partnerScope,pub(["nuro"]));
+ assert.deepEqual(partnerDashboard.publicRanking.products.map(x=>x.count),[12]);
+ assert.deepEqual(partnerDashboard.publicRanking.companies.map(x=>x.count),[5,5,2]);
+ assert.deepEqual(partnerDashboard.publicRanking.teams.map(x=>x.count),[5,5,2]);
+ assert.deepEqual(partnerDashboard.publicRanking.members.map(x=>x.count),[5,5,2]);
+ assert(partnerDashboard.publicRanking.companies.slice(0,2).every(x=>x.rank===1));
+ assert(partnerDashboard.publicRanking.members.slice(0,2).every(x=>x.rank===1));
+ assert(!JSON.stringify(partnerDashboard).includes("revenue"));
+ const gate={...pub(["nuro"]),partnerOverrides:[
+  {companyId:"partner2",enabledHubProductIds:[]}
+ ]};
+ const hidden=calculate(approved,gate);
+ assert.equal(hidden.summary.total,7);
+ assert.equal(hidden.summary.partner,5);
+ assert.equal(hidden.productRanking[0].count,7);
+ assert.equal(hidden.companyBreakdown.find(x=>x.id==="partner2").rank,null);
+ assert.equal(hidden.memberRanking.find(x=>x.companyId==="partner2").rank,null);
+ const publicHidden=calculate(partnerScope,gate).publicRanking;
+ assert(!publicHidden.companies.some(x=>x.name==="協力店B"));
+ assert(!publicHidden.members.some(x=>x.company==="協力店B"));
+ assert(!publicHidden.teams.some(x=>x.company==="協力店B"));
+ const corrected=structuredClone(canonical);
+ const updated=corrected.sources.find(x=>x.companyId==="partner2");
+ updated.records[0].totalCount=6;
+ updated.lines[0].count=6;
+ const correctionResult=buildOwnerVisibleCountRanking({
+  input:{...corrected,context:approved},publication:pub(["nuro"])
+ });
+ assert.deepEqual(correctionResult.summary,{own:2,partner:11,total:13,unidentified:0});
+ assert.equal(correctionResult.productRanking[0].count,13);
+ assert.equal(correctionResult.companyBreakdown.find(x=>x.id==="partner2").rank,1);
+ assert.equal(correctionResult.memberRanking.find(x=>x.companyId==="partner2").count,6);
+ assert.deepEqual({input,allPartners,approved,skuMap},saved,
+  "read-only ranking, OFF and simulated correction never rewrite originals");
+});
+
 test("same product names NEVER map two companies without explicit owner-reviewed binding",()=>{
  const noMap=compose({skuMap:{...map,bindings:[]}});
  const on=buildOwnerVisibleCountRanking({input:{...noMap,context},publication:pub(["nuro"])});
