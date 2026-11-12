@@ -166,14 +166,14 @@ test("allowlisted hub-owner ranking shape remains readable without private sourc
   period:"month",range:{start:"2026-11-01",end:"2026-11-09",
    previousStart:"2026-10-01",previousEnd:"2026-10-09",days:9},
   readTime:"2026-11-09T00:00:00.000Z",
-  summary:{own:3,partner:2,total:5,unidentified:0},
+  summary:{own:3,partner:0,total:3,unidentified:0},
   memberRanking:[{id:"company:uid",name:"営業担当",companyId:"company",
    companyName:"自社",teamId:"team",teamName:"営業班",count:3,
    reportStatus:"報告済",reportedDays:1,previousCount:0,change:3,
    growth:"増加",topProduct:"NURO光",remainingToGoal:2,
    personalBestStatus:"比較不可",rank:1}],
-  productRanking:[{id:"sku",name:"NURO光",count:5,ownCount:3,
-   partnerCount:2,companies:[{companyId:"company",companyName:"自社",count:3}]}],
+  productRanking:[{id:"sku",name:"NURO光",count:3,ownCount:3,
+   partnerCount:0,companies:[{companyId:"company",companyName:"自社",count:3}]}],
   companyBreakdown:[{id:"company",name:"自社",kind:"自社",
    count:3,unidentifiedCount:0,hasVerifiedSubmission:true,rank:1}],
   teamBreakdown:[{id:"company:team",companyId:"company",
@@ -185,6 +185,83 @@ test("allowlisted hub-owner ranking shape remains readable without private sourc
  assert.equal(out.statusCode,200);
  assert.deepEqual(JSON.parse(out.body),hub);
 });
+test("hub Owner HTTP boundary refuses four-ranking count drift and forged source shares",async()=>{
+ const clean={schema:"nico-verified-dual-count-v1",role:"hub_owner",unit:"件",
+  period:"month",range:{start:"2026-11-01",end:"2026-11-09"},
+  readTime:"2026-11-09T00:00:00.000Z",
+  summary:{own:3,partner:2,total:5,unidentified:0},
+  memberRanking:[{id:"hub:u",name:"自社担当",companyId:"hub",
+   companyName:"自社",teamId:"t1",teamName:"自社班",count:3,
+   reportStatus:"報告済",reportedDays:1,previousCount:null,
+   change:null,growth:"比較不可",topProduct:"NURO光",remainingToGoal:null,
+   personalBestStatus:"比較不可",rank:1},
+   {id:"partner:u",name:"協力担当",companyId:"partner",
+   companyName:"協力店",teamId:"t1",teamName:"協力班",count:2,
+   reportStatus:"報告済",reportedDays:1,previousCount:null,
+   change:null,growth:"比較不可",topProduct:"NURO光",remainingToGoal:null,
+   personalBestStatus:"比較不可",rank:2}],
+  productRanking:[{id:"sku",name:"NURO光",count:5,ownCount:3,
+   partnerCount:2,rank:1,companies:[
+    {companyId:"hub",companyName:"自社",count:3},
+    {companyId:"partner",companyName:"協力店",count:2}]}],
+  companyBreakdown:[
+   {id:"hub",name:"自社",kind:"自社",count:3,
+    unidentifiedCount:0,hasVerifiedSubmission:true,rank:1},
+   {id:"partner",name:"協力店",kind:"協力店",count:2,
+    unidentifiedCount:0,hasVerifiedSubmission:true,rank:2}],
+  teamBreakdown:[
+   {id:"hub:t1",companyId:"hub",companyName:"自社",name:"自社班",count:3,rank:1},
+   {id:"partner:t1",companyId:"partner",companyName:"協力店",name:"協力班",count:2,rank:2}],
+  filters:{companyId:"",teamId:"",uid:"",productId:""}
+ };
+ const send=async payload=>{
+  const adapter=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,payload)
+  });
+  const out=response();await adapter(req(),out);return out;
+ };
+ let out=await send(clean);
+ assert.equal(out.statusCode,200,"consistent hub ranking remains readable");
+ assert.deepEqual(JSON.parse(out.body),clean);
+ for(const mutation of [
+  p=>{p.summary.total=4;},
+  p=>{p.summary.own=2;},
+  p=>{p.summary.partner=3;},
+  p=>{p.summary.unidentified=1;},
+  p=>{p.companyBreakdown[1].count=3;},
+  p=>{p.teamBreakdown[0].count=4;},
+  p=>{p.memberRanking[0].count=4;},
+  p=>{p.productRanking[0].count=6;},
+  p=>{p.productRanking[0].ownCount=4;},
+  p=>{p.productRanking[0].partnerCount=3;},
+  p=>{p.productRanking[0].companies[1].count=4;},
+  p=>{p.productRanking[0].companies[1].companyId="hub";},
+  p=>{p.productRanking[0].companies[1].companyId="foreign";},
+  p=>{p.productRanking[0].companies[1].salary=50000;},
+  p=>{p.teamBreakdown[1].companyId="foreign";},
+  p=>{p.companyBreakdown[0].kind="協力店";},
+  p=>{p.summary.total=Number.MAX_SAFE_INTEGER;}
+ ]){
+  const corrupt=structuredClone(clean);mutation(corrupt);
+  out=await send(corrupt);
+  assert.equal(out.statusCode,503,mutation.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+ // Verified company-code counts may lack a person/team; that difference
+ // is allowed only when explicitly attributed to unidentifiedCount.
+ const unknown=structuredClone(clean);
+ unknown.summary.total=6;unknown.summary.partner=3;
+ unknown.summary.unidentified=1;
+ unknown.companyBreakdown[1].count=3;
+ unknown.companyBreakdown[1].unidentifiedCount=1;
+ unknown.productRanking[0].count=6;
+ unknown.productRanking[0].partnerCount=3;
+ unknown.productRanking[0].companies[1].count=3;
+ out=await send(unknown);
+ assert.equal(out.statusCode,200,
+  "safe unattributed count is preserved without inventing a person or team");
+});
+
 test("real canonical hub and partner rankings cross HTTP adapter with verified company/team status",async()=>{
  const {buildVerifiedCountDashboard}=await import(
   "../ranking/verified-dual-count-dashboards.mjs");
