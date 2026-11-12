@@ -21,12 +21,20 @@ async function seedRecord(id=key(),teamId='a'){
 before(async()=>{
  const reviewedOriginal=fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8');
  let rules=reviewedOriginal;
+ // The staged exact Phase-1 candidate is already present in firestore.rules
+ // when this test runs on the reviewed current-main integration branch.
+ // It is stricter than the older optional transformed candidate: a retained
+ // secondary context is NOT equivalent to an explicit approved role transfer.
+ const exactPhase1SecondaryFence=reviewedOriginal.includes(
+  'function noSecondaryPartnerWorkspace() {');
  // An opt-in CI-only mode re-runs ALL pre-existing internal user flows
  // against the narrow finance fence candidate, not just fresh test fixtures.
  // Default Sales App Validation always tests the unmodified repository Rules.
  const flag=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE;
  if(flag&&flag!=='1')throw Error('UNRECOGNIZED_FINANCE_EMULATOR_MODE');
  if(flag==='1'){
+  if(exactPhase1SecondaryFence)
+   throw Error('SECONDARY_FENCE_ALREADY_STAGED_USE_EXISTING_RULES');
   if(process.env.FIREBASE_PROJECT_ID!=='demo-sales-support'||
      process.env.GCLOUD_PROJECT!=='demo-sales-support'||
      !/^(?:127[.]0[.]0[.]1|localhost):[0-9]{2,5}$/.test(process.env.FIRESTORE_EMULATOR_HOST||'')||
@@ -688,7 +696,11 @@ test('existing-email secondary partner: active server context blocks four financ
   originalProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
  });
  const db=dbFor('owner');
- const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1';
+ // The original optional transformation and the exact Phase-1 candidate
+ // use different veto predicates. Never test the stricter staged Rules as
+ // vulnerable legacy Rules simply because an environment flag is absent.
+ const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1'||
+  exactPhase1SecondaryFence;
  for(const [coll,id] of finance){
   const single=getDoc(doc(db,coll,id));
   if(withCandidate)await assertFails(single,
@@ -709,10 +721,17 @@ test('existing-email secondary partner: active server context blocks four financ
  });
  assert.deepEqual(afterProfile,originalProfile,
   'switching roles may not alter or delete historical primary user');
- // Explicit inactive context re-enables the original primary role.
+ // This is the crucial difference between the optional legacy
+ // transformation and exact Phase-1: a merely inactive secondary context
+ // does NOT authorize restoration of historical internal financial rights.
+ // Re-activation requires a separately reviewed explicit role transition.
  await env.withSecurityRulesDisabled(async ctx=>
   updateDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),{active:false}));
- for(const [coll,id] of finance)
-  await assertSucceeds(getDoc(doc(db,coll,id)),
-   'inactive secondary context preserves original internal history: '+coll);
+ for(const [coll,id] of finance){
+  const probe=getDoc(doc(db,coll,id));
+  if(exactPhase1SecondaryFence)await assertFails(probe,
+   'retained secondary context must never silently restore finance GET: '+coll);
+  else await assertSucceeds(probe,
+   'original baseline or opt-in legacy transformation retains old primary grant: '+coll);
+ }
 });
