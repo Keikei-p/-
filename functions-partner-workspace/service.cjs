@@ -9,16 +9,20 @@ const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
-const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+// Partner-owned names become public ranking labels. Validate the SAME
+// normalized financial aliases at write time so a successful count entry
+// cannot later fail the stricter count-only ranking projection.
+const money=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
+const moneyName=x=>money.test(x.normalize("NFKC"));
 const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
- x.trim().length<=80&&!money.test(x);
+ x.trim().length<=80&&!moneyName(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
  submissionPublicationEnabled=()=>false,ownerCorrectionEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
- const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
+ const validName=x=>typeof x==="string"&&NAME.test(x)&&!moneyName(x);
  const validDate=x=>{
   if(typeof x!=="string"||!DATE.test(x))fail("invalid-argument");
   const t=Date.parse(x+"T00:00:00Z"),d=new Date(t);
@@ -35,7 +39,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {counts,total};
  };
  const validPrivateName=x=>typeof x==="string"&&x.trim().length>0&&
- x.trim().length<=80&&!money.test(x);
+ x.trim().length<=80&&!moneyName(x);
  const validatePrivateCounts=x=>{
   if(!x||typeof x!=="object"||Array.isArray(x)||Object.keys(x).length>100)
     fail("invalid-argument");
