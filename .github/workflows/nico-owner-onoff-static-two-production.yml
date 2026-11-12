@@ -45,7 +45,9 @@ jobs:
           test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          # This Hosting-only release does NOT approve a modified partner Function.
+          # It must be exactly unchanged from the already-existing main baseline.
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = "$(git rev-parse 516bfe74f525ad8ee95a800f796c77327cf9aeae:functions-partner-workspace/service.cjs)"
           test "$(git hash-object owner-product-publication.html)" = 3ef6050e76343632fec17630b69bcb8b0b64ad48
           test "$(git hash-object ranking/owner-product-visibility-dashboard-mount.mjs)" = d606cdf258f0a53c4b9295e009b567b475badf31
           test "$(git hash-object ranking/owner-product-visibility-firebase-bridge.mjs)" = 1ade778691c27e9517d04cc69d3093af87af46fd
