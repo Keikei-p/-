@@ -133,7 +133,7 @@ export function assertIndependentPRApprovalGate({env,gh}){
  if(!obj(pr)||pr.state!=='open'||pr.draft!==false||
     pr.head?.sha!==checkout||
     typeof pr.user?.login!=='string'||!pr.user.login||
-    !Array.isArray(reviews)||reviews.length===0||reviews.length>100)
+    !Array.isArray(reviews)||reviews.length===0||reviews.length>=100)
    stop('INDEPENDENT_REVIEW_NOT_APPROVED');
  // REST review IDs increase in submission order. A later dismissal/change
  // request cannot be hidden behind an earlier APPROVED review.
@@ -141,7 +141,8 @@ export function assertIndependentPRApprovalGate({env,gh}){
  for(const item of reviews){
   const login=item?.user?.login;
   if(typeof login!=='string'||!/^[A-Za-z0-9-]{1,39}$/.test(login)||
-     !Number.isSafeInteger(item.id)||item.id<=0)continue;
+     !Number.isSafeInteger(item.id)||item.id<=0||
+     !['APPROVED','CHANGES_REQUESTED','DISMISSED'].includes(item.state))continue;
   const prior=latest.get(login);
   if(!prior||prior.id<item.id)latest.set(login,item);
  }
