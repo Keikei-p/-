@@ -52,3 +52,27 @@ jobs:
           echo 'PRODUCTION_DEPLOYED=false'
           echo 'PARTNER_COUNT_ENABLED=false'
           echo 'JOINT_RANKING_ENABLED=false'
+      - name: Observe current public Hosting asset parity (GET only, never publish)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {ONOFF_ASSETS} from './tools/hosting/owner-product-onoff-additive-guard.mjs';
+          for(const path of Object.keys(ONOFF_ASSETS)){
+            let exact=false,code='unverified';
+            try{
+              const r=await fetch('https://nico-factory.web.app'+path+
+                '?owner_onoff_readonly='+process.env.GITHUB_SHA,{
+                method:'GET',redirect:'error',signal:AbortSignal.timeout(12000),
+                headers:{'Cache-Control':'no-cache'}});
+              code=String(r.status);
+              if(r.ok){
+                const body=await r.text();
+                const src=readFileSync('.'+path,'utf8');
+                exact=body.length===src.length&&body===src;
+              }
+            }catch{code='unavailable'}
+            console.log('LIVE_OWNER_ONOFF_ASSET '+path+' '+(exact?'EXACT':'MISSING_OR_DIFFERENT')+' HTTP_'+code);
+          }
+          console.log('LIVE_HOSTING_READ_ONLY_NO_DEPLOY');
+          NODE
