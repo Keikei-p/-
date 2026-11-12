@@ -7,6 +7,7 @@ const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/
 const {doc,setDoc,getDoc,getDocsFromServer,collection,query,where,updateDoc,deleteDoc,serverTimestamp,runTransaction}=require('firebase/firestore');
 if(!process.env.FIRESTORE_EMULATOR_HOST) throw Error('Emulator required: refusing any production connection');
 let env;
+let exactPhase1SecondaryFence=false;
 const projectId='demo-sales-support';
 const company='company-a';
 const date='2026-10-06';
@@ -25,7 +26,7 @@ before(async()=>{
  // when this test runs on the reviewed current-main integration branch.
  // It is stricter than the older optional transformed candidate: a retained
  // secondary context is NOT equivalent to an explicit approved role transfer.
- const exactPhase1SecondaryFence=reviewedOriginal.includes(
+ exactPhase1SecondaryFence=reviewedOriginal.includes(
   'function noSecondaryPartnerWorkspace() {');
  // An opt-in CI-only mode re-runs ALL pre-existing internal user flows
  // against the narrow finance fence candidate, not just fresh test fixtures.
