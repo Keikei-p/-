@@ -120,14 +120,26 @@ export async function prepareOwnerOnOffTwoAssetRelease({
  for(let offset=0;offset<entries.length;offset+=800){
   const payload={files:Object.fromEntries(entries.slice(offset,offset+800))};
   const outcome=await request("POST",BASE+"/"+created.name+":populateFiles",payload);
-  if(!outcome||!Array.isArray(outcome.uploadRequiredHashes))
+  // Protobuf JSON omits empty repeated fields: all hashes may already
+  // exist in Hosting storage after an earlier unpublished version. Omission
+  // is NOT permission to skip verifying each finalized file hash below.
+  if(!outcome||typeof outcome!=="object"||Array.isArray(outcome)||
+     (outcome.uploadRequiredHashes!=null&&
+      !Array.isArray(outcome.uploadRequiredHashes))||
+     (outcome.uploadRequiredHashes==null&&
+      typeof outcome.uploadUrl!=="string"))
    stop("UPLOAD_INVENTORY_UNKNOWN");
+  log("OWNER_ONOFF_POPULATE_RESPONSE "+JSON.stringify({
+   hashListPresent:Array.isArray(outcome.uploadRequiredHashes),
+   uploadTargetPresent:typeof outcome.uploadUrl==="string",
+   requiredCount:outcome.uploadRequiredHashes?.length??0
+  }));
   if(outcome.uploadUrl!=null){
    const candidate=uploadTarget(created.name,outcome.uploadUrl);
    if(url!==null&&url!==candidate)stop("UPLOAD_URL_CHANGED");
    url=candidate;
   }
-  for(const hash of outcome.uploadRequiredHashes){
+  for(const hash of outcome.uploadRequiredHashes??[]){
    if(typeof hash!=="string"||!HEX.test(hash)||
       !ADD.some(path=>hostingAssetHash(sources[path])===hash))
     stop("UPLOAD_EXISTING_OR_UNKNOWN");
