@@ -1,0 +1,121 @@
+name: NICO Owner ONOFF production - add EXACT TWO static files
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/run-owner-onoff-exact-two-release.mjs'
+      - 'tests/run-owner-onoff-exact-two-release.test.mjs'
+      - '.github/workflows/nico-owner-onoff-static-two-production.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'owner-product-publication.html'
+      - 'ranking/owner-product-visibility-dashboard-mount.mjs'
+      - 'tools/hosting/run-owner-onoff-exact-two-release.mjs'
+      - '.github/workflows/nico-owner-onoff-static-two-production.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-nico-owner-product-onoff-two-static-only
+  cancel-in-progress: false
+jobs:
+  validate-static-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+      FIREBASE_PROJECT_ID: demo-nico-owner-onoff
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin original production app, Rules, functions and Owner assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          test "$(git hash-object owner-product-publication.html)" = 3ef6050e76343632fec17630b69bcb8b0b64ad48
+          test "$(git hash-object ranking/owner-product-visibility-dashboard-mount.mjs)" = d606cdf258f0a53c4b9295e009b567b475badf31
+          test "$(git hash-object ranking/owner-product-visibility-firebase-bridge.mjs)" = 1ade778691c27e9517d04cc69d3093af87af46fd
+          test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = 3721c8cdf2b826a0db848f4ce4d49ca946bf0c25
+          test "$(git hash-object ranking/owner-product-visibility-panel.css)" = c4ac92aef2418396e0a7a254da489d62794dde62
+          node -e "if(require('./.firebaserc').projects.default!=='sales-management-cc116')process.exit(1)"
+          test "$FIREBASE_PROJECT_ID" = demo-nico-owner-onoff
+      - name: Offline Owner ONOFF UI and exact two-file publisher tests
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/run-owner-onoff-exact-two-release.mjs
+          node --test tests/run-owner-onoff-exact-two-release.test.mjs tests/release-owner-onoff-two-assets.test.mjs tests/inspect-owner-onoff-hosting-readonly.test.mjs tests/owner-product-onoff-additive-guard.test.mjs tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          echo 'OWNER_ONOFF_STATIC_CANDIDATE_TESTS_PASS_NO_PRODUCTION_WRITES'
+
+  # Static-only release after the protected main squash commit.
+  release-two-static-only:
+    needs: validate-static-scope
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          github.event.head_commit.message == 'release(hosting): publish Owner ONOFF two assets only' &&
+          needs.validate-static-scope.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_ONOFF_STATIC_RELEASE: APPROVE_ONLY_TWO_STATIC_OWNER_ONOFF_ASSETS
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Confirm protected main exact version and release intent
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(hosting): publish Owner ONOFF two assets only'
+          printf 'NICO_ONOFF_STATIC_MAIN_SHA=%s\n' "$GITHUB_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' 'NICO_ONOFF_STATIC_COMMIT_SUBJECT=release(hosting): publish Owner ONOFF two assets only' >> "$GITHUB_ENV"
+      - name: Install existing OAuth SDK only - no firebase deploy command
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Load existing protected Hosting identity privately
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-onoff-two-static.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-onoff-two-static.private.json"
+          printf 'GOOGLE_APPLICATION_CREDENTIALS=%s\n' "$RUNNER_TEMP/nico-onoff-two-static.private.json" >> "$GITHUB_ENV"
+      - name: GET ONLY - check full Hosting manifest and unchanged original assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/run-owner-onoff-exact-two-release.mjs --dry-run
+      - name: Publish only two new static Owner assets, preserve all other hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/hosting/run-owner-onoff-exact-two-release.mjs --release
+      - name: Always erase runtime credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-onoff-two-static.private.json"
