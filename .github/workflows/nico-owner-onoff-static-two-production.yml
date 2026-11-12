@@ -53,7 +53,7 @@ jobs:
           test "$(git hash-object ranking/owner-product-visibility-firebase-bridge.mjs)" = 1ade778691c27e9517d04cc69d3093af87af46fd
           test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = 3721c8cdf2b826a0db848f4ce4d49ca946bf0c25
           test "$(git hash-object ranking/owner-product-visibility-panel.css)" = c4ac92aef2418396e0a7a254da489d62794dde62
-          node -e "if(require('./.firebaserc').projects.default!=='sales-management-cc116')process.exit(1)"
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
           test "$FIREBASE_PROJECT_ID" = demo-nico-owner-onoff
       - name: Offline Owner ONOFF UI and exact two-file publisher tests
         run: |
