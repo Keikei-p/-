@@ -44,7 +44,7 @@ jobs:
           test "$(git rev-parse origin/security/phase1-owner-preflight-bridge-20261105)" = 2b6031b3bda425c6e6f638fed218e388e03d7194
           test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
           git diff --name-only 2b6031b3bda425c6e6f638fed218e388e03d7194...HEAD > /tmp/nico-identity-scope.txt
-          if grep -Ev '^(tools/production/phase1-bound-identity-readonly\.mjs|tools/production/phase1-live-proof-bridge\.mjs|tools/production/phase1-partner-finance-release\.mjs|tools/production/verify-live-firestore-roles\.mjs|tests/verify-live-firestore-roles\.test\.mjs|tests/phase1-live-proof-bridge\.test\.mjs|tests/phase1-partner-finance-release\.test\.mjs|tools/production/phase1-reviewed-operator\.mjs|tests/phase1-reviewed-operator\.test\.mjs|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY\.md|\.github/workflows/nico-affected-identity-gate-no-deploy\.yml)$' /tmp/nico-identity-scope.txt; then
+          if grep -Ev '^(tools/production/phase1-bound-identity-readonly\.mjs|tools/production/phase1-live-proof-bridge\.mjs|tools/production/phase1-partner-finance-release\.mjs|tools/production/verify-live-firestore-roles\.mjs|tests/verify-live-firestore-roles\.test\.mjs|tests/phase1-live-proof-bridge\.test\.mjs|tests/phase1-partner-finance-release\.test\.mjs|tools/production/phase1-reviewed-operator\.mjs|tests/phase1-reviewed-operator\.test\.mjs|tests/phase1-current-main-compatibility-emulator\.test\.mjs|docs/PHASE1_SECONDARY_FINANCE_RELEASE_SIGNOFF_NO_DEPLOY\.md|\.github/workflows/nico-affected-identity-gate-no-deploy\.yml)$' /tmp/nico-identity-scope.txt; then
             echo STOP_UNREVIEWED_IDENTITY_CHANGE
             exit 1
           fi
@@ -54,6 +54,7 @@ jobs:
           set -euo pipefail
           node --check tools/production/phase1-reviewed-operator.mjs
           node --check tests/phase1-reviewed-operator.test.mjs
+          node --check tests/phase1-current-main-compatibility-emulator.test.mjs
           node --check tools/production/phase1-bound-identity-readonly.mjs
           node --check tools/production/phase1-live-proof-bridge.mjs
           node --check tools/production/phase1-partner-finance-release.mjs
@@ -67,6 +68,75 @@ jobs:
           echo 'PASS_SYNTHETIC_IDENTITY_ONLY'
           echo 'AFFECTED_REAL_UID_VERIFIED=false'
           echo 'OWNER_REAL_UID_VERIFIED=false'
+          echo 'PRODUCTION_APPROVED=false'
+          echo 'RULES_RELEASED=false'
+
+  current-main-compatibility:
+    name: Exact Phase1 Rules with current-main count service (NO DEPLOY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
+      GCLOUD_PROJECT: demo-nico-secondary-finance-fence
+      GOOGLE_CLOUD_PROJECT: demo-nico-secondary-finance-fence
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FIREBASE_SERVICE_ACCOUNT_JSON: ""
+      NICO_RULES_APPROVAL: ""
+      NICO_USAGE_APPROVAL: ""
+      NICO_PHASE1_CURRENT_MAIN_SHA: 516bfe74f525ad8ee95a800f796c77327cf9aeae
+      NICO_PHASE1_CURRENT_MAIN_FIXTURE: ${{ runner.temp }}/nico-phase1-current-main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Pin current main without changing candidate Rules or production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-nico-secondary-finance-fence
+          test "$GCLOUD_PROJECT" = demo-nico-secondary-finance-fence
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_USAGE_APPROVAL"
+          test "$NICO_PHASE1_CURRENT_MAIN_SHA" = 516bfe74f525ad8ee95a800f796c77327cf9aeae
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$NICO_PHASE1_CURRENT_MAIN_SHA"
+          test "$(git rev-parse "$NICO_PHASE1_CURRENT_MAIN_SHA:firestore.rules")" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object firestore.rules)" = 6d6ac7fd3544b0326823e419a3acd7e1d060b714
+          mkdir "$NICO_PHASE1_CURRENT_MAIN_FIXTURE"
+          git -c core.autocrlf=false archive "$NICO_PHASE1_CURRENT_MAIN_SHA" | tar -x -C "$NICO_PHASE1_CURRENT_MAIN_FIXTURE"
+          test "$(git hash-object "$NICO_PHASE1_CURRENT_MAIN_FIXTURE/functions-partner-workspace/service.cjs")" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          git diff --exit-code -- firestore.rules firebase.json index.html functions functions-partner-workspace
+      - name: Install test-only dependencies without any production identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Current-main count and original finance regression without source substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$GITHUB_WORKSPACE/tests/node_modules:$GITHUB_WORKSPACE/functions-partner-workspace/node_modules"
+          cd "$NICO_PHASE1_CURRENT_MAIN_FIXTURE"
+          node --test tests/partner-workspace.test.cjs tests/partner-quick-counts.test.cjs tests/partner-firestore-admin-count-store.test.mjs tests/partner-count-only-write-contract.test.mjs tests/partner-existing-ranking.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-company-code-auth.test.cjs tests/partner-public-auth-surface.test.mjs
+      - name: Exact 6d6 Rules and current-main service in a real localhost emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore \
+            'node --test tests/phase1-current-main-compatibility-emulator.test.mjs'
+          echo 'EXACT_PHASE1_CURRENT_MAIN_COMPATIBILITY_EMULATOR_PASS'
           echo 'PRODUCTION_APPROVED=false'
           echo 'RULES_RELEASED=false'
 

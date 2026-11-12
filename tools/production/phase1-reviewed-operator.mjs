@@ -30,7 +30,10 @@ import {
 import {phase1WithLiveAccountGate} from './phase1-live-proof-bridge.mjs';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-const REVIEWED_MAIN='17681e69d3ebd7271cc9a58e138fd0e202db7294';
+// Candidate source pin for independent review, not a production approval.
+// Changing this value still requires new exact-checkout push CI and another
+// authorized human's APPROVED review on that final PR HEAD before apply.
+const CANDIDATE_MAIN='516bfe74f525ad8ee95a800f796c77327cf9aeae';
 const VERIFIED_APPROVAL='INDEPENDENT_REVIEW_OF_PHASE1_RULES_AND_LIVE_IDENTITIES_COMPLETE';
 const USAGE_APPROVAL='EXISTING_FUNCTIONS_AND_FULL_INVENTORY_APPROVED';
 const OWN_KEYS=['ownerIdToken','partnerIdToken','expectedOwnerUid','expectedPartnerUid',
@@ -62,7 +65,7 @@ export function validateOperatorIntent({mode,env,proof}){
  if(!SHA.test(env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||'')||
     !RUN_ID.test(env.NICO_PHASE1_REVIEWED_CI_RUN_ID||'')||
     env.NICO_PHASE1_INDEPENDENT_SIGNOFF!==VERIFIED_APPROVAL||
-    env.NICO_PHASE1_REVIEWED_MAIN_SHA!==REVIEWED_MAIN||
+    env.NICO_PHASE1_REVIEWED_MAIN_SHA!==CANDIDATE_MAIN||
     env.NICO_PHASE1_REVIEWED_BASELINE_BLOB!==BASELINE_GIT_BLOB||
     env.NICO_PHASE1_REVIEWED_CANDIDATE_BLOB!==PHASE1_GIT_BLOB||
     !obj(proof)||Object.keys(proof).sort().join(',')!==OWN_KEYS.slice().sort().join(',')||
@@ -103,7 +106,7 @@ export function assertReviewedCodeGate({env,git,gh}){
  const matches=/^([a-f0-9]{40})\s+refs\/heads\/main\s*$/.exec(main);
  if(local!==env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||
     dirty.trim()!==''||!REVIEWED_ORIGINS.has(origin)||
-    !matches||matches[1]!==REVIEWED_MAIN||
+    !matches||matches[1]!==CANDIDATE_MAIN||
     run?.headSha!==local||run?.conclusion!=='success'||
     run?.event!=='push'||
     run?.name!=='NICO affected secondary identity + finance boundary (NO DEPLOY)')

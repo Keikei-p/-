@@ -4,7 +4,7 @@ import {validateOperatorIntent,assertReviewedCodeGate,assertIndependentPRApprova
 
 const baseline='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
 const candidate='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
-const main='17681e69d3ebd7271cc9a58e138fd0e202db7294';
+const main='516bfe74f525ad8ee95a800f796c77327cf9aeae';
 const head='a'.repeat(40);
 const ciRun='42163374662';
 const review='INDEPENDENT_REVIEW_OF_PHASE1_RULES_AND_LIVE_IDENTITIES_COMPLETE';
@@ -38,6 +38,7 @@ test('no secret, approval or misleading project can run an apply request',()=>{
   basic,
   {...approved,NICO_PHASE1_INDEPENDENT_SIGNOFF:''},
   {...approved,NICO_PHASE1_REVIEWED_MAIN_SHA:'wrong'},
+  {...approved,NICO_PHASE1_REVIEWED_MAIN_SHA:'17681e69d3ebd7271cc9a58e138fd0e202db7294'},
   {...approved,NICO_PHASE1_REVIEWED_BASELINE_BLOB:'wrong'},
   {...approved,NICO_PHASE1_REVIEWED_CANDIDATE_BLOB:'wrong'},
   {...approved,FIREBASE_PROJECT_ID:'demo-sales-support'},
@@ -123,6 +124,7 @@ test('apply cannot proceed on unreviewed, dirty, drifted, failed or fabricated C
   {remote:'https://user:password@github.com/Keikei-p/-.git'},
   {remote:'https://github.com/Keikei-p/-evil.git'},
   {mainSha:'b'.repeat(40)},
+  {mainSha:'17681e69d3ebd7271cc9a58e138fd0e202db7294'},
   {run:{...ready(),headSha:'b'.repeat(40)}},
   {run:{...ready(),conclusion:'failure'}},
   {run:{...ready(),event:'pull_request'}},
@@ -247,6 +249,24 @@ test('an environment string or green CI cannot fabricate a real independent appr
   const {gh}=fakeIndependentReview(scenario);
   assert.throws(()=>assertIndependentPRApprovalGate({env:approved,gh}),
    /STOP_PHASE1_OPERATOR_INDEPENDENT_REVIEW_/);
+ }
+});
+test('a current-main candidate with matching green push CI still cannot use missing or previous-head approval',()=>{
+ const git=cmd=>{
+  if(cmd==='rev-parse')return head+'\n';
+  if(cmd==='status')return '';
+  if(cmd==='remote')return 'https://github.com/Keikei-p/-.git\n';
+  if(cmd==='ls-remote')return main+'\trefs/heads/main\n';
+  throw Error('unexpected candidate source request');
+ };
+ const gh=()=>JSON.stringify({headSha:head,conclusion:'success',event:'push',
+  name:'NICO affected secondary identity + finance boundary (NO DEPLOY)'});
+ assert.equal(assertReviewedCodeGate({env:approved,git,gh}).mainUnchanged,true);
+ for(const reviews of [[],[{...humanApproval,
+  commit_id:'55f08ecfc5682742a00e914076accedb939846df'}]]){
+  const lookup=fakeIndependentReview({reviews});
+  assert.throws(()=>assertIndependentPRApprovalGate({env:approved,gh:lookup.gh}),
+   /STOP_PHASE1_OPERATOR_INDEPENDENT_REVIEW_NOT_APPROVED/);
  }
 });
 test('revoked or change-requested reviews veto old approval, but normal comments do not revoke it',()=>{
