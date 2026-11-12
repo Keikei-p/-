@@ -45,13 +45,13 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
           git fetch --no-tags origin main
-          test "$(git rev-parse origin/main)" = a72904ee28046892999b658ec8c4215e924cc4d0
+          test "$(git rev-parse origin/main)" = a872c0e44dda229f0ea731454a79723cc637d3a4
           git diff --name-only origin/main...HEAD | tee /tmp/nico-onoff-changed-files.txt
           if grep -Ev '^(tools/hosting/release-owner-onoff-two-assets\.mjs|tests/release-owner-onoff-two-assets\.test\.mjs|\.github/workflows/nico-owner-onoff-static-two-production\.yml|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
             echo 'STOP_UNREVIEWED_CHANGE_SCOPE'
             exit 1
           fi
-          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 4
+          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 3
           git diff --exit-code origin/main...HEAD -- index.html firestore.rules firebase.json functions functions-ranking-approvals functions-partner-workspace ranking partner
       - name: Test isolated page, complete Hosting asset closure, Owner callables and data safety
         run: |
