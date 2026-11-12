@@ -6529,6 +6529,11 @@ body.product-reordering .product-list {
       class="accordion-content"
       hidden>
 
+      <!-- Count-only owner publication; hard OFF until release gate. -->
+      <section id="ownerProductPublicationSection" hidden aria-label="協力店向け商材公開設定">
+        <div id="ownerProductPublicationRoot" aria-live="polite"></div>
+      </section>
+
       <div class="product-editor-card">
 
         <input
@@ -7105,6 +7110,75 @@ const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWork
 const partnerInlineAccept = httpsCallable(partnerCountFunctions,"acceptPartnerWorkspaceInvite");
 const partnerMainPreviewCompanyInvite = httpsCallable(partnerCountFunctions,"previewPartnerCompanyInvitation");
 const partnerMainAcceptCompanyInvite = httpsCallable(partnerCountFunctions,"acceptPartnerCompanyInvitation");
+
+// Production host wiring only. This is NOT permission or finance isolation.
+// Enable after authenticated count storage, live Rules, and rollback are proven.
+// Deliberately NOT controlled by query strings, localStorage or remote data.
+const NICO_OWNER_PRODUCT_ONOFF_RELEASED=false;
+let nicoOwnerPublicationMount=null;
+let nicoOwnerPublicationPending=null;
+let nicoOwnerPublicationGeneration=0;
+function resetNicoOwnerPublication(){
+  ++nicoOwnerPublicationGeneration;
+  if(nicoOwnerPublicationMount){
+    nicoOwnerPublicationMount.destroy();
+    nicoOwnerPublicationMount=null;
+  }
+  nicoOwnerPublicationPending=null;
+  const section=document.getElementById("ownerProductPublicationSection");
+  const root=document.getElementById("ownerProductPublicationRoot");
+  if(root)root.replaceChildren();
+  if(section)section.hidden=true;
+}
+async function maybeMountNicoOwnerPublication(){
+  // No network, JS module, callable or data read while feature is OFF.
+  if(!NICO_OWNER_PRODUCT_ONOFF_RELEASED||!canLoadPartnerRanking())
+    return false;
+  const user=auth.currentUser;
+  const companyId=currentUserData?.companyId;
+  const section=document.getElementById("ownerProductPublicationSection");
+  const root=document.getElementById("ownerProductPublicationRoot");
+  if(!user?.emailVerified||!user?.uid||!companyId||!section||!root)
+    return false;
+  if(nicoOwnerPublicationMount)return nicoOwnerPublicationMount.refresh();
+  if(nicoOwnerPublicationPending)return nicoOwnerPublicationPending;
+  const generation=nicoOwnerPublicationGeneration;
+  const pending=import("./ranking/owner-product-visibility-dashboard-mount.mjs")
+    .then(({mountOwnerProductVisibilityDashboard})=>{
+      if(nicoOwnerPublicationGeneration!==generation||
+         auth.currentUser!==user||currentUserData?.companyId!==companyId||
+         !canLoadPartnerRanking())return false;
+      const mount=mountOwnerProductVisibilityDashboard({
+        featureEnabled:true,document,root,auth,functions:partnerCountFunctions,
+        httpsCallable,onAuthStateChanged
+      });
+      if(nicoOwnerPublicationGeneration!==generation||
+         auth.currentUser!==user){mount.destroy();return false;}
+      nicoOwnerPublicationMount=mount;
+      if(!document.getElementById("nicoOwnerPublicationCss")){
+        const link=document.createElement("link");
+        link.id="nicoOwnerPublicationCss";
+        link.rel="stylesheet";
+        link.href="./ranking/owner-product-visibility-panel.css";
+        document.head.appendChild(link);
+      }
+      section.hidden=false;
+      return true;
+    })
+    .catch(()=>{
+      if(nicoOwnerPublicationGeneration===generation){
+        root.replaceChildren();
+        section.hidden=true;
+      }
+      return false;
+    }).finally(()=>{
+      if(nicoOwnerPublicationPending===pending)
+        nicoOwnerPublicationPending=null;
+    });
+  nicoOwnerPublicationPending=pending;
+  return pending;
+}
+
 
 
 
@@ -9076,6 +9150,7 @@ function openManagementCard(
   setManagementMenuOpen(
     false
   );
+  if(type==="product")void maybeMountNicoOwnerPublication();
 
 }
 
@@ -12682,6 +12757,7 @@ pInline("pMainCancelInvite").onclick=()=>{
 onAuthStateChanged(
   auth,
   async user => {
+    resetNicoOwnerPublication();
 
     if (user) {
 

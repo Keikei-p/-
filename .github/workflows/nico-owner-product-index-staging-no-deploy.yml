@@ -1,0 +1,53 @@
+name: NICO owner product ON-OFF live-host wiring (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/owner-product-visibility-index-hook.test.mjs'
+      - 'ranking/owner-product-visibility-dashboard-mount.mjs'
+      - 'ranking/owner-product-visibility-firebase-bridge.mjs'
+      - 'ranking/owner-product-visibility-panel.mjs'
+      - '.github/workflows/nico-owner-product-index-staging-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/owner-product-visibility-index-hook.test.mjs'
+      - 'ranking/owner-product-visibility-dashboard-mount.mjs'
+      - '.github/workflows/nico-owner-product-index-staging-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verify-inert-owner-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify staging only; zero deployment credentials or permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          git diff --exit-code -- firestore.rules firebase.json .firebaserc partner-workspace.html functions functions-partner-workspace
+          grep -Fq 'const NICO_OWNER_PRODUCT_ONOFF_RELEASED=false;' index.html
+          grep -Fq 'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED==="enabled"' functions-ranking-approvals/index.js
+      - name: Verify existing owner page syntax and fail-closed mount behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ranking/owner-product-visibility-dashboard-mount.mjs
+          node --check ranking/owner-product-visibility-firebase-bridge.mjs
+          node --check ranking/owner-product-visibility-panel.mjs
+          node --test tests/owner-product-visibility-index-hook.test.mjs
+          node --test tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-panel.test.mjs
+          echo 'STAGING_ONLY_APP_ENTRY_READY; PRODUCTION_RELEASE_NOT_AUTHORIZED_BY_THIS_JOB'
