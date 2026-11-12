@@ -69,7 +69,7 @@ jobs:
       ${{ github.event_name == 'push' &&
           github.ref == 'refs/heads/main' &&
           github.repository == 'Keikei-p/-' &&
-          github.event.head_commit.message == 'release(hosting): publish Owner ONOFF two assets only' &&
+          startsWith(github.event.head_commit.message, 'release(hosting): publish Owner ONOFF two assets only') &&
           needs.validate-static-scope.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
