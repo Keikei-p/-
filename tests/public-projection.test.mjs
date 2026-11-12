@@ -1,4 +1,5 @@
 import test from "node:test";
+import {readFileSync} from "node:fs";
 import assert from "node:assert/strict";
 import {projectCountRecord,projectPublicProduct,projectCountCorrection,projectRankOnly,projectPublicRecordHeader,projectPublicRecordLines,projectPublicCorrectionFlat,projectPublicRankEntries,assertPublicSchema,auditNoFinancialKeys} from "../security/public-projection.mjs";
 
@@ -12,6 +13,19 @@ const product={id:"p1",companyId:"c1",name:"商品A",active:true,revenue:20000,p
 const correction={id:"c1",companyId:"c1",recordId:"r1",recordDate:"2026-10-27",changedByUid:"owner",
  before:{teamId:"team1",totalRevenue:80000,totalCount:4,results:record.results},
  after:{teamId:"team2",totalRevenue:100000,totalCount:5,results:record.results}};
+test("canonical finance projection and partner source equal isolated ranking Function copies",()=>{
+ for(const [rootFile,functionFile] of [
+  ["../security/public-projection.mjs",
+   "../functions-ranking-approvals/security/public-projection.mjs"],
+  ["../ranking/partner-workspace-count-source.mjs",
+   "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs"]
+ ]){
+  const canonical=readFileSync(new URL(rootFile,import.meta.url),"utf8");
+  const deployed=readFileSync(new URL(functionFile,import.meta.url),"utf8");
+  assert.equal(deployed,canonical,"isolated Function source must match reviewed root: "+rootFile);
+ }
+});
+
 test("count projection contains no financial fields",()=>{
  const projected=projectCountRecord(record);
  assert.equal(projected.totalCount,5);
