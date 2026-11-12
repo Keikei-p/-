@@ -23,7 +23,7 @@ const PUBLIC_FIELDS=new Set([
  "teamBreakdown","filters","publicRanking","members","products","people",
  "companies","teams","id","name","company","companyId","companyName","kind",
  "teamId","teamName","uid","productId","count","unidentifiedCount",
- "ownCount","partnerCount","rank","reportStatus","reportedDays",
+ "ownCount","partnerCount","rank","hasVerifiedSubmission","reportStatus","reportedDays",
  "previousCount","change","growth","topProduct","remainingToGoal",
  "personalBestStatus"
 ]);
