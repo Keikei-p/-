@@ -26,7 +26,7 @@ const id=x=>typeof x==="string"&&IDS.test(x)&&
  !["__proto__","prototype","constructor"].includes(x);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const name=x=>typeof x==="string"&&x.trim().length>0&&
- x.length<=80&&!CASH.test(x);
+ x.length<=80&&!CASH.test(x.normalize("NFKC"));
 const keys=(x,expected)=>obj(x)&&
  Object.keys(x).sort().join("|")===expected.slice().sort().join("|");
 const combined=x=>/SB光・AIR|旧合算|未分類/.test(x);
@@ -46,14 +46,24 @@ function validate(mapping,catalog,partner){
     catalog.schema!=="nico-hub-product-visibility-v1"||
     catalog.role!=="hub_owner"||
     catalog.hubCompanyId!==mapping.hubCompanyId||
+    !Number.isSafeInteger(catalog.version)||catalog.version<0||
+    !obj(catalog.partnerOverrides)||
+    Object.keys(catalog.partnerOverrides).length>100||
     !Array.isArray(catalog.products)||catalog.products.length>1000)fail();
  const seen=new Set(),match=new Map(),products=new Map();
  for(const p of catalog.products){
   if(!keys(p,["id","name","active","enabled"])||
      !id(p.id)||products.has(p.id)||!name(p.name)||
      typeof p.active!=="boolean"||typeof p.enabled!=="boolean")fail();
-  products.set(p.id,{id:p.id,name:p.name,active:p.active});
+  products.set(p.id,{id:p.id,name:p.name,active:p.active,enabled:p.enabled});
  }
+ for(const [cid,ids] of Object.entries(catalog.partnerOverrides)){
+  if(!id(cid)||cid===mapping.hubCompanyId||
+     !Array.isArray(ids)||ids.length>1000||
+     ids.some(x=>!id(x)||!products.has(x))||
+     new Set(ids).size!==ids.length)fail();
+ }
+ const mappedHubSku=new Set();
  for(const b of mapping.bindings){
   if(!keys(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||!id(b.hubProductId)||
@@ -62,11 +72,19 @@ function validate(mapping,catalog,partner){
   if(seen.has(k))fail();
   seen.add(k);
   if(b.companyId!==partner)continue;
-  if(!products.has(b.hubProductId))fail();
+  if(!products.has(b.hubProductId)||mappedHubSku.has(b.hubProductId))fail();
   if(b.productId===LEGACY&&!combined(products.get(b.hubProductId).name))fail();
+  mappedHubSku.add(b.hubProductId);
   match.set(b.productId,b.hubProductId);
  }
- return {version:mapping.version,products:[...products.values()],match};
+ const scoped=Object.hasOwn(catalog.partnerOverrides,partner)?
+  new Set(catalog.partnerOverrides[partner]):
+  new Set([...products.values()].filter(p=>p.enabled).map(p=>p.id));
+ const published=productId=>{
+  const p=products.get(productId);
+  return !!p&&p.active&&p.enabled&&scoped.has(productId);
+ };
+ return {version:mapping.version,products:[...products.values()],match,published};
 }
 export const PARTNER_CATEGORIES=CATEGORIES;
 /**
@@ -109,10 +127,16 @@ export function createOwnerReviewedSkuMappingPanel({
    section.className="nico-sku-map-panel";
    section.appendChild(el(document,"h2","協力店の商材対応"));
    section.appendChild(el(document,"p",
-    "対応先を選ぶと、ON商材だけが合同件数ランキングに反映されます。元の件数・履歴は変更しません。"));
+    "商材対応と自社・協力店の公開ONが両方そろった商材だけが合同件数ランキングの対象です。元の件数・履歴は変更しません。"));
+   const ready=CATEGORIES.filter(([category])=>
+    view.published(view.match.get(category))).length;
+   section.appendChild(el(document,"p",
+    "公開設定上ON: "+ready+" / 9商材（実際の入力開始にはサーバー公開承認が必要）"));
    const scope=el(document,"p","対象会社ID: "+partnerCompanyId);
    section.appendChild(scope);
    const selects=[];
+   const mappedElsewhere=category=>new Set([...view.match.entries()]
+    .filter(([sku])=>sku!==category).map(([,id])=>id));
    for(const [category,name] of CATEGORIES){
     const row=el(document,"label");
     row.className="nico-sku-map-row";
@@ -124,8 +148,11 @@ export function createOwnerReviewedSkuMappingPanel({
     empty.value="";
     select.appendChild(empty);
     const currentId=view.match.get(category)||"";
+    const usedElsewhere=mappedElsewhere(category);
+    // The reviewed server writer rejects two partner SKUs pointing to one
+    // hub product. Do not offer that conflicting choice in the Owner UI.
     const candidates=view.products.filter(p=>
-     (p.active||p.id===currentId)&&
+     (p.active||p.id===currentId)&&!usedElsewhere.has(p.id)&&
      (category!==LEGACY||combined(p.name)));
     for(const p of candidates){
      const opt=el(document,"option",p.name+(p.active?"":"（取扱終了）"));
@@ -134,6 +161,11 @@ export function createOwnerReviewedSkuMappingPanel({
      select.appendChild(opt);
     }
     select.value=currentId;
+    const readiness=!currentId?"未対応（ランキング対象外）":
+     !view.products.find(p=>p.id===currentId)?.active?"取扱終了":
+     view.published(currentId)?"公開設定ON":"商材公開OFF";
+    const state=el(document,"small",readiness);
+    row.appendChild(state);
     select.addEventListener("change",async()=>{
      if(closed||saving||auth.currentUser!==user)return;
      const proposed=select.value||null;
