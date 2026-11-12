@@ -111,7 +111,7 @@ export function composeCanonicalMonthlyRankingInput({
   }
   sourceProducts.set(s.companyId,set);
  }
- const seen=new Set();
+ const seen=new Set(),seenTargets=new Set();
  const groups=hubSource.products.map(p=>({
   companyId:hub,productId:p.sourceId,
   groupId:p.sourceId,groupName:p.name
@@ -123,9 +123,15 @@ export function composeCanonicalMonthlyRankingInput({
      !partners.includes(b.companyId)||
      !sourceProducts.get(b.companyId)?.has(b.productId)||
      !hubProducts.has(b.hubProductId))STOP();
-  const key=b.companyId+":"+b.productId;
-  if(seen.has(key))STOP();
-  seen.add(key);
+  // Both stored source and reviewed hub destination must be one-to-one
+  // within each partner. The Owner writer and submission-publication guard
+  // already reject duplicate destination SKUs; the read-only leaderboard
+  // must fail closed on any older/tampered document rather than double-add.
+  // Tuple keys avoid collisions if company IDs contain ':'.
+  const key=JSON.stringify([b.companyId,b.productId]);
+  const destination=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(key)||seenTargets.has(destination))STOP();
+  seen.add(key);seenTargets.add(destination);
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
