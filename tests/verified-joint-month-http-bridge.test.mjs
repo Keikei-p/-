@@ -55,13 +55,65 @@ test("unknown periods, filters, future dates and invalid days are rejected befor
  for(const args of [
   {period:{...period,kind:"year"},filters:{}},
   {period:{...period,kind:"week",day:"2026-11-30"},filters:{}},
-  {period,filters:{companyId:"another"}},
+  {period,filters:{companyId:"../records"}},
   {period:{...period,day:"2026-11-32"},filters:{}},
   {period:{...period,day:"2026-12-01"},filters:{}},
   {period:{...period,asOf:"2026-11-00"},filters:{}},
   {period,filters:[]}
  ])await assert.rejects(bridge.load(args),/BRIDGE_BLOCKED/);
  assert.equal(fetches,0);
+});
+test("verified hub owner GET supports company/team/member/product filters with server scope echo",async()=>{
+ const urls=[];
+ const owner=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:"hub_owner",
+  fetcher:async url=>{
+   urls.push(url);
+   return makeResponse({role:"hub_owner",
+    filters:{companyId:"partner",teamId:"team",uid:"staff",productId:"nuro"}});
+  }
+ });
+ const filters={companyId:"partner",teamId:"team",uid:"staff",productId:"nuro"};
+ const result=await owner.load({period,filters});
+ assert.deepEqual(result.filters,filters);
+ assert.deepEqual(urls,[
+  "https://nico-factory.web.app/v1/owner-visible-counts?month=2026-11&companyId=partner&teamId=team&uid=staff&productId=nuro"
+ ]);
+ for(const bad of [
+  {companyId:"partner",teamId:"team/../../records"},
+  {teamId:"team"},
+  {uid:"staff"},
+  {companyId:"partner",unknown:"private"},
+  {companyId:""},
+  {productId:"NURO光"}
+ ]){
+  const before=urls.length;
+  await assert.rejects(owner.load({period,filters:bad}),/BRIDGE_BLOCKED/);
+  assert.equal(urls.length,before,"invalid filter must not reach network");
+ }
+ const partner=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:"partner_owner",
+  fetcher:async()=>{throw Error("partner filter must never touch network")}
+ });
+ await assert.rejects(partner.load({period,filters:{companyId:"hub"}}),
+  /BRIDGE_BLOCKED/);
+});
+test("filtered responses with missing or contradictory server scope never render",async()=>{
+ const filters={companyId:"partner",teamId:"team"};
+ for(const value of [
+  {},
+  {companyId:"hub",teamId:"team"},
+  {companyId:"partner"},
+  {companyId:"partner",teamId:"other"},
+  {companyId:"partner",teamId:"team",uid:"other"},
+  {companyId:"partner",teamId:"team",salary:"10000"}
+ ]){
+  const owner=createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,expectedRole:"hub_owner",
+   fetcher:async()=>makeResponse({role:"hub_owner",filters:value})
+  });
+  await assert.rejects(owner.load({period,filters}),/BRIDGE_BLOCKED/);
+ }
 });
 test("identity switch/revocation in flight never returns older company's names",async()=>{
  let finish;
@@ -100,7 +152,7 @@ test("bad status, MIME, oversized payload, wrong month and impersonated schema a
 test("dashboard audience must equal signed server response role",async()=>{
  const hub=createVerifiedJointMonthHttpBridge({
   featureEnabled:true,auth,expectedRole:"hub_owner",
-  fetcher:async()=>makeResponse({role:"hub_owner"})
+  fetcher:async()=>makeResponse({role:"hub_owner",filters:{}})
  });
  assert.equal((await hub.load({period,filters:{}})).role,"hub_owner");
  const partner=createVerifiedJointMonthHttpBridge({
