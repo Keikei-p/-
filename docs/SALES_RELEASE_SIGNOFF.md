@@ -982,3 +982,38 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - **未完了**: PR #322の最新HEADに対する保護ゲートと全体CI、main統合、Functions 2本、Hosting 1ファイル、公開後の画面・実メール受信・実アカウント招待確認。実際に成功していない項目を完了扱いしない。
 
 - **保護ゲート再審査**: 専用CIとSales App Validation成功後、接続中の管理者GitHubアカウントでPR #322に `sales-production-reviewed` ラベルが付与された。最初の保護ゲートはラベル付与前に起動していたため、この追記でラベル付きの最新HEADを再検証する。本人の独立署名取得済みとは表示しない。
+
+---
+
+## 2026-11-13 — PR #698 自社画面「協力店商材」タブ追加（管理者レビュー待ち）
+
+### 目的と変更範囲
+- 依頼：「出てきたこの画面をタブの中に入れて協力店商材って名目で」「既存の協力店件数をどう連携するか」。
+- 本番公開済みの `/owner-product-publication.html` の実際の商材ON/OFF部品を、既存自社アプリ `index.html` の管理メニュー内「📦 協力店商材」タブへ統合。別Firebase認証や別ログインを作らず、`auth` と `partnerCountFunctions` を再利用する。
+- 追加は既存の管理メニュー・同画面管理ワークスペース・Owner限定表示・CSS参照と、既存Panelの遅延読込。保存APIは既存のサーバー権限チェックに委ねる。
+- `tools/hosting/surgical-existing-index.mjs` に、2026-11-13の [Hosting本番成功 #43246563443](https://github.com/Keikei-p/-/actions/runs/43246563443) で全33アセットの完全性を検証した版 `6cd0ef86037773c1` を追加。新規1 HTMLのみを変更し、残り既存Hosting資産を完全保持する。
+- `tests/owner-partner-product-tab.test.mjs` と限定公開ワークフローを追加。既存 `products`, `records`, `recordCorrections`, `revenueGoals`, 商材単価、売上、CB、件数原票、Auth、Rules、Functionsを**変更しない**。
+
+### 既存協力店件数の扱い
+- 過去の件数を直接削除・改番・自社側へ再登録しない。誤って二重計上させない。
+- 協力店の現行9分類は、Ownerが会社別・商材別に承認した対応表（`rankingSkuMappings/shared`）から自社商材IDへ**参照時のみ**対応付ける。
+- 未対応は未対応として別集計、0件と未報告を区別し、合計は旧分類の原票と照合する。 `SB光・AIR` の既存合算実績は推測で光/AIRに振り分けず、専用の旧合算／未分類商材に対応付けるか保留する。
+- 対応表の追加・変更は別機能のOwner承認・監査履歴が必要。今回PR #698では**本番データの商材対応表の書込みを行わない**。
+
+### 検証・公開条件
+- [x] 前提の既存商材設定画面はHosting公開済み。バックアップ一覧は目視確認済み、復元成功は未確認。
+- [x] PR #698の管理タブ専用CIは初回 [#43249720627](https://github.com/Keikei-p/-/actions/runs/43249720627) SUCCESS。これは本番UI公開ではない。
+- [ ] 最新HEADの全体CI、財務原票遮断の実UID試験、既存入力・表示の安全確認
+- [ ] 保護ゲート `protected-change-guard` を通すため、管理者本人の実差分レビューと `sales-production-reviewed` ラベル
+- [ ] 実Ownerでのタブ表示・ON/OFF保存／再表示と、協力店ユーザーでの非表示・サーバー拒否
+- [ ] Hosting `index.html` 1ファイル限定公開と公開後の現行33アセット（新規Index以外）の完全保全確認
+
+**重要：管理者本人の署名と独立レビューは未取得。下記空欄は本人がレビュー後に記入する必要があり、AIは代筆も承認ラベル自動付与も行わない。**
+
+管理者レビュー日：未記入
+
+レビューしたGitHubアカウント：未記入
+
+管理者署名：未記入
+
+本番状態：PR審査中・管理タブ未公開。既存画面 `/owner-product-publication.html` のみ本番公開済み。
