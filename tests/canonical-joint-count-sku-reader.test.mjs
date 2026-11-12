@@ -4,6 +4,9 @@ import {composeCanonicalMonthlyRankingInput,createCanonicalCountTransactionReade
  from "../ranking/canonical-joint-count-sku-reader.mjs";
 import {buildOwnerVisibleCountRanking}
  from "../ranking/owner-product-visibility-rankings.mjs";
+import {composeCanonicalMonthlyRankingInput as composeIsolatedRankingInput}
+ from "../functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs";
+import {readFileSync} from "node:fs";
 const TIME="2026-11-09T00:00:00.000Z";
 const context={serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",
  hubCompanyId:"hub",role:"hub_owner",approvedCompanyIds:["hub","partner"],
@@ -88,6 +91,47 @@ test("unknown, overlapping, stale and unauthorized ID maps fail closed",()=>{
  for(const skuMap of bad)assert.throws(()=>compose({skuMap}),
   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
 });
+test("canonical and isolated count readers reject two partner SKUs sharing one hub product",()=>{
+ const data=sources(),partner=data.partnerSources[0];
+ partner.products.push({
+  companyId:"partner",sourceId:"partnerSku02",
+  name:"SBMNP",active:true,sortOrder:1
+ });
+ const invalid={...map,bindings:[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}
+ ]};
+ const before=structuredClone({data,invalid});
+ for(const reader of [composeCanonicalMonthlyRankingInput,composeIsolatedRankingInput]){
+  assert.throws(()=>reader({
+   context,...data,skuMap:invalid,hubOwnerUid:"owner",
+   month:"2026-11",serverAsOf:"2026-11-09"
+  }),/CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/,
+  "duplicate destinations must never publish a double-counted ranking");
+ }
+ assert.deepEqual({data,invalid},before,
+  "invalid mapping must not repair or mutate any source history");
+
+ const valid={...invalid,bindings:[
+  invalid.bindings[0],
+  {...invalid.bindings[1],hubProductId:"air"}
+ ]};
+ for(const reader of [composeCanonicalMonthlyRankingInput,composeIsolatedRankingInput]){
+  const result=reader({
+   context,...data,skuMap:valid,hubOwnerUid:"owner",
+   month:"2026-11",serverAsOf:"2026-11-09"
+  });
+  assert.equal(result.productGroups.filter(g=>g.companyId==="partner").length,2,
+   "two distinct reviewed hub SKUs remain usable");
+ }
+});
+
+test("canonical and isolated reader cannot drift without the CI failing",()=>{
+ const root=readFileSync(new URL("../ranking/canonical-joint-count-sku-reader.mjs",import.meta.url),"utf8");
+ const functions=readFileSync(new URL("../functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",import.meta.url),"utf8");
+ assert.equal(functions,root);
+});
+
 test("old combined SB光/AIR counts cannot be silently mapped to separate Air or 光",()=>{
  const src=sources(),p=src.partnerSources[0];
  p.products[0].name="SB光・AIR（旧合算・未分類）";
