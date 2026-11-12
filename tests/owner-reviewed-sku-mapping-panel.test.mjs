@@ -67,6 +67,83 @@ test("owner sees all nine categories, only count-only hub product labels",async(
  panel.destroy();
  assert.equal(root.children.length,0);
 });
+test("Owner sees exact ON/OFF readiness without assuming a live server release",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const bindings=[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku02",hubProductId:"air"},
+  {companyId:"partner",productId:"partnerSku05",hubProductId:"combined"}
+ ];
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(3,bindings),
+  readProducts:async()=>catalog(),saveMapping:async()=>{throw Error("unexpected write")}
+ });
+ assert.equal(await panel.refresh(),true);
+ const labels=displayed(root);
+ assert(labels.includes("公開設定上ON: 1 / 9商材"));
+ assert(labels.includes("実際の入力開始にはサーバー公開承認が必要"));
+ assert.equal(all(root).filter(x=>x.tagName==="small"&&
+  x.textContent==="公開設定ON").length,1);
+ assert.equal(all(root).filter(x=>x.tagName==="small"&&
+  x.textContent==="商材公開OFF").length,2);
+ assert.equal(selects(root)[0].value,"nuro");
+ assert(!selects(root)[1].children.some(x=>x.value==="nuro"),
+  "a hub SKU already used by another category must not be offered twice");
+ assert.deepEqual(selects(root)[4].children.map(x=>x.value),["","combined"]);
+ panel.destroy();
+});
+
+test("partner-specific OFF hides mapped ON SKU from readiness; mapping and counts remain intact",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const source=catalog();source.partnerOverrides={partner:[]};
+ const binding={companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"};
+ const before=structuredClone({source,binding}),panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(1,[binding]),
+  readProducts:async()=>source,saveMapping:async()=>{throw Error("unexpected write")}
+ });
+ assert.equal(await panel.refresh(),true);
+ assert(displayed(root).includes("公開設定上ON: 0 / 9商材"));
+ assert.equal(selects(root)[0].value,"nuro");
+ assert(all(root).some(x=>x.tagName==="small"&&x.textContent==="商材公開OFF"));
+ assert.deepEqual({source,binding},before);
+ panel.destroy();
+});
+
+test("invalid duplicate mapping returned by server is not shown or modified",async()=>{
+ const root=new Node("main"),auth={currentUser:user};let writes=0;
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(2,[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}
+  ]),
+  readProducts:async()=>catalog(),saveMapping:async()=>{writes++;return {}}
+ });
+ assert.equal(await panel.refresh(),false);
+ assert.equal(selects(root).length,0);
+ assert(displayed(root).includes("読み込めません"));
+ assert.equal(writes,0);
+ panel.destroy();
+});
+
+test("fullwidth amount-bearing catalog names are blocked before mapping controls",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const catalogWithFinance=catalog();
+ catalogWithFinance.products[0].name="ＮＵＲＯ ＣＢ２００００";
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(),
+  readProducts:async()=>catalogWithFinance,
+  saveMapping:async()=>{throw Error("must not save")}
+ });
+ assert.equal(await panel.refresh(),false);
+ assert.equal(selects(root).length,0);
+ assert(displayed(root).includes("読み込めません"));
+ panel.destroy();
+});
+
 test("changing category calls exact scoped owner mapping API and reloads confirmed state",async()=>{
  const root=new Node("main"),auth={currentUser:user},calls=[];
  let version=0,bindings=[];
