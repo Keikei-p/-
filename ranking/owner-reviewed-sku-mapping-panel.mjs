@@ -30,6 +30,11 @@ const name=x=>typeof x==="string"&&x.trim().length>0&&
 const keys=(x,expected)=>obj(x)&&
  Object.keys(x).sort().join("|")===expected.slice().sort().join("|");
 const combined=x=>/SB光・AIR|旧合算|未分類/.test(x);
+// Compare full names only. Presentation separators are not abbreviations:
+// NURO and NURO光, or YMMNP and YMNP, must remain different names.
+const matchingName=value=>value.normalize("NFKC")
+ .replace(/[\s\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D・･·•‧∙⋅]/gu,"")
+ .replace(/[A-Z]/g,letter=>letter.toLowerCase());
 const el=(doc,tag,text)=>{
  const n=doc.createElement(tag);
  if(text!==undefined)n.textContent=text;
@@ -149,13 +154,23 @@ export function createOwnerReviewedSkuMappingPanel({
     select.appendChild(empty);
     const currentId=view.match.get(category)||"";
     const usedElsewhere=mappedElsewhere(category);
+    const matchName=matchingName(category===LEGACY?"SB光・AIR":name);
+    // An approved ID remains authoritative after its display name changes.
+    // Unapproved candidates never change the selected ID or call the writer.
+    const exactMatches=currentId?[]:view.products.filter(p=>p.active&&
+     (category!==LEGACY||combined(p.name))&&matchingName(p.name)===matchName);
+    const offeredMatches=exactMatches.filter(p=>!usedElsewhere.has(p.id));
+    const suggestedIds=new Set(offeredMatches.map(p=>p.id));
     // The reviewed server writer rejects two partner SKUs pointing to one
     // hub product. Do not offer that conflicting choice in the Owner UI.
     const candidates=view.products.filter(p=>
      (p.active||p.id===currentId)&&!usedElsewhere.has(p.id)&&
      (category!==LEGACY||combined(p.name)));
-    for(const p of candidates){
-     const opt=el(document,"option",p.name+(p.active?"":"（取扱終了）"));
+    const choices=[...candidates.filter(p=>suggestedIds.has(p.id)),
+     ...candidates.filter(p=>!suggestedIds.has(p.id))];
+    for(const p of choices){
+     const opt=el(document,"option",(suggestedIds.has(p.id)?"完全一致候補: ":"")+
+      p.name+(p.active?"":"（取扱終了）"));
      opt.value=p.id;
      opt.disabled=!p.active;
      select.appendChild(opt);
@@ -166,6 +181,15 @@ export function createOwnerReviewedSkuMappingPanel({
      view.published(currentId)?"公開設定ON":"商材公開OFF";
     const state=el(document,"small",readiness);
     row.appendChild(state);
+    const matchStatus=currentId?"承認済みIDの対応を使用（名称変更後も維持）":
+     exactMatches.length>1?"完全一致候補が複数あります（"+exactMatches.length+"商材・競合／未保存）。Ownerが確認して選択してください。":
+     exactMatches.length===1&&offeredMatches.length===0?
+      "完全一致候補は別の分類で承認済みです（競合／未保存）。対応設定を確認してください。":
+     offeredMatches.length===1?"完全一致候補（未保存）: "+offeredMatches[0].name:
+      "完全一致候補なし・未対応。Ownerが確認して選択してください。";
+    const suggestion=el(document,"small",matchStatus);
+    suggestion.className="nico-sku-map-match-status";
+    row.appendChild(suggestion);
     select.addEventListener("change",async()=>{
      if(closed||saving||auth.currentUser!==user)return;
      const proposed=select.value||null;
