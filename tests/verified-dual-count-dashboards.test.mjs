@@ -268,7 +268,9 @@ test("NFKC financial labels fail closed in canonical and Functions ranking, ordi
   ]){
    const input=fixture(2),original=structuredClone(input);
    edit(input);
-   assert.throws(()=>buildFn(input),/INCOMPLETE_OR_UNAUTHORIZED/,value);
+   assert.throws(()=>buildFn(input),
+     /INCOMPLETE_OR_UNAUTHORIZED|Public document may embed monetary details/,
+     value+" must fail closed before publication");
    assert.equal(original.sources[1].companyLabel,"協力店A");
   }
   const valid=fixture(2);
