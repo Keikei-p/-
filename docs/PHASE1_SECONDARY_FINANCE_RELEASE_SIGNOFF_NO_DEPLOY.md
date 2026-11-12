@@ -7,6 +7,42 @@ Production: https://nico-factory.web.app/
 Dependencies: PR #358 (reviewed Rules), #376 (switch+rollback), #378 (user
 get/list), #379 (Owner preflight), #380 (affected identity binding).
 
+## 2026-11-12 — Genuine independent GitHub review now enforced by code (NO DEPLOY)
+
+**Authoritative status at this writing: NOT APPROVED.** Both this
+Draft [PR #380](https://github.com/Keikei-p/-/pull/380) and the feature
+Draft [PR #690](https://github.com/Keikei-p/-/pull/690) currently have
+zero review requests and zero approved human reviews.
+
+In addition to its existing immutable Rules/checkout/CI/managed-backup and
+real-user gates, the Phase-1 local manual apply operator now performs
+a **read-only authenticated GitHub API review lookup before obtaining any
+service-account credential or Firestore data**:
+
+1. PR #380 must be open, **ready for review rather than Draft**, and its
+   HEAD must match the exact locally reviewed checkout SHA.
+2. The latest effective review must be **APPROVED on that exact commit**
+   by a different human GitHub account, not the PR author, a bot or a
+   read-only commenter. The reviewer's repository permission must be
+   `write`, `maintain` or `admin`, verified via GitHub API.
+3. A later CHANGES_REQUESTED or DISMISSED review prevents using a stale
+   approval. An unavailable GitHub API or more than one page of reviews
+   fails closed. A self-declared environment approval string never
+   substitutes for a verified external review.
+4. **This is additional to**, not a replacement for, the independently
+   signed per-release approval record, the exact reviewed main SHA
+   and successful exact-checkout `push` CI. The operator's older
+   `REVIEWED_MAIN` SHA is still intentionally **not updated** by this
+   development PR. A separate authorized reviewer must explicitly review
+   and approve that change before any Rules-only production switch.
+
+Implementation: `tools/production/phase1-reviewed-operator.mjs`;
+regression: `tests/phase1-reviewed-operator.test.mjs`. The latest exact-HEAD
+no-deploy checks must pass before an external reviewer can sign.
+**This document does not itself request, grant or impersonate a review.**
+
+---
+
 ## Release sequence
 
 1. **Independent human review**. Authorized maintainer reviews the exact
@@ -67,7 +103,7 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
 9. **Post-release audit**. Confirm actual release source, real user access,
    Owner dashboard amount visibility, partner count-only UI, count entry
    and reporting paths and unchanged production document inventory. Then
-   consider the **separate** combined ranking/UI release PR #375.
+   consider the **separate** combined ranking/UI release PR #690.
    Issue #352 has one historical saved total vs product-row mismatch:
    preserve provisional ranks rather than automatically editing history.
 
