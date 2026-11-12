@@ -45,7 +45,7 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
           git fetch --no-tags origin main
-          test "$(git rev-parse origin/main)" = 2500aa6342c58b2b209f558e7db077ee29538df2
+          test "$(git rev-parse origin/main)" = a72904ee28046892999b658ec8c4215e924cc4d0
           git diff --name-only origin/main...HEAD | tee /tmp/nico-onoff-changed-files.txt
           if grep -Ev '^(tools/hosting/release-owner-onoff-two-assets\.mjs|tests/release-owner-onoff-two-assets\.test\.mjs|\.github/workflows/nico-owner-onoff-static-two-production\.yml|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
             echo 'STOP_UNREVIEWED_CHANGE_SCOPE'

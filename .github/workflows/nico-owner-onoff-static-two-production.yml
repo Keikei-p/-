@@ -5,6 +5,8 @@ on:
     paths:
       - 'tools/hosting/run-owner-onoff-exact-two-release.mjs'
       - 'tests/run-owner-onoff-exact-two-release.test.mjs'
+      - 'tools/hosting/release-owner-onoff-two-assets.mjs'
+      - 'tests/release-owner-onoff-two-assets.test.mjs'
       - '.github/workflows/nico-owner-onoff-static-two-production.yml'
   push:
     branches: [main]
