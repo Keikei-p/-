@@ -42,6 +42,7 @@ export async function inspectOwnerOnOffAnonymousLiveGet({
   body:'{"data":{}}',signal:AbortSignal.timeout(timeoutMs)
  });
  if(!response||!Number.isSafeInteger(response.status)||
+    response.status<100||response.status>599||
     typeof response.text!=="function")STOP("RESPONSE");
  // A valid callable error cannot be a success for an anonymous request.
  const raw=await response.text();
