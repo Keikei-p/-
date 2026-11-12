@@ -94,6 +94,36 @@ const HUB_ENVELOPE=["schema","role","unit","period","range","readTime",
  "summary","memberRanking","productRanking","companyBreakdown","teamBreakdown","filters"];
 const PARTNER_ENVELOPE=["schema","role","unit","period","range","readTime",
  "own","publicRanking"];
+const HUB_COMPANY_ROW=["id","name","kind","count","unidentifiedCount",
+ "hasVerifiedSubmission","rank"];
+const HUB_TEAM_ROW=["id","companyId","companyName","name","count","rank"];
+function validHubCompanyRow(row){
+ return exact(row,HUB_COMPANY_ROW)&&
+  typeof row.id==="string"&&typeof row.name==="string"&&
+  ["自社","協力店"].includes(row.kind)&&
+  Number.isSafeInteger(row.count)&&row.count>=0&&
+  Number.isSafeInteger(row.unidentifiedCount)&&row.unidentifiedCount>=0&&
+  row.unidentifiedCount<=row.count&&
+  typeof row.hasVerifiedSubmission==="boolean"&&
+  (row.hasVerifiedSubmission?
+   Number.isSafeInteger(row.rank)&&row.rank>0:
+   row.rank===null);
+}
+function validHubTeamRow(row){
+ return exact(row,HUB_TEAM_ROW)&&
+  ["id","companyId","companyName","name"].every(key=>
+   typeof row[key]==="string"&&row[key].trim().length>0)&&
+  Number.isSafeInteger(row.count)&&row.count>=0&&
+  Number.isSafeInteger(row.rank)&&row.rank>0;
+}
+function hubPublicScopeSafe(data){
+ return exact(data,HUB_ENVELOPE)&&
+  Array.isArray(data.companyBreakdown)&&data.companyBreakdown.length<=10000&&
+  data.companyBreakdown.every(validHubCompanyRow)&&
+  Array.isArray(data.teamBreakdown)&&data.teamBreakdown.length<=10000&&
+  data.teamBreakdown.every(validHubTeamRow);
+}
+
 const PARTNER_OWN_FIELDS=new Set(["company","count","unidentifiedCount","people","products"]);
 const OWN_PRODUCT_ROW=["id","name","count"];
 const OWN_PERSON_ROW=["id","name","companyId","companyName","teamId",
@@ -192,7 +222,7 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
        !["hub_owner","partner_owner"].includes(data.role)||
        !moneyFree(data)||
        (data.role==="partner_owner"&&!partnerPublicScopeSafe(data))||
-       (data.role==="hub_owner"&&!exact(data,HUB_ENVELOPE)))fail();
+       (data.role==="hub_owner"&&!hubPublicScopeSafe(data)))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||
             Object.keys(data).length!==1||
             !["request_blocked","service_disabled"].includes(data.error))fail();
