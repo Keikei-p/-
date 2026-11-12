@@ -173,9 +173,9 @@ test("allowlisted hub-owner ranking shape remains readable without private sourc
   productRanking:[{id:"sku",name:"NURO光",count:5,ownCount:3,
    partnerCount:2,companies:[{companyId:"company",companyName:"自社",count:3}]}],
   companyBreakdown:[{id:"company",name:"自社",kind:"自社",
-   count:3,unidentifiedCount:0}],
+   count:3,unidentifiedCount:0,hasVerifiedSubmission:true,rank:1}],
   teamBreakdown:[{id:"company:team",companyId:"company",
-   companyName:"自社",name:"営業班",count:3}],
+   companyName:"自社",name:"営業班",count:3,rank:1}],
   filters:{companyId:"",teamId:"",uid:"",productId:""}};
  const adapter=createJointCountHttpAdapter({enabled:()=>true,
   loadHandler:()=>make(200,hub)});
@@ -183,6 +183,95 @@ test("allowlisted hub-owner ranking shape remains readable without private sourc
  assert.equal(out.statusCode,200);
  assert.deepEqual(JSON.parse(out.body),hub);
 });
+test("real canonical hub and partner rankings cross HTTP adapter with verified company/team status",async()=>{
+ const {buildVerifiedCountDashboard}=await import(
+  "../ranking/verified-dual-count-dashboards.mjs");
+ const day="2026-11-09",readTime=day+"T00:00:00.000Z";
+ const companyIds=["hub","partner"];
+ const src=(cid,total)=>{
+  const own=cid==="hub",staff=own?"本社担当":"協力担当";
+  return {companyId:cid,companyLabel:own?"自社":"協力店",
+   kind:own?"own":"partner",consentVerified:true,isComplete:true,readTime,
+   completeWindows:{current:true,previous:false},
+   teams:[{id:"team",name:"営業班",goalCount:null}],
+   roster:[{uid:"staff",name:staff,teamId:"team"}],
+   products:[{companyId:cid,sourceId:"sku",name:"NURO光",active:true,sortOrder:0}],
+   records:total===null?[]:[{
+    companyId:cid,sourceId:"report",uid:"staff",teamId:"team",date:day,
+    reportStatus:total===0?"no_result":"submitted",totalCount:total,
+    memberNameSnapshot:staff,teamNameSnapshot:"営業班",workLocation:""
+   }],
+   lines:total>0?[{companyId:cid,recordId:"report",sourceId:"line",
+    uid:"staff",teamId:"team",date:day,productId:"sku",count:total}]:[]
+  };
+ };
+ const input={hubCompanyId:"hub",approvedCompanyIds:companyIds,
+  sources:[src("hub",3),src("partner",null)],
+  productGroups:companyIds.map(cid=>({
+   companyId:cid,productId:"sku",groupId:"group",groupName:"NURO光"
+  })),
+  period:{kind:"month",day,asOf:day}};
+ const context=role=>({
+  serverVerified:true,viewerUid:role==="hub_owner"?"hubOwner":"partnerOwner",
+  viewerCompanyId:role==="hub_owner"?"hub":"partner",hubCompanyId:"hub",role,
+  approvedCompanyIds:companyIds,reciprocalOwnersApproved:true,
+  userActive:true,memberActive:true,companyActive:true,
+  individualNamesApproved:true,completeSnapshotBudgetApproved:true
+ });
+ const root=buildVerifiedCountDashboard({...input,context:context("hub_owner")});
+ assert.deepEqual(root.companyBreakdown.map(x=>[
+  x.id,x.hasVerifiedSubmission,x.rank
+ ]),[["hub",true,1],["partner",false,null]]);
+ assert.deepEqual(root.teamBreakdown.map(x=>x.count),[3]);
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,root)
+ });
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,200,
+  "verified hub response must not be rejected as a private unknown field");
+ assert.deepEqual(JSON.parse(out.body),root);
+ const partner=buildVerifiedCountDashboard({
+  ...input,context:context("partner_owner")
+ });
+ const partnerAdapter=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,partner)
+ });
+ const publicOut=response();await partnerAdapter(req(),publicOut);
+ assert.equal(publicOut.statusCode,200);
+ assert.deepEqual(JSON.parse(publicOut.body),partner);
+ assert(!("companyBreakdown" in partner));
+ assert(!("teamBreakdown" in partner));
+ assert.equal(partner.publicRanking.companies.length,1,
+  "unreported partner company is never advertised as a published zero");
+});
+
+test("hub company report marker is boolean and cannot smuggle arbitrary status",async()=>{
+ const basic={schema:"nico-verified-dual-count-v1",role:"hub_owner",unit:"件",
+  period:"month",range:{start:"2026-11-01",end:"2026-11-09"},
+  readTime:"2026-11-09T00:00:00.000Z",
+  summary:{own:3,partner:0,total:3,unidentified:0},
+  memberRanking:[],productRanking:[],teamBreakdown:[],filters:{},
+  companyBreakdown:[{id:"hub",name:"自社",kind:"自社",count:3,
+   unidentifiedCount:0,hasVerifiedSubmission:true,rank:1}]};
+ for(const mutate of [
+  p=>{p.companyBreakdown[0].hasVerifiedSubmission="false";},
+  p=>{p.companyBreakdown[0].hasVerifiedSubmission=false;},
+  p=>{p.companyBreakdown[0].rank=null;},
+  p=>{p.companyBreakdown[0].salary=25000;},
+  p=>{p.teamBreakdown=[{id:"hub:team",companyId:"hub",
+   companyName:"自社",name:"班",count:3,rank:null}];},
+  p=>{p.publicRanking={members:[]};}
+ ]){
+  const doc=structuredClone(basic);mutate(doc);
+  const handle=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,doc)
+  });
+  const out=response();await handle(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+
 test("unexpected financial aliases, arbitrary fields and monetary text fail closed",async()=>{
  const cases=[
   {...data(),salary:50000},
