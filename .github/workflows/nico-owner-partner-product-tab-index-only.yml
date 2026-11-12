@@ -16,7 +16,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nico-surgical-index-release
+  # Read-only PR checks must not be cancelled by frozen historical publishers.
+  # Actual main releases retain the shared production deployment lock.
+  group: ${{ github.event_name == 'pull_request' && format('nico-owner-partner-product-tab-pr-{0}', github.event.pull_request.number) || 'nico-surgical-index-release' }}
   cancel-in-progress: false
 jobs:
   validate-owner-tab:
