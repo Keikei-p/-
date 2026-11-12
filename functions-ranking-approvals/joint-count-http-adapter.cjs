@@ -82,11 +82,24 @@ const exact=(obj,keys)=>obj!==null&&typeof obj==="object"&&
  !Array.isArray(obj)&&Object.keys(obj).length===keys.length&&
  keys.every(key=>own(obj,key));
 const rankRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
- rows.every(row=>exact(row,keys)&&
+ rows.every((row,i)=>exact(row,keys)&&
   Number.isSafeInteger(row.rank)&&row.rank>0&&
   Number.isSafeInteger(row.count)&&row.count>=0&&
   keys.filter(k=>["name","company"].includes(k)).every(k=>
-   typeof row[k]==="string"&&row[k].trim().length>0));
+   typeof row[k]==="string"&&row[k].trim().length>0)&&
+  // Standard competition ranking: equal counts tie; the next place skips.
+  // The trusted canonical builder emits highest score first.
+  (i===0?row.rank===1:
+   rows[i-1].count>=row.count&&
+   row.rank===(rows[i-1].count===row.count?rows[i-1].rank:i+1)));
+const sumCounts=rows=>{
+ let sum=0;
+ for(const row of rows){
+  sum+=row.count;
+  if(!Number.isSafeInteger(sum))return null;
+ }
+ return sum;
+};
 // The shared allowlist covers both roles. Enforce the exact role envelope too:
 // otherwise a partner response could smuggle hub-only aggregate fields that
 // happen to be individually allowlisted (for example partner/total/people).
@@ -150,10 +163,22 @@ function partnerPublicScopeSafe(data){
     !own(p,"members")||!own(p,"products")||
     Object.keys(p).some(k=>!["members","products","companies","teams"].includes(k)))
   return false;
- return rankRows(p.members,["rank","company","name","count"])&&
-  rankRows(p.products,["rank","name","count"])&&
-  (!own(p,"companies")||rankRows(p.companies,["rank","name","count"]))&&
-  (!own(p,"teams")||rankRows(p.teams,["rank","name","company","count"]));
+ // The published contract always contains all FOUR leaderboards.
+ // A partial page is not a verified joint ranking; don't silently present it.
+ if(!exact(p,["members","products","companies","teams"])||
+    !rankRows(p.members,["rank","company","name","count"])||
+    !rankRows(p.products,["rank","name","count"])||
+    !rankRows(p.companies,["rank","name","count"])||
+    !rankRows(p.teams,["rank","name","company","count"]))return false;
+ const productTotal=sumCounts(p.products),companyTotal=sumCounts(p.companies);
+ const memberTotal=sumCounts(p.members),teamTotal=sumCounts(p.teams);
+ // Unidentified company-code rows belong to companies and products but
+ // NEVER to a fabricated person or team. They can explain only the gap
+ // between total published counts and attributable counts.
+ return productTotal!==null&&companyTotal!==null&&
+  memberTotal!==null&&teamTotal!==null&&
+  productTotal===companyTotal&&memberTotal===teamTotal&&
+  memberTotal<=companyTotal&&data.own.count<=companyTotal;
 }
 /**
  * Calling this function never accesses live data. While the feature flag
