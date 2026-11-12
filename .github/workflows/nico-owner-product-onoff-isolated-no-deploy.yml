@@ -76,3 +76,19 @@ jobs:
           }
           console.log('LIVE_HOSTING_READ_ONLY_NO_DEPLOY');
           NODE
+      - name: Observe unauthenticated callable endpoint presence (HEAD only, no writes)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/';
+          for(const name of ['getOwnerProductVisibility','setOwnerProductVisibility']){
+            let status='unavailable';
+            try{
+              const r=await fetch(base+name,{method:'HEAD',
+                redirect:'error',signal:AbortSignal.timeout(12000)});
+              status=String(r.status);
+            }catch{ /* unknown endpoint state, do not infer absence */ }
+            console.log('OWNER_ONOFF_CALLABLE_HEAD '+name+' HTTP_'+status);
+          }
+          console.log('UNAUTHENTICATED_HEAD_CANNOT_PROVE_ENABLED_OR_OWNER_ACCESS');
+          NODE
