@@ -27,7 +27,8 @@ const conf={headers:[{source:"**",headers:[{key:"X-Keep",value:"yes"}]}]};
 const hashes=new Map(initial.map(x=>[x.path,x.hash]));
 const target=new Map([...hashes,...MISSING.map(p=>[p,hostingAssetHash(sources[p])])]);
 function fixture({files=initial,concurrent=false,required=true,badUpload=false,
-  badFinal=false,badMeta=false,paginate=false,unknownHash=false,metaPending=0}={}){
+  badFinal=false,badMeta=false,paginate=false,unknownHash=false,metaPending=0,
+  omitEmptyUploadList=false,missingUploadContract=false}={}){
  const calls=[];
  let live=LIVE,created=false,published=false,reads=0,uploaded=0,newMetaReads=0;
  const request=async(method,url,body=null,type="application/json")=>{
@@ -49,10 +50,13 @@ function fixture({files=initial,concurrent=false,required=true,badUpload=false,
   }
   if(method==="POST"&&url===BASE+"/"+NEW+":populateFiles"){
    assert.deepEqual(new Map(Object.entries(body.files)),target);
+   if(missingUploadContract)return {};
    return {uploadUrl:badUpload?"https://evil.example/upload":
     "https://upload-firebasehosting.googleapis.com/upload/sites/nico-factory/versions/new_onoff_only/files",
-    uploadRequiredHashes:unknownHash?["f".repeat(64)]:
-     required?MISSING.map(p=>hostingAssetHash(sources[p])):[]};
+    ...(!required&&omitEmptyUploadList?{}:{
+     uploadRequiredHashes:unknownHash?["f".repeat(64)]:
+      required?MISSING.map(p=>hostingAssetHash(sources[p])):[]
+    })};
   }
   if(method==="POST"&&url.startsWith("https://upload-firebasehosting.googleapis.com/upload/sites/nico-factory/versions/new_onoff_only/files/")){
    assert.equal(type,"application/octet-stream");
@@ -175,6 +179,26 @@ test("changed published Hosting version halts before publishing any release",asy
  }),/RACE_BEFORE_PUBLISH|RACE_BEFORE_CREATE/);
  assert.equal(f.published,false);
 });
+test("cached static assets with omitted empty protobuf hash list still get full manifest verification",async()=>{
+ const f=fixture({required:false,omitEmptyUploadList:true});
+ const report=await prepareOwnerOnOffTwoAssetRelease({
+  request:f.request,sources,release:true,releaseAuthorized:true,sleep:async()=>{}
+ });
+ assert.equal(report.released,true);
+ assert.equal(report.hostingFilesAdded,2);
+ assert.equal(f.published,true);
+ assert.equal(f.writes.filter(x=>x.url.includes("upload-firebasehosting")).length,0);
+ assert.equal(f.writes.filter(x=>x.url.includes("/releases?versionName")).length,1);
+ assert(f.calls.some(x=>x.method==="GET"&&x.url===BASE+"/"+NEW+"/files?pageSize=1000"));
+});
+test("unrecognized empty populate response is not silently treated as uploaded",async()=>{
+ const f=fixture({missingUploadContract:true});
+ await assert.rejects(prepareOwnerOnOffTwoAssetRelease({
+  request:f.request,sources,release:true,releaseAuthorized:true,sleep:async()=>{}
+ }),/UPLOAD_INVENTORY_UNKNOWN/);
+ assert.equal(f.published,false);
+});
+
 test("an unexpected upload digest or unsafe upload endpoint cannot publish",async()=>{
  for(const options of [{unknownHash:true},{badUpload:true}]){
   const f=fixture(options);
