@@ -45,7 +45,7 @@ export function validateManifest(oldFiles, additions, expectedCount) {
  return {original,next};
 }
 
-export async function uploadSingleExistingIndex({assetBytes,request,release=false,log=console.log}){
+export async function uploadSingleExistingIndex({assetBytes,request,release=false,expectedSourceName=null,log=console.log}){
  if(!Buffer.isBuffer(assetBytes)||assetBytes.length<500||
    !assetBytes.toString("utf8").includes("mergedPartnerRankingDay")||
    !assetBytes.toString("utf8").includes("partnerInviteInline")||
@@ -63,6 +63,9 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
   return releases[0].version.name;
  };
  const sourceName=await latest();
+ if(expectedSourceName!==null&&
+    (!allowedVersion.test(expectedSourceName)||sourceName!==expectedSourceName))
+   throw Error("REVIEWED_LIVE_SOURCE_CHANGED");
  const source=await request("GET",url("/"+sourceName));
  if(source.status!=="FINALIZED"||source.name!==sourceName||
     !source.config||typeof source.config!=="object")
@@ -235,7 +238,8 @@ async function run(){
   return txt?JSON.parse(txt):{};
  };
  const asset=readFileSync(new URL("../../index.html",import.meta.url));
- const output=await uploadSingleExistingIndex({assetBytes:asset,request,release});
+ const output=await uploadSingleExistingIndex({assetBytes:asset,request,release,
+   expectedSourceName:process.env.NICO_INDEX_ONLY_EXPECTED_SOURCE_VERSION||null});
  console.log(JSON.stringify({outcome:output.released?"RELEASED":"DRY_RUN_OK",oldVersion:output.sourceName,keptOriginalFiles:output.originalCount}));
  if(output.released){
   const page=await fetch("https://"+SITE+".web.app"+ASSET,{redirect:"manual",cache:"no-store"});

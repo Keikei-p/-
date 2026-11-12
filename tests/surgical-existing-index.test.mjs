@@ -50,6 +50,21 @@ test("audited 11-file live version missing fileCount is dry-run verifiable witho
  assert.equal(r.originalCount,11);
  assert.ok(x.seen.every(s=>s.method==="GET"));
 });
+
+test("a tab reviewed against one live version cannot replace a different live index",async()=>{
+ const source="sites/nico-factory/versions/6cd0ef86037773c1";
+ const x=live(source);
+ const ok=await uploadSingleExistingIndex({assetBytes:fakeIndex,request:x.request,
+  expectedSourceName:source,log:()=>{}});
+ assert.equal(ok.sourceName,source);
+ for(const expectedSourceName of ["sites/nico-factory/versions/stale","invalid"]){
+  const changed=live(source);
+  await assert.rejects(uploadSingleExistingIndex({assetBytes:fakeIndex,
+   request:changed.request,release:true,expectedSourceName,log:()=>{}}),
+   /REVIEWED_LIVE_SOURCE_CHANGED/);
+  assert(changed.seen.every(call=>call.method==="GET"));
+ }
+});
 test("unreviewed live source missing fileCount is never allowed",async()=>{
  const x=live("sites/nico-factory/versions/unreviewed");
  await assert.rejects(uploadSingleExistingIndex({assetBytes:fakeIndex,request:x.request,log:()=>{}}),

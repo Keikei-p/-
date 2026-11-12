@@ -987,6 +987,9 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 
 ## 2026-11-13 — PR #698 自社画面「協力店商材」タブ追加（管理者レビュー待ち）
 
+- **本番原本の保全修正**: 公開中の `index.html` はGit blob `6478197c52cd3a9fd6570e7214ed744e3ac93576` で、mainの `88ef5636…` より協力店UI・入力・履歴・報告継続の修正が進んでいた。main旧版での置換を止め、本番原本に既存タブ追加59行だけを適用した候補 `63f61cbf0badad066ff1c07380e79567c6c67c9e` を審査対象とする。元の本番コードの削除・変更は0行。
+- 公開元は `sites/nico-factory/versions/6cd0ef86037773c1` に固定し、他の公開作業で版が変わった場合は、書込前に `REVIEWED_LIVE_SOURCE_CHANGED` で停止する。残り32アセット・Hosting設定・Firestore・Auth・Rules・Functionsは変更しない。
+
 ### 目的と変更範囲
 - 依頼：「出てきたこの画面をタブの中に入れて協力店商材って名目で」「既存の協力店件数をどう連携するか」。
 - 本番公開済みの `/owner-product-publication.html` の実際の商材ON/OFF部品を、既存自社アプリ `index.html` の管理メニュー内「📦 協力店商材」タブへ統合。別Firebase認証や別ログインを作らず、`auth` と `partnerCountFunctions` を再利用する。

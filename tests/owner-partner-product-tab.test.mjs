@@ -4,8 +4,35 @@ import {readFileSync,writeFileSync,mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {spawnSync} from "node:child_process";
+import {createHash} from "node:crypto";
 
 const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+
+test("removing only the new tab restores the exact existing production HTML",()=>{
+ let original=html.replace(/\r\n/g,"\n");
+ const additions=[
+  /<link rel="stylesheet" href="\.\/ranking\/owner-product-visibility-panel\.css">\n/,
+  /            <button id="quickPartnerProductsButton"[\s\S]*?<\/button>\n\n/,
+  /    <section id="partnerProductsWorkspace"[\s\S]*?    <\/section>\n/,
+  /^const quickPartnerProductsButton = .*\n/m,
+  /^const partnerProductsWorkspace = .*\n/m,
+  /^const partnerProductsStatus = .*\n/m,
+  /^const partnerProductsPanelRoot = .*\n/m,
+  /^  partnerProductsWorkspace,\n/m,
+  /^  quickPartnerProductsButton,\n/m,
+  /^  quickPartnerProductsButton\.style\.display=.*\n/m,
+  /\n\/\/ The existing Firebase Auth, region and Owner ON\/OFF panel are reused\.[\s\S]*?(?=document\.getElementById\("refreshPartnerCompanies"\))/
+ ];
+ for(const block of additions){
+  assert.equal([...original.matchAll(new RegExp(block.source,block.flags+"g"))].length,1,
+   "each reviewed tab addition must occur exactly once");
+  original=original.replace(block,"");
+ }
+ const bytes=Buffer.from(original);
+ const blob=createHash("sha1").update(Buffer.from("blob "+bytes.length+"\0")).update(bytes).digest("hex");
+ assert.equal(blob,"6478197c52cd3a9fd6570e7214ed744e3ac93576",
+  "the tab may not remove or modify any part of the already deployed application");
+});
 
 test("協力店商材 is a management tab and reuses the actual Owner panel",()=>{
  assert.match(html,/id="quickPartnerProductsButton"[^>]*aria-controls="partnerProductsWorkspace"/);
