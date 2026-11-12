@@ -123,6 +123,11 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    " actual assets from the audited workspace release");
  }else if(files.length!==reportedCount)
   throw Error("SOURCE_FILE_COUNT_MISMATCH");
+ // This exact reviewed source has 33 assets. Even when the API omits its
+ // output-only fileCount, a partial or unexpected manifest is not reviewable.
+ // Historical audited sources retain their existing fallback behavior.
+ if(sourceName==="sites/nico-factory/versions/6cd0ef86037773c1"&&files.length!==33)
+  throw Error("REVIEWED_LIVE_ASSET_COUNT_MISMATCH");
  const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),files.length);
  log("Verified live version and original files: "+sourceName+" / "+original.size);
  log("Replacing ONLY existing /index.html; unchanged other assets: "+(original.size-1));

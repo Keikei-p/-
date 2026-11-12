@@ -23,9 +23,10 @@ test("stop when index is missing, unchanged, count unexpected or additive path a
  assert.throws(()=>validateManifest(originals,new Map([["/index.html",hash("e")],["/partner-counts.html",hash("f")]]),4),/ONLY_ONE_REPLACED_INDEX_ALLOWED/);
 });
 
-function live(version="sites/nico-factory/versions/b6ab2b826667954d",omitCount=true,missing=false) {
+function live(version="sites/nico-factory/versions/b6ab2b826667954d",omitCount=true,missing=false,count=11) {
  const paths=["/index.html","/partner-invite.html","/partner-counts.html","/partner-workspace.html",
   "/service-worker.js","/manifest.webmanifest","/favicon.ico","/assets/app.js","/assets/theme.css","/icons/app.svg","/robots.txt"];
+ while(paths.length<count)paths.push("/assets/existing-"+paths.length+".mjs");
  const originals=paths.map((p,i)=>({path:p,hash:hash((i%6).toString(16))}));
  if(missing)originals.splice(2,1);
  const seen=[];
@@ -40,7 +41,7 @@ function live(version="sites/nico-factory/versions/b6ab2b826667954d",omitCount=t
   if(url.includes("/"+version+"/files?"))return {files:originals};
   throw Error("UNMOCKED "+url);
  };
- return {request,seen};
+ return {request,seen,originals};
 }
 const fakeIndex=Buffer.from("mergedPartnerRankingDay partnerInviteInline 営業実績管理".repeat(30));
 test("audited 11-file live version missing fileCount is dry-run verifiable without any writes",async()=>{
@@ -53,16 +54,37 @@ test("audited 11-file live version missing fileCount is dry-run verifiable witho
 
 test("a tab reviewed against one live version cannot replace a different live index",async()=>{
  const source="sites/nico-factory/versions/6cd0ef86037773c1";
- const x=live(source);
+ const x=live(source,true,false,33);
  const ok=await uploadSingleExistingIndex({assetBytes:fakeIndex,request:x.request,
   expectedSourceName:source,log:()=>{}});
  assert.equal(ok.sourceName,source);
+ assert.equal(ok.originalCount,33);
  for(const expectedSourceName of ["sites/nico-factory/versions/stale","invalid"]){
-  const changed=live(source);
+  const changed=live(source,true,false,33);
   await assert.rejects(uploadSingleExistingIndex({assetBytes:fakeIndex,
    request:changed.request,release:true,expectedSourceName,log:()=>{}}),
    /REVIEWED_LIVE_SOURCE_CHANGED/);
   assert(changed.seen.every(call=>call.method==="GET"));
+ }
+});
+
+test("the reviewed 6cd source requires exactly 33 assets before any release write",async()=>{
+ const source="sites/nico-factory/versions/6cd0ef86037773c1";
+ for(const omitCount of [true,false]){
+  for(const count of [32,34])for(const release of [false,true]){
+   const x=live(source,omitCount,false,count);
+   await assert.rejects(uploadSingleExistingIndex({assetBytes:fakeIndex,request:x.request,
+    release,expectedSourceName:source,log:()=>{}}),/REVIEWED_LIVE_ASSET_COUNT_MISMATCH/);
+   assert(x.seen.every(call=>call.method==="GET"),"count drift must stop before all Hosting writes");
+  }
+  const x=live(source,omitCount,false,33);
+  const ready=await uploadSingleExistingIndex({assetBytes:fakeIndex,request:x.request,
+   expectedSourceName:source,log:()=>{}});
+  assert.equal(ready.originalCount,33);
+  const {original,next}=validateManifest(x.originals,new Map([["/index.html",hash("e")]]),33);
+  assert.equal(next.size,33);
+  for(const [path,sha]of original)if(path!=="/index.html")assert.equal(next.get(path),sha);
+  assert(x.seen.every(call=>call.method==="GET"));
  }
 });
 test("unreviewed live source missing fileCount is never allowed",async()=>{

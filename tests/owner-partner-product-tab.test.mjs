@@ -69,6 +69,19 @@ test("new tab does not access finance, counts or mutate old history",()=>{
  assert.match(html,/過去の協力店件数・実績・売上・履歴を削除・変更する画面ではありません/);
 });
 
+test("the legacy login publisher cannot bypass the Owner tab's dedicated release gate",()=>{
+ const workflow=readFileSync(new URL("../.github/workflows/nico-login-restore.yml",import.meta.url),"utf8");
+ const start=workflow.indexOf("- name: Keep the reviewed Owner tab under its dedicated publisher");
+ const end=workflow.indexOf("- name: Hold direct-role bundle",start);
+ const credential=workflow.indexOf("- name: Load approved Hosting-only service identity");
+ assert(start>0&&end>start&&credential>end,"the tab is stopped before any Hosting credential is loaded");
+ const guard=workflow.slice(start,end);
+ assert.match(guard,/if \[ "\$\(git hash-object index\.html\)" = '63f61cbf0badad066ff1c07380e79567c6c67c9e' \]; then\s*echo 'STOP_OWNER_PRODUCT_TAB_REQUIRES_DEDICATED_REVIEWED_RELEASE'\s*exit 1\s*fi/);
+ assert.match(workflow,/group: nico-surgical-index-release/);
+ assert.match(workflow,/d68e0be91d5933c03ed0657a73751573fb5c7344/);
+ assert.match(workflow,/29c0e3b29863e654ba70fd5b3f4a8efe4d0827d8/);
+});
+
 test("the original browser module remains syntactically valid",()=>{
  const modules=[...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/g)];
  assert(modules.length>=1);
