@@ -127,7 +127,7 @@ test("existing identical five assets stop before a new upload or release",async(
  const f=fixture({files});
  await assert.rejects(prepareOwnerOnOffTwoAssetRelease({
   request:f.request,sources,release:true,releaseAuthorized:true
- }),/NOT_EXACTLY_TWO_NEW_FILES/);
+ }),/NOT_EXACT_TWO_NEW_FILES/);
  assert.equal(f.writes.length,0);
 });
 test("malformed current manifest or unknown colliding path fails without changing old version",async()=>{
