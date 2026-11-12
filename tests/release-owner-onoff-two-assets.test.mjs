@@ -27,9 +27,9 @@ const conf={headers:[{source:"**",headers:[{key:"X-Keep",value:"yes"}]}]};
 const hashes=new Map(initial.map(x=>[x.path,x.hash]));
 const target=new Map([...hashes,...MISSING.map(p=>[p,hostingAssetHash(sources[p])])]);
 function fixture({files=initial,concurrent=false,required=true,badUpload=false,
-  badFinal=false,badMeta=false,paginate=false,unknownHash=false}={}){
+  badFinal=false,badMeta=false,paginate=false,unknownHash=false,metaPending=0}={}){
  const calls=[];
- let live=LIVE,created=false,published=false,reads=0,uploaded=0;
+ let live=LIVE,created=false,published=false,reads=0,uploaded=0,newMetaReads=0;
  const request=async(method,url,body=null,type="application/json")=>{
   calls.push({method,url,type,body});
   if(method==="GET"&&url===LATEST){
@@ -68,9 +68,12 @@ function fixture({files=initial,concurrent=false,required=true,badUpload=false,
    return {files:[...target].map(([path,hash])=>({
     path,hash:badFinal&&path===MISSING[0]?"f".repeat(64):hash
    }))};
-  if(method==="GET"&&url===BASE+"/"+NEW)
+  if(method==="GET"&&url===BASE+"/"+NEW){
+   newMetaReads++;
    return {name:NEW,status:"FINALIZED",config:conf,
-    fileCount:target.size+(badMeta?1:0)};
+    ...(newMetaReads<=metaPending?{}:
+     {fileCount:target.size+(badMeta?1:0)})};
+  }
   if(method==="POST"&&url===BASE+"/sites/nico-factory/releases?versionName="+encodeURIComponent(NEW)){
    assert.deepEqual(body,{});
    published=true;live=NEW;return {version:{name:NEW}};
@@ -95,6 +98,19 @@ test("read-only preflight validates existing version and never writes a byte",as
  assert.equal(f.writes.length,0);
  assert.equal(f.published,false);
 });
+test("finalized Hosting metadata may appear after exact file-hash verification, then publish once",async()=>{
+ const f=fixture({metaPending:2});
+ const report=await prepareOwnerOnOffTwoAssetRelease({
+  request:f.request,sources,release:true,releaseAuthorized:true,
+  sleep:async()=>{}
+ });
+ assert.equal(report.released,true);
+ assert.equal(f.published,true);
+ assert.equal(f.calls.filter(x=>x.method==="GET"&&x.url===BASE+"/"+NEW).length,3);
+ assert.equal(f.writes.filter(x=>x.url===BASE+"/sites/nico-factory/versions").length,1);
+ assert.equal(f.writes.filter(x=>x.url.includes("/releases?versionName")).length,1);
+});
+
 test("a mock-approved release publishes ONLY two new assets and byte-preserves originals",async()=>{
  const f=fixture();
  const report=await prepareOwnerOnOffTwoAssetRelease({
@@ -163,7 +179,8 @@ test("an unexpected upload digest or unsafe upload endpoint cannot publish",asyn
  for(const options of [{unknownHash:true},{badUpload:true}]){
   const f=fixture(options);
   await assert.rejects(prepareOwnerOnOffTwoAssetRelease({
-   request:f.request,sources,release:true,releaseAuthorized:true
+   request:f.request,sources,release:true,releaseAuthorized:true,
+   sleep:async()=>{}
   }),/STOP_OWNER_ONOFF_TWO_ASSET_RELEASE_/);
   assert.equal(f.published,false);
  }

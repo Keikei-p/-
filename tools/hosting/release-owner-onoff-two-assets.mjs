@@ -79,10 +79,12 @@ function uploadTarget(created,uploadUrl){
  * checks are independently proven by the caller. No automatic release wiring.
  */
 export async function prepareOwnerOnOffTwoAssetRelease({
- request,sources,release=false,releaseAuthorized=false,log=()=>{}
+ request,sources,release=false,releaseAuthorized=false,log=()=>{},
+ sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 }={}){
  if(typeof request!=="function"||typeof log!=="function"||
-    typeof release!=="boolean"||typeof releaseAuthorized!=="boolean")
+    typeof release!=="boolean"||typeof releaseAuthorized!=="boolean"||
+    typeof sleep!=="function")
    stop("INPUT");
  if(release&&releaseAuthorized!==true)stop("INDEPENDENT_APPROVAL_MISSING");
  const GET=url=>request("GET",url);
@@ -154,10 +156,29 @@ export async function prepareOwnerOnOffTwoAssetRelease({
  if(finalMap.size!==plan.proposedManifest.size||
     [...plan.proposedManifest].some(([path,hash])=>finalMap.get(path)!==hash))
   stop("FINAL_MANIFEST_MISMATCH");
- const createdMeta=await GET(BASE+"/"+created.name);
- verifyMeta(createdMeta,created.name,finalMap.size);
- if(JSON.stringify(createdMeta.config)!==JSON.stringify(meta.config))
-  stop("FINAL_CONFIG_CHANGED");
+ // Firebase calculates the finalized version fileCount asynchronously.
+ // Only READ the same version again. No second create/upload/finalize attempt.
+ // Never publish unless this fresh server metadata agrees with every hash.
+ let stable=false;
+ for(let attempt=0;attempt<8;attempt++){
+  const fresh=await GET(BASE+"/"+created.name);
+  if(fresh?.name!==created.name)stop("FINAL_IDENTITY_CHANGED");
+  if(JSON.stringify(fresh.config)!==JSON.stringify(meta.config))
+   stop("FINAL_CONFIG_CHANGED");
+  if(!["CREATED","FINALIZED"].includes(fresh.status))
+   stop("FINAL_STATUS_UNEXPECTED");
+  const actual=Number(fresh.fileCount);
+  const countMatches=fresh.fileCount!=null&&Number.isSafeInteger(actual)&&
+    actual===finalMap.size;
+  if(fresh.status==="FINALIZED"&&countMatches){stable=true;break}
+  log("OWNER_ONOFF_FINALIZED_META_PENDING "+JSON.stringify({
+   attempt:attempt+1,statusFinalized:fresh.status==="FINALIZED",
+   fileCountPresent:fresh.fileCount!=null,
+   fileCountMatches:countMatches
+  }));
+  if(attempt<7)await sleep(1250);
+ }
+ if(!stable)stop("FINAL_METADATA_NOT_STABLE");
  if(newest(await GET(LATEST))!==original)stop("RACE_BEFORE_PUBLISH");
  const published=await request("POST",BASE+"/sites/"+SITE+"/releases?versionName="+
   encodeURIComponent(created.name),{});
