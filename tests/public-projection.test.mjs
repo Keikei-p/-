@@ -118,6 +118,21 @@ test("money embedded in product IDs, record IDs, employee labels and locations b
  }
 });
 
+test("fullwidth financial aliases are sanitized or rejected before count-only publication",()=>{
+ const hidden=projectPublicProduct({...product,name:"ＮＵＲＯ　ＣＢ２００００"});
+ assert.equal(hidden.name,"名称は管理者確認中");
+ const flat=projectPublicProduct(product);
+ assert.throws(()=>assertPublicSchema("publicProducts",[
+  {...flat,sourceId:"ＮＵＲＯ＿ＣＢ２００００"}
+ ]),/monetary details/);
+ assert.throws(()=>auditNoFinancialKeys({"ｒｅｖｅｎｕｅ":50000}),/leaked/);
+ const safeRank=projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",
+  participants:[{id:"staff1",name:"担当 ＣＢ２００００",score:4}]});
+ assert.equal(safeRank.ranks[0].name,"名称は管理者確認中");
+ assert.throws(()=>projectRankOnly({companyId:"c1",period:"2026-10",kind:"member",
+  participants:[{id:"ＮＵＲＯ＿ＣＢ２００００",name:"担当",score:4}]}),/monetary details/);
+});
+
 test("legitimate IDs with numbers and numeric-looking team labels remain intact",()=>{
  const row=projectPublicRecordHeader(record);
  assert.ok(assertPublicSchema("publicRecords",[
