@@ -401,6 +401,15 @@ export function buildVerifiedCountDashboard({
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
  if(total!==rankedProducts.reduce((a,p)=>add(a,p.count),0))stop();
  const unknown=companyRows.reduce((a,b)=>add(a,b.unidentifiedCount),0);
+ // Cross-check ALL four independently rendered count rankings. The only
+ // legitimately missing people/teams are separately verified unattributed
+ // company-code rows. Never publish a partial person/team total as a full
+ // company/product ranking, even if source rows are individually valid.
+ const attributable=total-unknown;
+ if(attributable<0||
+    rankedPeople.reduce((n,p)=>add(n,p.count),0)!==attributable||
+    [...teams.values()].reduce((n,t)=>add(n,t.count),0)!==attributable)
+  stop();
  const common={schema:"nico-verified-dual-count-v1",period:period.kind,
   range,readTime:parsed.readTime,unit:"件",
   summary:{own:self,partner:total-self,total,unidentified:unknown},
