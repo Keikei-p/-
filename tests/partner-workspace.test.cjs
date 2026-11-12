@@ -84,6 +84,55 @@ function setup(sharedRankingOn=false,publicationWriteOn=false,ownerCorrectionOn=
  return {db,api,req,zero};
 }
 
+test("partner input rejects NFKC financial alias names before creating ranked staff, teams or products",async()=>{
+ const {db,api,req}=setup();
+ const team=(await api.manage(req("p",{
+  action:"addTeam",name:"通常の班"
+ }))).teamId;
+ const safe=clone([...db.store]);
+ for(const name of [
+  "スタッフ ＣＢ５０００",
+  "社員 ＲＥＶＥＮＵＥ９０００",
+  "班 ＵＮＩＴＰＲＩＣＥ８０００",
+  "担当 cash back 4000",
+  "担当 １２万円"
+ ]){
+  await assert.rejects(api.manage(req("p",{
+   action:"addManaged",name,teamId:team
+  })),{code:"invalid-argument"},name);
+  await assert.rejects(api.manage(req("p",{
+   action:"addTeam",name
+  })),{code:"invalid-argument"},name);
+ }
+ for(const name of ["商品 ＣＢ５０００","契約 ＲＥＶＥＮＵＥ９０００","独自 ２万円"]){
+  await assert.rejects(api.manage(req("p",{
+   action:"addPrivateProduct",name
+  })),{code:"invalid-argument"},name);
+ }
+ for(const companyName of [
+  "新会社 ＣＢ５０００","新会社 ＲＥＶＥＮＵＥ９０００","新会社 ２万円"
+ ]){
+  await assert.rejects(api.manage(req("h",{
+   action:"hubCreateInvite",companyName,role:"leader",
+   email:"n@example.com"
+  })),{code:"invalid-argument"},companyName);
+ }
+ assert.deepEqual([...db.store],safe,
+  "reject before creating any company, invite, team, staff, private product or finance write");
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+ assert.equal(db.store.get("products/money").unitPrice,98765);
+});
+test("a corrupted historical company label containing concealed money never leaks via Owner view",async()=>{
+ const {db,api,req}=setup();
+ db.seed("companies/partner",{
+  ...db.store.get("companies/partner"),name:"協力店 ＣＢ５０００"
+ });
+ const before=clone([...db.store]);
+ await assert.rejects(api.view(req("h",{date:"2026-10-31"})),
+  {code:"data-loss"});
+ assert.deepEqual([...db.store],before,"reject read-only; never repair or erase legacy sales");
+});
+
 test("existing hub Owner without legacy optional member.companyId can list and invite",async()=>{
  const {db,api,req}=setup();
  const ownerUserBefore=clone(db.store.get("users/h"));
