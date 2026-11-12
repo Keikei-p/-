@@ -34,6 +34,8 @@ on:
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/public-projection.test.mjs'
       - 'tests/partner-workspace-count-source.test.mjs'
+      - 'ranking/owner-reviewed-sku-mapping-panel.mjs'
+      - 'tests/owner-reviewed-sku-mapping-panel.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'ranking/owner-product-visibility-rankings.mjs'
       - 'functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs'
@@ -73,7 +75,7 @@ jobs:
           node --check functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
           node --check functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
       - name: Test partner ON/OFF read-write contract and stable ranking identities
-        run: node --test tests/owner-product-visibility-rankings.test.mjs tests/public-projection.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/ranking-day-week-deployment-parity.test.cjs tests/finance-partner-boundary-check.test.mjs tests/approved-partner-ranking-ui.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-dual-count-view.test.mjs tests/verified-two-month-count-input.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/canonical-joint-count-sku-reader.test.mjs tests/record-save-server-confirmation.test.cjs tests/owner-count-discrepancy-review.test.cjs
+        run: node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/public-projection.test.mjs tests/partner-workspace-count-source.test.mjs tests/partner-workspace.test.cjs tests/approved-partner-count-standings.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/owner-partner-count-browser-contract.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/verified-joint-month-http-bridge.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/ranking-day-week-deployment-parity.test.cjs tests/finance-partner-boundary-check.test.mjs tests/approved-partner-ranking-ui.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-dual-count-view.test.mjs tests/verified-two-month-count-input.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/canonical-joint-count-sku-reader.test.mjs tests/record-save-server-confirmation.test.cjs tests/owner-count-discrepancy-review.test.cjs
 
   isolated-finance-counts:
     runs-on: ubuntu-latest
