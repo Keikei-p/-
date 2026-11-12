@@ -111,6 +111,60 @@ export function assertReviewedCodeGate({env,git,gh}){
  return Object.freeze({sourceReviewed:true,ciForExactCheckout:true,mainUnchanged:true});
 }
 
+/**
+ * Independently reviewed *means a real GitHub-approved review from another
+ * authorized human on this exact release commit*. A local typed signoff
+ * value or green CI run alone cannot establish this. Never trust JSON
+ * supplied via environment variables as review evidence.
+ *
+ * This checks GitHub's authenticated REST API read-only and runs BEFORE
+ * reading service-account credentials or any production data.
+ */
+export function assertIndependentPRApprovalGate({env,gh}){
+ if(!obj(env)||typeof gh!=='function'||
+    !SHA.test(env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA||''))
+   stop('INDEPENDENT_REVIEW_EVIDENCE_REQUIRED');
+ const checkout=env.NICO_PHASE1_REVIEWED_CHECKOUT_SHA;
+ let pr,reviews;
+ try{
+  pr=JSON.parse(gh('api',['repos/Keikei-p/-/pulls/380']));
+  reviews=JSON.parse(gh('api',['repos/Keikei-p/-/pulls/380/reviews?per_page=100']));
+ }catch{stop('INDEPENDENT_REVIEW_CHECK_UNAVAILABLE');}
+ if(!obj(pr)||pr.state!=='open'||pr.draft!==false||
+    pr.head?.sha!==checkout||
+    typeof pr.user?.login!=='string'||!pr.user.login||
+    !Array.isArray(reviews)||reviews.length===0||reviews.length>100)
+   stop('INDEPENDENT_REVIEW_NOT_APPROVED');
+ // REST review IDs increase in submission order. A later dismissal/change
+ // request cannot be hidden behind an earlier APPROVED review.
+ const latest=new Map();
+ for(const item of reviews){
+  const login=item?.user?.login;
+  if(typeof login!=='string'||!/^[A-Za-z0-9-]{1,39}$/.test(login)||
+     !Number.isSafeInteger(item.id)||item.id<=0)continue;
+  const prior=latest.get(login);
+  if(!prior||prior.id<item.id)latest.set(login,item);
+ }
+ if([...latest.values()].some(x=>x.state==='CHANGES_REQUESTED'))
+  stop('INDEPENDENT_REVIEW_CHANGES_REQUESTED');
+ const eligible=[...latest.values()].filter(x=>
+  x.state==='APPROVED'&&x.commit_id===checkout&&
+  x.user?.type==='User'&&x.user.login!==pr.user.login&&
+  ['COLLABORATOR','MEMBER','OWNER'].includes(x.author_association));
+ for(const review of eligible){
+  let permission;
+  try{
+   permission=JSON.parse(gh('api',[
+    'repos/Keikei-p/-/collaborators/'+review.user.login+'/permission'
+   ]))?.permission;
+  }catch{stop('INDEPENDENT_REVIEW_CHECK_UNAVAILABLE');}
+  if(['admin','maintain','write'].includes(permission))
+   return Object.freeze({independentHumanApproved:true,
+    approvedCommitExact:true,reviewedByAuthorizedCollaborator:true});
+ }
+ stop('INDEPENDENT_REVIEW_NOT_APPROVED');
+}
+
 function privateProofFile(env){
  const file=env.NICO_PHASE1_PRIVATE_PROOF_FILE;
  if(typeof file!=='string'||!path.isAbsolute(file))stop('PRIVATE_PROOF_FILE_REQUIRED');
@@ -146,6 +200,11 @@ async function runOperator(mode,env=process.env){
   assertReviewedCodeGate({env,
    git:(cmd,args)=>run('git',[cmd,...args]),
    gh:(cmd,args)=>run('gh',[cmd,...args])
+  });
+  // Unlike a self-declared approval env string, this exact-head approval is
+  // independently backed by GitHub and must survive a latest-review check.
+  assertIndependentPRApprovalGate({
+   env,gh:(cmd,args)=>run('gh',[cmd,...args])
   });
  }
  let settings;
