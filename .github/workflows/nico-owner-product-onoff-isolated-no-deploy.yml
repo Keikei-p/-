@@ -1,0 +1,51 @@
+name: NICO Owner product ON/OFF isolated release candidate (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'owner-product-publication.html'
+      - 'tests/owner-product-onoff-single-release.test.mjs'
+      - '.github/workflows/nico-owner-product-onoff-isolated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  owner-onoff-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+      FIREBASE_PROJECT_ID: demo-nico-onoff-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Lock the reviewed source scope and deny production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-nico-onoff-only
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = 516bfe74f525ad8ee95a800f796c77327cf9aeae
+          git diff --name-only origin/main...HEAD | tee /tmp/nico-onoff-changed-files.txt
+          if grep -Ev '^(owner-product-publication\.html|tests/owner-product-onoff-single-release\.test\.mjs|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
+            echo 'STOP_UNREVIEWED_CHANGE_SCOPE'
+            exit 1
+          fi
+          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 3
+          git diff --exit-code origin/main...HEAD -- index.html firestore.rules firebase.json functions functions-ranking-approvals functions-partner-workspace ranking partner
+      - name: Test isolated page, Owner callables, exact source data safety and login
+        run: |
+          node --test tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          echo 'OWNER_ONOFF_STAGING_TESTED_ONLY=true'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'PARTNER_COUNT_ENABLED=false'
+          echo 'JOINT_RANKING_ENABLED=false'
