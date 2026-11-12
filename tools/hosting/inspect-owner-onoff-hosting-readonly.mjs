@@ -12,7 +12,7 @@ export const OWNER_ONOFF_HOSTING_BASE="https://firebasehosting.googleapis.com/v1
 const BASE=OWNER_ONOFF_HOSTING_BASE;
 const SITE=OWNER_ONOFF_HOSTING_SITE;
 const VERSION=/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/;
-const FILENAME=/^\/[A-Za-z0-9._/-]+$/;
+const FILENAME=/^\/[A-Za-z0-9._\/-]+$/;
 const HASH=/^[a-f0-9]{64}$/;
 const missingPaths=Object.freeze([
  "/owner-product-publication.html",
@@ -30,8 +30,7 @@ function checkedMeta(meta,name){
  if(meta?.name!==name||meta.status!=="FINALIZED"||
    !meta.config||typeof meta.config!=="object"||
    Array.isArray(meta.config)||
-   typeof meta.fileCount!=="number"||
-   !Number.isSafeInteger(meta.fileCount)||meta.fileCount<2||meta.fileCount>30000)
+   !Number.isSafeInteger(Number(meta.fileCount))||Number(meta.fileCount)<2||Number(meta.fileCount)>30000)
   stop("LATEST_CONFIG_UNVERIFIED");
 }
 function queryFilesUrl(version,token=""){
@@ -76,7 +75,7 @@ export async function inspectLiveOwnerOnOffHosting({readOnlyGet,sources}={}){
  const meta=await readOnlyGet(BASE+"/"+initial);
  checkedMeta(meta,initial);
  const live=await allFiles(readOnlyGet,initial);
- if(live.length!==meta.fileCount)stop("FILE_COUNT_MISMATCH");
+ if(live.length!==Number(meta.fileCount))stop("FILE_COUNT_MISMATCH");
  const plan=planOwnerOnOffAssets({liveFiles:live,sources});
  const wanted=Object.keys(ONOFF_ASSETS);
  const ready=plan.newAssetPaths.length===0;
