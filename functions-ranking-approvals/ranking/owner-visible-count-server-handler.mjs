@@ -26,6 +26,8 @@ const PATH="/v1/owner-visible-counts";
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DAY=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
+const FILTER_KEYS=["companyId","teamId","uid","productId"];
+const FILTER_ID=/^[A-Za-z0-9_:-]+$/;
 class Block extends Error{
  constructor(status=503){super("request_blocked");this.status=status;}
 }
@@ -47,9 +49,12 @@ function validDay(day){
 // reconciled under one atomic Firestore read-only transaction.
 function requestedPeriod(params){
  const keys=[...params.keys()];
- if(keys.length!==1||!["month","day","week"].includes(keys[0]))
+ const periods=keys.filter(k=>["month","day","week"].includes(k));
+ if(periods.length!==1||keys.length>5||
+    new Set(keys).size!==keys.length||
+    keys.some(k=>![...FILTER_KEYS,"month","day","week"].includes(k)))
   throw new Block(400);
- const kind=keys[0],value=params.get(kind);
+ const kind=periods[0],value=params.get(kind);
  if(kind==="month"){
   if(!MONTH.test(value??""))throw new Block(400);
   return {kind,month:value,day:value+"-01"};
@@ -70,6 +75,28 @@ function requestedPeriod(params){
     secondMonth:startMonth===month?endMonth:startMonth};
  }
  return {kind,month,day:value};
+}
+
+// Filter selections are never an authorization grant. Every ID must be
+// checked against the fresh server-approved relationship before reading any
+// count source. Partner owners only receive the unfiltered public joint view.
+function requestedFilters(params,context){
+ const filters={};
+ for(const key of FILTER_KEYS){
+  if(!params.has(key))continue;
+  const value=params.get(key);
+  if(context.role!=="hub_owner")throw new Block(403);
+  if(typeof value!=="string"||!value||
+     value.length>(key==="productId"?300:200)||!FILTER_ID.test(value))
+   throw new Block(400);
+  filters[key]=value;
+ }
+ if(filters.companyId&&
+    !context.approvedCompanyIds.includes(filters.companyId))
+  throw new Block(403);
+ if((filters.teamId||filters.uid)&&!filters.companyId)
+  throw new Block(400);
+ return filters;
 }
 
 function sameSet(a,b){
@@ -109,6 +136,7 @@ export function createStagedOwnerVisibleCountHandler({
    let principal;
    try{principal=await verify(token);}catch{throw new Block(401);}
    const context=await contextReader(principal);
+   const filters=requestedFilters(url.searchParams,context);
    // The optional atomic path requires a single read-only transaction
    // spanning canonical counts and owner publication. The legacy staged
    // loader remains for offline tests, but is NOT production-release ready.
@@ -153,7 +181,7 @@ export function createStagedOwnerVisibleCountHandler({
     context,mappingsReviewed:true
    });
    const result=buildOwnerVisibleCountRanking({
-    input:{...countInput,period,context},publication
+    input:{...countInput,period,context,filters},publication
    });
    auditNoFinancialKeys(result);
    const json=JSON.stringify(result);
