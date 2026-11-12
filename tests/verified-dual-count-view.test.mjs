@@ -168,6 +168,24 @@ test("malformed or financial API payload clears stale names and never displays p
   renderVerifiedDualCountDashboard({document:doc,root,payload:good});
  }
 });
+test("partner ranking renderer rejects NFKC disguised financial labels and keys",()=>{
+ const good=buildVerifiedCountDashboard(input("partner_owner"));
+ const root=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ for(const mutate of [
+  d=>{d.publicRanking.companies[0].name="協力店 ＣＢ２００００";},
+  d=>{d.publicRanking.members[0].name="担当 ＣＢ２００００";},
+  d=>{d.publicRanking.products[0]["ｒｅｖｅｎｕｅ"]=50000;}
+ ]){
+  const invalid=structuredClone(good);mutate(invalid);
+  assert.throws(()=>renderVerifiedDualCountDashboard({
+   document:doc,root,payload:invalid
+  }),/件数の権限/);
+  assert.equal(root.children.length,0,"invalid financial payload must clear stale content");
+  renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ }
+});
+
 test("server-bound controller refresh uses only period/filters and supports owner dropdown filtering",async()=>{
  const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>{}}};
  const calls=[],root=new Node("main");
