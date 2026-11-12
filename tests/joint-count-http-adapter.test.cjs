@@ -25,7 +25,9 @@ const data=()=>({schema:"nico-verified-dual-count-v1",
  readTime:"2026-11-09T00:00:00.000Z",
  own:{count:5},
  publicRanking:{members:[{rank:1,name:"営業担当",count:5,company:"協力店"}],
-  products:[{rank:1,name:"NURO光",count:8}]}});
+  products:[{rank:1,name:"NURO光",count:5}],
+  companies:[{rank:1,name:"協力店",count:5}],
+  teams:[{rank:1,name:"営業班",company:"協力店",count:5}]}});
 const make=(status=200,body=data())=>async request=>
  new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json"}});
 test("default OFF: never initializes backend nor touches any live data",async()=>{
@@ -360,6 +362,8 @@ test("approved company and team count-only rankings can cross authenticated Func
  payload.publicRanking.teams=[
   {rank:1,name:"営業班",company:"協力店",count:5},
   {rank:2,name:"営業班",company:"自社",count:3}];
+ payload.publicRanking.members.push({rank:2,name:"自社担当",company:"自社",count:3});
+ payload.publicRanking.products[0].count=8;
  const adapter=createJointCountHttpAdapter({enabled:()=>true,
   loadHandler:()=>make(200,payload)});
  const out=response();await adapter(req(),out);
@@ -457,6 +461,65 @@ test("exact partner own product and person projections remain accepted",async()=
  assert.equal(out.statusCode,200);
  assert.deepEqual(JSON.parse(out.body),p);
 });
+test("four rankings cannot disagree, disappear, overflow or forge competition ranks at HTTP ingress",async()=>{
+ const base=data();
+ // Distinguish two reported organizations from a legal unreported/no-rank
+ // company. The public partner API only publishes actual submitted firms.
+ base.own.count=5;
+ base.publicRanking.companies=[
+  {rank:1,name:"協力店",count:5},{rank:2,name:"自社",count:3}
+ ];
+ base.publicRanking.products=[{rank:1,name:"NURO光",count:8}];
+ base.publicRanking.members=[
+  {rank:1,name:"協力担当",company:"協力店",count:5},
+  {rank:2,name:"自社担当",company:"自社",count:3}
+ ];
+ base.publicRanking.teams=[
+  {rank:1,name:"第一班",company:"協力店",count:5},
+  {rank:2,name:"第二班",company:"自社",count:3}
+ ];
+ const valid=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,base)
+ });
+ const ok=response();await valid(req(),ok);
+ assert.equal(ok.statusCode,200);
+ for(const edit of [
+  p=>{delete p.publicRanking.companies;},
+  p=>{delete p.publicRanking.teams;},
+  p=>{p.publicRanking.products[0].count=7;},
+  p=>{p.publicRanking.companies[0].count=6;},
+  p=>{p.publicRanking.teams[1].count=2;},
+  p=>{p.publicRanking.members[1].count=2;},
+  p=>{p.publicRanking.companies[0].rank=2;},
+  p=>{p.publicRanking.companies[1].rank=3;},
+  p=>{p.publicRanking.products.push({rank:2,name:"別商材",count:Number.MAX_SAFE_INTEGER});},
+  p=>{p.own.count=9;},
+  p=>{p.publicRanking.members=[{rank:1,name:"A",company:"自社",count:4},
+    {rank:2,name:"B",company:"協力店",count:4}];},
+  p=>{p.publicRanking.teams=[{rank:1,name:"A",company:"自社",count:4},
+    {rank:2,name:"B",company:"協力店",count:4}];}
+ ]){
+  const tampered=structuredClone(base);edit(tampered);
+  const adapter=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,tampered)
+  });
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,edit.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+ // A genuine unknown-attribution company code may create a company-product
+ // gap vs member/team, but member and team totals must still be identical.
+ const unknown=structuredClone(base);
+ unknown.publicRanking.companies[0].count=7;
+ unknown.publicRanking.companies[1].rank=2;
+ unknown.publicRanking.products[0].count=10;
+ const accepted=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,unknown)
+ });
+ const out=response();await accepted(req(),out);
+ assert.equal(out.statusCode,200);
+});
+
 test("NFKC-normalized money labels cannot cross the partner ranking HTTP boundary",async()=>{
  for(const name of ["担当者 ＣＢ５０００","商品 cash back 3000",
   "担当者 unit price 2500","担当者 ＲＥＶＥＮＵＥ９０００"]){
