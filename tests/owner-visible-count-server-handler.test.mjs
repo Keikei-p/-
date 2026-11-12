@@ -180,7 +180,7 @@ test("malformed methods, query, origin and auth cannot reach data loader",async(
  const f=fake();let calls=0;
  const run=handler(f,c=>{calls++;return countInput(c)});
  for(const req of [
-  request("hub","month=2026-11&companyId=partner"),
+  request("hub","month=2026-11&companyId=unknown"),
   request("hub","month=2026-13"),
   request("hub","month=2026-11",{method:"POST"}),
   request("hub","month=2026-11",{origin:"https://evil.example"})
@@ -190,6 +190,49 @@ test("malformed methods, query, origin and auth cannot reach data loader",async(
  assert.equal(calls,0);
 });
 
+test("approved hub owner can scope all four ranking filters without touching source data",async()=>{
+ const f=fake(),run=handler(f);
+ const stateBefore=copy([...f.state]);
+ const byPartner=await run(request("hub",
+  "month=2026-11&companyId=partner"));
+ assert.equal(byPartner.status,200);
+ const visible=await byPartner.json();
+ assert.equal(visible.role,"hub_owner");
+ assert.deepEqual(visible.filters,{companyId:"partner"});
+ assert.deepEqual(visible.summary,{own:0,partner:5,total:5,unidentified:0});
+ assert.equal(visible.productRanking[0].count,5);
+ const detailed=await run(request("hub",
+  "month=2026-11&companyId=partner&teamId=team&uid=partnerStaff&productId=nuro"));
+ assert.equal(detailed.status,200);
+ const detail=await detailed.json();
+ assert.deepEqual(detail.filters,{companyId:"partner",teamId:"team",
+  uid:"partnerStaff",productId:"nuro"});
+ assert.equal(detail.summary.total,5);
+ assert.equal(detail.memberRanking.length,1);
+ assert.deepEqual([...f.state],stateBefore,"reporting filters cannot change stored counts");
+ assert(f.ops.every(x=>x.kind!=="transaction"||x.options?.readOnly===true));
+});
+test("unapproved filter IDs, cross-account and duplicate query are denied before reading counts",async()=>{
+ const f=fake();let countReads=0;
+ const run=handler(f,c=>{countReads++;return countInput(c);});
+ for(const [who,query,expected] of [
+  ["hub","month=2026-11&companyId=foreign",403],
+  ["hub","month=2026-11&companyId=partner&companyId=hub",400],
+  ["hub","month=2026-11&teamId=team",400],
+  ["hub","month=2026-11&uid=partnerStaff",400],
+  ["hub","month=2026-11&productId=../../records",400],
+  ["hub","month=2026-11&companyId=partner%2Frecords",400],
+  ["hub","month=2026-11&companyId=",400],
+  ["hub","month=2026-11&companyId=partner&salary=5000",400],
+  ["partner","month=2026-11&companyId=hub",403],
+  ["partner","month=2026-11&productId=nuro",403]
+ ]){
+  const result=await run(request(who,query));
+  assert.equal(result.status,expected,who+" "+query);
+  assert.deepEqual(await result.json(),{error:"request_blocked"});
+ }
+ assert.equal(countReads,0,"no canonical or financial source read after rejected scope");
+});
 test("opt-in atomic snapshot path serves count-only ranking without legacy publication reads",async()=>{
  const f=fake(),ctx={...countInput({}).context};
  const publication={serverVerified:true,ownerSettingsRead:true,
