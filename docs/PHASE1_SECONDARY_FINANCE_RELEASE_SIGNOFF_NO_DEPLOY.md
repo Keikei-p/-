@@ -46,9 +46,13 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
    deny the affected partner via the local Firestore Emulator. Expecting the
    partner to get 403 under the old **vulnerable** live Rules is incorrect.
 7. **Narrow Rules-only switch**. Only after steps 1–6 are reviewed and
-   independently approved, wire an audited production runner to the exact
-   Phase-1 engine. No default runner exists in PR #380. The engine re-reads
-   the exact Rules and inventory, creates the reviewed candidate Ruleset and
+   independently approved, use the *existing* local/manual
+   `tools/production/phase1-reviewed-operator.mjs`. The operator is NOT
+   currently eligible for `apply` because its pinned main SHA is historical
+   and independent review is missing. Do not blindly refresh that pin:
+   reassess the exact source, matching successful CI event, active Rules,
+   rollback and real account evidence with a different authorized reviewer.
+   The engine re-reads the exact Rules and inventory, creates the reviewed candidate Ruleset and
    updates only the cloud.firestore release. There is no record, user,
    product, price, history, Hosting, Functions or LINE write.
 8. **Immediate post-switch verification**. Recheck the exact affected
@@ -66,6 +70,53 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
    consider the **separate** combined ranking/UI release PR #375.
    Issue #352 has one historical saved total vs product-row mismatch:
    preserve provisional ranks rather than automatically editing history.
+
+## Latest verified LIVE GET-only status — 2026-11-12 JST (NOT a release approval)
+
+This supersedes the **historical 2026-11-05 observations** below,
+without approving any Rules switch or weakening an independent review.
+
+- **Managed-backup inventory**:
+  [Actions #41322350604, most recent run attempt](https://github.com/Keikei-p/-/actions/runs/41322350604) live-inventory **SUCCESS** around Nov 12 14:42 JST.
+  Exact project `sales-management-cc116`; **6 READY** backups, newest
+  `2026-11-11T06:22:30.344918Z` (Nov 11 15:22:30 JST).
+  Metadata-only: **no managed-backup restoration**, no full production
+  document fingerprint, no isolated restore, no writes.
+- **Active Rules source**:
+  [Actions #42475737038, most recent run attempt](https://github.com/Keikei-p/-/actions/runs/42475737038) live-get-only **SUCCESS** around Nov 12 14:43 JST.
+  Exact active Rules source matches reviewed blob
+  `d9f4df6a2ac0f8b5720534a2461ec66b94379190`;
+  static finance markers passed. It is **NOT** the separate Phase-1
+  candidate blob `6d6ac7fd3544b0326823e419a3acd7e1d060b714`.
+  The audit expressly states `realPartnerGetListProven:false`,
+  `userDataReads:0`, `productionWrites:0`, `deploys:0`.
+  A source match is NOT real-user finance GET/LIST-denial proof.
+- **Operator is currently not executable for apply**:
+  `phase1-reviewed-operator.mjs` pins
+  `REVIEWED_MAIN=17681e69d3ebd7271cc9a58e138fd0e202db7294`,
+  but the actual current main inspected on Nov 12 is
+  `516bfe74f525ad8ee95a800f796c77327cf9aeae`.
+  Its exact-source gate intentionally rejects this drift before `apply`.
+  The currently observed PR #380 CI
+  [#42210220979](https://github.com/Keikei-p/-/actions/runs/42210220979)
+  is a `pull_request` event; the operator requires a successful reviewed
+  **push** CI for the *exact* checkout. A distinct authorized reviewer
+  must re-review the changed baseline, candidate, and source provenance,
+  then explicitly authorize a new pin and current matching CI;
+  **do not simply change SHA constants or relax an event check**.
+- **Sequence**: Phase 1 Draft #380 first, after real Owner/affected partner
+  proof and independent approval; [Draft #690](https://github.com/Keikei-p/-/pull/690)
+  for SKU/partner counts and four leaderboards second. Both currently OFF.
+  Issue #352 is deferred by the Owner; don't auto-rewrite any history or
+  claim an unverified affected period is a verified joint ranking.
+- **Still required**: exact-current full live inventory/isolated restore
+  and rollback, actual affected dual-member partner + genuine Owner UID
+  finance GET/LIST permissions, partner count-entry continuity, signed
+  independent review, controlled Rules-only release and post-release proof.
+  Nothing in this document authorizes restoring, billing, deployment
+  or writing to a live database.
+
+---
 
 ## Explicit release state (last verified 2026-11-05)
 
