@@ -130,11 +130,59 @@ function validHubTeamRow(row){
   Number.isSafeInteger(row.rank)&&row.rank>0;
 }
 function hubPublicScopeSafe(data){
- return exact(data,HUB_ENVELOPE)&&
-  Array.isArray(data.companyBreakdown)&&data.companyBreakdown.length<=10000&&
-  data.companyBreakdown.every(validHubCompanyRow)&&
-  Array.isArray(data.teamBreakdown)&&data.teamBreakdown.length<=10000&&
-  data.teamBreakdown.every(validHubTeamRow);
+ if(!exact(data,HUB_ENVELOPE)||
+    !exact(data.summary,["own","partner","total","unidentified"])||
+    Object.values(data.summary).some(x=>!Number.isSafeInteger(x)||x<0)||
+    !Array.isArray(data.companyBreakdown)||data.companyBreakdown.length>10000||
+    !data.companyBreakdown.every(validHubCompanyRow)||
+    !Array.isArray(data.teamBreakdown)||data.teamBreakdown.length>10000||
+    !data.teamBreakdown.every(validHubTeamRow)||
+    !Array.isArray(data.memberRanking)||data.memberRanking.length>10000||
+    !Array.isArray(data.productRanking)||data.productRanking.length>10000)
+  return false;
+ const companies=data.companyBreakdown,teams=data.teamBreakdown;
+ const self=companies.filter(x=>x.kind==="自社");
+ const companyIds=new Set(companies.map(x=>x.id));
+ if(self.length!==1||companyIds.size!==companies.length||
+    teams.some(x=>!companyIds.has(x.companyId)))return false;
+ const totals=data.summary;
+ const companyTotal=sumCounts(companies),teamTotal=sumCounts(teams);
+ const memberTotal=sumCounts(data.memberRanking);
+ const productTotal=sumCounts(data.productRanking);
+ const unidentified=companies.reduce((n,x)=>n+x.unidentifiedCount,0);
+ if([companyTotal,teamTotal,memberTotal,productTotal].some(x=>x===null)||
+    !Number.isSafeInteger(unidentified)||
+    totals.own!==self[0].count||
+    totals.total!==companyTotal||
+    totals.partner!==totals.total-totals.own||
+    totals.unidentified!==unidentified||
+    teamTotal!==memberTotal||
+    memberTotal!==totals.total-unidentified||
+    productTotal!==totals.total)return false;
+ // Original product records cannot be manufactured or moved between firms.
+ // A product's own/partner breakdown must reconcile to exact company counts.
+ for(const row of data.productRanking){
+  if(!row||!Number.isSafeInteger(row.count)||row.count<0||
+     !Number.isSafeInteger(row.ownCount)||row.ownCount<0||
+     !Number.isSafeInteger(row.partnerCount)||row.partnerCount<0||
+     row.ownCount+row.partnerCount!==row.count||
+     !Array.isArray(row.companies)||row.companies.length>10000)
+    return false;
+  let ownCount=0,partnerCount=0;
+  const seen=new Set();
+  for(const company of row.companies){
+   if(!company||typeof company.companyId!=="string"||
+      !companyIds.has(company.companyId)||seen.has(company.companyId)||
+      !Number.isSafeInteger(company.count)||company.count<0)
+    return false;
+   seen.add(company.companyId);
+   if(company.companyId===self[0].id)ownCount+=company.count;
+   else partnerCount+=company.count;
+  }
+  if(!Number.isSafeInteger(ownCount)||!Number.isSafeInteger(partnerCount)||
+     ownCount!==row.ownCount||partnerCount!==row.partnerCount)return false;
+ }
+ return true;
 }
 
 const PARTNER_OWN_FIELDS=new Set(["company","count","unidentifiedCount","people","products"]);
