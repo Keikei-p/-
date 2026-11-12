@@ -20,7 +20,7 @@ const abort=code=>{throw Error("STOP_OWNER_ONOFF_ASSETS_"+code);};
 export function sourceGitBlob(content){
  if(typeof content!=="string")abort("SOURCE_TYPE");
  const bytes=Buffer.from(content,"utf8");
- return createHash("sha1").update("blob "+bytes.length+"\\0").update(bytes).digest("hex");
+ return createHash("sha1").update("blob "+bytes.length+"\0").update(bytes).digest("hex");
 }
 export function hostingAssetHash(content){
  if(typeof content!=="string")abort("SOURCE_TYPE");
@@ -56,7 +56,7 @@ export function planOwnerOnOffAssets({liveFiles,sources}={}){
  const before=new Map();
  for(const row of liveFiles){
   if(!row||typeof row.path!=="string"||
-     !/^\/[A-Za-z0-9._/-]+$/.test(row.path)||
+     !/^\/[A-Za-z0-9._\/-]+$/.test(row.path)||
      row.path.includes("..")||typeof row.hash!=="string"||
      !HEX.test(row.hash.toLowerCase())||before.has(row.path))
     abort("LIVE_MANIFEST_INVALID");
