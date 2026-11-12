@@ -108,6 +108,16 @@ test("tampered clock, scope, SKU mapping, duplicate record, and identities fail 
    /VERIFIED_TWO_MONTH_COUNTS_UNVERIFIED/);
  }
 });
+test("foreign-company record and line injection is rejected before aggregation",()=>{
+ for(const field of ["records","lines"]){
+  for(const month of ["primary","secondary"]){
+   const args=fixtures();
+   args[month].sources[1][field][0].companyId="hub";
+   assert.throws(()=>mergeVerifiedTwoMonthInputs(args),
+    /VERIFIED_TWO_MONTH_COUNTS_UNVERIFIED/);
+  }
+ }
+});
 test("nonadjacent months are never treated as a complete seven-day window",()=>{
  const x=fixtures();x.secondary.period.day="2026-09-01";
  x.secondary.period.asOf="2026-09-30";
