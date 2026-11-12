@@ -83,7 +83,7 @@ test("real Hosting paginated manifest is compared before deriving two-file missi
   readOnlyGet:f.readOnlyGet,sources
  });
  assert.deepEqual(result.newAssetPaths,missing);
- assert.equal(f.calls.length,4);
+ assert.equal(f.calls.length,5) // 2 release pointers + metadata + 2 manifest pages;
 });
 test("unknown live collision, partial dependencies and third missing asset are denied",async()=>{
  const cases=[
