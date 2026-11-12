@@ -180,13 +180,21 @@ export async function prepareOwnerOnOffTwoAssetRelease({
   if(!["CREATED","FINALIZED"].includes(fresh.status))
    stop("FINAL_STATUS_UNEXPECTED");
   const actual=Number(fresh.fileCount);
-  const countMatches=fresh.fileCount!=null&&Number.isSafeInteger(actual)&&
-    actual===finalMap.size;
-  if(fresh.status==="FINALIZED"&&countMatches){stable=true;break}
+  // The new version's complete file manifest has already been read back and
+  // each path/hash matched exactly. Firebase Hosting may omit the optional
+  // output-only fileCount even when status is FINALIZED. Do not require it,
+  // but NEVER tolerate a returned count that differs from that manifest.
+  const countKnown=fresh.fileCount!=null;
+  const countMatches=!countKnown||
+    (Number.isSafeInteger(actual)&&actual===finalMap.size);
+  if(fresh.status==="FINALIZED"&&countMatches){
+   if(!countKnown)log("OWNER_ONOFF_FINALIZED_FULL_MANIFEST_VERIFIED_COUNT_OMITTED");
+   stable=true;break;
+  }
   log("OWNER_ONOFF_FINALIZED_META_PENDING "+JSON.stringify({
    attempt:attempt+1,statusFinalized:fresh.status==="FINALIZED",
-   fileCountPresent:fresh.fileCount!=null,
-   fileCountMatches:countMatches
+   fileCountPresent:countKnown,
+   fileCountMatches:countKnown?countMatches:null
   }));
   if(attempt<7)await sleep(1250);
  }
