@@ -76,6 +76,26 @@ get/list), #379 (Owner preflight), #380 (affected identity binding).
 This supersedes the **historical 2026-11-05 observations** below,
 without approving any Rules switch or weakening an independent review.
 
+- **Actual live secondary-context risk inventory (new evidence)**:
+  [Actions #42491278046, latest run attempt](https://github.com/Keikei-p/-/actions/runs/42491278046),
+  `production-read-only` **SUCCESS** around 2026-11-12 15:01 JST.
+  `secondaryContextsPresent=true`,
+  `oldInternalFinancePathPresent=true`,
+  `ownerContextConflictPresent=false`,
+  `unrecognizedContextPresent=false`,
+  `readyBackupPresent=true`,
+  `recentReadyBackupWithin48h=true`,
+  `exactReviewedPhase1RulesActive=false`,
+  `authenticatedBoundaryProofStillRequired=true`,
+  `safeToDeploy=false`.
+  There is also `transferCandidatePresent=true`, but no account
+  reassignment, deletion, transfer or user-data modification was authorized
+  or carried out. This scan is a trusted metadata/structure indicator of
+  a live legacy finance-read route, **not** proof that a specific
+  Firebase user token successfully read any money document.
+  **No partner feature may be enabled on the basis of UI redaction alone.**
+  Do NOT silently replace the affected user with a generic test UID
+  to obtain a misleading denial in the next release proof.
 - **Managed-backup inventory**:
   [Actions #41322350604, most recent run attempt](https://github.com/Keikei-p/-/actions/runs/41322350604) live-inventory **SUCCESS** around Nov 12 14:42 JST.
   Exact project `sales-management-cc116`; **6 READY** backups, newest
