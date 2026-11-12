@@ -27,12 +27,15 @@ test("day/week/month access stays identity-bound and cross-month uses one transa
  assert.match(source,/\["month","day","week"\]/);
  assert.match(source,/secondMonth:startMonth===month\?endMonth:startMonth/);
  assert.match(source,/loadAtomicVerifiedCountSnapshot\(\{month,context,secondMonth\}\)/);
- assert.match(source,/input:\{\.\.\.countInput,period,context\}/);
+ assert.match(source,/input:\{\.\.\.countInput,period,context,filters\}/);
+ assert.match(source,/context\.approvedCompanyIds\.includes\(filters\.companyId\)/);
+ assert.match(source,/context\.role!=="hub_owner"/);
  assert.match(atomic,/loadCountsInTransaction\(\{tx,month,context,secondMonth\}\)/);
  assert.match(atomic,/readOnly:true/);
  assert.match(reader,/readCounts\(\{tx,month:secondMonth,context\}\)/);
  assert.match(reader,/mergeVerifiedTwoMonthInputs/);
  assert.match(bridge,/availablePeriods:\["day","week","month"\]/);
+ assert.match(bridge,/allowFilters:expectedRole==="hub_owner"/);
  assert.match(bridge,/period\.kind!=="week"/);
  const app=fs.readFileSync("index.html","utf8");
  const partner=fs.readFileSync("partner-workspace.html","utf8");
