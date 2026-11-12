@@ -9,6 +9,8 @@ on:
       - 'tests/owner-product-onoff-additive-guard.test.mjs'
       - 'tools/hosting/inspect-owner-onoff-hosting-readonly.mjs'
       - 'tests/inspect-owner-onoff-hosting-readonly.test.mjs'
+      - 'tools/hosting/release-owner-onoff-two-assets.mjs'
+      - 'tests/release-owner-onoff-two-assets.test.mjs'
       - '.github/workflows/nico-owner-product-onoff-isolated-no-deploy.yml'
 permissions:
   contents: read
@@ -40,17 +42,18 @@ jobs:
           git fetch --no-tags origin main
           test "$(git rev-parse origin/main)" = 516bfe74f525ad8ee95a800f796c77327cf9aeae
           git diff --name-only origin/main...HEAD | tee /tmp/nico-onoff-changed-files.txt
-          if grep -Ev '^(owner-product-publication\.html|tests/owner-product-onoff-single-release\.test\.mjs|tools/hosting/owner-product-onoff-additive-guard\.mjs|tests/owner-product-onoff-additive-guard\.test\.mjs|tools/hosting/inspect-owner-onoff-hosting-readonly\.mjs|tests/inspect-owner-onoff-hosting-readonly\.test\.mjs|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
+          if grep -Ev '^(owner-product-publication\.html|tests/owner-product-onoff-single-release\.test\.mjs|tools/hosting/owner-product-onoff-additive-guard\.mjs|tests/owner-product-onoff-additive-guard\.test\.mjs|tools/hosting/inspect-owner-onoff-hosting-readonly\.mjs|tests/inspect-owner-onoff-hosting-readonly\.test\.mjs|tools/hosting/release-owner-onoff-two-assets\.mjs|tests/release-owner-onoff-two-assets\.test\.mjs|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
             echo 'STOP_UNREVIEWED_CHANGE_SCOPE'
             exit 1
           fi
-          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 7
+          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 9
           git diff --exit-code origin/main...HEAD -- index.html firestore.rules firebase.json functions functions-ranking-approvals functions-partner-workspace ranking partner
       - name: Test isolated page, complete Hosting asset closure, Owner callables and data safety
         run: |
           node --check tools/hosting/owner-product-onoff-additive-guard.mjs
           node --check tools/hosting/inspect-owner-onoff-hosting-readonly.mjs
-          node --test tests/inspect-owner-onoff-hosting-readonly.test.mjs tests/owner-product-onoff-additive-guard.test.mjs tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          node --check tools/hosting/release-owner-onoff-two-assets.mjs
+          node --test tests/release-owner-onoff-two-assets.test.mjs tests/inspect-owner-onoff-hosting-readonly.test.mjs tests/owner-product-onoff-additive-guard.test.mjs tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
           echo 'OWNER_ONOFF_STAGING_TESTED_ONLY=true'
           echo 'PRODUCTION_DEPLOYED=false'
           echo 'PARTNER_COUNT_ENABLED=false'
