@@ -12,6 +12,7 @@ on:
       - 'owner-product-publication.html'
       - 'ranking/owner-product-visibility-dashboard-mount.mjs'
       - 'tools/hosting/run-owner-onoff-exact-two-release.mjs'
+      - 'tools/hosting/release-owner-onoff-two-assets.mjs'
       - '.github/workflows/nico-owner-onoff-static-two-production.yml'
 permissions:
   contents: read
