@@ -84,7 +84,7 @@ jobs:
       NICO_RULES_APPROVAL: ""
       NICO_USAGE_APPROVAL: ""
       NICO_PHASE1_CURRENT_MAIN_SHA: 516bfe74f525ad8ee95a800f796c77327cf9aeae
-      NICO_PHASE1_CURRENT_MAIN_FIXTURE: ${{ runner.temp }}/nico-phase1-current-main
+      NICO_PHASE1_CURRENT_MAIN_FIXTURE: ${{ github.workspace }}/../nico-phase1-current-main
     steps:
       - uses: actions/checkout@v4
         with:
