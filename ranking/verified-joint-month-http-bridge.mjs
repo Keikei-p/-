@@ -11,6 +11,8 @@ const ENDPOINTS=new Set([
  "https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking"
 ]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
+const PRODUCT_ID=/^[A-Za-z0-9_:-]{1,300}$/;
+const FILTER_KEYS=["companyId","teamId","uid","productId"];
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const stop=()=>{throw Error("VERIFIED_JOINT_COUNT_MONTH_BRIDGE_BLOCKED");};
@@ -63,7 +65,13 @@ export function createVerifiedJointMonthHttpBridge({
  async function load({period,filters}={}){
   if(!period||Object.keys(period).sort().join("|")!=="asOf|day|kind"||
      !filters||typeof filters!=="object"||Array.isArray(filters)||
-     Object.keys(filters).length!==0)stop();
+     Object.keys(filters).some(k=>!FILTER_KEYS.includes(k)))stop();
+  const used=FILTER_KEYS.filter(k=>Object.prototype.hasOwnProperty.call(filters,k));
+  if(used.length>4||used.some(k=>
+    typeof filters[k]!=="string"||
+    !(k==="productId"?PRODUCT_ID:ID).test(filters[k]))||
+    ((filters.teamId||filters.uid)&&!filters.companyId)||
+    (expectedRole==="partner_owner"&&used.length>0))stop();
   const range=expectedRange(period);
   const month=period.day.slice(0,7),seq=++generation;
   const identity=auth.currentUser;
@@ -75,8 +83,10 @@ export function createVerifiedJointMonthHttpBridge({
    token=await identity.getIdToken();
    if(typeof token!=="string"||!/^[-A-Za-z0-9._]{20,12000}$/.test(token)||
       seq!==generation||identity!==auth.currentUser)stop();
-   const url=endpoint+"?"+(period.kind==="month"?"month="+month:
-    period.kind+"="+period.day);
+   const query=period.kind==="month"?"month="+month:
+    period.kind+"="+period.day;
+   const selected=used.map(k=>"&"+k+"="+encodeURIComponent(filters[k])).join("");
+   const url=endpoint+"?"+query+selected;
    response=await fetcher(url,{
     method:"GET",headers:{Authorization:"Bearer "+token,Accept:"application/json"},
     cache:"no-store",redirect:"error",credentials:"omit",referrerPolicy:"no-referrer"
@@ -117,7 +127,8 @@ export function mountVerifiedJointMonthCountDashboard({
  });
  const controller=createVerifiedDualCountController({
   document,root,auth,load:bridge.load,asOf,
-  availablePeriods:["day","week","month"],allowFilters:false
+  availablePeriods:["day","week","month"],
+  allowFilters:expectedRole==="hub_owner"
  });
  let closed=false,off=()=>{};
  try{
