@@ -105,6 +105,14 @@ export function createVerifiedJointMonthHttpBridge({
       (expectedRole!==null&&value.role!==expectedRole)||
       value.period!==period.kind||value.unit!=="件"||
       value.range?.start!==range.start||value.range.end!==range.end)stop();
+   // A successfully authenticated answer for another company's scope must
+   // never be rendered as the currently selected owner's filtered ranking.
+   if(used.length>0&&value.role!=="hub_owner")stop();
+   if(value.role==="hub_owner"&&
+      (!value.filters||typeof value.filters!=="object"||
+       Array.isArray(value.filters)||
+       Object.keys(value.filters).some(k=>!FILTER_KEYS.includes(k))||
+       FILTER_KEYS.some(k=>value.filters[k]!==filters[k])))stop();
    return value; // existing DOM renderer strictly rejects all finance keys
   }catch{stop()}
  }
