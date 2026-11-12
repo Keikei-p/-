@@ -38,7 +38,7 @@ jobs:
           git fetch --no-tags origin main
           test "$(git rev-parse origin/main)" = 516bfe74f525ad8ee95a800f796c77327cf9aeae
           git diff --name-only origin/main...HEAD | tee /tmp/nico-onoff-changed-files.txt
-          if grep -Ev '^(owner-product-publication\.html|tests/owner-product-onoff-single-release\.test\.mjs|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
+          if grep -Ev '^(owner-product-publication\.html|tests/owner-product-onoff-single-release\.test\.mjs|tools/hosting/owner-product-onoff-additive-guard\.mjs|tests/owner-product-onoff-additive-guard\.test\.mjs|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
             echo 'STOP_UNREVIEWED_CHANGE_SCOPE'
             exit 1
           fi
