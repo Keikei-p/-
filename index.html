@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="営業実績管理">
 <link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./ranking/owner-product-visibility-panel.css">
 <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
 
 <title>営業実績管理</title>
@@ -4838,6 +4839,11 @@ body.product-reordering .product-list {
               協力店
             </button>
 
+            <button id="quickPartnerProductsButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;" aria-controls="partnerProductsWorkspace">
+              <span class="quick-menu-icon">📦</span>
+              協力店商材
+            </button>
+
             <button id="quickOwnerButton" class="quick-menu-button" type="button" aria-pressed="false" style="display:none;">
               <span class="quick-menu-icon">👑</span>
               オーナー管理
@@ -4897,6 +4903,15 @@ body.product-reordering .product-list {
     id="managementWorkspace"
     class="management-workspace"
     hidden>
+    <section id="partnerProductsWorkspace" class="management-card" style="display:none;" aria-label="協力店商材">
+      <h2>📦 協力店商材</h2>
+      <p style="font-size:13px;line-height:1.7;color:var(--sub);">
+        自社オーナー専用の商材ON/OFF設定です。設定の権限はサーバーが再確認します。
+        過去の協力店件数・実績・売上・履歴を削除・変更する画面ではありません。
+      </p>
+      <p id="partnerProductsStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--sub);"></p>
+      <div id="partnerProductsPanelRoot"></div>
+    </section>
   </div>
 
 
@@ -8882,6 +8897,10 @@ let unsubscribeRevenueGoals = null;
 ===================================================== */
 
 const quickPartnerButton = document.getElementById("quickPartnerButton");
+const quickPartnerProductsButton = document.getElementById("quickPartnerProductsButton");
+const partnerProductsWorkspace = document.getElementById("partnerProductsWorkspace");
+const partnerProductsStatus = document.getElementById("partnerProductsStatus");
+const partnerProductsPanelRoot = document.getElementById("partnerProductsPanelRoot");
 const partnerCompanyManagement = document.getElementById("partnerCompanyManagement");
 const partnerCompanyDate = document.getElementById("partnerCompanyDate");
 const partnerCompanyStatus = document.getElementById("partnerCompanyStatus");
@@ -8890,6 +8909,7 @@ const partnerCompanyList = document.getElementById("partnerCompanyList");
 const managementWorkspacePanels = [
   companyManagement,
   partnerCompanyManagement,
+  partnerProductsWorkspace,
   accountSettings,
   notificationManagement,
   missingReportsManagement,
@@ -8963,6 +8983,7 @@ const quickMenuButtons = [
   quickCompanyButton,
   quickInviteButton,
   quickPartnerButton,
+  quickPartnerProductsButton,
   quickOwnerButton,
   quickAccountButton,
   quickNotifyButton,
@@ -8985,6 +9006,7 @@ function setManagementMenuOpen(
   managementMenuPanel.hidden=!open;
   quickMissingButton.style.display=isCurrentCompanyOwner()?"":"none";
   quickPartnerButton.style.display=canLoadPartnerRanking()?"":"none";
+  quickPartnerProductsButton.style.display=canLoadPartnerRanking()?"":"none";
   if(!canLoadPartnerRanking()){
     partnerCompanyList.replaceChildren();
     partnerCompanyStatus.textContent="";
@@ -9552,6 +9574,43 @@ quickPartnerButton.onclick=()=>{
   partnerCompanyDate.max=getTodayString();
   void loadPartnerCompanyList();
 };
+
+// The existing Firebase Auth, region and Owner ON/OFF panel are reused.
+// The menu is a convenience only: the callable independently enforces Owner.
+let partnerProductsMountedPanel=null;
+let partnerProductsOpenGeneration=0;
+quickPartnerProductsButton.onclick=async()=>{
+  if(!canLoadPartnerRanking())return;
+  const ownerUid=currentUser.uid;
+  const attempt=++partnerProductsOpenGeneration;
+  closeQuickPanels();
+  showManagementWorkspace(partnerProductsWorkspace);
+  quickPartnerProductsButton.setAttribute("aria-pressed","true");
+  setManagementMenuOpen(false);
+  partnerProductsStatus.textContent="商材の公開設定を読み込み中…";
+  const stillOpen=()=>attempt===partnerProductsOpenGeneration &&
+    currentUser?.uid===ownerUid && canLoadPartnerRanking() &&
+    partnerProductsWorkspace.style.display!=="none";
+  try{
+    if(!partnerProductsMountedPanel){
+      const {mountOwnerProductVisibilityDashboard}=await import(
+        "./ranking/owner-product-visibility-dashboard-mount.mjs"
+      );
+      if(!stillOpen())return;
+      partnerProductsMountedPanel=mountOwnerProductVisibilityDashboard({
+        featureEnabled:true,document,root:partnerProductsPanelRoot,
+        auth,functions:partnerCountFunctions,httpsCallable,onAuthStateChanged
+      });
+    }
+    if(!stillOpen())return;
+    await partnerProductsMountedPanel.refresh();
+    if(stillOpen())partnerProductsStatus.textContent="";
+  }catch(_error){
+    if(stillOpen())partnerProductsStatus.textContent=
+      "商材設定を読み込めませんでした。オーナー権限と通信状態を確認してください。";
+  }
+};
+
 document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
 document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;
 
