@@ -93,7 +93,10 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    "sites/nico-factory/versions/8ae15e2d9d6d6051",
    // 2026-10-31 workspace-only audited release #41171058175 verified all 11
    // original Hosting assets and preserved the main sales index unchanged.
-   "sites/nico-factory/versions/5b2ce8a92a380386"
+   "sites/nico-factory/versions/5b2ce8a92a380386",
+   // #43246563443 released exact static Owner ON/OFF assets; all 33 paths
+   // and hashes verified. Firebase REST may omit its output-only fileCount.
+   "sites/nico-factory/versions/6cd0ef86037773c1"
  ]);
  const files=[];let pageToken="";
  do{
