@@ -10,7 +10,7 @@ const FORBIDDEN=/^(?:totalRevenue|revenue|revenuePerUnit|unitPrice|price|pricing
 const halt=()=>{throw Error("合同件数の権限・結果を確認できません。ログインし直してください。");};
 function inspect(value,depth=0){
  if(depth>15)halt();
- if(typeof value==="string"&&MONEY.test(value))halt();
+ if(typeof value==="string"&&MONEY.test(value.normalize("NFKC")))halt();
  if(value===null||typeof value!=="object")return;
  if(Array.isArray(value)){
   if(value.length>5000)halt();
@@ -18,7 +18,7 @@ function inspect(value,depth=0){
   return;
  }
  for(const [k,v] of Object.entries(value)){
-  if(FORBIDDEN.test(k))halt();
+  if(FORBIDDEN.test(k.normalize("NFKC")))halt();
   inspect(v,depth+1);
  }
 }
