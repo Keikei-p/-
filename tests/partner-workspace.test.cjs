@@ -1358,3 +1358,42 @@ test("publication policy missing or forged SKU mapping fails without creating a 
   counts:{...zero(),NURO:1},expectedVersion:0})),e=>e.code==="failed-precondition");
  assert.deepEqual([...db.store],before);
 });
+
+
+test("same-app location and working-team are saved, read back and audited without finance",async()=>{
+ const {db,api,req,zero}=setup();
+ const t1=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const t2=(await api.manage(req("p",{action:"addTeam",name:"2班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"テスト担当",teamId:t1}))).staffId;
+ const date="2026-10-31",path="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const financialBefore=clone(db.store.get("records/old"));
+ const productBefore=clone(db.store.get("products/money"));
+ const first=await api.submit(req("p",{date,staffId:staff,
+  workTeamId:t2,workLocation:"広島市 検証現場",
+  counts:{...zero(),NURO:2},expectedVersion:0}));
+ assert.equal(first.saved,true);
+ const read=await api.view(req("p",{date}));
+ const entry=read.records.find(x=>x.staffId===staff);
+ assert.equal(entry.version,1);
+ assert.equal(entry.teamIdSnapshot,t2);
+ assert.equal(entry.workLocation,"広島市 検証現場");
+ assert.equal(entry.counts.NURO,2);
+ assert.equal(entry.totalCount,2);
+ assert.equal(db.store.get(path).workLocation,"広島市 検証現場");
+ await api.submit(req("p",{date,staffId:staff,
+  counts:{...zero(),NURO:3},expectedVersion:1}));
+ const latest=(await api.view(req("p",{date})).records.find(x=>x.staffId===staff);
+ assert.equal(latest.workLocation,"広島市 検証現場",
+  "standalone partner save must not silently remove same-app location");
+ assert.equal(latest.teamIdSnapshot,t2,"corrections cannot reassign original team");
+ assert.equal(latest.version,2);
+ const saved=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:2,
+  workTeamId:t1,counts:{...zero(),NURO:5}})),{code:"failed-precondition"});
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:2,
+  workLocation:"単価15000円",counts:{...zero(),NURO:5}})),{code:"invalid-argument"});
+ assert.deepEqual([...db.store],saved);
+ assert.equal([...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/")).length,2);
+ assert.deepEqual(db.store.get("records/old"),financialBefore);
+ assert.deepEqual(db.store.get("products/money"),productBefore);
+});
