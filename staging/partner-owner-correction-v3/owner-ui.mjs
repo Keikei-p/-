@@ -10,7 +10,7 @@ export const COUNT_KEYS=Object.freeze([
 export const SB_PARTS=Object.freeze(["SB光","SB AIR","旧未分類"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
-const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const VALID_COUNT=/^(?:0|[1-9][0-9]{0,3})$/;
 const object=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const sum=x=>Object.values(x).reduce((n,y)=>n+y,0);
@@ -41,7 +41,7 @@ export function correctionPayload({
    COUNT_KEYS.slice().sort().join("|"))
   throw Error("INVALID_CORRECTION_SCOPE");
  const reason=typeof correctionReason==="string"?correctionReason.trim():"";
- if(reason.length<6||reason.length>120||/[\r\n]/.test(reason)||MONEY.test(reason))
+ if(reason.length<6||reason.length>120||/[\r\n]/.test(reason)||MONEY.test(reason.normalize("NFKC")))
   throw Error("INVALID_CORRECTION_REASON");
  const counts=Object.fromEntries(COUNT_KEYS.map(k=>[k,verifiedCount(draftCounts[k])]));
  const sbBreakdown=normalizedSplit(counts["SB光・AIR"],draftSb);
@@ -78,15 +78,15 @@ export function verifyCorrectionReadback(saved,requested,lookup){
 
 export function mountOwnerCorrection({
  root,companies,api,dateGetter,confirmChange,onVerifiedSave=()=>{},
- preferredCompanyId="",dom=document
+ preferredCompanyId="",canCorrect=()=>true,dom=document
 }){
  if(!root||!dom||!Array.isArray(companies)||!api||
   typeof api.list!=="function"||typeof api.correct!=="function"||
   typeof dateGetter!=="function"||typeof confirmChange!=="function"||
-  typeof onVerifiedSave!=="function")
+  typeof onVerifiedSave!=="function"||typeof canCorrect!=="function")
   throw Error("MISSING_OWNER_UI_DEPENDENCY");
  const allowed=companies.filter(x=>x.active===true&&ID.test(x.partnerCompanyId||"")&&
-  typeof x.name==="string"&&!MONEY.test(x.name));
+  typeof x.name==="string"&&!MONEY.test(x.name.normalize("NFKC")));
  const el=(tag,cls,text)=>{
   const node=dom.createElement(tag);
   if(cls)node.className=cls;
@@ -152,10 +152,12 @@ export function mountOwnerCorrection({
  const setStatus=t=>{if(!destroyed)status.textContent=t};
  const lock=value=>{
   busy=value;companySelect.disabled=value;loadButton.disabled=value;
-  staffSelect.disabled=value;saveButton.disabled=value;
-  reason.disabled=value;
+  staffSelect.disabled=value;saveButton.disabled=value||canCorrect()!==true;
+  saveButton.textContent=canCorrect()===true?"変更内容を確認して保存":"件数訂正は停止中";
+  reason.disabled=value||canCorrect()!==true;
   for(const button of companyButtons.values())button.disabled=value;
-  for(const input of [...Object.values(gridInputs),...Object.values(sbInputs)])input.disabled=value;
+  for(const input of [...Object.values(gridInputs),...Object.values(sbInputs)])
+   input.disabled=value||canCorrect()!==true;
  };
  function redraw(){
   selected=current?.entries.find(x=>x.staffId===staffSelect.value)||null;
@@ -165,7 +167,9 @@ export function mountOwnerCorrection({
   const split=normalizedSplit(selected.counts["SB光・AIR"],selected.sbBreakdown);
   for(const key of SB_PARTS)sbInputs[key].value=String(split[key]);
   reason.value="";
-  setStatus(selected.staffName+"｜第"+selected.version+"版。保存すると履歴に訂正が追加されます。");
+  setStatus(selected.staffName+"｜第"+selected.version+"版。"+
+   (canCorrect()===true?"保存すると履歴に訂正が追加されます。":
+    "件数確認のみ利用できます。訂正機能は停止中です。"));
  }
  async function load(){
   if(busy||destroyed)return;
@@ -203,6 +207,9 @@ export function mountOwnerCorrection({
  }
  async function save(){
   if(busy||destroyed||!selected||!current)return;
+  if(canCorrect()!==true){
+   setStatus("件数確認のみ利用できます。訂正機能は停止中です。");return;
+  }
   const id=companySelect.value,day=dateGetter();
   if(id!==current.partnerCompanyId||day!==current.date){
    setStatus("会社または日付が変わりました。最新件数を再取得してください。");return;
