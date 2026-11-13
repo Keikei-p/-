@@ -80,7 +80,14 @@ function shape(value){
    if(!Number.isSafeInteger(value.summary[k])||value.summary[k]<0)halt();
   }
   if(value.summary.own+value.summary.partner!==value.summary.total)halt();
-  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount"]);
+  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount","reportStatus"]);
+  for(const company of value.companyBreakdown){
+   if(!Number.isSafeInteger(company.count)||company.count<0||
+      !["未報告","確定0件","報告済"].includes(company.reportStatus)||
+      (company.reportStatus==="未報告"&&company.count!==0)||
+      (company.reportStatus==="確定0件"&&company.count!==0)||
+      (company.reportStatus==="報告済"&&company.count===0))halt();
+  }
   if(!Array.isArray(value.teamBreakdown)||value.teamBreakdown.length>5000)halt();
   for(const team of value.teamBreakdown){
    const fields=["id","companyId","companyName","name","count"];
@@ -268,12 +275,15 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
   // duplicate the same results and made partners look excluded. Never infer
   // ranks from local own.people/own.products: use the server's joint order.
   const rankings=data.role==="hub_owner"?[
-   ["会社ランキング",competitionFromBreakdown(data.companyBreakdown,x=>({
-    name:x.name,count:x.count
-   })),"company"],
-   ["班ランキング",competitionFromBreakdown(data.teamBreakdown,x=>({
-    name:x.name,company:x.companyName,count:x.count
-   })),"team"],
+   ["会社ランキング",competitionFromBreakdown(
+    data.companyBreakdown.filter(x=>x.reportStatus!=="未報告"),x=>({
+     name:x.name,count:x.count
+    })),"company"],
+   ["班ランキング",competitionFromBreakdown(
+    data.teamBreakdown.filter(x=>x.detail?.reportStatus!=="未報告"&&
+     (x.detail!==undefined||x.count>0)),x=>({
+     name:x.name,company:x.companyName,count:x.count
+    })),"team"],
    ["個人ランキング",data.memberRanking.filter(p=>p.rank!==null),"person"],
    ["商材ランキング",data.productRanking,"product"]
   ]:[
