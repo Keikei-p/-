@@ -1586,14 +1586,15 @@ test("Owner correction updates exact approved joint rankings in both apps from s
  assert.equal(saved.records[0].counts.NURO,5);
  assert.equal(saved.records[0].version,2);
  const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
+ const publicCatalog=db.store.get("companies/hub/rankingCountPublicCatalog/shared");
  visibility.partnerOverrides.partner=[];
- visibility.version++;
+ visibility.version++;publicCatalog.version++;
  const off=await api.view(req("p",{date,sharedCountRankings:true}));
  assert.equal(off.companies.length,0);
  assert.equal(off.products.length,0);
  assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,5,
   "disabling public ranking can never delete audited Owner correction");
- visibility.partnerOverrides.partner=["nuro"];visibility.version++;
+ visibility.partnerOverrides.partner=["nuro"];visibility.version++;publicCatalog.version++;
  const reenabled=await api.view(req("p",{date,sharedCountRankings:true}));
  assert.equal(reenabled.totalCount,5);
  assert.equal(reenabled.people[0].totalCount,5);
