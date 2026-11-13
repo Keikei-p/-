@@ -23,8 +23,8 @@ const make=(role="hub_owner")=>({
   ],
   productRanking:[{id:"nuro",rank:1,name:"NURO光",count:8}],
   companyBreakdown:[
-   {id:"hub",name:"自社",kind:"自社",count:3,unidentifiedCount:0},
-   {id:"partner",name:"協力店",kind:"協力店",count:5,unidentifiedCount:0}],
+   {id:"hub",name:"自社",kind:"自社",count:3,unidentifiedCount:0,reportStatus:"報告済"},
+   {id:"partner",name:"協力店",kind:"協力店",count:5,unidentifiedCount:0,reportStatus:"報告済"}],
   teamBreakdown:[
    {id:"hub:team",companyId:"hub",companyName:"自社",name:"営業班",count:3},
    {id:"partner:team",companyId:"partner",companyName:"協力店",name:"営業班",count:5}]
