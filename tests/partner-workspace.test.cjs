@@ -1406,3 +1406,131 @@ test("same-app location and working-team are saved, read back and audited withou
  assert.deepEqual(db.store.get("records/old"),financialBefore);
  assert.deepEqual(db.store.get("products/money"),productBefore);
 });
+
+
+test("Owner correction read/write are independently OFF until signed deployment",async()=>{
+ const d={date:"2026-10-31",partnerCompanyId:"partner"};
+ for(const args of [[],[false,false,false,true]]){
+  const {api,req}=setup(...args);
+  await assert.rejects(api.listHubPartnerCounts(req("h",d)),{code:"unavailable"});
+  await assert.rejects(api.correctHubPartnerCounts(req("h",d)),{code:"unavailable"});
+ }
+ const {api,req}=setup(false,false,true,false);
+ const listed=await api.listHubPartnerCounts(req("h",d));
+ assert.equal(listed.scope,"existing-partner-counts-only");
+ assert.deepEqual(listed.entries,[]);
+ await assert.rejects(api.correctHubPartnerCounts(req("h",d)),{code:"unavailable"});
+});
+test("Hub Owner v3 corrects only existing partner staff, the SAME summary and append-only ledger",async()=>{
+ const {db,api,req,zero}=setup(false,false,true,true);
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),NURO:2,"SB光・AIR":3},
+  workLocation:"広島の営業現場"}));
+ const finance=clone(db.store.get("records/old"));
+ const products=clone(db.store.get("products/money"));
+ const target="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const summary="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const beforeOwnerList=clone([...db.store]);
+ const list=await api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(list.role,"hub");
+ assert.equal(list.scope,"existing-partner-counts-only");
+ assert.equal(list.containsFinance,false);
+ assert.equal(list.entries.length,1);
+ assert.deepEqual(list.entries[0].counts,{...zero(),NURO:2,"SB光・AIR":3});
+ assert.deepEqual(list.entries[0].sbBreakdown,
+  {"SB光":0,"SB AIR":0,"旧未分類":3},"never silently split legacy SB光/AIR");
+ assert.deepEqual([...db.store],beforeOwnerList,"listing cannot change production documents");
+ assert.doesNotMatch(JSON.stringify(list),/unitPrice|totalRevenue|revenuePerUnit|cashback|¥|￥/);
+ const request={date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...zero(),NURO:4,"SB光・AIR":3},
+  sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":3},
+  correctionReason:"登録済み件数の確認訂正"};
+ const receipt=await api.correctHubPartnerCounts(req("h",request));
+ assert.deepEqual(receipt,{saved:true,scope:"hub-owner-existing-only",
+  partnerCompanyId:"partner",staffId:staff,date,version:2,
+  totalCount:7,containsFinance:false});
+ const saved=db.store.get(target),day=db.store.get(summary);
+ assert.deepEqual(saved.counts,request.counts);
+ assert.equal(saved.totalCount,7);
+ assert.equal(saved.version,2);
+ assert.equal(saved.teamIdSnapshot,team);
+ assert.equal(saved.workLocation,"広島の営業現場");
+ assert.deepEqual(day.counts,request.counts);
+ assert.equal(day.totalCount,7);
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
+ assert.equal(audit.correctionKind,"hub_owner_existing_count_v3");
+ assert.equal(audit.correctedByOwnerUid,"h");
+ assert.equal(audit.correctionReason,request.correctionReason);
+ assert.equal(audit.previousCounts.NURO,2);
+ assert.equal(audit.counts.NURO,4);
+ assert.equal(db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v1").counts.NURO,2);
+ const verified=await api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(verified.entries[0].version,2);
+ assert.equal(verified.entries[0].counts.NURO,4);
+ const partner=await api.view(req("p",{date}));
+ assert.equal(partner.records[0].version,2);
+ assert.equal(partner.records[0].counts.NURO,4);
+ assert.equal(partner.records[0].counts["SB光・AIR"],3);
+ assert.deepEqual(db.store.get("records/old"),finance);
+ assert.deepEqual(db.store.get("products/money"),products);
+ const after=clone([...db.store]);
+ await assert.rejects(api.correctHubPartnerCounts(req("h",request)),{code:"aborted"});
+ assert.deepEqual([...db.store],after,"stale Owner corrections must not change any ledger");
+});
+test("Owner correction rejects partner logins, foreign scopes, fake money, and guessed SB split",async()=>{
+ const {db,api,req,zero}=setup(false,false,true,true);
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),"SB光・AIR":3}}));
+ const payload={date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...zero(),"SB光・AIR":3,NURO:2},
+  sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":3},
+  correctionReason:"入力済み数値を訂正"};
+ const before=clone([...db.store]);
+ await assert.rejects(api.listHubPartnerCounts(req("p",{date,partnerCompanyId:"partner"})),
+  {code:"permission-denied"});
+ await assert.rejects(api.correctHubPartnerCounts(req("p",payload)),
+  {code:"permission-denied"});
+ for(const changed of [
+  {...payload,partnerCompanyId:"foreign"},
+  {...payload,staffId:"missing"},
+  {...payload,workspaceCompanyId:"partner"},
+  {...payload,privateCounts:{NURO:200}},
+  {...payload,reason:"売上確認"},
+  {...payload,correctionReason:"売上100万円で訂正しました"},
+  {...payload,sbBreakdown:{"SB光":1,"SB AIR":0,"旧未分類":2}},
+  {...payload,sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":2}},
+  {...payload,expectedVersion:0}
+ ]){
+  await assert.rejects(api.correctHubPartnerCounts(req("h",changed)));
+ }
+ await assert.rejects(api.listHubPartnerCounts(req("h",{
+  date,partnerCompanyId:"partner",asOwner:true})),{code:"invalid-argument"});
+ assert.deepEqual([...db.store],before,"forged correction must have no side effects");
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const revoked=clone([...db.store]);
+ await assert.rejects(api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"})));
+ await assert.rejects(api.correctHubPartnerCounts(req("h",payload)));
+ assert.deepEqual([...db.store],revoked,"revocation must block all owner correction paths");
+});
+test("Owner correction denies quick-only/unknown company summary instead of overwriting it",async()=>{
+ const {db,api,req,zero}=setup(false,false,true,true);
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,counts:{...zero(),NURO:1}}));
+ const summary=db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner");
+ summary.source="quick-legacy-v1";
+ const before=clone([...db.store]);
+ await assert.rejects(api.correctHubPartnerCounts(req("h",{
+  date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...zero(),NURO:2},
+  sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":0},
+  correctionReason:"登録件数を確認訂正"})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],before);
+});
