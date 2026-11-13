@@ -102,9 +102,8 @@ test("same-app save verifies by GET once and never retries or reports unverified
   const date="2026-11-13",calls=[],controls={
    pInlineSave:{},pInlineStaff:{value:"worker"},pInlineDate:{value:date},
    pInlineRecordDate:{value:date},pInlineWorkLocation:{value:"現場"},
-   pInlineWorkingTeam:{value:"team"},pInlineCountFields:{querySelectorAll:()=>[
-    {dataset:{countKey:"NURO"},value:"2"}
-   ]}
+   pInlineWorkingTeam:{value:"team"},pInlineCountFields:{querySelectorAll:selector=>
+    selector==="input[data-count-key]"?[{dataset:{countKey:"NURO"},value:"2"}]:[]}
   };
   const denial=Object.assign(Error("denied"),{code:"functions/permission-denied"});
   const context=vm.createContext({
