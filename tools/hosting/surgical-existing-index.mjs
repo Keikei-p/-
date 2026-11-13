@@ -45,7 +45,7 @@ export function validateManifest(oldFiles, additions, expectedCount) {
  return {original,next};
 }
 
-export async function uploadSingleExistingIndex({assetBytes,request,release=false,log=console.log}){
+export async function uploadSingleExistingIndex({assetBytes,request,release=false,expectedSourceName=null,log=console.log}){
  if(!Buffer.isBuffer(assetBytes)||assetBytes.length<500||
    !assetBytes.toString("utf8").includes("mergedPartnerRankingDay")||
    !assetBytes.toString("utf8").includes("partnerInviteInline")||
@@ -63,6 +63,9 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
   return releases[0].version.name;
  };
  const sourceName=await latest();
+ if(expectedSourceName!==null&&
+    (!allowedVersion.test(expectedSourceName)||sourceName!==expectedSourceName))
+   throw Error("REVIEWED_LIVE_SOURCE_CHANGED");
  const source=await request("GET",url("/"+sourceName));
  if(source.status!=="FINALIZED"||source.name!==sourceName||
     !source.config||typeof source.config!=="object")
@@ -93,7 +96,10 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    "sites/nico-factory/versions/8ae15e2d9d6d6051",
    // 2026-10-31 workspace-only audited release #41171058175 verified all 11
    // original Hosting assets and preserved the main sales index unchanged.
-   "sites/nico-factory/versions/5b2ce8a92a380386"
+   "sites/nico-factory/versions/5b2ce8a92a380386",
+   // #43246563443 released exact static Owner ON/OFF assets; all 33 paths
+   // and hashes verified. Firebase REST may omit its output-only fileCount.
+   "sites/nico-factory/versions/6cd0ef86037773c1"
  ]);
  const files=[];let pageToken="";
  do{
@@ -117,6 +123,11 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    " actual assets from the audited workspace release");
  }else if(files.length!==reportedCount)
   throw Error("SOURCE_FILE_COUNT_MISMATCH");
+ // This exact reviewed source has 33 assets. Even when the API omits its
+ // output-only fileCount, a partial or unexpected manifest is not reviewable.
+ // Historical audited sources retain their existing fallback behavior.
+ if(sourceName==="sites/nico-factory/versions/6cd0ef86037773c1"&&files.length!==33)
+  throw Error("REVIEWED_LIVE_ASSET_COUNT_MISMATCH");
  const {next,original}=validateManifest(files,new Map([[ASSET,hash]]),files.length);
  log("Verified live version and original files: "+sourceName+" / "+original.size);
  log("Replacing ONLY existing /index.html; unchanged other assets: "+(original.size-1));
@@ -232,7 +243,8 @@ async function run(){
   return txt?JSON.parse(txt):{};
  };
  const asset=readFileSync(new URL("../../index.html",import.meta.url));
- const output=await uploadSingleExistingIndex({assetBytes:asset,request,release});
+ const output=await uploadSingleExistingIndex({assetBytes:asset,request,release,
+   expectedSourceName:process.env.NICO_INDEX_ONLY_EXPECTED_SOURCE_VERSION||null});
  console.log(JSON.stringify({outcome:output.released?"RELEASED":"DRY_RUN_OK",oldVersion:output.sourceName,keptOriginalFiles:output.originalCount}));
  if(output.released){
   const page=await fetch("https://"+SITE+".web.app"+ASSET,{redirect:"manual",cache:"no-store"});
