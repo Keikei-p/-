@@ -112,7 +112,17 @@ export function verifiedJointCountView(response,{month,role}={}){
      !number(response.summary.own)||
      !number(response.summary.partner)||
      response.summary.own+response.summary.partner!==response.summary.total)BLOCK();
-  people=rankRows(response.memberRanking,["name","count","rank"],"companyName");
+  // The verified source retains unreported roster entries with rank:null
+  // for Owner's missing-report workflow. They MUST NOT appear in standings.
+  const eligible=response.memberRanking.filter(p=>{
+   if(p?.rank===null){
+    if(p.reportStatus!=="未報告"||p.count!==0)BLOCK();
+    return false;
+   }
+   if(p?.reportStatus==="未報告")BLOCK();
+   return true;
+  });
+  people=rankRows(eligible,["name","count","rank"],"companyName");
   products=rankRows(response.productRanking,["name","count","rank"]);
   companies=rankBreakdown(response.companyBreakdown);
   teams=rankBreakdown(response.teamBreakdown,"companyName");
