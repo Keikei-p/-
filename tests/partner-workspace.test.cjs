@@ -1340,7 +1340,8 @@ test("approved weekly ranking crosses Sep/Oct without leaking or attributing com
    date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"month"
   }));
   assert.equal(day.totalCount,2);
-  assert.equal(month.totalCount,2);
+  assert.equal(month.totalCount,101,
+   "October includes the separately reported Oct 5 legacy day; the week must not");
  }
  assert.deepEqual([...db.store],before,"week aggregation must remain read-only");
  for(const period of ["quarter",null,"all"]){
