@@ -724,6 +724,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        collection(hubId,"partnerQuickCountDays").doc(day)
         .collection("reports").doc(row.cid).get()
       ]);
+      // Two independently saved sources on the same date have no verified
+      // contract identity. Never silently discard the legacy count or add
+      // it twice. An Owner must reconcile the originals before publishing.
+      if(staff.exists&&legacy.exists)fail("failed-precondition");
       if(staff.exists)return {date:day,data:staff.data()};
       if(!legacy.exists)return {date:day,data:null};
       const raw=legacy.data()||{};

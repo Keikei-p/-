@@ -1245,6 +1245,24 @@ test("new approved day week month ranking API excludes finance and OFF counts, w
   partnerCompanyName:"協力店",version:1,
   counts:{...zero(),NURO:999},totalCount:999
  });
+ const overlappingPath="companies/hub/partnerQuickCountDays/2026-10-31/reports/partner";
+ const overlapBefore=clone([...db.store]);
+ for(const role of ["h","p"]){
+  await assert.rejects(api.view(req(role,{
+   date,sharedCountRankings:true,rankingPeriod:"month"
+  })),{code:"failed-precondition"},
+  "the same day cannot silently prefer staff over a conflicting legacy Quick report");
+ }
+ assert.deepEqual([...db.store],overlapBefore,"rejected overlapping sources never modify originals");
+ // Matching numbers still cannot establish that two sources represent the
+ // same underlying contracts. Reject until their identity is adjudicated.
+ const overlapping=db.store.get(overlappingPath);
+ overlapping.counts={...zero(),NURO:3,"YM純新規":7};
+ overlapping.totalCount=10;
+ await assert.rejects(api.view(req("h",{
+  date,sharedCountRankings:true,rankingPeriod:"day"
+ })),{code:"failed-precondition"});
+ db.store.delete(overlappingPath); // synthetic fixture only, no production data mutation
  const mixed=await api.view(req("h",{
   date,sharedCountRankings:true,rankingPeriod:"month"
  }));
