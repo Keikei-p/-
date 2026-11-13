@@ -149,6 +149,14 @@ test("trusted transaction reader denies missing map without inventing SKU mappin
  }));
  assert(f.seen.includes("companies/hub/rankingSkuMappings/shared"));
 });
+test("cross-month reader rejects nonadjacent or forged month BEFORE any Firestore read",async()=>{
+ const f=fakeReader(),read=createCanonicalCountTransactionReader({db:f.db});
+ for(const secondMonth of ["2026-11","2026-09","2026-13","2026-11-01","2027-01",null]){
+  await assert.rejects(read({tx:f.tx,month:"2026-11",secondMonth,context}),
+   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+  assert.deepEqual(f.seen,[],"no storage request may precede month validation");
+ }
+});
 test("trusted Tokyo day prevents future month publication",()=>{
  assert.throws(()=>compose({serverAsOf:"2026-11-32"}),
   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
