@@ -99,6 +99,14 @@ test("unreported staff and explicit zero results are never conflated",()=>{
  assert.equal(missing.reportStatus,"未報告");
  assert.equal(zero.count,0);
  assert.equal(missing.count,0);
+ assert(Number.isSafeInteger(zero.rank),"submitted zero stays ranked");
+ assert.equal(missing.rank,null,"unreported staff never get a numerical rank");
+ const partner=build({...fixture(2),context:auth("partner_owner")});
+ assert.equal(partner.own.people.find(p=>p.id==="partner:p3").rank,null);
+ assert(!partner.publicRanking.members.some(p=>p.name==="協力店未報告"),
+  "unreported person is not disclosed as a ranked participant");
+ assert(partner.publicRanking.members.some(p=>p.name==="協力店0件"),
+  "submitted 0 has ranking eligibility");
 });
 test("period selections use actual day/week/month boundaries, month-to-date prev month same elapsed days",()=>{
  const x=fixture(3);
