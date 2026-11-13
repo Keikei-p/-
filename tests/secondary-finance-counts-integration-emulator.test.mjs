@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
+import {createHash} from "node:crypto";
 import {proposeSecondaryFinanceFence,COLLECTIONS} from
  "../security/secondary-finance-read-fence.mjs";
 
@@ -36,6 +37,8 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  const hub="hubCount",partner="partnerCount",worker="dualCount",
   owner="ownerCount",team="teamCount",date="2026-11-07";
  const now=Date.parse("2026-11-08T12:00:00+09:00");
+ const inviteToken="A".repeat(43);
+ const inviteHash=createHash("sha256").update(inviteToken).digest("hex");
  const write=(path,row)=>db.doc(path).set(row);
  const docs=Object.fromEntries(COLLECTIONS.map((name,i)=>[name,{
   companyId:hub,teamId:team,unitPrice:15000+i,
@@ -87,11 +90,11 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    write("users/"+worker,internalProfile),
    write("companies/"+hub+"/members/"+owner,ownerProfile),
    write("companies/"+hub+"/members/"+worker,internalProfile),
-   write("companies/"+partner+"/members/"+worker,partnerMember),
-   write("partnerWorkspaceContexts/"+worker,{
-    uid:worker,kind:"partner_secondary",active:true,primaryCompanyId:hub,
-    partnerCompanyId:partner,hubCompanyId:hub,
-    role:"member",teamId:team,emailLower:(worker+"@example.test").toLowerCase()
+   write("partnerWorkInvites/"+inviteHash,{
+    companyId:partner,hubCompanyId:hub,teamId:team,role:"member",
+    emailLower:(worker+"@example.test").toLowerCase(),
+    invitedByUid:owner,status:"pending",
+    expiresAt:Timestamp.fromMillis(now+30*60*1000)
    }),
    write("partnerRelations/"+partner,{
     active:true,countSharingApproved:true,hubCompanyId:hub,
@@ -100,10 +103,6 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    write("companies/"+partner+"/partnerWorkTeams/"+team,{
     companyId:partner,name:"件数検証班",active:true
    }),
-   write("companies/"+partner+"/partnerWorkStaff/"+worker,{
-    uid:worker,companyId:partner,name:"検証担当",kind:"account",
-    role:"member",teamId:team,active:true
-   }),
    ...COLLECTIONS.map(name=>write(name+"/counts-integration-original",docs[name]))
   ]);
   const before={};
@@ -111,6 +110,39 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    before[name]=(await db.doc(name+"/counts-integration-original").get()).data();
 
   const partnerBrowser=browser(worker),ownerBrowser=browser(owner);
+  // This user originally has valid internal membership and money access.
+  // Test the REAL authenticated invitation to secondary-partner transition:
+  // context creation must be atomic and the old finance paths must close.
+  const beforeContext=await db.doc("partnerWorkspaceContexts/"+worker).get();
+  assert.equal(beforeContext.exists,false);
+  const financeBeforeJoin=await assertSucceeds(getDoc(doc(
+   partnerBrowser,"records","counts-integration-original"
+  )));
+  assert.equal(financeBeforeJoin.data().totalRevenue,before.records.totalRevenue);
+  const beforePrimaryUser=(await db.doc("users/"+worker).get()).data();
+  const beforePrimaryMember=(await db.doc("companies/"+hub+"/members/"+worker).get()).data();
+  const joined=await service.accept(request(worker,{
+   token:inviteToken,name:"検証担当"
+  }));
+  assert.equal(joined.joined,true);
+  assert.equal(joined.secondaryMembership,true);
+  assert.equal(joined.transferredFromInternal,false);
+  assert.equal(joined.partnerCompanyId,partner);
+  const context=(await db.doc("partnerWorkspaceContexts/"+worker).get()).data();
+  assert.equal(context.kind,"partner_secondary");
+  assert.equal(context.active,true);
+  assert.equal(context.primaryCompanyId,hub);
+  assert.equal(context.partnerCompanyId,partner);
+  assert.equal(context.hubCompanyId,hub);
+  assert.equal(context.uid,worker);
+  assert.deepEqual((await db.doc("users/"+worker).get()).data(),beforePrimaryUser,
+   "secondary participation cannot erase the existing source user");
+  assert.deepEqual((await db.doc("companies/"+hub+"/members/"+worker).get()).data(),beforePrimaryMember,
+   "secondary participation cannot rewrite old internal membership");
+  assert.deepEqual((await db.doc("companies/"+partner+"/members/"+worker).get()).data().canViewRevenue,false);
+  await assert.rejects(service.accept(request(worker,{
+   token:inviteToken,name:"二重招待の不正受諾"
+  })),err=>err.code==="failed-precondition");
   for(const name of COLLECTIONS){
    const path=name+"/counts-integration-original";
    await assertFails(getDoc(doc(partnerBrowser,path)));
