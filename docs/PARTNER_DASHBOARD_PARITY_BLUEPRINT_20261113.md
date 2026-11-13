@@ -252,3 +252,16 @@
 #690の差分レビューで確認したtuple識別を、今回の班内訳拡張にも反映した。内部の班メタデータ・集計・内訳・ブラウザカードキーは会社IDと班IDのJSON tupleで分離する。従来の表示用ID `a:b:team` が「会社a / 班b:team」と「会社a:b / 班team」で一致しても、1件と3件を混合しない。公開名・売上・保存済みID・履歴は書き換えない。表示用IDは互換性のため維持し、Owner検証ビューの重複判定も会社を含むidentityで行う。
 
 新規衝突テストを含む関連回帰267件 PASS。本番DOM＋実bridgeのChromium確認も再実行。直前統合コミット `73909b91` のGitHub班カード専用・Sales App Validation・検証済み件数Emulator E2Eは成功、正式承認の保護ゲートはFAILを維持した。本番公開は引き続き未実施。
+
+
+## 2026-11-13 続き：商材OFFの過去参加漏れと月跨ぎ集計の統合（未公開）
+
+- 元の確定仕様を維持したまま、PR #701に #690 の必要箇所だけを最小差分で追加。過去履歴や公開中の画面は変更しない。
+- `ranking/verified-two-month-count-input.mjs` と Functions同梱版を追加。月境界をまたぐ週の元明細に加えて、班/担当者未特定の**会社コード旧件数**も各月から重複なく照合。前月分の `unassigned` を消す／翌月の同じ旧件数を二重加算する不具合を回避。変更された旧件数をFireStoreに再保存しない。
+- `canonical-joint-count-sku-reader.mjs` と Functions同梱版で、同じ読み取りトランザクションから連続する2か月の原票を取得。無関係な月や署名外の月は**読み取り開始前**に拒否。
+- `owner-visible-count-atomic-loader.mjs` と `owner-visible-count-server-handler.mjs` の双方のFunctions同梱版を整合し、月別・日別・週別を処理。跨月の週は同一transactionの2か月完全性証明が必要。証明できなければ503で停止。リクエストから会社ID・自社Owner・認証を信用せず、既存のサーバーAuth/承認から取得する。
+- `owner-product-visibility-rankings.mjs` とFunctions同梱版で、OFF商材しか報告していないスタッフを**公開済み0件としてランク付けしない**処理を追加。既存OFF件数・履歴は保持。OwnerがONに戻すと正本から再計算できる。**本物の報告済み0件**と**未報告**を区別し続ける。
+- 上記5対のJavaScriptモジュールについて、通常版とFunctions同梱版がGitHub blob SHA完全一致であることを確認。
+- 追加の回帰テスト：2か月分の未割当旧件数、重複/混入/別会社、真正0報告、OFFの履歴漏れ防止、1件の実績不整合があるとき全公開拒否、日週月集計、同一読取トランザクション。**専用NO DEPLOY CI 131件 PASS / 0 FAIL**、4合同順位テスト成功、検証済み件数E2E成功。
+- **未完了**：本番認証UIDによる商材設定・過去月原票の完全読取、Serverの公開Functions接続・Functionsパッケージ本番切替、実データ件数一致、本人入力→Owner訂正→同一ランキング反映、実アカウント財務原票GET/LIST遮断、バックアップ全件復元、正式承認。既存の本番金融保護ゲートは意図したFAILを保持し、規則/ハッシュ/承認ラベルを偽装しない。
+- **配備状態：Draft/NO DEPLOY**。今回もFirestore/Hosting/Rules/Functions/本番ユーザー/既存の金額や件数への書込なし。
