@@ -14,6 +14,8 @@ import {createInternalMonthTransactionReader}
  from "./internal-month-count-tx-reader.mjs";
 import {createPartnerMonthTransactionReader}
  from "./partner-month-readonly-loader.mjs";
+import {createPartnerLegacyQuickMonthReader}
+ from "./partner-legacy-quick-count-reader.mjs";
 import {auditNoFinancialKeys}
  from "../security/public-projection.mjs";
 import {mergeVerifiedTwoMonthInputs}
@@ -172,6 +174,7 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
  const loadPartner=createPartnerMonthTransactionReader({db});
+ const loadLegacyQuick=createPartnerLegacyQuickMonthReader({db});
  return async function readCounts({tx,month,context,secondMonth}={}){
   if(!tx||typeof tx.get!=="function"||!context||
      !valid(context.hubCompanyId)||!MONTH.test(month||"")||
@@ -204,11 +207,22 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
      !mappingSnap.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
   sameTime(mappingSnap,hubSource.readTime);
-  const primary=composeCanonicalMonthlyRankingInput({
+  // Recover legacy company-only daily reports from the SAME verified
+  // transaction, without assigning their counts to a guessed staff/team.
+  // The legacy reader rejects overlap with staff-summary or staff entries.
+  const legacyByCompany=await Promise.all(partners.map((partnerCompanyId,i)=>
+   loadLegacyQuick({
+    tx,context,hubCompanyId:hubId,partnerCompanyId,month,
+    source:partnerSources[i]
+   })
+  ));
+  const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:doc(mappingSnap),hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
+  const primary={...original,unassigned:legacyByCompany.flat()};
+  auditNoFinancialKeys(primary);
   if(secondMonth===undefined)return primary;
   // Both reads are performed with the SAME transaction supplied by the
   // trusted server loader; no second transaction is created here.
