@@ -67,6 +67,7 @@ jobs:
           set -euo pipefail
           node --test \
             tests/partner-workspace.test.cjs \
+            tests/partner-off-only-zero-rank-protection.test.cjs \
             tests/partner-publication-write-ranking-consistency.test.cjs \
             tests/partner-week-boundary-contract.test.cjs \
             tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
