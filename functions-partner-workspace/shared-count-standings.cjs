@@ -179,8 +179,10 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  return {schema:"nico-approved-partner-count-rank-v1",unit:"件",
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
   start,end,companies:ranked(companies),teams:ranked(teams),people:ranked(people),
+  // No verified public submission means no zero-ranked product.
+  // Once any published report exists, a genuine reported zero stays eligible.
   // Stable product IDs must not shift when earlier categories turn OFF.
-  products:ranked(KEYS.flatMap((k,i)=>published.has(k)?
+  products:ranked(reportCount===0?[]:KEYS.flatMap((k,i)=>published.has(k)?
    [{key:"product-"+(i+1),name:k,totalCount:products[k]}]:[])),
   totalCount,reportCount,unreportedCompanies,
   partnerCountsComplete:unreportedCompanies.length===0&&historicalCompanyOnlyCount===0,
