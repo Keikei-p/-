@@ -53,7 +53,7 @@ jobs:
                { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
               # Count UI/transaction changes are pinned by the exact integrated
               # reviewer. Financial source, Rules and project config stay frozen.
-              test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+              test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2d242262b9d3e7adc9097f483334ac449c0f940b'
               node scripts/ci/review-approved-partner-count-rank.cjs
               git diff --exit-code "origin/main...HEAD" -- firestore.rules firebase.json .firebaserc functions firebase.partner-workspace.json
             elif [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; then

@@ -20,10 +20,10 @@ test("both original apps mount the exact same backend-verified count view, defau
   assert(source.includes(moduleUrl));
   assert(source.includes(backend));
   assert(source.includes("availablePeriods")===false,
-   "entry point must reuse month-only mode in canonical bridge");
+   "entry point must reuse period validation in the canonical bridge");
   assert(source.includes("onAuthStateChanged"));
  }
- assert(bridge.includes("availablePeriods:[\"day\",\"week\",\"month\"],allowFilters:false"));
+ assert.match(bridge,/availablePeriods:\["day","week","month"\],\s*allowFilters:expectedRole==="hub_owner"/);
 });
 test("partner cannot display owner rankings from company-code sessions or employee accounts",()=>{
  assert(partner.includes("activeCodeSession||data?.role!==\"owner\""));

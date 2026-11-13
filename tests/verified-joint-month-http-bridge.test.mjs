@@ -16,6 +16,27 @@ const makeResponse=(override={})=>({
   },...override
  })
 });
+
+test("public ranking scopes require exact server echo and reject unknown scopes before fetching",async()=>{
+ for(const scope of ["joint","own","partner"]){
+  const urls=[];
+  const bridge=createVerifiedJointMonthHttpBridge({featureEnabled:true,auth,
+   fetcher:async url=>{urls.push(url);return makeResponse({scope});}
+  });
+  assert.equal((await bridge.load({period,filters:{},scope})).scope,scope);
+  assert.equal(new URL(urls[0]).searchParams.get("scope"),scope);
+ }
+ for(const returned of [undefined,"joint","partner"]){
+  const bridge=createVerifiedJointMonthHttpBridge({featureEnabled:true,auth,
+   fetcher:async()=>makeResponse(returned===undefined?{}:{scope:returned})});
+  await assert.rejects(bridge.load({period,filters:{},scope:"own"}),/BRIDGE_BLOCKED/);
+ }
+ let calls=0;
+ const bridge=createVerifiedJointMonthHttpBridge({featureEnabled:true,auth,
+  fetcher:async()=>{calls++;return makeResponse();}});
+ await assert.rejects(bridge.load({period,filters:{},scope:"all_private"}),/BRIDGE_BLOCKED/);
+ assert.equal(calls,0);
+});
 test("disabled bridge refuses initialization, tokens, fetch, arbitrary redirect targets",async()=>{
  let invoked=0;
  const getter=()=>{invoked++;return token;};

@@ -17,7 +17,7 @@ const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
 // A newly introduced response field must be explicitly security-reviewed.
 // A blacklist alone cannot catch an unforeseen finance field (e.g. salary).
 const PUBLIC_FIELDS=new Set([
- "schema","role","unit","period","range","readTime","start","end",
+ "schema","role","unit","period","scope","range","readTime","start","end",
  "previousStart","previousEnd","days","summary","own","partner","total",
  "unidentified","memberRanking","productRanking","companyBreakdown",
  "teamBreakdown","filters","publicRanking","members","products","people",
@@ -81,6 +81,10 @@ const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj,key);
 const exact=(obj,keys)=>obj!==null&&typeof obj==="object"&&
  !Array.isArray(obj)&&Object.keys(obj).length===keys.length&&
  keys.every(key=>own(obj,key));
+const scopedEnvelope=(data,keys)=>data!==null&&typeof data==="object"&&
+ (own(data,"scope")?
+  ["joint","own","partner"].includes(data.scope)&&exact(data,[...keys,"scope"]):
+  exact(data,keys));
 const rankRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
  rows.every((row,i)=>exact(row,keys)&&
   Number.isSafeInteger(row.rank)&&row.rank>0&&
@@ -130,7 +134,7 @@ function validHubTeamRow(row){
   Number.isSafeInteger(row.rank)&&row.rank>0;
 }
 function hubPublicScopeSafe(data){
- if(!exact(data,HUB_ENVELOPE)||
+ if(!scopedEnvelope(data,HUB_ENVELOPE)||
     !exact(data.summary,["own","partner","total","unidentified"])||
     Object.values(data.summary).some(x=>!Number.isSafeInteger(x)||x<0)||
     !Array.isArray(data.companyBreakdown)||data.companyBreakdown.length>10000||
@@ -205,7 +209,14 @@ function partnerOwnScopeSafe(ownData){
  return true;
 }
 function partnerPublicScopeSafe(data){
- if(!exact(data,PARTNER_ENVELOPE)||!partnerOwnScopeSafe(data.own))return false;
+ if(!scopedEnvelope(data,PARTNER_ENVELOPE)||!partnerOwnScopeSafe(data.own))return false;
+ // The partner's own-company detail is independent of the selected PUBLIC
+ // scope. Prove it against its own rows, never a different firm's total.
+ if(own(data,"scope")&&(!exact(data.own,["company","count","unidentifiedCount","people","products"])||
+    sumCounts(data.own.products)!==data.own.count||
+    sumCounts(data.own.people)!==data.own.count-data.own.unidentifiedCount||
+    new Set(data.own.products.map(x=>x.id)).size!==data.own.products.length||
+    new Set(data.own.people.map(x=>x.id)).size!==data.own.people.length))return false;
  const p=data.publicRanking;
  if(!p||typeof p!=="object"||Array.isArray(p)||
     !own(p,"members")||!own(p,"products")||
@@ -226,7 +237,8 @@ function partnerPublicScopeSafe(data){
  return productTotal!==null&&companyTotal!==null&&
   memberTotal!==null&&teamTotal!==null&&
   productTotal===companyTotal&&memberTotal===teamTotal&&
-  memberTotal<=companyTotal&&data.own.count<=companyTotal;
+  memberTotal<=companyTotal&&
+  (data.scope!==undefined&&data.scope!=="joint"||data.own.count<=companyTotal);
 }
 /**
  * Calling this function never accesses live data. While the feature flag
@@ -263,6 +275,11 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
     return;
    }
    if(req.method!=="GET"){deny(res,405,origin);return;}
+   const scopeValues=path.searchParams.getAll("scope");
+   if(scopeValues.length>1||scopeValues.some(x=>!["joint","own","partner"].includes(x))){
+    deny(res,400,origin);return;
+   }
+   const requestedScope=scopeValues[0]??"joint";
    if(req.headers?.["content-length"]!==undefined&&
       (!/^(?:0+)$/.test(String(req.headers["content-length"])))){
     deny(res,400,origin);return;
@@ -293,6 +310,7 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    if(response.status===200){
     if(!data||data.schema!=="nico-verified-dual-count-v1"||
        !["hub_owner","partner_owner"].includes(data.role)||
+       (own(data,"scope")?data.scope!==requestedScope:scopeValues.length>0)||
        !moneyFree(data)||
        (data.role==="partner_owner"&&!partnerPublicScopeSafe(data))||
        (data.role==="hub_owner"&&!hubPublicScopeSafe(data)))fail();

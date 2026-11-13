@@ -224,8 +224,9 @@ function goalIndex(items,roster){
 export function buildVerifiedCountDashboard({
  context,hubCompanyId,approvedCompanyIds,sources,
  period,filters={},productGroups=[],unassigned=[],personGoals=[],
- historicalBest=[]
+ historicalBest=[],scope
 }={}){
+ if(scope!==undefined&&!["joint","own","partner"].includes(scope))stop();
  if(!id(hubCompanyId)||!Array.isArray(approvedCompanyIds))stop();
  ownerContext(context,hubCompanyId,approvedCompanyIds);
  if(!period||Object.keys(period).sort().join("|")!==
@@ -411,6 +412,7 @@ export function buildVerifiedCountDashboard({
     [...teams.values()].reduce((n,t)=>add(n,t.count),0)!==attributable)
   stop();
  const common={schema:"nico-verified-dual-count-v1",period:period.kind,
+  ...(scope===undefined?{}:{scope}),
   range,readTime:parsed.readTime,unit:"件",
   summary:{own:self,partner:total-self,total,unidentified:unknown},
   memberRanking:rankedPeople.map(({topProducts,...p})=>p),
@@ -426,10 +428,16 @@ export function buildVerifiedCountDashboard({
  const ownPeople=common.memberRanking.filter(x=>x.companyId===ownCompany);
  const ownProducts=rankedProducts.filter(x=>x.companies.some(c=>c.companyId===ownCompany))
   .map(p=>({id:p.id,name:p.name,count:p.companies.find(c=>c.companyId===ownCompany).count}));
- const publicMembers=rankedParticipants.map(x=>({
+ // Narrow ONLY the already-approved public rows. Never infer a company's
+ // class from its display name or return classification totals/private IDs.
+ const inScope=cid=>scope===undefined||scope==="joint"||
+  (scope==="own"?cid===hubCompanyId:cid!==hubCompanyId);
+ const publicMembers=ordered(rankedParticipants.filter(x=>inScope(x.companyId)),x=>x.count).map(x=>({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
- const publicProducts=rankedProducts.map(x=>({
+ const scopedProducts=rankedProducts.filter(x=>x.companies.some(c=>inScope(c.companyId)))
+  .map(x=>({...x,count:scope==="own"?x.ownCount:scope==="partner"?x.partnerCount:x.count}));
+ const publicProducts=ordered(scopedProducts,x=>x.count).map(x=>({
   rank:x.rank,name:x.name,count:x.count
  }));
  // Publish ranked, aggregate-only organization comparisons. This is the
@@ -437,15 +445,21 @@ export function buildVerifiedCountDashboard({
  // No team ID, UID, salary, unit price or source report can leave this API.
  // A company without a verified submission in this window is not a
  // submitted zero-count company. Do not award it an official public rank.
- const publicCompanies=ordered(companyRows.filter(x=>submittedCompanies.has(x.id))
+ const publicCompanies=ordered(companyRows.filter(x=>submittedCompanies.has(x.id)&&inScope(x.id))
   .map(x=>({id:x.id,name:x.name,count:x.count})),x=>x.count)
   .map(x=>({rank:x.rank,name:x.name,count:x.count}));
- const publicTeams=ordered([...teams.values()].map(x=>({
+ const publicTeams=ordered([...teams.values()].filter(x=>inScope(x.companyId)).map(x=>({
   id:x.id,name:x.name,company:x.companyName,count:x.count
  })),x=>x.count).map(x=>({
   rank:x.rank,name:x.name,company:x.company,count:x.count
  }));
+ const scopedTotal=companyRows.filter(x=>inScope(x.id)).reduce((n,x)=>add(n,x.count),0);
+ const scopedUnknown=companyRows.filter(x=>inScope(x.id)).reduce((n,x)=>add(n,x.unidentifiedCount),0);
+ if(publicProducts.reduce((n,x)=>add(n,x.count),0)!==scopedTotal||
+    publicMembers.reduce((n,x)=>add(n,x.count),0)!==scopedTotal-scopedUnknown||
+    publicTeams.reduce((n,x)=>add(n,x.count),0)!==scopedTotal-scopedUnknown)stop();
  const data={schema:common.schema,period:common.period,range,unit:"件",
+  ...(scope===undefined?{}:{scope}),
   readTime:common.readTime,role:"partner_owner",
   own:{company:parsed.names.get(ownCompany),
    count:companyRows.find(x=>x.id===ownCompany)?.count??0,

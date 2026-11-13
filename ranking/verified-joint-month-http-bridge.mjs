@@ -62,7 +62,8 @@ export function createVerifiedJointMonthHttpBridge({
  if(featureEnabled!==true||!auth||typeof fetcher!=="function"||
     !ENDPOINTS.has(endpoint))stop();
  let generation=0;
- async function load({period,filters}={}){
+ async function load({period,filters,scope}={}){
+  if(scope!==undefined&&!["joint","own","partner"].includes(scope))stop();
   if(!period||Object.keys(period).sort().join("|")!=="asOf|day|kind"||
      !filters||typeof filters!=="object"||Array.isArray(filters)||
      Object.keys(filters).some(k=>!FILTER_KEYS.includes(k)))stop();
@@ -86,7 +87,8 @@ export function createVerifiedJointMonthHttpBridge({
    const query=period.kind==="month"?"month="+month:
     period.kind+"="+period.day;
    const selected=used.map(k=>"&"+k+"="+encodeURIComponent(filters[k])).join("");
-   const url=endpoint+"?"+query+selected;
+   const selectedScope=scope===undefined?"":"&scope="+scope;
+   const url=endpoint+"?"+query+selected+selectedScope;
    response=await fetcher(url,{
     method:"GET",headers:{Authorization:"Bearer "+token,Accept:"application/json"},
     cache:"no-store",redirect:"error",credentials:"omit",referrerPolicy:"no-referrer"
@@ -105,6 +107,8 @@ export function createVerifiedJointMonthHttpBridge({
       (expectedRole!==null&&value.role!==expectedRole)||
       value.period!==period.kind||value.unit!=="件"||
       value.range?.start!==range.start||value.range.end!==range.end)stop();
+   if(scope!==undefined?value.scope!==scope:
+      value.scope!==undefined&&value.scope!=="joint")stop();
    // A successfully authenticated answer for another company's scope must
    // never be rendered as the currently selected owner's filtered ranking.
    if(used.length>0&&value.role!=="hub_owner")stop();

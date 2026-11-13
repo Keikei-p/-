@@ -263,8 +263,11 @@ test("canonical month-only controller renders month picker without unsupported d
  assert.equal(await ctrl.refresh(),true);
  const toolbar=find(root,"nico-dual-controls");
  const selects=walk(toolbar).filter(x=>x.tagName==="select");
- assert.equal(selects.length,1,"month only, no fake unsupported company/person filters");
+ assert.equal(selects.length,2,"month and public scope; no company/person filters");
  assert.deepEqual(selects[0].children.map(x=>x.value),["month"]);
+ assert.deepEqual(selects[1].children.map(x=>[x.value,x.disabled]),
+  [["joint",false],["own",true],["partner",true]],
+  "legacy unscoped responses cannot enable unsupported scopes");
  const month=walk(toolbar).find(x=>x.tagName==="input");
  assert.equal(month.type,"month");
  assert.equal(month.value,"2026-11");
@@ -384,7 +387,8 @@ test("hub Owner selector reloads only verified count GET without passing client 
  assert(words(root).includes("ランキング表示：協力店のみ"));
  assert(!words(root).includes("本社担当"));
  assert.deepEqual(calls.at(-1).filters,{});
- assert.deepEqual(Object.keys(calls.at(-1)).sort(),["filters","period"]);
+ assert.deepEqual(Object.keys(calls.at(-1)).sort(),["filters","period","scope"]);
+ assert.equal(calls.at(-1).scope,"partner");
  assert.equal(await ctrl.setAudience("own"),true);
  assert(words(root).includes("本社担当"));
  assert(!words(root).includes("協力店担当"));
@@ -402,6 +406,61 @@ test("partner audience cannot claim hub-only internal or alternate company board
   }),/件数の権限/);
   assert.equal(root.children.length,0);
  }
+});
+
+test("server-approved partner scopes reconcile all four boards for day, week and month without exposing IDs",()=>{
+ for(const kind of ["day","week","month"]){
+  const original={...input("partner_owner"),period:{kind,day:"2026-11-08",asOf:"2026-11-08"}};
+  const before=structuredClone(original);
+  for(const [scope,total] of [["joint",5],["own",2],["partner",3]]){
+   const data=buildVerifiedCountDashboard({...original,scope});
+   assert.equal(data.scope,scope);
+   assert.equal(data.own.count,3,"own-company detail is independent of the public scope");
+   for(const rows of Object.values(data.publicRanking)){
+    assert.equal(rows.reduce((n,x)=>n+x.count,0),total);
+    assert.equal(rows[0].rank,1,"each selected scope starts at rank one");
+   }
+   assert.doesNotMatch(JSON.stringify(data.publicRanking),/companyId|teamId|uid|hubNuro|partnerSku|revenue|unitPrice/);
+   const root=new Node("main");
+   renderVerifiedDualCountDashboard({document:doc,root,payload:data,audience:scope});
+   assert(words(root).includes({joint:"合同",own:"自社のみ",partner:"協力店のみ"}[scope]));
+   assert.throws(()=>renderVerifiedDualCountDashboard({document:doc,root,payload:data,
+    audience:scope==="joint"?"own":"joint"}),/件数の権限/);
+  }
+  assert.deepEqual(original,before,"scope changes never rewrite original counts");
+ }
+});
+
+test("scoped public rankings keep submitted zero and exclude unreported staff and companies",()=>{
+ const original=input("partner_owner");
+ original.sources[1]=src("partner","partnerOwner","partnerSku01",0);
+ const zero=buildVerifiedCountDashboard({...original,scope:"partner"});
+ for(const rows of Object.values(zero.publicRanking)){
+  assert.equal(rows.length,1);assert.equal(rows[0].count,0);assert.equal(rows[0].rank,1);
+ }
+ original.sources[1].records=[];original.sources[1].lines=[];
+ const missing=buildVerifiedCountDashboard({...original,scope:"partner"});
+ assert.deepEqual(missing.publicRanking,{members:[],products:[],companies:[],teams:[]});
+});
+
+test("partner scope selector fetches the requested public scope and resets on account change",async()=>{
+ const auth={currentUser:{uid:"partnerOwner",emailVerified:true,getIdToken:async()=>"stub"}},root=new Node("main"),calls=[];
+ let wrongEcho=false;
+ const ctrl=createVerifiedDualCountController({document:doc,root,auth,asOf:"2026-11-08",
+  availablePeriods:["day","week","month"],allowFilters:false,
+  load:async args=>{calls.push(args);return buildVerifiedCountDashboard({
+   ...input("partner_owner"),period:args.period,scope:wrongEcho?"joint":args.scope});}
+ });
+ assert.equal(await ctrl.refresh(),true);assert.equal(calls[0].scope,"joint");
+ const scopes=walk(find(root,"nico-dual-controls")).filter(x=>x.tagName==="select")[1];
+ assert.deepEqual(scopes.children.map(x=>[x.value,x.disabled]),
+  [["joint",false],["own",false],["partner",false]]);
+ for(const scope of ["own","partner"]){assert.equal(await ctrl.setAudience(scope),true);assert.equal(calls.at(-1).scope,scope);}
+ wrongEcho=true;assert.equal(await ctrl.setAudience("own"),false);
+ assert(!words(root).includes("会社ランキング"),"a wrong-scope response never renders");
+ ctrl.onAuthChange();wrongEcho=false;
+ assert.equal(await ctrl.refresh(),true);assert.equal(calls.at(-1).scope,"joint");
+ ctrl.destroy();
 });
 
 

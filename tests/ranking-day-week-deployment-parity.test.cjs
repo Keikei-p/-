@@ -27,7 +27,8 @@ test("day/week/month access stays identity-bound and cross-month uses one transa
  assert.match(source,/\["month","day","week"\]/);
  assert.match(source,/secondMonth:startMonth===month\?endMonth:startMonth/);
  assert.match(source,/loadAtomicVerifiedCountSnapshot\(\{month,context,secondMonth\}\)/);
- assert.match(source,/input:\{\.\.\.countInput,period,context,filters\}/);
+ assert.match(source,/input:\{\.\.\.countInput,period,context,filters,scope\}/);
+ assert.match(source,/\["joint","own","partner"\]\.includes\(scope\)/);
  assert.match(source,/context\.approvedCompanyIds\.includes\(filters\.companyId\)/);
  assert.match(source,/context\.role!=="hub_owner"/);
  assert.match(atomic,/loadCountsInTransaction\(\{tx,month,context,secondMonth\}\)/);

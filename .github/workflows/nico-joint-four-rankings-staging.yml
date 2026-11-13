@@ -55,7 +55,7 @@ jobs:
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
             # Integrated candidate only: exact count-only sources, vendor parity,
             # historical count preservation and default-OFF flags. No release.
-            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2d242262b9d3e7adc9097f483334ac449c0f940b'
             node scripts/ci/review-approved-partner-count-rank.cjs
           else
             test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'

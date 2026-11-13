@@ -20,15 +20,15 @@ for(const key of ["GOOGLE_APPLICATION_CREDENTIALS","FIREBASE_SERVICE_ACCOUNT_JSO
  assert.ok(!process.env[key],"REVIEW_CANNOT_USE_LIVE_CREDENTIALS_"+key);
 const reviewed=Object.freeze({
  "functions-partner-workspace/index.js":"aac2924f8d376743f743ae91cfa04b3f1ee30604",
- "functions-partner-workspace/service.cjs":"d5cee512085c98abe8a1e64d540639df7e85ab51",
+ "functions-partner-workspace/service.cjs":"e657a2fd79365b9bb17440df48adcc17e41d9b2c",
  "functions-partner-workspace/submission-publication-guard.cjs":"a56ae6100ce70602ed90233af038549129941cd9",
  "functions-partner-workspace/approved-published-categories.cjs":"0e020d2b38152cd3669d65bf005bc76fba2cc568",
  "ranking/partner-submission-publication-guard.mjs":"273359cd7f8a6aee40fba54a1a91a2557ef817b9",
  "tests/partner-submission-publication-guard.test.mjs":"f9c1725a60b638e88cdca42a5d178d8c56cb6a4f",
- "tests/partner-workspace.test.cjs":"f3846ed8c6a740d657ce1b2e6988dee4cafa1102",
- "tests/partner-publication-write-ranking-consistency.test.cjs":"10c879a445db04267d72e561864e0d223d72ea5c",
- "partner-workspace.html":"5eb43a49613d46506af51576f2696ce3a119bb98",
- "index.html":"856d61de0fc5ec48392a10f665ce277b03d9418e",
+ "tests/partner-workspace.test.cjs":"f3f460a3dc9b1f2c17c5595bbb4f0e1d1ec02b2e",
+ "tests/partner-publication-write-ranking-consistency.test.cjs":"ecd2fa55e176e4c3ea7395d66f06ae29e5299944",
+ "partner-workspace.html":"26af9dd9fde56cc6cfe3bd370d7f30641b03b921",
+ "index.html":"1eda9836a0ced437bdb8710104a23919418071c3",
  "firestore.rules":"d9f4df6a2ac0f8b5720534a2461ec66b94379190",
  "functions/index.js":"dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
  "firebase.partner-workspace.json":"a6ceedec5fab4e22e0a8efe19c685716a2db9750"

@@ -155,6 +155,47 @@ test("authenticated hub and partner receive consistent ON-only counts, no raw fi
  assert(f.ops.every(x=>x.kind!=="get"||
   !/\/(?:records|recordCorrections|revenueGoals)\//.test(x.path)));
 });
+
+test("authenticated public scopes use only approved ON counts and never accept forged or duplicate scopes",async()=>{
+ const f=fake(),run=handler(f),before=structuredClone(f.state);
+ for(const [scope,total] of [["joint",7],["own",2],["partner",5]]){
+  const response=await run(request("partner","month=2026-11&scope="+scope));
+  assert.equal(response.status,200);
+  const data=await response.json();assert.equal(data.scope,scope);assert.equal(data.own.count,5);
+  for(const rows of Object.values(data.publicRanking))assert.equal(rows.reduce((n,x)=>n+x.count,0),total);
+  assert.doesNotMatch(JSON.stringify(data.publicRanking),/companyId|teamId|uid|unitPrice|cashback/);
+ }
+ assert.deepEqual(f.state,before);
+ for(const suffix of ["scope=private","scope=own&scope=partner"]){
+  const untouched=fake();let reads=0;
+  const bad=handler(untouched,ctx=>{reads++;return countInput(ctx)});
+  assert.equal((await bad(request("partner","month=2026-11&"+suffix))).status,400);
+  assert.equal(reads,0);assert.equal(untouched.ops.length,0);
+ }
+});
+
+test("real HTTP boundary preserves scoped totals while independently reconciling the partner's own detail",async()=>{
+ const run=handler(fake());
+ const reply=()=>({statusCode:null,body:null,setHeader(){},
+  status(code){this.statusCode=code;return this},send(body){this.body=body;return this}});
+ const raw=scope=>({method:"GET",originalUrl:"/v1/owner-visible-counts?month=2026-11&scope="+scope,
+  headers:{origin:"https://nico-factory.web.app",authorization:"Bearer "+"partner".repeat(8)}});
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,loadHandler:()=>run});
+ for(const [scope,total] of [["joint",7],["own",2],["partner",5]]){
+  const res=reply();await adapter(raw(scope),res);assert.equal(res.statusCode,200);
+  const data=JSON.parse(res.body);assert.equal(data.scope,scope);assert.equal(data.own.count,5);
+  for(const rows of Object.values(data.publicRanking))assert.equal(rows.reduce((n,x)=>n+x.count,0),total);
+ }
+ for(const mutate of [data=>{data.scope="joint"},data=>{data.own.count++},
+  data=>{data.publicRanking.members[0].companyId="secret"}]){
+  const bad=createJointCountHttpAdapter({enabled:()=>true,loadHandler:()=>async request=>{
+   const data=await (await run(request)).json();mutate(data);
+   return new Response(JSON.stringify(data),{status:200});
+  }});
+  const res=reply();await bad(raw("own"),res);assert.equal(res.statusCode,503);
+  assert.deepEqual(JSON.parse(res.body),{error:"request_blocked"});
+ }
+});
 test("global OFF, partner-specific OFF, and re-ON preserve originals",async()=>{
  const f=fake(),run=handler(f),key="companies/hub/rankingProductVisibility/shared";
  const original=copy(f.state.get("products/nuro"));

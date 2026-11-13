@@ -141,7 +141,7 @@ jobs:
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
             test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '6204cb3603a5e2cc1ae06e6f4680163f8e3309ba'
-            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '00627520040fcd05538755fc4348aff861986844'
+            test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2d242262b9d3e7adc9097f483334ac449c0f940b'
             if [ "$GITHUB_EVENT_NAME" = "push" ] ||
                [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; then
               node scripts/ci/review-partner-sku-publication-write.cjs

@@ -50,9 +50,9 @@ function validDay(day){
 function requestedPeriod(params){
  const keys=[...params.keys()];
  const periods=keys.filter(k=>["month","day","week"].includes(k));
- if(periods.length!==1||keys.length>5||
+ if(periods.length!==1||keys.length>6||
     new Set(keys).size!==keys.length||
-    keys.some(k=>![...FILTER_KEYS,"month","day","week"].includes(k)))
+    keys.some(k=>![...FILTER_KEYS,"month","day","week","scope"].includes(k)))
   throw new Block(400);
  const kind=periods[0],value=params.get(kind);
  if(kind==="month"){
@@ -131,6 +131,8 @@ export function createStagedOwnerVisibleCountHandler({
    const url=new URL(request.url);
    if(url.pathname!==PATH||url.origin!==ORIGIN)throw new Block(404);
    const {kind,month,day,secondMonth}=requestedPeriod(url.searchParams);
+   const scope=url.searchParams.get("scope")??"joint";
+   if(!["joint","own","partner"].includes(scope))throw new Block(400);
    const token=request.headers.get("Authorization")?.match(TOKEN)?.[1];
    if(!token)throw new Block(401);
    let principal;
@@ -181,7 +183,7 @@ export function createStagedOwnerVisibleCountHandler({
     context,mappingsReviewed:true
    });
    const result=buildOwnerVisibleCountRanking({
-    input:{...countInput,period,context,filters},publication
+    input:{...countInput,period,context,filters,scope},publication
    });
    auditNoFinancialKeys(result);
    const json=JSON.stringify(result);
