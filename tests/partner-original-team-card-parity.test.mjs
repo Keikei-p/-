@@ -14,7 +14,7 @@ class El{
  setAttribute(name,value){this.attrs[name]=value}
  querySelectorAll(selector){return this.children.filter(e=>selector==="[data-team-key]"&&e.dataset.teamKey)}
 }
-const mount=()=>{
+const mount=(dataOverrides={})=>{
  const map=new Map(),lookup=id=>{if(!map.has(id))map.set(id,new El());return map.get(id)};
  const ctx={document:{createElement:tag=>new El(tag)},$ : lookup,renderTeamCountDetail:()=>{ctx.didRender=true},renderProductRankMode:()=>{},renderCountGoal:()=>{},
   summary:{groups:[
@@ -22,7 +22,7 @@ const mount=()=>{
    {id:"__unverified__",name:"所属班未確認",count:3}
   ],teamPeople:[{id:"t1",people:[{name:"A",count:6},{name:"B",count:5}]},
     {id:"t2",people:[{name:"C",count:7}]}]},
-  data:{companyName:"協力店A"}
+  data:{companyName:"協力店A",...dataOverrides}
  };
  const begin=" const teamSelect=$(\"countTeamSelect\"),previous=teamSelect.value;teamSelect.replaceChildren();";
  const end=" renderProductRankMode();renderCountGoal();";
@@ -48,6 +48,17 @@ test("original partner detail is cards from the SAME monthly verified summary",(
  assert.equal(lookup("countTeamSelect").value,"t2");
  assert.equal(ctx.didRender,true);
  assert.doesNotMatch(buttons.flatMap(b=>b.children.map(x=>x.textContent)).join(" "),/売上|単価|¥|CB/);
+});
+test("partner owner sees current active roster count, restricted members see report count",()=>{
+ const {lookup:owner}=mount({role:"owner",staff:[
+  {teamId:"t1",active:true},{teamId:"t1",active:true},
+  {teamId:"t1",active:false},{teamId:"t2",active:true}
+ ]});
+ const ownCards=owner("partnerTeamCardGrid").children;
+ assert.equal(ownCards[0].children[1].textContent,"2人");
+ assert.equal(ownCards[1].children[1].textContent,"1人");
+ const {lookup:member}=mount({role:"member",staff:[{teamId:"t1",active:true}]});
+ assert.equal(member("partnerTeamCardGrid").children[0].children[1].textContent,"実績登録 2人");
 });
 test("original self 4 cards remain intact, partner has same class names and layout",()=>{
  for(const cls of ["team-overview-grid","team-overview-card","team-overview-card-name",
