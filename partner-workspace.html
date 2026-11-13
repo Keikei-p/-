@@ -731,6 +731,9 @@ const lab=document.createElement("label");lab.textContent=k;const inp=document.c
 inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
 inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
 function values(){const o={};for(const x of grid.querySelectorAll("input")){
+ // OFF values are redacted from the partner API. The server alone can
+ // restore their immutable originals inside the authenticated write.
+ if(x.disabled){o[x.dataset.key]=0;continue;}
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
 function privateValues(){const o=Object.create(null);for(const x of $("privateCountGrid").querySelectorAll("input")){
@@ -740,7 +743,7 @@ function privateValues(){const o=Object.create(null);for(const x of $("privateCo
  if(x.disabled)continue;
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid private count");
  o[x.dataset.privateId]=Number(x.value)}return o}
-function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){if(x.disabled)continue;const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
 
 function periodDatesForCounts(selected,period,today){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(selected)||!/^\d{4}-\d{2}-\d{2}$/.test(today))
@@ -1368,9 +1371,15 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
    inp.disabled=p.active===false;inp.value=String(rec?.privateCounts?.[p.id]??0);
    inp.addEventListener("input",updateTotal);box.append(lab,inp);custom.append(box);
  }
- for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
+ const published=data.enabledCategories??KEYS;
+ for(const x of grid.querySelectorAll("input")){
+  const allowed=published.includes(x.dataset.key);
+  x.value=String(allowed?(rec?.counts?.[x.dataset.key]??0):0);
+  x.disabled=!allowed;
+  x.parentElement.hidden=!allowed;
+ }
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
- $("save").disabled=!$("staffSelect").value;updateTotal()}
+ $("save").disabled=!$("staffSelect").value||published.length===0;updateTotal()}
 $("hubTeamCompanySelect").onchange=()=>{$("hubTeamCountStatus").textContent="会社が変更されました。班別件数を再取得してください。";$("hubTeamCountRows").replaceChildren()};
 $("hubTeamCountLoad").onclick=async()=>{
  if(!data||data.role!=="hub")return;
@@ -1426,6 +1435,10 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
+ if(res.enabledCategories!==undefined&&
+    (!Array.isArray(res.enabledCategories)||
+     new Set(res.enabledCategories).size!==res.enabledCategories.length||
+     res.enabledCategories.some(key=>!KEYS.includes(key))))throw Error("publication_schema");
  data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
  void mountVerifiedJointMonthForPartner();
  }catch(e){
