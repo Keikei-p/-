@@ -46,6 +46,8 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  const seen=new Set(),companies=[],teams=[],people=[],products=zero(),published=new Set(),unreportedCompanies=[];
  let totalCount=0,reportCount=0,unverifiedTeamCount=0,
   unverifiedPersonCount=0,historicalCompanyOnlyCount=0;
+ // Missing attribution is still missing for a VERIFIED zero-count entry.
+ let missingTeamIdentity=false,missingPersonIdentity=false;
  for(const s of sources){
   if(!s||!id(s.cid)||s.cid===hubId||seen.has(s.cid)||
      s.approved!==true||!Array.isArray(s.teams)||
@@ -56,6 +58,8 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
      s.allowedCategories.some(k=>!KEYS.includes(k)))fail();
   seen.add(s.cid);
   const allowed=new Set(s.allowedCategories);
+  // OFF categories are private even in metadata. Retain all originals.
+  if(!allowed.size)continue;
   for(const k of allowed)published.add(k);
   const visible=raw=>({counts:Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?raw.counts[k]:0])),
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
@@ -86,7 +90,10 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     t.totalCount=sum(t.totalCount,c.total);
     for(const p of KEYS)t.counts[p]=sum(t.counts[p],c.counts[p]);
     tMap.set(k,t);
-   }else unverifiedTeamCount=sum(unverifiedTeamCount,c.total);
+   }else{
+    missingTeamIdentity=true;
+    unverifiedTeamCount=sum(unverifiedTeamCount,c.total);
+   }
    if(personName){
     const k=key("person",s.cid,e.staffId),tk=tid?key("team",s.cid,tid):null;
     const p=pMap.get(k)||{key:k,name:personName,companyName,companyKey,totalCount:0,
@@ -95,9 +102,13 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     p.totalCount=sum(p.totalCount,c.total);
     for(const product of KEYS)p.counts[product]=sum(p.counts[product],c.counts[product]);
     pMap.set(k,p);
-   }else unverifiedPersonCount=sum(unverifiedPersonCount,c.total);
+   }else{
+    missingPersonIdentity=true;
+    unverifiedPersonCount=sum(unverifiedPersonCount,c.total);
+   }
   }
-  let companyCount=0,reportedDays=0,verifiedPeople=true;const companyProducts=zero();
+  let companyCount=0,reportedDays=0,verifiedPeople=!missingPersonIdentity;
+  const companyProducts=zero();
   for(const r of s.reports){
    if(!r||!date(r.date)||r.date<start||r.date>end||reports.has(r.date))fail();
    reports.add(r.date);
@@ -119,7 +130,9 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     for(const product of KEYS)daily[product]=sum(daily[product],v.counts[product]);
    }
    if(x.source==="staff-entries-v1"){
-    if(recorded!==raw.total||KEYS.some(k=>daily[k]!==raw.counts[k]))fail();
+    // A zero summary without a staff report is NOT evidence of a 0 report.
+    if(rows===0||recorded!==raw.total||
+       KEYS.some(k=>daily[k]!==raw.counts[k]))fail();
    }else{
     if(rows)fail();
     verifiedPeople=false;
@@ -150,12 +163,18 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  return {schema:"nico-approved-partner-count-rank-v1",unit:"件",
   scope:"approved_partner_counts_only",includesDirect:false,fullyJoint:false,
   start,end,companies:ranked(companies),teams:ranked(teams),people:ranked(people),
-  products:ranked(KEYS.filter(k=>published.has(k)).map((k,i)=>({key:"product-"+(i+1),name:k,totalCount:products[k]}))),
+  // Stable product IDs must not shift when earlier categories turn OFF.
+  products:ranked(KEYS.flatMap((k,i)=>published.has(k)?
+   [{key:"product-"+(i+1),name:k,totalCount:products[k]}]:[])),
   totalCount,reportCount,unreportedCompanies,
   partnerCountsComplete:unreportedCompanies.length===0&&historicalCompanyOnlyCount===0,
   unverifiedTeamCount,unverifiedPersonCount,
   historicalCompanyOnlyCount,
-  peopleComplete:historicalCompanyOnlyCount===0&&unverifiedPersonCount===0,
-  teamComplete:historicalCompanyOnlyCount===0&&unverifiedTeamCount===0};
+  peopleComplete:unreportedCompanies.length===0&&
+   historicalCompanyOnlyCount===0&&unverifiedPersonCount===0&&
+   !missingPersonIdentity,
+  teamComplete:unreportedCompanies.length===0&&
+   historicalCompanyOnlyCount===0&&unverifiedTeamCount===0&&
+   !missingTeamIdentity};
 }
 module.exports={buildApprovedPartnerCountStandings,KEYS};
