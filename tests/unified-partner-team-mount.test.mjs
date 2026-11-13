@@ -17,13 +17,14 @@ test("original self 1–4 team card rendering and revenue permission remain",()=
   'canCurrentUserViewRevenueForTeam(team.id)',
   '売上目標'
  ])assert.ok(block.includes(exact),"missing self card behavior: "+exact);
- assert.ok(block.indexOf("renderSelection();")<block.indexOf("void refreshOwnerVerifiedPartnerTeamCards();"));
+ assert.ok(block.indexOf("void refreshOwnerVerifiedPartnerTeamCards();")<block.indexOf("allTeamsOverviewList.innerHTML"));
 });
 test("owner-partner company cards mount in the SAME original team detail panel",()=>{
- assert.match(index,/<div id="allTeamsOverviewList"><\/div>\s*<div id="ownerVerifiedPartnerTeamCards"[^>]*hidden><\/div>/);
- assert.equal((index.match(/id="ownerVerifiedPartnerTeamCards"/g)||[]).length,1);
+ assert.match(index,/<div id="allTeamsOverviewList"><\/div>\s*<section id="ownerPartnerDashboardDetails"/);
+ assert.equal((index.match(/id="ownerPartnerDashboardList"/g)||[]).length,1);
+ assert.doesNotMatch(index,/id="ownerVerifiedPartnerTeamCards"/);
  assert.match(index,/const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;/);
- assert.match(index,/if\(!NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED\|\|/);
+ assert.match(index,/if\(!NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED\)return;/);
  assert.match(index,/recordsSubscribedMonth!==dashboardMonth.value/);
  assert.match(index,/createVerifiedJointMonthHttpBridge\(\{/);
  assert.match(index,/featureEnabled:true,auth,fetcher:\(\.\.\.args\)=>fetch\(\.\.\.args\)/);
@@ -35,6 +36,6 @@ test("no new data write or finance disclosure is added to the team bridge",()=>{
  assert.doesNotMatch(slice,/getFirestore\(|getDocs\(|setDoc\(|updateDoc\(|addDoc\(|deleteDoc\(|writeBatch\(/);
  assert.doesNotMatch(slice,/localStorage\.setItem|sessionStorage\.setItem/);
  assert.match(slice,/未照合の数字は表示しません/);
- assert.match(slice,/auth\.currentUser!==user/g);
- assert.match(slice,/generation!==ownerVerifiedTeamState\.generation/g);
+ assert.match(slice,/auth\.currentUser===user/g);
+ assert.match(slice,/generation===ownerVerifiedTeamState\.generation/g);
 });

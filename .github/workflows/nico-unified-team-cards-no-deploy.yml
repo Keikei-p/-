@@ -13,6 +13,10 @@ on:
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/unified-partner-team-cards.test.mjs'
       - 'tests/unified-partner-team-mount.test.mjs'
+      - 'tests/owner-partner-team-production-integration.test.mjs'
+      - 'tests/helpers/strip-owner-monthly-team-integration.mjs'
+      - 'tests/owner-partner-product-tab.test.mjs'
+      - '.github/workflows/nico-login-restore.yml'
       - 'tests/partner-original-team-card-parity.test.mjs'
       - '.github/workflows/nico-unified-team-cards-no-deploy.yml'
 permissions:
@@ -53,6 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --test tests/owner-partner-team-production-integration.test.mjs tests/owner-partner-product-tab.test.mjs
           node --test tests/unified-partner-team-cards.test.mjs tests/unified-partner-team-mount.test.mjs tests/partner-original-team-card-parity.test.mjs
           node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-count-dashboard.test.cjs
           node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/verified-dual-count-view.test.mjs
