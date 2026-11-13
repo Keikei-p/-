@@ -971,8 +971,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateCounts=validatePrivateCounts(x.privateCounts||{});
    if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
       (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
+   const workLocation=x.workLocation??"";
+   if(typeof workLocation!=="string"||workLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(workLocation)||money.test(workLocation))
+    fail("data-loss");
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
-     teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
+     teamIdSnapshot,workLocation,
+     privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
@@ -1008,6 +1013,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const {counts,total}=validateCounts(d.counts);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
+  // A count-only API must never silently accept and discard CB-tier entries.
+  // These are not verified count data and may reveal financial classification.
+  if(submissionPublicationEnabled()===true&&
+     Object.prototype.hasOwnProperty.call(d,"cbCounts"))fail("failed-precondition");
+  const requestedLocation=d.workLocation;
+  if(requestedLocation!==undefined&&
+     (typeof requestedLocation!=="string"||requestedLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(requestedLocation)||money.test(requestedLocation)))
+   fail("invalid-argument");
+  const requestedTeamId=d.workTeamId;
+  if(requestedTeamId!==undefined&&(!ID.test(requestedTeamId)||
+     requestedTeamId!==clean(requestedTeamId)))fail("invalid-argument");
   const s=await scope(a.uid,null,d.workspaceCompanyId);
   if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
@@ -1070,11 +1087,27 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
-   // An edit cannot reassign a previously saved day to the current team.
-   // Missing historical attribution remains unverified rather than inferred.
-   const teamIdSnapshot=oldSnap.exists?
+   // An existing report's team attribution is immutable. On the FIRST save
+   // only, a selected working team must be an existing active team in this
+   // verified partner company. Members cannot choose another person's team.
+   if(oldSnap.exists&&requestedTeamId!==undefined)fail("failed-precondition");
+   let teamIdSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"teamIdSnapshot")?old.teamIdSnapshot:null):
      person.teamId;
+   if(!oldSnap.exists&&requestedTeamId!==undefined){
+    if(fresh.role==="member"&&requestedTeamId!==person.teamId)fail();
+    const chosen=await tx.get(teamRef(s.cid,requestedTeamId));
+    const team=chosen.data()||{};
+    if(!chosen.exists||team.companyId!==s.cid||team.active!==true||
+       !validName(team.name))fail("failed-precondition");
+    teamIdSnapshot=requestedTeamId;
+   }
+   const oldLocation=old.workLocation??"";
+   if(typeof oldLocation!=="string"||oldLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(oldLocation)||money.test(oldLocation))
+    fail("data-loss");
+   const workLocation=requestedLocation===undefined?oldLocation:
+     requestedLocation.trim();
    const staffNameSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"staffNameSnapshot")?old.staffNameSnapshot:null):
      person.name;
@@ -1084,7 +1117,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
      counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
-     version:nextVersion,staffNameSnapshot,teamIdSnapshot,
+     version:nextVersion,staffNameSnapshot,teamIdSnapshot,workLocation,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
