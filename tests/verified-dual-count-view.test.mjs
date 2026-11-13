@@ -209,6 +209,7 @@ test("shared partner company/team ties are ranked 1,1 (not 1,2), and financial i
   d=>{d.publicRanking.teams[1].rank=2;},
   d=>{d.publicRanking.companies[0].count=-1;},
   d=>{d.publicRanking.teams[0].name="売上50000円";},
+  d=>{d.publicRanking.teams[0].name="チーム ｕｎｉｔＰｒｉｃｅ５０００";},
   d=>{d.publicRanking.companies[0].unitPrice=99000;},
   d=>{d.publicRanking.teams[0].uid="member-secret";},
   d=>{delete d.publicRanking.companies;},
@@ -231,6 +232,8 @@ test("malformed or financial API payload clears stale names and never displays p
   d=>{d.summary.revenue=50000;},
   d=>{d.companyBreakdown[0].name="NURO_CB50000";},
   d=>{d.memberRanking[0].name="担当 9000円";},
+  d=>{d.memberRanking[0].name="担当 ｒｅｖｅｎｕｅ５００００";},
+  d=>{d.productRanking[0].name="ＮＵＲＯ ＣＢ５０００";},
   d=>{d.role="partner_owner";},
   d=>{d.schema="forged";},
   d=>{d.productRanking[0].privateCounts={CB:50000};}
