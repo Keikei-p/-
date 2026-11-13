@@ -56,6 +56,35 @@ test("partner projection safely handles tied rank and repeated names without per
  assert.equal(view.people[0].rank,view.people[1].rank);
  assert.notEqual(view.people[0].id,view.people[1].id);
 });
+test("public and Owner rankings reject count-to-rank contradictions before display",()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const data=make(role);
+  const edits=role==="hub_owner"?[
+   r=>r.memberRanking[1].count=5, // equal count cannot have a different rank
+   r=>r.memberRanking[1].rank=1, // different counts cannot tie
+   r=>{r.memberRanking[0].rank=2;r.memberRanking[1].rank=1;},
+   r=>{r.productRanking.push({id:"extra",rank:1,name:"別商材",count:1});}
+  ]:[
+   r=>r.publicRanking.members[1].rank=2,
+   r=>r.publicRanking.companies[1].rank=1,
+   r=>{r.publicRanking.teams[0].rank=2;r.publicRanking.teams[1].rank=1;},
+   r=>{r.publicRanking.products.push({rank:1,name:"別商材",count:1});}
+  ];
+  for(const edit of edits){
+   const invalid=structuredClone(data);edit(invalid);
+   assert.throws(()=>verifiedJointCountView(invalid,{
+    month:"2026-11",role
+   }),/JOINT_RANKING_RESPONSE_UNVERIFIED/);
+  }
+ }
+});
+test("omitted private ranks can leave a gap without changing valid order",()=>{
+ const data=make("partner_owner");
+ data.publicRanking.companies[1].rank=3;
+ assert.deepEqual(verifiedJointCountView(data,{
+  month:"2026-11",role:"partner_owner"
+ }).companies.map(x=>x.rank),[1,3]);
+});
 test("wrong role, bad summary, malicious names and injected money stop before rendering",()=>{
  for(const modify of [
   r=>r.role="partner_owner",
