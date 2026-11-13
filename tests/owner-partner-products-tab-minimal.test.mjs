@@ -17,7 +17,7 @@ function removeExactly(s,pattern,label,replacement=""){
 test("new index is the protected original plus ONLY the intended Owner tab additions",()=>{
  let s=current;
  s=removeExactly(s,/\n<link rel="stylesheet" href="\.\/ranking\/owner-product-visibility-panel\.css">/,"css");
- s=removeExactly(s,/\s*<button id="quickPartnerProductsButton"[\s\S]*?<\/button>\n/,"button");
+ s=removeExactly(s,/            <button id="quickPartnerProductsButton"[\s\S]*?<\/button>\n\n/,"button");
  const panel=/    <section id="partnerProductsWorkspace"[\s\S]*?<\/section>\n/;
  s=removeExactly(s,panel,"workspace");
  s=removeExactly(s,/\nconst quickPartnerProductsButton = document\.getElementById\("quickPartnerProductsButton"\);[\s\S]*?const partnerProductsPanelRoot = document\.getElementById\("partnerProductsPanelRoot"\);/,"element refs");
@@ -30,7 +30,7 @@ test("new index is the protected original plus ONLY the intended Owner tab addit
 test("visible 協力店商材 tab is nested inside existing management navigation, not a redirect",()=>{
  assert.match(current,/id="quickPartnerProductsButton" class="quick-menu-button"/);
  assert.match(current,/aria-controls="partnerProductsWorkspace"/);
- assert.match(current,/>協力店商材\s*<\/button>/);
+ assert.match(current,/>\s*協力店商材\s*<\/button>/);
  assert.match(current,/id="partnerProductsPanelRoot"/);
  assert.match(current,/managementWorkspacePanels = \[[\s\S]*?partnerProductsWorkspace/);
  assert.match(current,/quickMenuButtons = \[[\s\S]*?quickPartnerProductsButton/);
