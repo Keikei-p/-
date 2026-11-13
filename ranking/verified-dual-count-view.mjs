@@ -350,7 +350,7 @@ export function createVerifiedDualCountController({
     filters:{...current.filters}
    });
    if(identity!==auth.currentUser||token!==generation||closed)halt();
-   const data=validate(result);
+   const data=validateVerifiedDualCountDashboard(result);
    renderVerifiedDualCountDashboard({document,root,payload:data});
    const toolbar=el(document,"section","nico-dual-controls");
    function option(select,value,title){
