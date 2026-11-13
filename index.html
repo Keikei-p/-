@@ -5014,7 +5014,7 @@ body.product-reordering .product-list {
       <small class="p-inline-muted">初回登録時のみ選択できます。過去の所属班・実績は変更しません。</small></div>
     <div class="form-group"><label for="pInlineWorkLocation">現場場所</label>
       <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
-    <div class="section-title">商材別実績（CB別は件数のみ表示）</div>
+    <div class="section-title">商材別件数</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
     <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
     <div class="p-inline-actions">
@@ -13176,32 +13176,11 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
   visible+=n;
  }
  if(visible>total)throw Error("count_team_total_mismatch");
- const nuro=counts.NURO||0,tiers=cbCounts?.NURO;
- if(nuro>0||tiers){
-  const block=section("NURO光｜CB別件数");
-  const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
-  let assigned=0;
-  for(const tier of PARTNER_TEAM_CB_TIERS){
-   const amount=tiers?.[tier]??0;
-   if(!Number.isSafeInteger(amount)||amount<0)throw Error("count_team_cb_invalid");
-   assigned+=amount;
-   const tile=document.createElement("div");tile.className="partner-count-team-cb-cell";
-   const label=document.createElement("div");label.className="partner-count-team-cb-label";
-   // Cashback tier names are a classification, not sales or unit prices.
-   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
-   const count=document.createElement("div");count.className="partner-count-team-cb-value";
-   count.textContent=amount+"件";tile.append(label,count);grid.append(tile);
-  }
-  block.append(grid);
-  const unclassified=tiers?.unclassified??(nuro-assigned);
-  if(!Number.isSafeInteger(unclassified)||unclassified<0||
-     assigned+unclassified!==nuro)throw Error("count_team_cb_mismatch");
-  if(unclassified)partnerMainAppendRow(block,"CB未分類",unclassified+"件（過去実績）");
- }
+ // Partner count cards never expose CB tiers or money labels.
  const products=section("商材別件数");
  for(const key of keys){
   const n=counts[key]??0;
-  if(!n||key==="NURO")continue;
+  if(!n)continue;
   const row=document.createElement("div");row.className="partner-count-team-product-row";
   const titleEl=document.createElement("span");titleEl.textContent=key;
   const number=document.createElement("strong");number.textContent=n+"件";
@@ -13261,26 +13240,7 @@ function renderPartnerCountTeamCardProductOnly(member,keys){
   if(n){partnerMainAppendRow(el,key,n+"件");visible+=n;}
  }
  if(!visible)partnerMainAppendRow(el,"商材別件数","0件で報告済み");
- const nuro=member.counts?.NURO||0,cb=member.cbCounts?.NURO;
- if(nuro){
-  const grid=document.createElement("div");grid.className="partner-count-team-cb-grid";
-  let classified=0;
-  for(const tier of PARTNER_TEAM_CB_TIERS){
-   const count=cb?.[tier]??0;
-   if(!Number.isSafeInteger(count)||count<0)throw Error("count_team_person_cb_invalid");
-   classified+=count;
-   const cell=document.createElement("div");cell.className="partner-count-team-cb-cell";
-   const label=document.createElement("div");label.className="partner-count-team-cb-label";
-   label.textContent=tier==="0"?"CB0":"CB"+Number(tier)/10000+"万";
-   const value=document.createElement("div");value.className="partner-count-team-cb-value";
-   value.textContent=count+"件";cell.append(label,value);grid.append(cell);
-  }
-  el.append(grid);
-  const unknown=cb?.unclassified??(nuro-classified);
-  if(!Number.isSafeInteger(unknown)||unknown<0||classified+unknown!==nuro)
-   throw Error("count_team_person_cb_mismatch");
-  if(unknown)partnerMainAppendRow(el,"CB未分類",unknown+"件（過去実績）");
- }
+ // The person's NURO count is already included in product rows above.
  return el;
 }
 // Keep a single expanded team per company. Always reuses the SAME card renderer
@@ -13783,31 +13743,6 @@ function partnerInlineRenderCounts(){
  pInline("pInlineSaveStatus").textContent="";
  delete pInline("pInlineSaveStatus").dataset.result;
  for(const key of enabledKeys){
-  if(key==="NURO"){
-   const card=document.createElement("div");
-   card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
-   const heading=document.createElement("div");heading.className="partner-cb-title";
-   heading.textContent="NURO光｜CB別件数";
-   const hint=document.createElement("div");hint.className="p-inline-muted";
-   hint.textContent="CB金額は区分名です。収益単価・売上は表示しません。";
-   const tiers=document.createElement("div");tiers.className="partner-cb-options";
-   const saved=partnerUiCbCountSnapshot(entry);
-   for(const tier of PARTNER_NURO_CB_TIERS){
-    if(tier==="unclassified"&&!saved.unclassified)continue;
-    const field=document.createElement("label");field.className="p-inline-field";
-    if(tier==="unclassified")field.classList.add("partner-cb-legacy");
-    field.textContent=tier==="unclassified"?"既存のCB未分類":
-     tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
-    const input=document.createElement("input");input.type="number";input.min="0";
-    input.max="9999";input.step="1";input.inputMode="numeric";
-    input.className="product-plan-input";
-    input.dataset.cbTier=tier;input.value=String(saved[tier]);
-    input.addEventListener("input",renderPartnerEntryTotals);
-    field.append(input);tiers.append(field);
-   }
-   card.append(heading,hint,tiers);grid.append(card);
-   continue;
-  }
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
   const title=document.createElement("div");title.className="product-input-group-title";
@@ -14056,24 +13991,8 @@ async function loadPartnerRevisionHistory(){
        before<0||after<0)throw Error("audit_category_count");
     if(before!==after)partnerMainAppendRow(row,category,before+"件 → "+after+"件");
    }
-   // Show CB corrections even when the NURO total stayed the same. Older
-   // entries without a tier breakdown remain 'unclassified', not CB0.
-   const previousCb=partnerUiCbCountSnapshot({
-    cbCounts:event.previousCbCounts,counts:event.previousCounts
-   });
-   const currentCb=partnerUiCbCountSnapshot({
-    cbCounts:event.cbCounts,counts:event.counts
-   });
-   for(const tier of PARTNER_NURO_CB_TIERS){
-    const before=previousCb[tier],after=currentCb[tier];
-    if(!Number.isSafeInteger(before)||!Number.isSafeInteger(after)||
-       before<0||after<0)throw Error("audit_cb_count");
-    if(before!==after){
-     const label=tier==="unclassified"?"既存のCB未分類":
-      tier==="0"?"CB0円":"CB"+(Number(tier)/10000)+"万円";
-     partnerMainAppendRow(row,"NURO光 "+label,before+"件 → "+after+"件");
-    }
-   }
+   // Only count deltas are safe to show. CB-tier financial classifications
+   // remain outside the partner audit view.
    // Private product names and corrections remain in the authorized partner
    // workspace only; never add them to the shared company leaderboard.
    if(event.privateCounts&&event.previousPrivateCounts){
@@ -14223,14 +14142,12 @@ function partnerSavedCountReadbackState(verified,expected){
  if(record.version!==expected.expectedVersion+1)return "unknown";
  const countOk=expected.categories.every(key=>
    Number.isSafeInteger(record.counts?.[key])&&record.counts[key]===expected.counts[key]);
- const cbOk=PARTNER_NURO_CB_TIERS.every(tier=>
-   (record.cbCounts?.NURO?.[tier]??0)===(expected.cbCounts.NURO[tier]??0));
  const privateOk=Object.keys(expected.privateCounts).every(id=>
    (record.privateCounts?.[id]??0)===expected.privateCounts[id]);
  const total=Object.values(expected.counts).reduce((sum,n)=>sum+n,0);
  return record.totalCount===total&&record.workLocation===expected.workLocation&&
    (expected.expectedVersion!==0||record.teamIdSnapshot===expected.workTeamId)&&
-   countOk&&cbOk&&privateOk?"saved":"unknown";
+   countOk&&privateOk?"saved":"unknown";
 }
 
 function partnerCountSaveFailureMessage(error){
@@ -14242,7 +14159,7 @@ function partnerCountSaveFailureMessage(error){
   return "保存できませんでした。対象日・担当者が変更されています。入力を残したまま選択を確認してください。";
  if(reason==="counts"||reason==="work_location_invalid"||
     reason==="private_product_unknown"||code==="invalid-argument")
-  return "保存できませんでした。件数・NUROのCB区分・現場・日付を確認してください。入力は保持しています。";
+  return "保存できませんでした。件数・現場・日付を確認してください。入力は保持しています。";
  if(code==="permission-denied"||code==="unauthenticated")
   return "保存できませんでした（認証・権限）。協力店への所属とメール認証を管理者に確認してください。入力は保持しています。";
  if(code==="failed-precondition")
@@ -14590,16 +14507,14 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
-function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts=null,workLocation=""){
+function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLocation=""){
  // Saving an unchanged correction must not create a new audit version.
  // A first-ever zero-count report is still a legitimate new record.
  const previous=snap?.records?.find(row=>row.staffId===staffId);
  if(!previous||String(previous.workLocation||"")!==workLocation)return false;
  return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
   Object.entries(privateCounts).every(([id,count])=>
-   (previous.privateCounts?.[id]??0)===count)&&
-  (!cbCounts||PARTNER_NURO_CB_TIERS.every(tier=>
-   (partnerUiCbCountSnapshot(previous)[tier]??0)===(cbCounts.NURO?.[tier]??0)));
+   (previous.privateCounts?.[id]??0)===count);
 }
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
@@ -14615,11 +14530,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
     enabledKeys.some(key=>!snap.categories.includes(key)))
   throw Error("partner_publication_schema");
  const counts=Object.create(null);
- const parsedCb=partnerInlineSelectedCb();
- const cbCounts={NURO:parsedCb.result};
  for(const key of snap.categories){
   if(!enabledKeys.includes(key)){counts[key]=0;continue;}
-  if(key==="NURO"){counts[key]=parsedCb.total;continue;}
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
@@ -14644,22 +14556,21 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(!product)throw Error("private_product_unknown");
   if(product.active)privateCounts[id]=n;
  }
- if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,cbCounts,workLocation))
+ if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLocation))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  // Firebase Functions JSON serialization expects normal own-property objects.
  // Keep the null-prototype maps internally to prevent prototype pollution,
  // but convert all THREE nested maps at the wire boundary before httpsCallable.
  // Otherwise serializer.mapValues can throw before any POST reaches Cloud Run.
  const wireCounts=Object.fromEntries(Object.entries(counts));
- const wireCbCounts={NURO:Object.fromEntries(Object.entries(parsedCb.result))};
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
- const expected={date,staffId,counts,cbCounts,workLocation,workTeamId,
+ const expected={date,staffId,counts,workLocation,workTeamId,
   privateCounts,expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
  try{
   result=(await partnerInlineSave(partnerInlinePayload({
-   date,staffId,counts:wireCounts,cbCounts:wireCbCounts,workLocation,
+   date,staffId,counts:wireCounts,workLocation,
    ...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,
    expectedVersion:expected.expectedVersion
   }))).data;
