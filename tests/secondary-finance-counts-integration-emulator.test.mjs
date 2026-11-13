@@ -35,10 +35,11 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  const app=initializeApp({projectId:PROJECT},"isolated-dual-count-finance");
  const db=getFirestore(app);
  const hub="hubCount",partner="partnerCount",worker="dualCount",
-  owner="ownerCount",team="teamCount",date="2026-11-07";
+  owner="ownerCount",transfer="transferCount",team="teamCount",date="2026-11-07";
  const now=Date.parse("2026-11-08T12:00:00+09:00");
- const inviteToken="A".repeat(43);
+ const inviteToken="A".repeat(43),transferToken="B".repeat(43);
  const inviteHash=createHash("sha256").update(inviteToken).digest("hex");
+ const transferHash=createHash("sha256").update(transferToken).digest("hex");
  const write=(path,row)=>db.doc(path).set(row);
  const docs=Object.fromEntries(COLLECTIONS.map((name,i)=>[name,{
   companyId:hub,teamId:team,unitPrice:15000+i,
@@ -64,11 +65,11 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   emailVerified:true,disabled:false});
  const getAuth=()=>({
   getUser:async uid=>authUser(uid),
-  verifyIdToken:async token=>({
-   uid:token.startsWith(worker)?worker:owner,
-   email:(token.startsWith(worker)?worker:owner)+"@example.test",
-   email_verified:true
-  })
+  verifyIdToken:async token=>{
+   const uid=[worker,owner,transfer].find(key=>token.startsWith(key));
+   if(!uid)throw Error("UNKNOWN_DEMO_ID_TOKEN");
+   return {uid,email:uid+"@example.test",email_verified:true};
+  }
  });
  class HttpsError extends Error{
   constructor(code,message){super(message);this.code=code;}
@@ -88,11 +89,21 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
     hubCompanyId:hub,ownerUid:"partnerOwner",name:"協力店"}),
    write("users/"+owner,ownerProfile),
    write("users/"+worker,internalProfile),
+   write("users/"+transfer,{...internalProfile,uid:transfer,
+    email:transfer+"@example.test"}),
    write("companies/"+hub+"/members/"+owner,ownerProfile),
    write("companies/"+hub+"/members/"+worker,internalProfile),
+   write("companies/"+hub+"/members/"+transfer,{...internalProfile,uid:transfer,
+    email:transfer+"@example.test"}),
    write("partnerWorkInvites/"+inviteHash,{
     companyId:partner,hubCompanyId:hub,teamId:team,role:"member",
     emailLower:(worker+"@example.test").toLowerCase(),
+    invitedByUid:owner,status:"pending",
+    expiresAt:Timestamp.fromMillis(now+30*60*1000)
+   }),
+   write("partnerWorkInvites/"+transferHash,{
+    companyId:partner,hubCompanyId:hub,teamId:team,role:"member",
+    emailLower:(transfer+"@example.test").toLowerCase(),
     invitedByUid:owner,status:"pending",
     expiresAt:Timestamp.fromMillis(now+30*60*1000)
    }),
@@ -250,6 +261,55 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    await assertFails(getDoc(doc(partnerBrowser,
     name+"/counts-integration-original")));
   }
+  // DISTINCT migration path: the invited current internal member chooses a
+  // transfer (not a secondary role). The legacy member and money originals
+  // remain archived but all former internal finance access must stop.
+  const moverBefore=await db.doc("users/"+transfer).get();
+  const rosterBefore=await db.doc("companies/"+hub+"/members/"+transfer).get();
+  const movedBrowser=browser(transfer);
+  await assertSucceeds(getDoc(doc(movedBrowser,
+   "records","counts-integration-original")));
+  const moved=await service.accept(request(transfer,{
+   token:transferToken,name:"移籍担当者",transferCurrentCompany:true
+  }));
+  assert.equal(moved.joined,true);
+  assert.equal(moved.secondaryMembership,false);
+  assert.equal(moved.transferredFromInternal,true);
+  assert.equal(moved.partnerCompanyId,partner);
+  const userAfter=(await db.doc("users/"+transfer).get()).data();
+  assert.equal(userAfter.companyId,partner);
+  assert.equal(userAfter.accessKind,"partner");
+  assert.equal(userAfter.memberType,"cooperator");
+  assert.equal(userAfter.canViewRevenue,false);
+  assert.equal(userAfter.canViewUnitPrice,false);
+  assert.equal((await db.doc("partnerWorkspaceContexts/"+transfer).get()).exists,false);
+  assert.equal((await db.doc("companies/"+hub+"/members/"+transfer).get()).data().active,false);
+  const archive=(await db.doc("partnerHistoricalTransfers/"+transfer).get()).data();
+  assert.deepEqual(archive.originalUser,moverBefore.data());
+  assert.deepEqual(archive.originalMember,rosterBefore.data());
+  for(const name of COLLECTIONS){
+   await assertFails(getDoc(doc(movedBrowser,name,
+    "counts-integration-original")));
+   const restrictions=[where("companyId","==",hub)];
+   if(name==="revenueGoals")restrictions.push(where("teamId","==",team));
+   await assertFails(getDocsFromServer(query(
+    collection(movedBrowser,name),...restrictions
+   )));
+   const actual=(await db.doc(name+"/counts-integration-original").get()).data();
+   assert.deepEqual(actual,before[name],
+    "a transfer must not rewrite or delete "+name+" finance originals");
+  }
+  const movedWorkspace=await service.view(request(transfer,{date}));
+  assert.equal(movedWorkspace.role,"member");
+  assert.equal(movedWorkspace.records.length,0);
+  const acceptedTransferReport=await service.submit(request(transfer,{
+   date,staffId:transfer,expectedVersion:0,
+   counts:{...empty,NURO:1}
+  }));
+  assert.equal(acceptedTransferReport.saved,true);
+  const verifiedHub=await service.view(request(owner,{date}));
+  assert.equal(verifiedHub.partners[0].totalCount,7,
+   "transferred user reports counts to SAME owner day sum after prior correction");
  }finally{
   await env.cleanup();
   await deleteApp(app);
