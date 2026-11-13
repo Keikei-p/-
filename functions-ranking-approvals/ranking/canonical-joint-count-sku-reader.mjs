@@ -16,6 +16,8 @@ import {createPartnerMonthTransactionReader}
  from "./partner-month-readonly-loader.mjs";
 import {auditNoFinancialKeys}
  from "../security/public-projection.mjs";
+import {mergeVerifiedTwoMonthInputs}
+ from "./verified-two-month-count-input.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -170,11 +172,21 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
  const loadPartner=createPartnerMonthTransactionReader({db});
- return async function readCounts({tx,month,context}={}){
+ return async function readCounts({tx,month,context,secondMonth}={}){
   if(!tx||typeof tx.get!=="function"||!context||
      !valid(context.hubCompanyId)||!MONTH.test(month||"")||
      !array(context.approvedCompanyIds)||
      !context.approvedCompanyIds.includes(context.hubCompanyId))STOP();
+  // Fail before issuing any Firestore read for a forged/unrelated second month.
+  // A cross-month week can span exactly two adjacent calendar months.
+  if(secondMonth!==undefined){
+   if(!MONTH.test(secondMonth)||secondMonth===month)STOP();
+   const toMonthIndex=m=>{
+    const [year,num]=m.split("-").map(Number);
+    return year*12+num;
+   };
+   if(Math.abs(toMonthIndex(secondMonth)-toMonthIndex(month))!==1)STOP();
+  }
   const hubId=context.hubCompanyId;
   const hubRef=db.collection("companies").doc(hubId);
   const mappingRef=hubRef.collection("rankingSkuMappings").doc("shared");
@@ -192,10 +204,16 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
      !mappingSnap.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
   sameTime(mappingSnap,hubSource.readTime);
-  return composeCanonicalMonthlyRankingInput({
+  const primary=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:doc(mappingSnap),hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
+  if(secondMonth===undefined)return primary;
+  // Both reads are performed with the SAME transaction supplied by the
+  // trusted server loader; no second transaction is created here.
+  const secondary=await readCounts({tx,month:secondMonth,context});
+  const merged=mergeVerifiedTwoMonthInputs({primary,secondary});
+  return {...merged,verifiedMonths:[month,secondMonth]};
  };
 }
