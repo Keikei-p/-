@@ -1,0 +1,48 @@
+name: NICO historical partner count mapping parity (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/partner-history-mapping-preview.mjs'
+      - 'tests/partner-history-mapping-preview.test.mjs'
+      - '.github/workflows/nico-partner-history-count-mapping-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  exact-readonly-historical-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Lock source and prevent deploying data or protected files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD | tee /tmp/changed-count-history.txt
+          if grep -Ev '^(ranking/partner-history-mapping-preview\.mjs|tests/partner-history-mapping-preview\.test\.mjs|\.github/workflows/nico-partner-history-count-mapping-no-deploy\.yml)$' /tmp/changed-count-history.txt; then
+            echo 'STOP_SCOPE_EXPANSION'
+            exit 1
+          fi
+          test "$(wc -l < /tmp/changed-count-history.txt)" -eq 3
+          git diff --exit-code origin/main...HEAD -- index.html firestore.rules firebase.json functions functions-ranking-approvals functions-partner-workspace
+      - name: Confirm historical counts remain immutable, with legacy combined counted once
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ranking/partner-history-mapping-preview.mjs
+          node --test tests/partner-history-mapping-preview.test.mjs
+          node --test tests/partner-workspace-count-source.test.mjs
+          echo 'HISTORICAL_COUNT_PREVIEW_TEST_PASS_NO_DEPLOY'
+          echo 'PRODUCTION_DATA_WRITES=0'
