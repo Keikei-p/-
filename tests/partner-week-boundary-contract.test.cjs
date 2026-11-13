@@ -67,3 +67,60 @@ test("unreported company has no company ranking; genuine submitted zero has a ra
  assert.equal(report.companies[0].totalCount,0);
  assert.equal(report.companies[0].rank,1);
 });
+
+
+test("all OFF products hide company name and all attribution/status metadata without touching originals",()=>{
+ const s=create(7);
+ s.allowedCategories=[];
+ const before=JSON.stringify(s);
+ const value=run("2026-09-28","2026-10-04",[s]);
+ assert.deepEqual(value.companies,[]);
+ assert.deepEqual(value.teams,[]);
+ assert.deepEqual(value.people,[]);
+ assert.deepEqual(value.products,[]);
+ assert.deepEqual(value.unreportedCompanies,[]);
+ assert.equal(value.totalCount,0);
+ assert.equal(value.reportCount,0);
+ assert.doesNotMatch(JSON.stringify(value),/協力店|cashback|99999|partner/);
+ assert.equal(JSON.stringify(s),before,"OFF is not a destructive migration");
+});
+test("real zero-count staff report without verifiable name/team never advertises complete staff ranking",()=>{
+ const entry={
+  companyId:"partner",hubCompanyId:"hub",date:"2026-09-30",
+  staffId:"worker",counts:zero(),totalCount:0,version:1,
+  staffNameSnapshot:null,teamIdSnapshot:null
+ };
+ const src={...create(0),entries:[{id:"2026-09-30__worker",data:entry}],
+  reports:[{date:"2026-09-30",data:{
+   ...create(0).reports[0].data,source:"staff-entries-v1"
+  }}]};
+ const value=run("2026-09-28","2026-10-04",[src]);
+ assert.equal(value.totalCount,0);
+ assert.equal(value.companies[0].rank,1,"submitted zero is real");
+ assert.equal(value.people.length,0);
+ assert.equal(value.teams.length,0);
+ assert.equal(value.peopleComplete,false);
+ assert.equal(value.teamComplete,false);
+ assert.equal(value.unverifiedPersonCount,0);
+ assert.equal(value.unverifiedTeamCount,0);
+ assert.equal(value.companies[0].peopleVerified,false);
+});
+test("an aggregate 0 without a verified staff original is refused rather than called submitted",()=>{
+ const src=create(0);
+ src.reports[0].data.source="staff-entries-v1";
+ assert.throws(()=>run("2026-09-28","2026-10-04",[src]),
+  /PARTNER_RANK_SNAPSHOT_UNVERIFIED/);
+});
+test("per-product IDs stay stable when the earlier hub-approved categories turn OFF",()=>{
+ const first={...create(2),allowedCategories:["NURO","SBMNP"]};
+ first.reports[0].data.counts={...zero(),NURO:2,SBMNP:3};
+ first.reports[0].data.totalCount=5;
+ const both=run("2026-09-28","2026-10-04",[first]);
+ assert.deepEqual(both.products.map(x=>[x.key,x.name,x.totalCount]),
+  [["product-1","NURO",2],["product-2","SBMNP",3]]);
+ const onlySecond={...first,allowedCategories:["SBMNP"]};
+ const after=run("2026-09-28","2026-10-04",[onlySecond]);
+ assert.deepEqual(after.products.map(x=>[x.key,x.name,x.totalCount]),
+  [["product-2","SBMNP",3]]);
+ assert.equal(after.totalCount,3);
+});
