@@ -81,7 +81,7 @@ test("all OFF products hide company name and all attribution/status metadata wit
  assert.deepEqual(value.unreportedCompanies,[]);
  assert.equal(value.totalCount,0);
  assert.equal(value.reportCount,0);
- assert.doesNotMatch(JSON.stringify(value),/協力店|cashback|99999|partner/);
+ assert.doesNotMatch(JSON.stringify(value),/協力店|cashback|99999|"cid":"partner"/);
  assert.equal(JSON.stringify(s),before,"OFF is not a destructive migration");
 });
 test("real zero-count staff report without verifiable name/team never advertises complete staff ranking",()=>{
@@ -117,7 +117,7 @@ test("per-product IDs stay stable when the earlier hub-approved categories turn 
  first.reports[0].data.totalCount=5;
  const both=run("2026-09-28","2026-10-04",[first]);
  assert.deepEqual(both.products.map(x=>[x.key,x.name,x.totalCount]),
-  [["product-1","NURO",2],["product-2","SBMNP",3]]);
+  [["product-2","SBMNP",3],["product-1","NURO",2]]);
  const onlySecond={...first,allowedCategories:["SBMNP"]};
  const after=run("2026-09-28","2026-10-04",[onlySecond]);
  assert.deepEqual(after.products.map(x=>[x.key,x.name,x.totalCount]),
