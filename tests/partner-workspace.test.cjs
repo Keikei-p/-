@@ -1382,7 +1382,7 @@ test("same-app location and working-team are saved, read back and audited withou
  assert.equal(db.store.get(path).workLocation,"広島市 検証現場");
  await api.submit(req("p",{date,staffId:staff,
   counts:{...zero(),NURO:3},expectedVersion:1}));
- const latest=(await api.view(req("p",{date})).records.find(x=>x.staffId===staff);
+ const latest=(await api.view(req("p",{date}))).records.find(x=>x.staffId===staff);
  assert.equal(latest.workLocation,"広島市 検証現場",
   "standalone partner save must not silently remove same-app location");
  assert.equal(latest.teamIdSnapshot,t2,"corrections cannot reassign original team");
