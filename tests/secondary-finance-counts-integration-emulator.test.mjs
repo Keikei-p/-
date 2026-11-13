@@ -197,8 +197,13 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    correctionReason:"過去版を使った不正な訂正依頼"
   })),err=>err.code==="aborted");
   await assert.rejects(service.listHubPartnerCounts(request(worker,{
+   date,partnerCompanyId:partner
+  })),err=>err.code==="permission-denied",
+   "valid read form from a partner principal must be denied by the Owner role");
+  await assert.rejects(service.listHubPartnerCounts(request(worker,{
    date,partnerCompanyId:partner,workspaceCompanyId:partner
-  })),err=>err.code==="permission-denied");
+  })),err=>err.code==="invalid-argument",
+   "an injected workspaceCompanyId must fail schema validation");
   await assert.rejects(service.correctHubPartnerCounts(request(worker,{
    date,partnerCompanyId:partner,staffId:worker,expectedVersion:3,
    counts:{...empty,NURO:7,"SB光・AIR":1},
