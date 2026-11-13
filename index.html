@@ -14639,7 +14639,7 @@ function openOwnerPartnerCountEditor(parent,company){
   isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner";
  const dispose=()=>{
   disposed=true;++loadGeneration;panel?.destroy();panel=null;
-  holder.replaceChildren();
+  holder.replaceChildren();editor.remove();
  };
  ownerPartnerCorrectionDispose=dispose;
  const load=async()=>{
@@ -14756,6 +14756,7 @@ let ownerPartnerDashboardNonce=0;
 pInline("ownerPartnerDashboardDate").value=getTodayString();
 pInline("ownerPartnerDashboardDate").max=getTodayString();
 async function loadOwnerPartnerDetails(){
+ ++ownerPartnerCorrectionNonce;ownerPartnerCorrectionDispose();
  // The verified monthly path replaces this panel's legacy daily reader.
  if(NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED)return refreshOwnerVerifiedPartnerTeamCards();
  const nonce=++ownerPartnerDashboardNonce;
@@ -14814,6 +14815,13 @@ async function loadOwnerPartnerDetails(){
    card.append(note);
    const holder=document.createElement("div");holder.className="owner-partner-team-list partner-count-team-grid";
    card.append(holder);list.append(card);
+   if(company.active){
+    const correction=document.createElement("button");correction.type="button";
+    correction.className="team-action-button";
+    correction.textContent=company.name+"｜登録済み件数を確認・訂正";
+    correction.onclick=()=>openOwnerPartnerCountEditor(card,company);
+    card.append(correction);
+   }
    let loaded=false,loading=false;
    card.addEventListener("toggle",async()=>{
     if(!card.open||loaded||loading||!validSession()||!company.active)return;
@@ -14916,6 +14924,7 @@ async function loadOwnerPartnerDetails(){
 }
 pInline("ownerPartnerDashboardRefresh").onclick=()=>void loadOwnerPartnerDetails();
 pInline("ownerPartnerDashboardDate").onchange=()=>{
+ ++ownerPartnerCorrectionNonce;ownerPartnerCorrectionDispose();
  if(!pInline("ownerPartnerDashboardDetails").hidden&&
     !pInline("allTeamsOverviewContent").hidden)void loadOwnerPartnerDetails();
 };
