@@ -34,6 +34,7 @@ test("OFF-only saved positive count must not invent a 0-ranked company, team or 
  assert.deepEqual(r.companies,[]);
  assert.deepEqual(r.teams,[]);
  assert.deepEqual(r.people,[]);
+ assert.deepEqual(r.products,[], "OFF-only day must not create a zero-ranked NURO product");
  assert.equal(r.unreportedCompanies.length,1);
  assert.equal(r.partnerCountsComplete,false);
 });
@@ -52,6 +53,10 @@ test("genuinely submitted zero remains ranked even beside an OFF-only positive e
  assert.equal(r.people[0].rank,1);
  assert.deepEqual(r.teams.map(t=>t.name),["zeroTeam"]);
  assert.equal(r.teams[0].rank,1);
+ assert.equal(r.products[0].name,"NURO");
+ assert.equal(r.products[0].rank,1);
+ assert.equal(r.products[0].totalCount,0,
+  "a verified submitted zero remains visible in the ON product leaderboard");
 });
 
 test("published positive reports rank normally; private OFF figures never enter score",()=>{
@@ -73,8 +78,12 @@ test("legacy company-only OFF reports cannot manufacture a ranked zero",()=>{
  const offOnly=standings([],{source:"quick-counts-v1",quickCounts:off()});
  assert.equal(offOnly.companies.length,0);
  assert.equal(offOnly.historicalCompanyOnlyCount,0);
+ assert.deepEqual(offOnly.products,[], "legacy OFF-only day creates no zero-ranked product");
  const submittedZero=standings([],{source:"quick-counts-v1",quickCounts:zero()});
  assert.equal(submittedZero.companies.length,1);
  assert.equal(submittedZero.companies[0].rank,1);
  assert.equal(submittedZero.companies[0].totalCount,0);
+ assert.equal(submittedZero.products[0].name,"NURO");
+ assert.equal(submittedZero.products[0].totalCount,0);
+ assert.equal(submittedZero.products[0].rank,1);
 });
