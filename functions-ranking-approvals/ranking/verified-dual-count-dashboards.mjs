@@ -385,7 +385,15 @@ export function buildVerifiedCountDashboard({
       p.count>best.get(p.id)?"自己ベスト更新":"過去記録以下":"比較不可"
   };
  });
- const rankedPeople=ordered(personRows,p=>p.count);
+ // A roster member with NO submitted day is not a 0-case performer.
+ // Preserve them for Owner missing-report views, but NEVER grant a rank.
+ // Filter before ranking so a reported zero keeps the correct tie position.
+ const rankedPeople=[
+  ...ordered(personRows.filter(p=>p.reportStatus!=="未報告"),p=>p.count),
+  ...personRows.filter(p=>p.reportStatus==="未報告")
+   .sort((a,b)=>a.name.localeCompare(b.name,"ja")||a.id.localeCompare(b.id))
+   .map(p=>({...p,rank:null}))
+ ];
  const rankedProducts=ordered([...products.values()].map(p=>({
   id:p.id,name:p.name,count:p.count,ownCount:p.ownCount,
   partnerCount:p.partnerCount,
@@ -429,7 +437,9 @@ export function buildVerifiedCountDashboard({
  const ownPeople=common.memberRanking.filter(x=>x.companyId===ownCompany);
  const ownProducts=rankedProducts.filter(x=>x.companies.some(c=>c.companyId===ownCompany))
   .map(p=>({id:p.id,name:p.name,count:p.companies.find(c=>c.companyId===ownCompany).count}));
- const publicMembers=rankedPeople.map(x=>({
+ // Public member standings exclude unreported people entirely.
+ // Own people remain countable but are explicitly rank-null until reported.
+ const publicMembers=rankedPeople.filter(x=>x.rank!==null).map(x=>({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
  const publicProducts=rankedProducts.map(x=>({
