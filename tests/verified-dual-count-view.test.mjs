@@ -107,12 +107,38 @@ test("partner sees own results and public rankings only, not any hub internal te
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
  const text=words(root);
- for(const expected of ["自社の獲得件数・成長","協力店A","3件",
-  "自分たちの成果・前期比","公開承認済み・個人ランキング",
-  "公開承認済み・会社ランキング","公開承認済み・班ランキング","商材ランキング","自社","第一班"])
+ for(const expected of ["全社獲得件数・合同ランキング","協力店A","3件",
+  "個人ランキング","会社ランキング","班ランキング","商材ランキング","自社","第一班"])
   assert(text.includes(expected),expected);
  for(const forbidden of ["班別内訳","会社別内訳","teamId","uid","売上","単価","キャッシュバック","50000円"])
   assert(!text.includes(forbidden),forbidden);
+});
+test("Owner and partner use the SAME four ranking cards with no duplicate partner-only boards",()=>{
+ const order=["会社ランキング","班ランキング","個人ランキング","商材ランキング"];
+ for(const role of ["hub_owner","partner_owner"]){
+  const root=new Node("main");
+  const payload=buildVerifiedCountDashboard(input(role));
+  renderVerifiedDualCountDashboard({document:doc,root,payload});
+  const panels=walk(root).filter(x=>x.className==="nico-dual-ranking");
+  assert.equal(panels.length,4,role);
+  const headings=panels.map(panel=>walk(panel)
+   .find(x=>x.className==="nico-dual-title")?.textContent);
+  assert.deepEqual(headings,order,role);
+  const whole=words(root);
+  assert(whole.includes("全社獲得件数・合同ランキング"));
+  for(const word of ["自分たちの成果・前期比","公開承認済み・会社ランキング",
+   "公開承認済み・班ランキング","公開承認済み・個人ランキング",
+   "公開承認済み・商材ランキング"])
+   assert(!whole.includes(word),role+": "+word);
+  assert(!/(売上|単価|キャッシュバック|[¥￥])/.test(whole));
+  const person=panels[2];
+  assert(words(person).includes("本社担当"));
+  assert(words(person).includes("協力店担当"));
+  const product=panels[3];
+  assert(words(product).includes("NURO"));
+  if(role==="partner_owner")for(const forbidden of ["hub:team","partner:team","uid"])
+   assert(!whole.includes(forbidden));
+ }
 });
 test("partner jointly ranks internal company and approved partner teams without exposing team IDs",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
