@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/shared-count-standings.cjs'
+      - 'tests/partner-week-boundary-contract.test.cjs'
       - 'functions-partner-workspace/index.js'
       - 'index.html'
       - 'tests/partner-workspace.test.cjs'
@@ -50,5 +52,5 @@ jobs:
       - name: Owner server correction, no finance, correction audit, old split and fallback
         run: |
           set -euo pipefail
-          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+          node --test tests/partner-week-boundary-contract.test.cjs tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
           echo 'OWNER_EXISTING_LEDGER_CORRECTION_NO_DEPLOY_PASS'
