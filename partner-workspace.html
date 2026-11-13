@@ -497,7 +497,7 @@ async function mountVerifiedJointMonthForPartner(){
    fetcher:window.fetch.bind(window),
    endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
    asOf:today.year+"-"+today.month+"-"+today.day,
-   onAuthStateChanged
+   onAuthStateChanged,expectedRole:"partner_owner"
   });
   root.hidden=false;
  }catch{
