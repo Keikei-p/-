@@ -5,7 +5,10 @@ on:
     paths:
       - 'functions-partner-workspace/service.cjs'
       - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'index.html'
+      - 'partner-workspace.html'
       - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-published-count-browser-contract.test.cjs'
       - 'tests/partner-publication-write-ranking-consistency.test.cjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - '.github/workflows/nico-partner-published-write-history-no-deploy.yml'
@@ -42,5 +45,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs
+          node --test tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs tests/partner-published-count-browser-contract.test.cjs tests/partner-existing-ranking.test.cjs tests/partner-money-free-workspace.test.cjs
           echo 'PARTNER_ON_OFF_SAVE_HISTORIC_COUNTS_NO_DEPLOY_PASS'
