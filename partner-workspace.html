@@ -111,6 +111,19 @@ font:inherit;font-size:13px;line-height:1.6}
 .dashboard-app-meta{font-size:10px;text-wrap:balance}
 .partner-count-trend-row{grid-template-columns:minmax(68px,90px) 1fr auto}
 }
+/* Mirror the original 1–4 team cards, with no finance fields. */
+#partnerPanel-teamDetail .partner-company-team-heading{font-size:16px;font-weight:800;margin:8px 0 10px}
+#partnerPanel-teamDetail .team-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+#partnerPanel-teamDetail .team-overview-card{min-width:0;min-height:112px;padding:14px 12px;border:1px solid var(--border);border-radius:13px;background:#fff;color:var(--text);text-align:left;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+#partnerPanel-teamDetail .team-overview-card[aria-pressed="true"]{border-color:#60a5fa;background:#eff6ff;box-shadow:0 4px 12px rgba(37,99,235,.10)}
+#partnerPanel-teamDetail .team-overview-card-name{font-size:15px;font-weight:800;overflow-wrap:anywhere}
+#partnerPanel-teamDetail .team-overview-card-members{margin-top:5px;color:var(--sub);font-size:11px}
+#partnerPanel-teamDetail .team-overview-card-result{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:14px;font-weight:800}
+#partnerPanel-teamDetail .team-overview-card-goal{margin-top:7px;padding-top:7px;border-top:1px solid var(--border);color:var(--sub);font-size:11px;font-weight:800}
+#partnerPanel-teamDetail .team-detail-panel{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);margin-top:10px}
+#partnerPanel-teamDetail .team-detail-panel[hidden]{display:none}
+#partnerPanel-teamDetail .team-detail-panel h3{font-size:14px;margin:16px 0 8px}
+#partnerPanel-teamDetail .team-overview-card:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
 </style></head><body>
 <header><div class="header-inner">
 <h1 id="workspaceTitle">営業実績管理</h1>
@@ -272,10 +285,16 @@ font:inherit;font-size:13px;line-height:1.6}
 </div>
 <div id="partnerPanel-teamDetail" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📋 班別詳細</h3>
- <label for="countTeamSelect">班を選択</label><select id="countTeamSelect"></select>
- <p class="partner-panel-note">保存時点の所属班を確認できない実績は「所属班未確認」に分類します。</p>
- <h3>商材の実績</h3><div id="countTeamProducts" class="scroll"></div>
- <h3>個人の実績</h3><div id="countTeamPeople" class="scroll"></div>
+ <div id="partnerTeamCompanyHeading" class="partner-company-team-heading"></div>
+ <div id="partnerTeamCardGrid" class="team-overview-grid" aria-label="班別件数カード"></div>
+ <details><summary class="partner-panel-note">班を一覧から選ぶ</summary>
+  <label for="countTeamSelect">班を選択</label><select id="countTeamSelect"></select>
+ </details>
+ <p class="partner-panel-note">保存時点の班で集計します。所属班が確認できない過去の件数は推測しません。</p>
+ <div id="partnerTeamCountDetail" class="team-detail-panel" hidden>
+  <h3>担当者別の件数</h3><div id="countTeamPeople" class="scroll"></div>
+  <h3>商材別の件数</h3><div id="countTeamProducts" class="scroll"></div>
+ </div>
 </div>
 <div id="partnerPanel-productSummary" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📦 商材別</h3>
@@ -862,6 +881,10 @@ function competitionRanks(rows,countOf,render,qualifies=()=>true){
 }
 function renderTeamCountDetail(){
  if(!countExportRows)return;
+ const chosenId=$("countTeamSelect").value;
+ for(const card of $("partnerTeamCardGrid").querySelectorAll("[data-team-key]"))
+  card.setAttribute("aria-pressed",String(card.dataset.teamKey===chosenId));
+ $("partnerTeamCountDetail").hidden=!countExportRows.summary.groups.some(g=>g.id===chosenId);
  const summary=countExportRows.summary,id=$("countTeamSelect").value;
  const products=summary.teamProducts.find(x=>x.id===id)?.products;
  const people=summary.teamPeople.find(x=>x.id===id)?.people||[];
@@ -958,10 +981,37 @@ function renderCountOnlyDashboard(summary,days){
  for(const team of summary.groups){const option=document.createElement("option");option.value=team.id;
   option.textContent=team.name+"（"+team.count+"件）";teamSelect.append(option)}
  if(summary.groups.some(t=>t.id===previous))teamSelect.value=previous;
+ // Keep the validated selected-month source and original 11-card panel.
+ // The same original-style team card is used for each partner company team.
+ const grid=$("partnerTeamCardGrid");grid.replaceChildren();
+ $("partnerTeamCompanyHeading").textContent=String(data?.companyName||"協力店")+" → 班別の月間件数";
+ for(const group of summary.groups){
+  const button=document.createElement("button");button.type="button";
+  button.className="team-overview-card";button.dataset.teamKey=group.id;
+  button.setAttribute("aria-pressed",String(teamSelect.value===group.id));
+  const heading=document.createElement("div");
+  heading.className="team-overview-card-name";heading.textContent=group.name;
+  const people=summary.teamPeople.find(t=>t.id===group.id)?.people||[];
+  const member=document.createElement("div");
+  member.className="team-overview-card-members";
+  member.textContent=group.id==="__unverified__"?"所属班未確認":
+   "実績登録 "+people.filter(p=>p.count>0).length+"人";
+  const result=document.createElement("div");
+  result.className="team-overview-card-result";result.textContent=group.count+"件";
+  const goal=document.createElement("div");
+  goal.className="team-overview-card-goal";goal.textContent=
+   group.id==="__unverified__"?"集計上の所属は未確認":"目標未設定（件数目標の連携待ち）";
+  button.append(heading,member,result,goal);
+  button.onclick=()=>{teamSelect.value=group.id;renderTeamCountDetail()};
+  grid.appendChild(button);
+ }
  renderProductRankMode();renderCountGoal();
 }
 function clearCountOnlyDashboard(){
  countExportRows=null;$("countGoalBox").hidden=true;
+ $("partnerTeamCardGrid").replaceChildren();
+ $("partnerTeamCompanyHeading").textContent="";
+ $("partnerTeamCountDetail").hidden=true;
  $("countGoalUnavailable").hidden=false;$("countReportCopy").disabled=true;
  $("countReportBody").value="";
  for(const id of ["countKpis","countTeamRank","countStaffRank","countAnalysisSummary",
