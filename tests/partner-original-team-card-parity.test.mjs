@@ -9,6 +9,7 @@ const css=sourceIndex.slice(sourceIndex.indexOf(".team-overview-grid {"),
 class El{
  constructor(tag="div"){this.tagName=tag;this.className="";this.children=[];this.dataset={};this.value="";this.textContent="";this.attrs={};this.onclick=null}
  append(...nodes){this.children.push(...nodes)}
+ appendChild(node){this.children.push(node);return node}
  replaceChildren(...nodes){this.children=[...nodes]}
  setAttribute(name,value){this.attrs[name]=value}
  querySelectorAll(selector){return this.children.filter(e=>selector==="[data-team-key]"&&e.dataset.teamKey)}
@@ -68,5 +69,5 @@ test("company-month change clears the view without touching unsaved count inputs
  assert.doesNotMatch(clean,/localStorage\.clear\(|setDoc\(|deleteDoc\(|save\(|resetForm\(/);
  const saver=source.slice(source.indexOf('$("save").onclick='),source.indexOf('$("selectCodeLogin").onclick='));
  assert.match(saver,/expectedVersion:/);
- assert.match(saver,/submitPartnerWorkspaceCounts|submit\(/);
+ assert.match(saver,/submitPartnerWorkspaceCounts|await save\(/);
 });
