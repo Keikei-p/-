@@ -976,8 +976,30 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
+  // Keep the saved OFF category values untouched, but do not send them to
+  // the partner browser when publication is enabled. Read the EXACT policy
+  // from the same trusted server guard as the transactional submit path.
+  let enabledCategories;
+  if(submissionPublicationEnabled()===true){
+   const blank=Object.fromEntries(KEYS.map(k=>[k,0]));
+   try{
+    const policy=await verifySubmissionPublication({
+     tx:{get:ref=>ref.get()},
+     scope:{verifiedByServer:true,kind:s.kind,uid:a.uid,cid:s.cid,hubId:s.hubId},
+     previousCounts:blank,nextCounts:blank
+    });
+    enabledCategories=policy.enabledCategories;
+   }catch{fail("failed-precondition");}
+  }
+  const safeRecords=enabledCategories===undefined?rows:rows.map(row=>{
+   const on=new Set(enabledCategories);
+   const visible=Object.fromEntries(KEYS.map(k=>[k,on.has(k)?row.counts[k]:0]));
+   return {...row,counts:visible,
+    totalCount:KEYS.reduce((n,k)=>n+visible[k],0)};
+  });
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
-    teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    teams:visibleTeams,staff:[...allowed.values()],records:safeRecords,categories:KEYS,
+    ...(enabledCategories===undefined?{}:{enabledCategories}),
     privateProducts:productList};
  }
  async function submit(request){
@@ -1020,19 +1042,29 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
-   // STAGING / hard OFF: validate server-owned publication in this SAME
-   // transaction against the original saved staff counts, before any writes.
-   // Never trust browser-provided prior counts or a claimed company/owner.
+   // STAGING / hard OFF. The browser sends zero for disabled SKUs,
+   // while the server restores their immutable saved historical numbers
+   // within this SAME authenticated count transaction. This permits ON-only
+   // edits without deleting OFF history or altering the old company sum.
+   let effectiveCounts=counts,effectiveTotal=total;
    if(submissionPublicationEnabled()===true){
     try{
-     await verifySubmissionPublication({tx,
+     const policy=await verifySubmissionPublication({tx,
       scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
-      previousCounts:prior,nextCounts:counts});
+      previousCounts:prior,nextCounts:prior});
+     if(policy.enabledCategories.length===0)fail("failed-precondition");
+     const on=new Set(policy.enabledCategories);
+     effectiveCounts={...counts};
+     for(const key of KEYS)if(!on.has(key)){
+      if(counts[key]!==0)fail("failed-precondition");
+      effectiveCounts[key]=prior[key];
+     }
+     effectiveTotal=KEYS.reduce((sum,key)=>sum+effectiveCounts[key],0);
     }catch{fail("failed-precondition");}
    }
    const aggregate={};let aggregateTotal=0;
    for(const key of KEYS){
-    const n=previous[key]+counts[key]-prior[key];
+    const n=previous[key]+effectiveCounts[key]-prior[key];
     if(!Number.isSafeInteger(n)||n<0)fail("data-loss");
     aggregate[key]=n;aggregateTotal+=n;
    }
@@ -1049,7 +1081,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
-   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
+   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
+     counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
