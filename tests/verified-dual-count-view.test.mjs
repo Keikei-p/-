@@ -103,6 +103,44 @@ test("missing partner report is never displayed as a rank, but submitted zero re
   assert.equal(root.children.length,0);
  }
 });
+test("owner and partner both exclude unreported company/team, but rank a submitted zero",()=>{
+ const makeRole=role=>{
+  const source=input(role);
+  // partner's official 0 report, unlike an unreported blank roster.
+  source.sources[1].records[0].totalCount=0;
+  source.sources[1].records[0].reportStatus="no_result";
+  source.sources[1].lines[0].count=0;
+  const silent=src("silent","silentStaff","silentSku",0);
+  silent.companyLabel="未報告の会社";
+  silent.records=[];silent.lines=[];
+  source.approvedCompanyIds.push("silent");
+  source.context.approvedCompanyIds.push("silent");
+  source.sources.push(silent);
+  return buildVerifiedCountDashboard(source);
+ };
+ const owner=makeRole("hub_owner"),partner=makeRole("partner_owner");
+ assert.equal(owner.companyBreakdown.find(x=>x.id==="partner").reportStatus,"確定0件");
+ assert.equal(owner.companyBreakdown.find(x=>x.id==="silent").reportStatus,"未報告");
+ assert.equal(owner.teamBreakdown.find(x=>x.companyId==="partner").detail.reportStatus,"確定0件");
+ assert.equal(owner.teamBreakdown.find(x=>x.companyId==="silent").detail.reportStatus,"未報告");
+ assert.deepEqual(partner.publicRanking.companies.map(x=>[x.name,x.count,x.rank]),[
+  ["自社",2,1],["協力店A",0,2]
+ ]);
+ assert.equal(partner.publicRanking.teams.length,2);
+ for(const data of [owner,partner]){
+  const root=new Node("main");
+  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+  const sections=walk(root).filter(x=>x.className==="nico-dual-ranking");
+  assert.equal(sections.length,4);
+  for(const panel of sections.slice(0,2)){
+   const ranks=walk(panel).filter(x=>x.className==="nico-dual-rank-number");
+   assert.equal(ranks.length,2,"submitted zero ranks; unreported row stays unranked");
+   assert.deepEqual(ranks.map(x=>x.textContent),["1位","2位"]);
+   assert(!words(panel).includes("未報告の会社"));
+  }
+  assert(!/(売上|単価|キャッシュバック|[¥￥])/.test(words(root)));
+ }
+});
 test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
