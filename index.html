@@ -6235,6 +6235,7 @@ body.product-reordering .product-list {
         class="dashboard-app-content"
         hidden>
         <div id="allTeamsOverviewList"></div>
+        <div id="ownerVerifiedPartnerTeamCards" aria-label="協力店の会社別班詳細" hidden></div>
       </div>
 
       <div
@@ -7099,6 +7100,8 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
+// STAGING ONLY. This does not authorize a new Production API or deploy.
+const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -32404,6 +32407,69 @@ function renderSelectedTeamMemberDetail(
 }
 
 
+// Draft/NO DEPLOY: never infer partner teams from the daily quick-count totals.
+// This bridge does not mutate existing 1–4 team cards or their financial data.
+// It uses the already-reviewed, strictly count-only joint projection.
+const ownerVerifiedTeamState={key:"",generation:0,loading:false,loadedAt:0};
+async function refreshOwnerVerifiedPartnerTeamCards(){
+ const root=document.getElementById("ownerVerifiedPartnerTeamCards");
+ if(!root)return;
+ if(!NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED||
+    !canLoadPartnerRanking()||!recordsReady||
+    recordsSubscribedMonth!==dashboardMonth.value){
+  ownerVerifiedTeamState.generation++;
+  ownerVerifiedTeamState.key="";ownerVerifiedTeamState.loading=false;
+  ownerVerifiedTeamState.loadedAt=0;root.hidden=true;root.replaceChildren();
+  return;
+ }
+ const month=dashboardMonth.value,user=auth.currentUser;
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!user?.uid)return;
+ const key=user.uid+"|"+currentUserData?.companyId+"|"+month;
+ if(ownerVerifiedTeamState.key===key&&
+    (ownerVerifiedTeamState.loading||
+     Date.now()-ownerVerifiedTeamState.loadedAt<90000))return;
+ ownerVerifiedTeamState.key=key;
+ ownerVerifiedTeamState.loading=true;
+ ownerVerifiedTeamState.loadedAt=0;
+ const generation=++ownerVerifiedTeamState.generation;
+ root.hidden=false;root.replaceChildren();
+ const message=document.createElement("p");
+ message.className="empty-message";message.textContent="協力店の班別件数を検証中…";
+ root.appendChild(message);
+ try{
+  const [bridgeModule,viewModule]=await Promise.all([
+   import("./ranking/verified-joint-month-http-bridge.mjs"),
+   import("./ranking/unified-partner-team-cards.mjs")
+  ]);
+  if(generation!==ownerVerifiedTeamState.generation||
+     auth.currentUser!==user||dashboardMonth.value!==month)return;
+  const bridge=bridgeModule.createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,fetcher:(...args)=>fetch(...args)
+  });
+  const response=await bridge.load({
+   period:{kind:"month",day:month+"-01",asOf:getTodayString()},filters:{}
+  });
+  if(generation!==ownerVerifiedTeamState.generation||
+     auth.currentUser!==user||dashboardMonth.value!==month)return;
+  viewModule.renderOwnerPartnerTeamCards({document,root,response,month});
+ }catch(error){
+  if(generation!==ownerVerifiedTeamState.generation||
+     auth.currentUser!==user)return;
+  // Never fake a zero, rank or company count on an incomplete response.
+  root.replaceChildren();
+  const failure=document.createElement("p");
+  failure.className="empty-message";
+  failure.textContent="協力店の班別件数は検証中です。未照合の数字は表示しません。";
+  root.appendChild(failure);
+  console.error("verified partner team cards unavailable",error?.code||"unavailable");
+ }finally{
+  if(generation===ownerVerifiedTeamState.generation){
+   ownerVerifiedTeamState.loading=false;
+   ownerVerifiedTeamState.loadedAt=Date.now();
+  }
+ }
+}
+
 function renderAllTeamsOverview(
   analysis,
   monthly = []
@@ -32671,6 +32737,10 @@ function renderAllTeamsOverview(
 
 
   renderSelection();
+  // Existing self-team cards and finance permissions above are unchanged.
+  // Append company-grouped count-only partner cards only from a wholly
+  // verified, server-authorized monthly GET. OFF by default in production.
+  void refreshOwnerVerifiedPartnerTeamCards();
 
 }
 
