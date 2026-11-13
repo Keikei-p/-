@@ -25,7 +25,10 @@ test("same-app partner input shows ONLY server approved ON categories and zeroes
  assert(render.includes("snap.enabledCategories?.length===0"));
  assert(save.includes("const enabledKeys=snap.enabledCategories??snap.categories"));
  assert(save.includes('if(!enabledKeys.includes(key)){counts[key]=0;continue;}'));
- assert(save.includes('if(key==="NURO"){counts[key]=parsedCb.total;continue;}'));
+ assert(!save.includes("parsedCb")&&!save.includes("wireCbCounts"));
+ assert(!save.includes("cbCounts:"));
+ assert(!render.includes("input.dataset.cbTier")&&!render.includes("CB0円"),
+  "Partner must enter NURO count without money-tier fields");
  assert(fetch.includes("snap.enabledCategories.some(key=>!snap.categories.includes(key))"));
  assert(!save.includes("counts={...before?.counts}"),
   "No browser-side reconstruction of unpublished saved history");
