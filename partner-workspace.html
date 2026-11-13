@@ -994,7 +994,13 @@ function renderCountOnlyDashboard(summary,days){
   const people=summary.teamPeople.find(t=>t.id===group.id)?.people||[];
   const member=document.createElement("div");
   member.className="team-overview-card-members";
+  // Owners/leaders have the company roster; members may only see their
+  // permitted scope, so never label a partial roster as company-wide staff.
+  const fullRoster=["owner","leader"].includes(data?.role)&&Array.isArray(data?.staff);
+  const activeMembers=fullRoster?data.staff.filter(p=>
+   p.active!==false&&p.teamId===group.id).length:null;
   member.textContent=group.id==="__unverified__"?"所属班未確認":
+   activeMembers!==null?activeMembers+"人":
    "実績登録 "+people.filter(p=>p.count>0).length+"人";
   const result=document.createElement("div");
   result.className="team-overview-card-result";result.textContent=group.count+"件";
