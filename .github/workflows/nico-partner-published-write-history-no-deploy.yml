@@ -9,6 +9,8 @@ on:
       - 'partner-workspace.html'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-published-count-browser-contract.test.cjs'
+      - 'tests/partner-one-login-same-app.test.cjs'
+      - 'tests/partner-original-team-card-parity.test.mjs'
       - 'tests/partner-publication-write-ranking-consistency.test.cjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - '.github/workflows/nico-partner-published-write-history-no-deploy.yml'
@@ -45,5 +47,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs tests/partner-published-count-browser-contract.test.cjs tests/partner-existing-ranking.test.cjs tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs tests/partner-published-count-browser-contract.test.cjs tests/partner-existing-ranking.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-one-login-same-app.test.cjs tests/partner-original-team-card-parity.test.mjs
           echo 'PARTNER_ON_OFF_SAVE_HISTORIC_COUNTS_NO_DEPLOY_PASS'
