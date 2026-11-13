@@ -62,7 +62,17 @@ const rankRows=(value,allowedKeys,companyKey=null)=>{
    name:text(row.name),company:companyKey===null?null:text(row[companyKey]),
    count:row.count});
  }
- return out.sort((a,b)=>a.rank-b.rank||a.name.localeCompare(b.name,"ja"));
+ // A stale or misjoined result must not show contradictory rankings.
+ // Gaps can be legitimate when the server redacts private participants;
+ // equal counts must still tie, and larger counts must never rank lower.
+ const ranked=out.sort((a,b)=>a.rank-b.rank||a.name.localeCompare(b.name,"ja"));
+ for(let i=1;i<ranked.length;i++){
+  const prev=ranked[i-1],next=ranked[i];
+  if(prev.count<next.count||
+     (prev.count===next.count&&prev.rank!==next.rank)||
+     (prev.count>next.count&&prev.rank===next.rank))BLOCK();
+ }
+ return ranked;
 };
 /**
  * The hub-only existing company/team breakdowns contain no rank field.
