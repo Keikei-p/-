@@ -46,6 +46,23 @@ test("same ON-only joint numbers render for owner without any financial data",()
  assert.deepEqual(view.products.map(x=>[x.name,x.count]),[["NURO光",8]]);
  assert.equal(view.people.length,2);
 });
+test("unreported staff retained for Owner audit cannot acquire a public leaderboard rank",()=>{
+ const payload=make();
+ payload.memberRanking.push({id:"partner:missing",rank:null,name:"未報告の担当者",
+  companyName:"協力店",count:0,reportStatus:"未報告"});
+ const view=verifiedJointCountView(payload,{month:"2026-11",role:"hub_owner"});
+ assert.equal(view.people.length,2);
+ assert(!view.people.some(row=>row.name==="未報告の担当者"));
+ for(const edit of [
+  r=>r.memberRanking.at(-1).rank=3,
+  r=>r.memberRanking.at(-1).reportStatus="報告済",
+  r=>r.memberRanking.at(-1).count=1
+ ]){
+  const invalid=structuredClone(payload);edit(invalid);
+  assert.throws(()=>verifiedJointCountView(invalid,{month:"2026-11",role:"hub_owner"}),
+   /JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
+});
 test("partner projection safely handles tied rank and repeated names without personal IDs",()=>{
  const view=verifiedJointCountView(make("partner_owner"),{
   month:"2026-11",role:"partner_owner"
