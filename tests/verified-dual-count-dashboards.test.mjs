@@ -305,9 +305,9 @@ test("registered unreported teams, explicit zero and nullable count goals remain
  const response=build(x);
  const model=projectOwnerPartnerTeamCards(response,{month:"2026-11"});
  const company=model.companies[0];
- const unreported=company.teams.find(t=>t.key==="partner:unreported");
- const reportedZero=company.teams.find(t=>t.key==="partner:zero");
- const active=company.teams.find(t=>t.key==="partner:team");
+ const unreported=company.teams.find(t=>t.key===JSON.stringify(["partner","unreported"]));
+ const reportedZero=company.teams.find(t=>t.key===JSON.stringify(["partner","zero"]));
+ const active=company.teams.find(t=>t.key===JSON.stringify(["partner","team"]));
  assert.equal(unreported.reportStatus,"未報告");
  assert.equal(unreported.goalCount,null);
  assert.equal(reportedZero.reportStatus,"確定0件");
@@ -327,8 +327,35 @@ test("product-filtered team detail retains report evidence from saved lines",asy
  x.filters={productId:"nuro"};
  const result=build(x);
  const model=projectOwnerPartnerTeamCards(result,{month:"2026-11"});
- const team=model.companies[0].teams.find(t=>t.key==="partner:team");
+ const team=model.companies[0].teams.find(t=>t.key===JSON.stringify(["partner","team"]));
  assert.equal(team.count,3);
  assert.equal(team.reportStatus,"報告済");
  assert.equal(team.people[0].reportStatus,"一部未報告");
+});
+
+test('colon-containing company/team IDs cannot alias another company team',async()=>{
+ const {projectOwnerPartnerTeamCards}=await import('../ranking/unified-partner-team-cards.mjs');
+ const x=fixture(3),rename=id=>id==='hub'?'a':'a:b';
+ x.period={kind:'month',day:'2026-11-08',asOf:'2026-11-08'};
+ x.hubCompanyId='a';x.approvedCompanyIds=['a','a:b'];
+ x.context.hubCompanyId='a';x.context.viewerCompanyId='a';
+ x.context.approvedCompanyIds=['a','a:b'];
+ for(const source of x.sources){
+  const old=source.companyId,cid=rename(old),teamId=old==='hub'?'b:team':'team';
+  source.companyId=cid;source.teams[0].id=teamId;
+  for(const row of [...source.records,...source.lines,...source.products])row.companyId=cid;
+  for(const row of [...source.records,...source.lines,...source.roster])row.teamId=teamId;
+ }
+ for(const group of x.productGroups)group.companyId=rename(group.companyId);
+ const result=build(x);
+ const teams=result.teamBreakdown;
+ assert.equal(teams.length,2);
+ assert.equal(teams[0].id,teams[1].id,'legacy display IDs collide; identities must remain separate');
+ assert.equal(teams.find(t=>t.companyId==='a').count,1);
+ assert.equal(teams.find(t=>t.companyId==='a:b').count,3);
+ assert.deepEqual(buildVendorDashboard(x),result);
+ const model=projectOwnerPartnerTeamCards(result,{month:'2026-11'});
+ assert.equal(model.total,3);
+ assert.equal(model.companies[0].teams[0].key,JSON.stringify(['a:b','team']));
+ assert.equal(model.companies[0].teams[0].people[0].count,3);
 });

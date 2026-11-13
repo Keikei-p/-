@@ -68,8 +68,8 @@ test("owner-only snapshot groups same-named teams by company without moving orig
  const out=projectOwnerPartnerTeamCards(detailedPayload(),{month:"2026-11"});
  assert.equal(out.companies.length,2);
  assert.equal(out.total,7);
- assert.equal(out.companies[0].teams[0].key,"companyA:t1");
- assert.equal(out.companies[1].teams[0].key,"companyB:t1");
+ assert.equal(out.companies[0].teams[0].key,JSON.stringify(["companyA","t1"]));
+ assert.equal(out.companies[1].teams[0].key,JSON.stringify(["companyB","t1"]));
  assert.equal(out.companies[0].teams[0].people.length,2);
  assert.equal(out.companies[0].teams[0].peopleVerified,true);
  assert.equal(out.companies[0].products[0].count,5);
@@ -80,7 +80,7 @@ test("render reuses existing team overview card CSS and opens one company team a
  assert.equal(model.total,7);
  const rootChildren=root.nodes;
  assert.equal(rootChildren.filter(x=>x.className==="team-overview-card").length,2);
- const partnerA=rootChildren.find(x=>x.className==="team-overview-card"&&x.dataset.teamKey==="companyA:t1");
+ const partnerA=rootChildren.find(x=>x.className==="team-overview-card"&&x.dataset.teamKey===JSON.stringify(["companyA","t1"]));
  assert.ok(partnerA);
  partnerA.listeners.click();
  assert.equal(partnerA.attrs["aria-pressed"],"true");

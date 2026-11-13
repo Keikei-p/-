@@ -48,19 +48,20 @@ export function projectOwnerPartnerTeamCards(response,{month}={}){
   if(!ID.test(team.companyId||"")||!ID.test(team.id||"")||
      !team.id.startsWith(team.companyId+":")||
      !Number.isSafeInteger(team.count)||team.count<0)stop();
-  if(seenTeams.has(team.id))stop();
-  seenTeams.add(team.id);
+  const identity=JSON.stringify([team.companyId,team.id.slice(team.companyId.length+1)]);
+  if(seenTeams.has(identity))stop();
+  seenTeams.add(identity);
   const company=partnerCompanies.get(team.companyId);
   if(!company)continue; // internal company cards remain intact
   if(goodName(team.companyName)!==company.name)stop();
-  company.teams.push({key:team.id,companyId:team.companyId,
+  company.teams.push({key:identity,companyId:team.companyId,
    name:goodName(team.name),count:team.count,people:[],peopleVerified:false});
  }
  // Legacy person rankings carry CURRENT roster team IDs. Equality of totals
  // does not prove historical attribution (two transferred people may cancel).
  // Accept only explicit server detail built from saved record team snapshots.
  for(const source of response.teamBreakdown){
-  const team=partnerCompanies.get(source.companyId)?.teams.find(t=>t.key===source.id);
+  const team=partnerCompanies.get(source.companyId)?.teams.find(t=>t.key===JSON.stringify([source.companyId,source.id.slice(source.companyId.length+1)]));
   if(!team||source.detail===undefined)continue;
   const detail=source.detail;
   if(!detail||detail.schema!=="nico-team-count-detail-v1"||

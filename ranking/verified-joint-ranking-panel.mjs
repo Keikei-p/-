@@ -75,8 +75,9 @@ function rankBreakdown(value,companyKey=null){
  const ordered=value.map((row,index)=>{
   if(!obj(row)||!number(row.count)||typeof row.id!=="string")BLOCK();
   const id=text(row.id);
-  if(seen.has(id))BLOCK();
-  seen.add(id);
+  const identity=companyKey===null?id:JSON.stringify([row.companyId??row[companyKey],id]);
+  if(seen.has(identity))BLOCK();
+  seen.add(identity);
   return {id,index,name:text(row.name),count:row.count,
    company:companyKey===null?null:text(row[companyKey])};
  }).sort((a,b)=>b.count-a.count||

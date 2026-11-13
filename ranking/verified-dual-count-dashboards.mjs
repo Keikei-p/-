@@ -77,6 +77,7 @@ function checkSources(sources,companyIds,hub){
  const seen=new Set(),recordKeys=new Set(),lineKeys=new Set();
  let readTime=null;
  const teamMetadata=new Map();
+ const teamKey=(companyId,teamId)=>JSON.stringify([companyId,teamId]);
  const rows=[],sku=new Map(),names=new Map(),roster=new Map();
  const coverage=new Map();
  for(const s of sources){
@@ -108,7 +109,7 @@ function checkSources(sources,companyIds,hub){
    if(!t||!id(t.id)||teamNames.has(t.id)||
       (t.goalCount!=null&&count(t.goalCount)<0))stop();
    teamNames.set(t.id,label(t.name));
-   teamMetadata.set(s.companyId+":"+t.id,{id:s.companyId+":"+t.id,
+   teamMetadata.set(teamKey(s.companyId,t.id),{id:s.companyId+":"+t.id,sourceTeamId:t.id,
     companyId:s.companyId,companyName:company,name:label(t.name),
     goalCount:t.goalCount==null?null:count(t.goalCount),memberCount:0});
   }
@@ -123,7 +124,7 @@ function checkSources(sources,companyIds,hub){
    if(!p||!id(p.uid)||!id(p.teamId)||!teamNames.has(p.teamId))stop();
    const key=s.companyId+":"+p.uid;
    if(roster.has(key))stop();
-   teamMetadata.get(s.companyId+":"+p.teamId).memberCount++;
+   teamMetadata.get(teamKey(s.companyId,p.teamId)).memberCount++;
    roster.set(key,{id:key,companyId:s.companyId,companyName:company,
     uid:p.uid,teamId:p.teamId,teamName:teamNames.get(p.teamId),
     name:label(p.name)});
@@ -291,9 +292,9 @@ export function buildVerifiedCountDashboard({
  for(const team of parsed.teamMetadata.values()){
   if(filters.companyId&&filters.companyId!==team.companyId)continue;
   if(filters.teamId&&filters.teamId!==team.id.slice(team.companyId.length+1))continue;
-  teams.set(team.id,{id:team.id,companyId:team.companyId,
+  teams.set(JSON.stringify([team.companyId,team.sourceTeamId]),{id:team.id,companyId:team.companyId,
    companyName:team.companyName,name:team.name,count:0});
-  teamDetails.set(team.id,{people:new Map(),products:new Map()});
+  teamDetails.set(JSON.stringify([team.companyId,team.sourceTeamId]),{people:new Map(),products:new Map()});
  }
  for(const r of current){
   const cid=r.companyId;
@@ -311,13 +312,13 @@ export function buildVerifiedCountDashboard({
     statuses.get(p.id).add(r.reportStatus);
    }
   }
-  if(r.teamId!==null)put(teams,r.companyId+":"+r.teamId,
+  if(r.teamId!==null)put(teams,JSON.stringify([r.companyId,r.teamId]),
    ()=>({id:r.companyId+":"+r.teamId,companyId:cid,
     companyName:r.companyName,name:r.teamName,count:0}),r.count);
   // Attribute details to the saved record team, never the current roster.
   // Reuse the same authorized, mapped, filtered rows as every total above.
   if(r.teamId!==null){
-   const key=r.companyId+":"+r.teamId;
+   const key=JSON.stringify([r.companyId,r.teamId]);
    if(!teamDetails.has(key))teamDetails.set(key,{people:new Map(),products:new Map()});
    const detail=teamDetails.get(key);
    if(r.uid!==null){
@@ -406,14 +407,15 @@ export function buildVerifiedCountDashboard({
  if(context.role==="hub_owner"){
   const data={...common,role:"hub_owner",
    companyBreakdown:companyRows,teamBreakdown:[...teams.values()].map(team=>{
-    const detail=teamDetails.get(team.id);
+    const identity=JSON.stringify([team.companyId,team.id.slice(team.companyId.length+1)]);
+    const detail=teamDetails.get(identity);
     const members=[...detail.people.values()].map(p=>({id:p.id,name:p.name,
      count:p.count,reportStatus:p.days.size===0?"未報告":p.count===0?"確定0件":
       p.days.size<range.days?"一部未報告":"報告済"}));
     const teamProducts=[...detail.products.values()];
     if(members.reduce((sum,p)=>add(sum,p.count),0)!==team.count||
        teamProducts.reduce((sum,p)=>add(sum,p.count),0)!==team.count)stop();
-    const metadata=parsed.teamMetadata.get(team.id);
+    const metadata=parsed.teamMetadata.get(identity);
     const reported=members.some(p=>p.reportStatus!=="未報告");
     return {...team,detail:{schema:"nico-team-count-detail-v1",members,products:teamProducts,
      goalCount:metadata.goalCount,memberCount:metadata.memberCount,
@@ -440,7 +442,7 @@ export function buildVerifiedCountDashboard({
   id:x.id,name:x.name,count:x.count
  })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
  const publicTeams=ordered([...teams.values()].filter(x=>
-  [...teamDetails.get(x.id).people.values()].some(p=>p.days.size>0)).map(x=>({
+  [...teamDetails.get(JSON.stringify([x.companyId,x.id.slice(x.companyId.length+1)])).people.values()].some(p=>p.days.size>0)).map(x=>({
   id:x.id,name:x.name,company:x.companyName,count:x.count
  })),x=>x.count).map(x=>({
   rank:x.rank,name:x.name,company:x.company,count:x.count
