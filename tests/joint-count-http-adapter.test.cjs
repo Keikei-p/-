@@ -25,7 +25,9 @@ const data=()=>({schema:"nico-verified-dual-count-v1",
  readTime:"2026-11-09T00:00:00.000Z",
  own:{count:5},
  publicRanking:{members:[{rank:1,name:"営業担当",count:5,company:"協力店"}],
-  products:[{rank:1,name:"NURO光",count:8}]}});
+  products:[{rank:1,name:"NURO光",count:5}],
+  companies:[{rank:1,name:"協力店",count:5}],
+  teams:[{rank:1,name:"営業班",company:"協力店",count:5}]}});
 const make=(status=200,body=data())=>async request=>
  new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json"}});
 test("default OFF: never initializes backend nor touches any live data",async()=>{
@@ -164,18 +166,18 @@ test("allowlisted hub-owner ranking shape remains readable without private sourc
   period:"month",range:{start:"2026-11-01",end:"2026-11-09",
    previousStart:"2026-10-01",previousEnd:"2026-10-09",days:9},
   readTime:"2026-11-09T00:00:00.000Z",
-  summary:{own:3,partner:2,total:5,unidentified:0},
+  summary:{own:3,partner:0,total:3,unidentified:0},
   memberRanking:[{id:"company:uid",name:"営業担当",companyId:"company",
    companyName:"自社",teamId:"team",teamName:"営業班",count:3,
    reportStatus:"報告済",reportedDays:1,previousCount:0,change:3,
    growth:"増加",topProduct:"NURO光",remainingToGoal:2,
    personalBestStatus:"比較不可",rank:1}],
-  productRanking:[{id:"sku",name:"NURO光",count:5,ownCount:3,
-   partnerCount:2,companies:[{companyId:"company",companyName:"自社",count:3}]}],
+  productRanking:[{id:"sku",name:"NURO光",count:3,ownCount:3,
+   partnerCount:0,companies:[{companyId:"company",companyName:"自社",count:3}]}],
   companyBreakdown:[{id:"company",name:"自社",kind:"自社",
-   count:3,unidentifiedCount:0}],
+   count:3,unidentifiedCount:0,hasVerifiedSubmission:true,rank:1}],
   teamBreakdown:[{id:"company:team",companyId:"company",
-   companyName:"自社",name:"営業班",count:3}],
+   companyName:"自社",name:"営業班",count:3,rank:1}],
   filters:{companyId:"",teamId:"",uid:"",productId:""}};
  const adapter=createJointCountHttpAdapter({enabled:()=>true,
   loadHandler:()=>make(200,hub)});
@@ -183,6 +185,172 @@ test("allowlisted hub-owner ranking shape remains readable without private sourc
  assert.equal(out.statusCode,200);
  assert.deepEqual(JSON.parse(out.body),hub);
 });
+test("hub Owner HTTP boundary refuses four-ranking count drift and forged source shares",async()=>{
+ const clean={schema:"nico-verified-dual-count-v1",role:"hub_owner",unit:"件",
+  period:"month",range:{start:"2026-11-01",end:"2026-11-09"},
+  readTime:"2026-11-09T00:00:00.000Z",
+  summary:{own:3,partner:2,total:5,unidentified:0},
+  memberRanking:[{id:"hub:u",name:"自社担当",companyId:"hub",
+   companyName:"自社",teamId:"t1",teamName:"自社班",count:3,
+   reportStatus:"報告済",reportedDays:1,previousCount:null,
+   change:null,growth:"比較不可",topProduct:"NURO光",remainingToGoal:null,
+   personalBestStatus:"比較不可",rank:1},
+   {id:"partner:u",name:"協力担当",companyId:"partner",
+   companyName:"協力店",teamId:"t1",teamName:"協力班",count:2,
+   reportStatus:"報告済",reportedDays:1,previousCount:null,
+   change:null,growth:"比較不可",topProduct:"NURO光",remainingToGoal:null,
+   personalBestStatus:"比較不可",rank:2}],
+  productRanking:[{id:"sku",name:"NURO光",count:5,ownCount:3,
+   partnerCount:2,rank:1,companies:[
+    {companyId:"hub",companyName:"自社",count:3},
+    {companyId:"partner",companyName:"協力店",count:2}]}],
+  companyBreakdown:[
+   {id:"hub",name:"自社",kind:"自社",count:3,
+    unidentifiedCount:0,hasVerifiedSubmission:true,rank:1},
+   {id:"partner",name:"協力店",kind:"協力店",count:2,
+    unidentifiedCount:0,hasVerifiedSubmission:true,rank:2}],
+  teamBreakdown:[
+   {id:"hub:t1",companyId:"hub",companyName:"自社",name:"自社班",count:3,rank:1},
+   {id:"partner:t1",companyId:"partner",companyName:"協力店",name:"協力班",count:2,rank:2}],
+  filters:{companyId:"",teamId:"",uid:"",productId:""}
+ };
+ const send=async payload=>{
+  const adapter=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,payload)
+  });
+  const out=response();await adapter(req(),out);return out;
+ };
+ let out=await send(clean);
+ assert.equal(out.statusCode,200,"consistent hub ranking remains readable");
+ assert.deepEqual(JSON.parse(out.body),clean);
+ for(const mutation of [
+  p=>{p.summary.total=4;},
+  p=>{p.summary.own=2;},
+  p=>{p.summary.partner=3;},
+  p=>{p.summary.unidentified=1;},
+  p=>{p.companyBreakdown[1].count=3;},
+  p=>{p.teamBreakdown[0].count=4;},
+  p=>{p.memberRanking[0].count=4;},
+  p=>{p.productRanking[0].count=6;},
+  p=>{p.productRanking[0].ownCount=4;},
+  p=>{p.productRanking[0].partnerCount=3;},
+  p=>{p.productRanking[0].companies[1].count=4;},
+  p=>{p.productRanking[0].companies[1].companyId="hub";},
+  p=>{p.productRanking[0].companies[1].companyId="foreign";},
+  p=>{p.productRanking[0].companies[1].salary=50000;},
+  p=>{p.teamBreakdown[1].companyId="foreign";},
+  p=>{p.companyBreakdown[0].kind="協力店";},
+  p=>{p.summary.total=Number.MAX_SAFE_INTEGER;}
+ ]){
+  const corrupt=structuredClone(clean);mutation(corrupt);
+  out=await send(corrupt);
+  assert.equal(out.statusCode,503,mutation.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+ // Verified company-code counts may lack a person/team; that difference
+ // is allowed only when explicitly attributed to unidentifiedCount.
+ const unknown=structuredClone(clean);
+ unknown.summary.total=6;unknown.summary.partner=3;
+ unknown.summary.unidentified=1;
+ unknown.companyBreakdown[1].count=3;
+ unknown.companyBreakdown[1].unidentifiedCount=1;
+ unknown.productRanking[0].count=6;
+ unknown.productRanking[0].partnerCount=3;
+ unknown.productRanking[0].companies[1].count=3;
+ out=await send(unknown);
+ assert.equal(out.statusCode,200,
+  "safe unattributed count is preserved without inventing a person or team");
+});
+
+test("real canonical hub and partner rankings cross HTTP adapter with verified company/team status",async()=>{
+ const {buildVerifiedCountDashboard}=await import(
+  "../ranking/verified-dual-count-dashboards.mjs");
+ const day="2026-11-09",readTime=day+"T00:00:00.000Z";
+ const companyIds=["hub","partner"];
+ const src=(cid,total)=>{
+  const own=cid==="hub",staff=own?"本社担当":"協力担当";
+  return {companyId:cid,companyLabel:own?"自社":"協力店",
+   kind:own?"own":"partner",consentVerified:true,isComplete:true,readTime,
+   completeWindows:{current:true,previous:false},
+   teams:[{id:"team",name:"営業班",goalCount:null}],
+   roster:[{uid:"staff",name:staff,teamId:"team"}],
+   products:[{companyId:cid,sourceId:"sku",name:"NURO光",active:true,sortOrder:0}],
+   records:total===null?[]:[{
+    companyId:cid,sourceId:"report",uid:"staff",teamId:"team",date:day,
+    reportStatus:total===0?"no_result":"submitted",totalCount:total,
+    memberNameSnapshot:staff,teamNameSnapshot:"営業班",workLocation:""
+   }],
+   lines:total>0?[{companyId:cid,recordId:"report",sourceId:"line",
+    uid:"staff",teamId:"team",date:day,productId:"sku",count:total}]:[]
+  };
+ };
+ const input={hubCompanyId:"hub",approvedCompanyIds:companyIds,
+  sources:[src("hub",3),src("partner",null)],
+  productGroups:companyIds.map(cid=>({
+   companyId:cid,productId:"sku",groupId:"group",groupName:"NURO光"
+  })),
+  period:{kind:"month",day,asOf:day}};
+ const context=role=>({
+  serverVerified:true,viewerUid:role==="hub_owner"?"hubOwner":"partnerOwner",
+  viewerCompanyId:role==="hub_owner"?"hub":"partner",hubCompanyId:"hub",role,
+  approvedCompanyIds:companyIds,reciprocalOwnersApproved:true,
+  userActive:true,memberActive:true,companyActive:true,
+  individualNamesApproved:true,completeSnapshotBudgetApproved:true
+ });
+ const root=buildVerifiedCountDashboard({...input,context:context("hub_owner")});
+ assert.deepEqual(root.companyBreakdown.map(x=>[
+  x.id,x.hasVerifiedSubmission,x.rank
+ ]),[["hub",true,1],["partner",false,null]]);
+ assert.deepEqual(root.teamBreakdown.map(x=>x.count),[3]);
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,root)
+ });
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,200,
+  "verified hub response must not be rejected as a private unknown field");
+ assert.deepEqual(JSON.parse(out.body),root);
+ const partner=buildVerifiedCountDashboard({
+  ...input,context:context("partner_owner")
+ });
+ const partnerAdapter=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,partner)
+ });
+ const publicOut=response();await partnerAdapter(req(),publicOut);
+ assert.equal(publicOut.statusCode,200);
+ assert.deepEqual(JSON.parse(publicOut.body),partner);
+ assert(!("companyBreakdown" in partner));
+ assert(!("teamBreakdown" in partner));
+ assert.equal(partner.publicRanking.companies.length,1,
+  "unreported partner company is never advertised as a published zero");
+});
+
+test("hub company report marker is boolean and cannot smuggle arbitrary status",async()=>{
+ const basic={schema:"nico-verified-dual-count-v1",role:"hub_owner",unit:"件",
+  period:"month",range:{start:"2026-11-01",end:"2026-11-09"},
+  readTime:"2026-11-09T00:00:00.000Z",
+  summary:{own:3,partner:0,total:3,unidentified:0},
+  memberRanking:[],productRanking:[],teamBreakdown:[],filters:{},
+  companyBreakdown:[{id:"hub",name:"自社",kind:"自社",count:3,
+   unidentifiedCount:0,hasVerifiedSubmission:true,rank:1}]};
+ for(const mutate of [
+  p=>{p.companyBreakdown[0].hasVerifiedSubmission="false";},
+  p=>{p.companyBreakdown[0].hasVerifiedSubmission=false;},
+  p=>{p.companyBreakdown[0].rank=null;},
+  p=>{p.companyBreakdown[0].salary=25000;},
+  p=>{p.teamBreakdown=[{id:"hub:team",companyId:"hub",
+   companyName:"自社",name:"班",count:3,rank:null}];},
+  p=>{p.publicRanking={members:[]};}
+ ]){
+  const doc=structuredClone(basic);mutate(doc);
+  const handle=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,doc)
+  });
+  const out=response();await handle(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+
 test("unexpected financial aliases, arbitrary fields and monetary text fail closed",async()=>{
  const cases=[
   {...data(),salary:50000},
@@ -271,6 +439,8 @@ test("approved company and team count-only rankings can cross authenticated Func
  payload.publicRanking.teams=[
   {rank:1,name:"営業班",company:"協力店",count:5},
   {rank:2,name:"営業班",company:"自社",count:3}];
+ payload.publicRanking.members.push({rank:2,name:"自社担当",company:"自社",count:3});
+ payload.publicRanking.products[0].count=8;
  const adapter=createJointCountHttpAdapter({enabled:()=>true,
   loadHandler:()=>make(200,payload)});
  const out=response();await adapter(req(),out);
@@ -368,6 +538,65 @@ test("exact partner own product and person projections remain accepted",async()=
  assert.equal(out.statusCode,200);
  assert.deepEqual(JSON.parse(out.body),p);
 });
+test("four rankings cannot disagree, disappear, overflow or forge competition ranks at HTTP ingress",async()=>{
+ const base=data();
+ // Distinguish two reported organizations from a legal unreported/no-rank
+ // company. The public partner API only publishes actual submitted firms.
+ base.own.count=5;
+ base.publicRanking.companies=[
+  {rank:1,name:"協力店",count:5},{rank:2,name:"自社",count:3}
+ ];
+ base.publicRanking.products=[{rank:1,name:"NURO光",count:8}];
+ base.publicRanking.members=[
+  {rank:1,name:"協力担当",company:"協力店",count:5},
+  {rank:2,name:"自社担当",company:"自社",count:3}
+ ];
+ base.publicRanking.teams=[
+  {rank:1,name:"第一班",company:"協力店",count:5},
+  {rank:2,name:"第二班",company:"自社",count:3}
+ ];
+ const valid=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,base)
+ });
+ const ok=response();await valid(req(),ok);
+ assert.equal(ok.statusCode,200);
+ for(const edit of [
+  p=>{delete p.publicRanking.companies;},
+  p=>{delete p.publicRanking.teams;},
+  p=>{p.publicRanking.products[0].count=7;},
+  p=>{p.publicRanking.companies[0].count=6;},
+  p=>{p.publicRanking.teams[1].count=2;},
+  p=>{p.publicRanking.members[1].count=2;},
+  p=>{p.publicRanking.companies[0].rank=2;},
+  p=>{p.publicRanking.companies[1].rank=3;},
+  p=>{p.publicRanking.products.push({rank:2,name:"別商材",count:Number.MAX_SAFE_INTEGER});},
+  p=>{p.own.count=9;},
+  p=>{p.publicRanking.members=[{rank:1,name:"A",company:"自社",count:4},
+    {rank:2,name:"B",company:"協力店",count:4}];},
+  p=>{p.publicRanking.teams=[{rank:1,name:"A",company:"自社",count:4},
+    {rank:2,name:"B",company:"協力店",count:4}];}
+ ]){
+  const tampered=structuredClone(base);edit(tampered);
+  const adapter=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,tampered)
+  });
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,edit.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+ // A genuine unknown-attribution company code may create a company-product
+ // gap vs member/team, but member and team totals must still be identical.
+ const unknown=structuredClone(base);
+ unknown.publicRanking.companies[0].count=7;
+ unknown.publicRanking.companies[1].rank=2;
+ unknown.publicRanking.products[0].count=10;
+ const accepted=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,unknown)
+ });
+ const out=response();await accepted(req(),out);
+ assert.equal(out.statusCode,200);
+});
+
 test("NFKC-normalized money labels cannot cross the partner ranking HTTP boundary",async()=>{
  for(const name of ["担当者 ＣＢ５０００","商品 cash back 3000",
   "担当者 unit price 2500","担当者 ＲＥＶＥＮＵＥ９０００"]){

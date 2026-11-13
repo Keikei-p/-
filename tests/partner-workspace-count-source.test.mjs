@@ -140,6 +140,19 @@ test("missing or stale summary, truncated query proof, revoked relation and wron
   assert.throws(()=>build(d),undefined,"blocked unsafe fixture "+i);
  }
 });
+test("fullwidth financial labels cannot enter verified partner count ranking sources",()=>{
+ for(const inject of [
+  d=>{d.companyLabel="協力店 ＣＢ２００００";},
+  d=>{d.teams[0].name="第一班 ＣＢ２００００";},
+  d=>{d.entries[0].staffNameSnapshot="担当 ＣＢ２００００";}
+ ]){
+  const fixture=make();inject(fixture);
+  const before=copy(fixture);
+  assert.throws(()=>build(fixture),/PARTNER_RANK_SOURCE_INCOMPLETE_OR_UNVERIFIED/);
+  assert.deepEqual(fixture,before,"never rewrite source names or historical counts");
+ }
+});
+
 test("same staff on separate dates is valid, zero submission is distinct from absent report",()=>{
  const d=make();
  const zeros=entry(DATE2,"member1",blank());

@@ -16,6 +16,8 @@ import {createPartnerMonthTransactionReader}
  from "./partner-month-readonly-loader.mjs";
 import {auditNoFinancialKeys}
  from "../security/public-projection.mjs";
+import {mergeVerifiedTwoMonthInputs}
+ from "./verified-two-month-count-input.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -109,7 +111,7 @@ export function composeCanonicalMonthlyRankingInput({
   }
   sourceProducts.set(s.companyId,set);
  }
- const seen=new Set();
+ const seen=new Set(),seenTargets=new Set();
  const groups=hubSource.products.map(p=>({
   companyId:hub,productId:p.sourceId,
   groupId:p.sourceId,groupName:p.name
@@ -121,9 +123,15 @@ export function composeCanonicalMonthlyRankingInput({
      !partners.includes(b.companyId)||
      !sourceProducts.get(b.companyId)?.has(b.productId)||
      !hubProducts.has(b.hubProductId))STOP();
-  const key=b.companyId+":"+b.productId;
-  if(seen.has(key))STOP();
-  seen.add(key);
+  // Both stored source and reviewed hub destination must be one-to-one
+  // within each partner. The Owner writer and submission-publication guard
+  // already reject duplicate destination SKUs; the read-only leaderboard
+  // must fail closed on any older/tampered document rather than double-add.
+  // Tuple keys avoid collisions if company IDs contain ':'.
+  const key=JSON.stringify([b.companyId,b.productId]);
+  const destination=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(key)||seenTargets.has(destination))STOP();
+  seen.add(key);seenTargets.add(destination);
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
@@ -170,7 +178,7 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
  const loadPartner=createPartnerMonthTransactionReader({db});
- return async function readCounts({tx,month,context}={}){
+ return async function readCounts({tx,month,context,secondMonth}={}){
   if(!tx||typeof tx.get!=="function"||!context||
      !valid(context.hubCompanyId)||!MONTH.test(month||"")||
      !array(context.approvedCompanyIds)||
@@ -192,10 +200,18 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
      !mappingSnap.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
   sameTime(mappingSnap,hubSource.readTime);
-  return composeCanonicalMonthlyRankingInput({
+  const primary=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:doc(mappingSnap),hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
+  if(secondMonth===undefined)return primary;
+  // This recurses with the SAME caller-supplied read-only transaction, never
+  // creates a second transaction. Both monthly inventories and owner policy
+  // are independently verified against the exact same snapshot readTime.
+  const secondary=await readCounts({tx,month:secondMonth,context});
+  const merged=mergeVerifiedTwoMonthInputs({primary,secondary});
+  return {...merged,verifiedMonths:[month,secondMonth]};
+
  };
 }

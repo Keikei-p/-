@@ -23,7 +23,15 @@ export function createStagedAtomicOwnerCountLoader({
  if(!db||typeof db.runTransaction!=="function"||
     typeof loadCountsInTransaction!=="function"||
     typeof loadPublicationInTransaction!=="function")fail();
- return async function loadAtomic({month,context}={}){
+ return async function loadAtomic({month,context,secondMonth}={}){
+  if(secondMonth!==undefined){
+   if(!MONTH.test(secondMonth||"")||secondMonth===month)fail();
+   const [a,b]=[month,secondMonth].map(m=>{
+    if(!MONTH.test(m||""))fail();
+    const [y,n]=m.split("-").map(Number);return y*12+n;
+   });
+   if(Math.abs(a-b)!==1)fail();
+  }
   if(!MONTH.test(month||"")||!context||context.serverVerified!==true||
      !id(context.hubCompanyId)||!id(context.viewerUid)||
      !Array.isArray(context.approvedCompanyIds)||
@@ -35,7 +43,7 @@ export function createStagedAtomicOwnerCountLoader({
   return db.runTransaction(async tx=>{
    // Both callbacks are trusted backend implementations and MUST use tx.
    const [input,publication]=await Promise.all([
-    loadCountsInTransaction({tx,month,context}),
+    loadCountsInTransaction({tx,month,context,secondMonth}),
     loadPublicationInTransaction({tx,context})
    ]);
    if(!input||!publication||input.hubCompanyId!==context.hubCompanyId||
@@ -45,7 +53,9 @@ export function createStagedAtomicOwnerCountLoader({
       !Array.isArray(input.productGroups)||input.mappingsReviewed!==true||
       input.period?.kind!=="month"||input.period.day!==month+"-01"||
       typeof input.period.asOf!=="string"||
-      input.period.asOf.slice(0,7)!==month||
+      (secondMonth===undefined?
+       input.period.asOf.slice(0,7)!==month:
+       ![month,secondMonth].includes(input.period.asOf.slice(0,7)))||
       publication.serverVerified!==true||
       publication.ownerSettingsRead!==true||
       publication.ownerUidVerified!==true||
@@ -59,7 +69,14 @@ export function createStagedAtomicOwnerCountLoader({
       publication.snapshotReadTime!==time||
       input.sources.some(s=>!s||s.readTime!==time)||
       !sameSet(input.sources.map(s=>s.companyId),
-       context.approvedCompanyIds))fail();
+       context.approvedCompanyIds)||
+      (secondMonth===undefined?input.verifiedMonths!==undefined:
+       !Array.isArray(input.verifiedMonths)||
+       input.verifiedMonths.length!==2||
+       input.verifiedMonths[0]!==month||
+       input.verifiedMonths[1]!==secondMonth||
+       input.sources.some(source=>source.completeWindows?.previous!==true))
+     )fail();
    // Never cache the transaction result. No raw counts are returned to a
    // client by this loader; the separate handler builds a count-only view.
    return {input,publication};

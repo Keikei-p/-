@@ -1,11 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {createRequire} from "node:module";
 import {createOwnerProductVisibilityStore}
  from "../ranking/owner-product-visibility-firestore.mjs";
 import {buildOwnerVisibleCountRanking}
  from "../ranking/owner-product-visibility-rankings.mjs";
 
+const require=createRequire(import.meta.url);
+const {createPartnerSubmissionPublicationGuard}=require(
+ "../functions-partner-workspace/submission-publication-guard.cjs");
+const {KEYS}=require("../functions-partner-workspace/approved-published-categories.cjs");
 const principal={uid:"owner",email:"owner@example.test",emailVerified:true};
 const product=(id,name,active=true)=>({companyId:"hub",name,active,
  revenue:25000,unitPrice:10000,cashbackOptions:[5000]});
@@ -59,7 +64,7 @@ function fake(){
  const store=createOwnerProductVisibilityStore({
   db,FieldValue:{serverTimestamp:()=> "SERVER_TIMESTAMP"}
  });
- return {store,state,get writes(){return writes}};
+ return {store,state,db,tx,get writes(){return writes}};
 }
 test("owner starts with every shared product OFF, raw prices are NEVER sent",async()=>{
  const f=fake(),status=await f.store.readStatus(principal);
@@ -200,6 +205,95 @@ test("REAL store->server publication->company/person/SKU ranking switch uses ONE
  assert.deepEqual(input,original,"published totals change, immutable stored counts do not");
 });
 
+
+test("Owner ON -> partner transactional count -> four ranks -> OFF history -> reON",async()=>{
+ const f=fake(),guard=createPartnerSubmissionPublicationGuard({db:f.db});
+ const savedProduct=structuredClone(f.state.get("products/nuro"));
+ const savedPartner=structuredClone(f.state.get("companies/partner"));
+ // The user-approved exact SKU mapping is a prerequisite, never guessed
+ // from similarly named financial product masters.
+ f.state.set("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
+  active:true,version:1,bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}]
+ });
+ const before=Object.fromEntries(KEYS.map(key=>[key,0]));
+ const submitted={...before,NURO:5};
+ const scope={verifiedByServer:true,kind:"partner",
+  uid:"partnerOwner",cid:"partner",hubId:"hub"};
+ const validate=(previousCounts,nextCounts)=>guard({
+  tx:f.tx,scope,previousCounts,nextCounts
+ });
+ await assert.rejects(validate(before,submitted),
+  /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/,
+  "default OFF cannot allow any partner count");
+ assert.equal((await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:true,expectedVersion:0
+ })).version,1);
+ assert.deepEqual([...((await validate(before,submitted)).enabledCategories)],["NURO"]);
+ const day="2026-11-08",readTime=day+"T12:00:00.000Z";
+ const context={serverVerified:true,viewerUid:"owner",
+  viewerCompanyId:"hub",hubCompanyId:"hub",role:"hub_owner",
+  approvedCompanyIds:["hub","partner"],userActive:true,memberActive:true,
+  companyActive:true,reciprocalOwnersApproved:true,
+  completeSnapshotBudgetApproved:true,individualNamesApproved:true};
+ const source=(cid,kind,count)=>{
+  const sku=cid==="hub"?"nuro":"partnerSku01";
+  return {companyId:cid,companyLabel:cid==="hub"?"自社":"協力店",
+   kind,consentVerified:true,isComplete:true,readTime,
+   completeWindows:{current:true,previous:false},
+   teams:[{id:"team",name:"営業班",goalCount:null}],
+   roster:[{uid:"staff",teamId:"team",name:"担当者"}],
+   products:[{companyId:cid,sourceId:sku,name:"NURO光",active:true,sortOrder:0}],
+   records:[{companyId:cid,sourceId:"record",uid:"staff",teamId:"team",
+    date:day,totalCount:count,reportStatus:"submitted",
+    memberNameSnapshot:"担当者",teamNameSnapshot:"営業班",workLocation:""}],
+   lines:[{companyId:cid,recordId:"record",sourceId:"line",
+    uid:"staff",teamId:"team",date:day,productId:sku,count}]
+  };
+ };
+ const input={context,hubCompanyId:"hub",
+  approvedCompanyIds:["hub","partner"],
+  sources:[source("hub","own",2),source("partner","partner",5)],
+  productGroups:[
+   {companyId:"hub",productId:"nuro",groupId:"nuro",groupName:"NURO光"},
+   {companyId:"partner",productId:"partnerSku01",groupId:"nuro",groupName:"NURO光"}
+  ],period:{kind:"day",day,asOf:day}};
+ const originals=structuredClone(input);
+ const view=async()=>buildOwnerVisibleCountRanking({
+  input,publication:await f.store.readForRanking({context,mappingsReviewed:true})
+ });
+ let ranking=await view();
+ assert.deepEqual(ranking.summary,{own:2,partner:5,total:7,unidentified:0});
+ assert.equal(ranking.productRanking[0].count,7);
+ assert.equal(ranking.teamBreakdown.reduce((n,r)=>n+r.count,0),7);
+ assert.equal(ranking.memberRanking.reduce((n,r)=>n+r.count,0),7);
+ assert.equal((await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:false,expectedVersion:1
+ })).version,2);
+ await assert.rejects(validate(submitted,{...submitted,NURO:6}),
+  /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/,
+  "OFF cannot change or correct hidden categories");
+ await assert.doesNotReject(validate(submitted,submitted),
+  "OFF never deletes historic saved counts");
+ ranking=await view();
+ assert.equal(ranking.summary.total,0);
+ assert.equal(ranking.companyBreakdown.find(x=>x.id==="partner").rank,null);
+ assert.equal((await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:true,expectedVersion:2
+ })).version,3);
+ await assert.doesNotReject(validate(submitted,{...submitted,NURO:6}));
+ ranking=await view();
+ assert.equal(ranking.summary.total,7,
+  "re-ON restores source counts without duplicate addition");
+ assert.deepEqual(input,originals);
+ assert.deepEqual(f.state.get("products/nuro"),savedProduct);
+ assert.deepEqual(f.state.get("companies/partner"),savedPartner);
+ assert.equal(f.state.get("companies/hub/rankingCountPublicCatalog/shared").version,3);
+ const audits=[...f.state.keys()].filter(key=>
+  key.startsWith("companies/hub/rankingProductVisibilityAudit/"));
+ assert.equal(audits.length,3);
+});
 
 test("retired formerly-ON product is never ranked and owner can safely switch it OFF",async()=>{
  const f=fake();

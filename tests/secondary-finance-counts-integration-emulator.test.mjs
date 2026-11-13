@@ -31,6 +31,9 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  const env=await initializeTestEnvironment({
   projectId:PROJECT,firestore:{rules:proposeSecondaryFinanceFence()}
  });
+ // Repeated local runs use a fresh synthetic fixture. The strict demo
+ // project and loopback emulator guards above run before this operation.
+ await env.clearFirestore();
  const app=initializeApp({projectId:PROJECT},"isolated-dual-count-finance");
  const db=getFirestore(app);
  const hub="hubCount",partner="partnerCount",worker="dualCount",
@@ -154,6 +157,76 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    "/partnerWorkAudits/"+date+"__"+worker+"__v2").get();
   assert.equal(history.exists,true);
   assert.equal(history.data().previousCounts.NURO,2);
+  // Use the real Admin transaction/query path: an equal grand total must
+  // not let a normal save carry a corrupted SKU allocation into history.
+  const summaryRef=db.doc("companies/"+hub+
+   "/partnerWorkCountDays/"+date+"/reports/"+partner);
+  const entryRef=db.doc("companies/"+partner+
+   "/partnerWorkEntries/"+date+"__"+worker);
+  const nextAuditRef=db.doc("companies/"+partner+
+   "/partnerWorkAudits/"+date+"__"+worker+"__v3");
+  const summaryBefore=(await summaryRef.get()).data();
+  const entryBefore=(await entryRef.get()).data();
+  const inconsistent={...summaryBefore,counts:{
+   ...summaryBefore.counts,NURO:2,"SB光・AIR":2
+  }};
+  await summaryRef.set(inconsistent);
+  await assert.rejects(service.submit(request(worker,{
+   ...data,staffId:worker,counts:{...empty,NURO:4,"SB光・AIR":1},
+   expectedVersion:2
+  })),e=>e.code==="data-loss");
+  assert.deepEqual((await entryRef.get()).data(),entryBefore);
+  assert.deepEqual((await summaryRef.get()).data(),inconsistent);
+  assert.equal((await nextAuditRef.get()).exists,false);
+  assert.deepEqual((await history.ref.get()).data(),history.data());
+  await summaryRef.set(summaryBefore); // Restore this synthetic fixture only.
+
+  // The same isolated real database also exercises the guarded hub Owner
+  // correction path with an OFF historical SKU. Auth identities here are
+  // still fictional; this does not establish production sign-in continuity.
+  await Promise.all([
+   write("companies/"+hub+"/rankingProductVisibility/shared",{
+    hubCompanyId:hub,ownerUid:owner,version:1,
+    enabledHubProductIds:["nuro"],partnerOverrides:{}}),
+   write("companies/"+hub+"/rankingSkuMappings/shared",{
+    hubCompanyId:hub,ownerUid:owner,reviewedByUid:owner,active:true,version:1,
+    bindings:[
+     {companyId:partner,productId:"partnerSku01",hubProductId:"nuro"},
+     {companyId:partner,productId:"partnerSku05",hubProductId:"legacyLightAir"}]}),
+   write("companies/"+hub+"/rankingCountPublicCatalog/shared",{
+    schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:hub,
+    ownerUid:owner,version:1,products:[
+     {id:"nuro",companyId:hub,name:"NURO",active:true},
+     {id:"legacyLightAir",companyId:hub,
+      name:"SB光・AIR（旧合算・未分類）",active:true}]})
+  ]);
+  const ownerService=makeWorkspace({db,getAuth,FieldValue,Timestamp,
+   HttpsError,enabled:()=>true,submissionPublicationEnabled:()=>true,
+   ownerCorrectionEnabled:()=>true,now:()=>now});
+  const preview=await ownerService.view(request(owner,{
+   date,partnerCompanyId:partner,includeOwnerCorrectionEntries:true
+  }));
+  assert.deepEqual(preview.ownerCorrectionEntries.enabledCategories,["NURO"]);
+  assert.equal(preview.ownerCorrectionEntries.records[0].counts["SB光・AIR"],0);
+  const ownerCorrection=await ownerService.submit(request(owner,{
+   date,staffId:worker,ownerPartnerCompanyId:partner,
+   counts:{...empty,NURO:5},expectedVersion:2
+  }));
+  assert.equal(ownerCorrection.saved,true);
+  assert.equal(ownerCorrection.version,3);
+  assert.equal(Object.hasOwn(ownerCorrection,"privateTotalCount"),false);
+  const ownerSaved=(await entryRef.get()).data();
+  assert.equal(ownerSaved.counts.NURO,5);
+  assert.equal(ownerSaved.counts["SB光・AIR"],1);
+  assert.equal(ownerSaved.totalCount,6);
+  assert.equal(ownerSaved.updatedByUid,owner);
+  assert.equal(ownerSaved.teamIdSnapshot,entryBefore.teamIdSnapshot);
+  const ownerAudit=(await nextAuditRef.get()).data();
+  assert.equal(ownerAudit.previousCounts.NURO,3);
+  assert.equal(ownerAudit.previousCounts["SB光・AIR"],1);
+  assert.equal(ownerAudit.updatedByUid,owner);
+  assert.equal((await summaryRef.get()).data().totalCount,6);
+  assert.deepEqual((await history.ref.get()).data(),history.data());
   const originalRecords=await db.doc("records/counts-integration-original").get();
   assert.equal(originalRecords.data().totalRevenue,before.records.totalRevenue);
   for(const name of COLLECTIONS){

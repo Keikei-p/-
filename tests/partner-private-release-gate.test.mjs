@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {execFileSync} from "node:child_process";
-import {fileURLToPath} from "node:url";
 const file=x=>readFileSync(new URL("../"+x,import.meta.url),"utf8");
 const old=file(".github/workflows/nico-partner-team-snapshot-readonly-api.yml");
 const page=file(".github/workflows/nico-partner-workspace-page-only.yml");
@@ -65,20 +63,20 @@ test("legacy private release is frozen to previously reviewed code and refuses n
 });
 test("historical company-code release stays frozen to reviewed page and retains cost, finance and history gates",()=>{
  const filePath=".github/workflows/nico-partner-company-code-release.yml";
- const newRelease=file(filePath),cwd=fileURLToPath(new URL("../",import.meta.url));
- for(const path of [
-  "functions-partner-workspace/service.cjs",
-  "functions-partner-workspace/index.js",
-  "functions-partner-workspace/company-code-auth.cjs",
-  "partner-workspace.html","functions/index.js","firebase.partner-workspace.json"
- ]){
-  // The historical company-code release remains pinned to the previously
-  // reviewed page; a new visual candidate must NOT silently unlock it.
-  const digest=path==="partner-workspace.html"?
-   "0930abb188165afea19ef427308ea22fddf636e7":
-   execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
+ const newRelease=file(filePath);
+ const historical=Object.freeze({
+  "functions-partner-workspace/service.cjs":"300b69d9f9b99ad33925abdcc67f8d81068084eb",
+  "functions-partner-workspace/index.js":"38da7e9174ffea7c406c92292dccfc651b565eb0",
+  "functions-partner-workspace/company-code-auth.cjs":"f7e5899cdb9e36da610846d787955b13c1e16e4b",
+  "partner-workspace.html":"0930abb188165afea19ef427308ea22fddf636e7",
+  "functions/index.js":"dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
+  "firebase.partner-workspace.json":"a6ceedec5fab4e22e0a8efe19c685716a2db9750"
+ });
+ for(const [path,digest] of Object.entries(historical)){
+  // Production remains frozen to its independently reviewed artifacts.
+  // Current candidate code must not update these historical release pins.
   assert.ok(newRelease.includes('test "$(git hash-object '+path+')" = '+String.fromCharCode(39)+digest+String.fromCharCode(39)),
-    "New release must pin exact reviewed "+path);
+    "Historical release must pin exact reviewed "+path);
  }
  for(const name of ["OWNER_REVENUE_PRICES_LOGIN_VERIFIED","FIRESTORE_BACKUP_RESTORE_VERIFIED",
   "EXISTING_FUNCTIONS_COST_APPROVED","CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY",

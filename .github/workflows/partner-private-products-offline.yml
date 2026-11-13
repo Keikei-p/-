@@ -12,12 +12,16 @@ on:
       - '.github/workflows/nico-partner-team-snapshot-readonly-api.yml'
       - '.github/workflows/nico-partner-workspace-page-only.yml'
       - 'tests/partner-private-release-gate.test.mjs'
+      - 'scripts/ci/review-partner-sku-publication-write.cjs'
 permissions:
   contents: read
 jobs:
   private-catalog-no-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 9
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
@@ -30,13 +34,13 @@ jobs:
           # Reviewed current count-save SKU publication branch and main ONLY.
           # Historical workflow_dispatch / release conditions below remain frozen.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-               [ "${GITHUB_HEAD_REF:-}" = "feat/partner-sku-onoff-count-save-safe-20261110" ]; } ||
+               { [ "${GITHUB_HEAD_REF:-}" = "feat/partner-sku-onoff-count-save-safe-20261110" ] ||
+                 [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; }; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
-            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'ff1d22be89a18712178dd2a64164510af51b38b8'
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '6204cb3603a5e2cc1ae06e6f4680163f8e3309ba'
             node scripts/ci/review-partner-sku-publication-write.cjs
             echo 'REVIEWED_OWNER_SKU_WRITE_ON_OFF_NO_DEPLOY'
-            exit 0
           fi
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
