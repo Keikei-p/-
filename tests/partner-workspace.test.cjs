@@ -1432,6 +1432,10 @@ test("Hub Owner v3 corrects only existing partner staff, the SAME summary and ap
  const finance=clone(db.store.get("records/old"));
  const products=clone(db.store.get("products/money"));
  const target="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ // A malicious/old extra field must never be copied into a NEW audit.
+ // The source document itself is not rewritten or cleaned by this test.
+ db.store.get(target).unitPrice=456789;
+ db.store.get(target).totalRevenue=987654;
  const summary="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
  const beforeOwnerList=clone([...db.store]);
  const list=await api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
@@ -1462,6 +1466,8 @@ test("Hub Owner v3 corrects only existing partner staff, the SAME summary and ap
  assert.equal(day.totalCount,7);
  const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
  assert.equal(audit.correctionKind,"hub_owner_existing_count_v3");
+ assert(!Object.hasOwn(audit,"unitPrice")&&!Object.hasOwn(audit,"totalRevenue"),
+  "new audits MUST project known count fields, never spread arbitrary metadata");
  assert.equal(audit.correctedByOwnerUid,"h");
  assert.equal(audit.correctionReason,request.correctionReason);
  assert.equal(audit.previousCounts.NURO,2);
