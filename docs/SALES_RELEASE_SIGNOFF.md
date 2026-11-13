@@ -982,3 +982,23 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - **未完了**: PR #322の最新HEADに対する保護ゲートと全体CI、main統合、Functions 2本、Hosting 1ファイル、公開後の画面・実メール受信・実アカウント招待確認。実際に成功していない項目を完了扱いしない。
 
 - **保護ゲート再審査**: 専用CIとSales App Validation成功後、接続中の管理者GitHubアカウントでPR #322に `sales-production-reviewed` ラベルが付与された。最初の保護ゲートはラベル付与前に起動していたため、この追記でラベル付きの最新HEADを再検証する。本人の独立署名取得済みとは表示しない。
+
+---
+
+## 2026-11-13 — 協力店商材の最小差分タブ公開（管理者レビュー未了）
+
+- 目的: 既存の自社営業実績画面に「📦 協力店商材」タブを追加し、既に本番公開済みの商材ON/OFF画面と同じ認証付き部品を表示する。別ページ・別ログインは新設しない。
+- 本番正本: main `ff9051a7ee3b611e99ffec87e0383b72d259b10f`、`index.html` blob `88ef5636bfe9254e71f2109d452b6d3049f99861`、Hosted version `sites/nico-factory/versions/6cd0ef86037773c1`（既存33アセット）。
+- 変更対象: `index.html` 内8箇所のみ（管理タブの表示・同一画面マウント・既存Auth、Functions再利用）、タブテスト、既存Host単独index公開のread-only source pinと全ファイル維持、専用GHA、本記録。
+- 制約: `products`, `records`, `recordCorrections`, `revenueGoals`, 過去件数、光/AIR旧合算、単価、CB、実績履歴を一切変更しない。Firestore Rules・Functions・会員認証の改修なし。商材ON/OFF設定はサーバーOwner権限検証に従い、今回の公開は設定値変更ではない。
+- 検証: 元の `index.html` と差分復元照合、JS構文、Owner認証・財務原票の既存安全テスト、GitHub Checks、Hosting公開後の単独HTML byte parityを必須とする。
+- リリース保護: 保護パスに該当。管理者による本PRの差分レビューおよび `sales-production-reviewed` ラベルが必要。**AIによる署名の代理・ラベルの偽装は禁止**。承認前に強制マージ・本番配備しない。
+- 未確認: 実OwnerアカウントでのON/OFF保存・再読込、協力店アカウントからの売上/単価/CB直接読取拒否、既存協力店過去件数の実ランキング反映。
+
+管理者レビュー: **未完了**
+
+レビュー担当GitHubアカウント: **未記入**
+
+レビュー署名: **未記入**
+
+本番状態: **新しいタブは未公開。既存の独立した商材ON/OFF画面は公開済み。**
