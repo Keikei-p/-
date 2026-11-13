@@ -1128,8 +1128,25 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp});
    const audit=collection(d.partnerCompanyId,"partnerWorkAudits")
     .doc(date+"__"+d.staffId+"__v"+nextVersion);
-   tx.create(audit,{...old,...rowChanges,previousCounts:prior,
-    previousPrivateCounts:old.privateCounts||{},
+   // Never spread an arbitrary saved entry into a new audit document.
+   // Only known count-ledger fields may leave this restricted correction.
+   // Protect private counts as unchanged signed snapshots, not as edits.
+   const savedPrivate=validatePrivateCounts(old.privateCounts||{});
+   if((old.privateTotalCount??0)!==savedPrivate.total)fail("data-loss");
+   const recordedName=old.staffNameSnapshot??null;
+   if(recordedName!==null&&!validName(recordedName))fail("data-loss");
+   const recordedLocation=old.workLocation??"";
+   if(typeof recordedLocation!=="string"||recordedLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(recordedLocation)||
+      money.test(recordedLocation))fail("data-loss");
+   tx.create(audit,{companyId:d.partnerCompanyId,hubCompanyId:hub.cid,
+    staffId:d.staffId,date,staffNameSnapshot:recordedName,
+    teamIdSnapshot:old.teamIdSnapshot??null,
+    workLocation:recordedLocation,
+    counts,totalCount:total,version:nextVersion,
+    privateCounts:savedPrivate.counts,privateTotalCount:savedPrivate.total,
+    updatedByUid:a.uid,updatedAt:stamp,
+    previousCounts:prior,previousPrivateCounts:savedPrivate.counts,
     correctionReason:d.correctionReason,correctedByOwnerUid:a.uid,
     correctionKind:"hub_owner_existing_count_v3",createdAt:stamp});
    return {saved:true,scope:"hub-owner-existing-only",
