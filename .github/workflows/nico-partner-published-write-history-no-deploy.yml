@@ -1,0 +1,46 @@
+name: NICO partner ON OFF saves and historic counts (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-publication-write-ranking-consistency.test.cjs'
+      - 'tests/owner-product-visibility-rankings.test.mjs'
+      - '.github/workflows/nico-partner-published-write-history-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline-count-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      GCLOUD_PROJECT: 'demo-nico-partner-write-offline'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert no production credentials and disabled production switches
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/submission-publication-guard.cjs
+          node --check tests/partner-workspace.test.cjs
+      - name: Run actual partner workspace save read audits and publication ranking tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs
+          echo 'PARTNER_ON_OFF_SAVE_HISTORIC_COUNTS_NO_DEPLOY_PASS'
