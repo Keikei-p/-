@@ -134,8 +134,21 @@ export function verifiedJointCountView(response,{month,role}={}){
   });
   people=rankRows(eligible,["name","count","rank"],"companyName");
   products=rankRows(response.productRanking,["name","count","rank"]);
-  companies=rankBreakdown(response.companyBreakdown);
-  teams=rankBreakdown(response.teamBreakdown,"companyName");
+  // Owner company/team metadata also contains registered but unreported
+  // entries. They belong in the management drilldown, never in the ranking.
+  // Genuine submitted zero counts remain rankable, including old Quick days.
+  for(const row of response.companyBreakdown){
+   if(!obj(row)||!number(row.count)||
+      !["未報告","確定0件","報告済"].includes(row.reportStatus)||
+      (row.reportStatus==="未報告"&&row.count!==0)||
+      (row.reportStatus==="確定0件"&&row.count!==0)||
+      (row.reportStatus==="報告済"&&row.count===0))BLOCK();
+  }
+  companies=rankBreakdown(response.companyBreakdown.filter(
+   row=>row.reportStatus!=="未報告"));
+  teams=rankBreakdown(response.teamBreakdown.filter(row=>
+   row.detail?.reportStatus!=="未報告"&&
+   (row.detail!==undefined||row.count>0)),"companyName");
   if(companies.reduce((total,x)=>total+x.count,0)!==response.summary.total)BLOCK();
  }else{
   if(!obj(response.publicRanking)||!obj(response.own)||
