@@ -131,7 +131,7 @@ export function mountOwnerCorrection({
   input.setAttribute("aria-label",key+"の件数");input.style.cssText="width:100%;min-height:44px";
   sbInputs[key]=input;l.append(input);sbFields.append(l);
  }
- const hint=el("p","", "SB光・SB AIR・旧未分類の合計は「SB光・AIR」と一致させてください。旧未分類は自動で振り分けません。");
+ const hint=el("p","", "光とAIRは現在も旧合算で管理しています。内訳の分離は後日の正式承認まで行いません。旧未分類の件数は「SB光・AIR」に一致します。");
  editor.append(staffLabel,staffSelect,fields,hint,sbFields,reasonLabel,reason,saveButton);
  const companyShortcuts=el("div","nico-owner-company-shortcuts");
  companyShortcuts.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px";
@@ -156,8 +156,11 @@ export function mountOwnerCorrection({
   saveButton.textContent=canCorrect()===true?"変更内容を確認して保存":"件数訂正は停止中";
   reason.disabled=value||canCorrect()!==true;
   for(const button of companyButtons.values())button.disabled=value;
-  for(const input of [...Object.values(gridInputs),...Object.values(sbInputs)])
+  for(const input of Object.values(gridInputs))
    input.disabled=value||canCorrect()!==true;
+  // Splitting old combined 光/AIR figures is explicitly deferred. These
+  // fields are display-only, even after enabling Owner count corrections.
+  for(const input of Object.values(sbInputs))input.disabled=true;
  };
  function redraw(){
   selected=current?.entries.find(x=>x.staffId===staffSelect.value)||null;
@@ -219,7 +222,8 @@ export function mountOwnerCorrection({
    req=correctionPayload({
     date:day,partnerCompanyId:id,previous:selected,
     draftCounts:Object.fromEntries(COUNT_KEYS.map(k=>[k,gridInputs[k].value])),
-    draftSb:Object.fromEntries(SB_PARTS.map(k=>[k,sbInputs[k].value])),
+    draftSb:{"SB光":"0","SB AIR":"0",
+     "旧未分類":gridInputs["SB光・AIR"].value},
     correctionReason:reason.value
    });
   }catch(err){
