@@ -8,6 +8,7 @@ on:
       - 'ranking/unified-partner-team-cards.mjs'
       - 'tests/unified-partner-team-cards.test.mjs'
       - 'tests/unified-partner-team-mount.test.mjs'
+      - 'tests/partner-original-team-card-parity.test.mjs'
       - '.github/workflows/nico-unified-team-cards-no-deploy.yml'
 permissions:
   contents: read
@@ -45,6 +46,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/unified-partner-team-cards.test.mjs tests/unified-partner-team-mount.test.mjs
+          node --test tests/unified-partner-team-cards.test.mjs tests/unified-partner-team-mount.test.mjs tests/partner-original-team-card-parity.test.mjs
           node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-count-dashboard.test.cjs
           echo 'NO_DEPLOY: no Firebase or production changes'
