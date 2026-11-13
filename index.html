@@ -34955,7 +34955,8 @@ async function refreshOwnerVerifiedPartnerTeamCards(){
   ]);
   if(!validSession())return;
   const bridge=bridgeModule.createVerifiedJointMonthHttpBridge({
-   featureEnabled:true,auth,fetcher:(...args)=>fetch(...args)
+   featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
+   expectedRole:"hub_owner"
   });
   const response=await bridge.load({
    period:{kind:"month",day:month+"-01",asOf:getTodayString()},filters:{}
