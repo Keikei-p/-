@@ -1534,3 +1534,67 @@ test("Owner correction denies quick-only/unknown company summary instead of over
   correctionReason:"登録件数を確認訂正"})),{code:"failed-precondition"});
  assert.deepEqual([...db.store],before);
 });
+
+
+test("Owner correction updates exact approved joint rankings in both apps from same saved ledger",async()=>{
+ const {db,api,req,zero}=setup(true,true,true,true),date="2026-10-31";
+ db.seed("products/nuro",{companyId:"hub",name:"NURO光",active:true,unitPrice:60000});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",ownerUid:"h",
+  version:1,products:[{id:"nuro",companyId:"hub",name:"NURO光",active:true}]});
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro"],partnerOverrides:{partner:["nuro"]}});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}]});
+ Object.assign(db.store.get("partnerRelations/partner"),{
+  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
+  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true});
+ for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
+  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
+   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
+   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
+   combinedRankingApproved:true,individualNamesApproved:true
+  });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"実担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),NURO:2}}));
+ const original=await api.view(req("p",{
+  date,sharedCountRankings:true,rankingPeriod:"day"}));
+ assert.equal(original.totalCount,2);
+ const checked=await api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(checked.entries[0].counts.NURO,2);
+ await api.correctHubPartnerCounts(req("h",{
+  date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...zero(),NURO:5},sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":0},
+  correctionReason:"確認した正しい件数へ訂正"}));
+ const owner=await api.view(req("h",{
+  date,sharedCountRankings:true,rankingPeriod:"month"}));
+ const partner=await api.view(req("p",{
+  date,sharedCountRankings:true,rankingPeriod:"day"}));
+ for(const score of [owner,partner]){
+  assert.equal(score.totalCount,5);
+  assert.equal(score.companies[0].totalCount,5);
+  assert.equal(score.teams[0].totalCount,5);
+  assert.equal(score.people[0].totalCount,5);
+  assert.deepEqual(score.products.map(x=>[x.name,x.totalCount]),[["NURO",5]]);
+  assert.doesNotMatch(JSON.stringify(score),/unitPrice|revenue|60000|privateCounts|cashback/i);
+ }
+ const saved=await api.view(req("p",{date}));
+ assert.equal(saved.records[0].counts.NURO,5);
+ assert.equal(saved.records[0].version,2);
+ const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
+ visibility.partnerOverrides.partner=[];
+ visibility.version++;
+ const off=await api.view(req("p",{date,sharedCountRankings:true}));
+ assert.equal(off.companies.length,0);
+ assert.equal(off.products.length,0);
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,5,
+  "disabling public ranking can never delete audited Owner correction");
+ visibility.partnerOverrides.partner=["nuro"];visibility.version++;
+ const reenabled=await api.view(req("p",{date,sharedCountRankings:true}));
+ assert.equal(reenabled.totalCount,5);
+ assert.equal(reenabled.people[0].totalCount,5);
+});
