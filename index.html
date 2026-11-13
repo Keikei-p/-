@@ -13495,7 +13495,7 @@ function renderPartnerRankingOnlyPanel(){
   }
  }
  if(partnerSameAppSelectedPanel==="product"){
-  for(const key of snap.categories){
+  for(const key of (snap.enabledCategories??snap.categories)){
    const n=records.reduce((sum,r)=>sum+(r.counts?.[key]||0),0);
    rows.push({name:key,n});
   }
@@ -13751,6 +13751,7 @@ function renderPartnerEntryTotals(){
 function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
+ const enabledKeys=snap.enabledCategories??snap.categories;
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
  const person=snap.staff.find(x=>x.id===staffId);
@@ -13781,7 +13782,7 @@ function partnerInlineRenderCounts(){
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
  delete pInline("pInlineSaveStatus").dataset.result;
- for(const key of snap.categories){
+ for(const key of enabledKeys){
   if(key==="NURO"){
    const card=document.createElement("div");
    card.className="p-inline-field product-input-group product-input-group--compact partner-cb-card";
@@ -13834,7 +13835,8 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
- pInline("pInlineSave").disabled=!staffId||partnerInlineBusy||(!entry&&
+ pInline("pInlineSave").disabled=!staffId||partnerInlineBusy||
+  snap.enabledCategories?.length===0||(!entry&&
   !allowedTeams.some(t=>t.id===teamSelect.value));
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
@@ -13893,14 +13895,15 @@ function partnerInlineRender(){
  // Aggregate day data for the detail and daily views. Rankings reuse
  // the same historical staff-ID-aware renderer after every refresh/tab change.
  const byTeam=new Map(allTeams.map(t=>[t.id,0]));
- const byProduct=new Map(snap.categories.map(k=>[k,0]));
+ const visibleKeys=snap.enabledCategories??snap.categories;
+ const byProduct=new Map(visibleKeys.map(k=>[k,0]));
  for(const entry of snap.records){
   // Do not discard saved counts when the member has left the company.
   const total=entry.totalCount;
   if(!Number.isSafeInteger(total)||total<0)continue;
   if(byTeam.has(entry.teamIdSnapshot))
    byTeam.set(entry.teamIdSnapshot,byTeam.get(entry.teamIdSnapshot)+total);
-  for(const key of snap.categories)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
+  for(const key of visibleKeys)byProduct.set(key,byProduct.get(key)+(entry.counts?.[key]||0));
  }
  renderPartnerRankingOnlyPanel();
  const details=pInline("pInlineTeamDetails");details.replaceChildren();
@@ -13909,7 +13912,7 @@ function partnerInlineRender(){
   // Always attribute past entries to the immutable saved team ID, never the
   // member's current team. Deactivated members' saved counts are retained.
   const reported=snap.records.filter(e=>e.teamIdSnapshot===team.id);
-  const productTotals=Object.fromEntries(snap.categories.map(k=>[k,0]));
+  const productTotals=Object.fromEntries(visibleKeys.map(k=>[k,0]));
   const cb=Object.fromEntries(PARTNER_TEAM_CB_TIERS.map(k=>[k,0]));
   cb.unclassified=0;
   const memberRows=[];
@@ -13917,7 +13920,7 @@ function partnerInlineRender(){
   const reportedIds=new Set();
   for(const entry of reported){
    reportedIds.add(entry.staffId);total+=entry.totalCount;
-   for(const key of snap.categories)productTotals[key]+=entry.counts?.[key]||0;
+   for(const key of visibleKeys)productTotals[key]+=entry.counts?.[key]||0;
    const current=entry.cbCounts?.NURO;
    const assigned=PARTNER_TEAM_CB_TIERS.reduce((sum,k)=>sum+(current?.[k]||0),0);
    for(const tier of PARTNER_TEAM_CB_TIERS)cb[tier]+=current?.[tier]||0;
@@ -13933,7 +13936,7 @@ function partnerInlineRender(){
   const hasReports=reported.length>0;
   const card=renderPartnerCountTeamCard(
    team.name+(team.active?"":"（過去の班）")+(hasReports?"":"｜未報告"),
-   total,productTotals,{NURO:cb},memberRows,snap.categories,{verified:true});
+   total,productTotals,{NURO:cb},memberRows,visibleKeys,{verified:true});
   details.append(card);
  }
  const unknown=snap.records.filter(e=>!allTeams.some(t=>t.id===e.teamIdSnapshot));
@@ -14130,6 +14133,11 @@ async function partnerInlineFetch(){
      !Array.isArray(snap.categories)||!Array.isArray(snap.records)||
      typeof snap.companyName!=="string"||snap.companyName.length===0)
    throw Error("partner_count_schema");
+  if(snap.enabledCategories!==undefined&&
+     (!Array.isArray(snap.enabledCategories)||
+      new Set(snap.enabledCategories).size!==snap.enabledCategories.length||
+      snap.enabledCategories.some(key=>!snap.categories.includes(key))))
+   throw Error("partner_publication_schema");
   partnerInlineData=snap;partnerInlineRender();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
@@ -14601,10 +14609,16 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const workLocation=pInline("pInlineWorkLocation").value.trim();
  if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
+ const enabledKeys=snap.enabledCategories??snap.categories;
+ if(!Array.isArray(enabledKeys)||enabledKeys.length===0||
+    new Set(enabledKeys).size!==enabledKeys.length||
+    enabledKeys.some(key=>!snap.categories.includes(key)))
+  throw Error("partner_publication_schema");
  const counts=Object.create(null);
  const parsedCb=partnerInlineSelectedCb();
  const cbCounts={NURO:parsedCb.result};
  for(const key of snap.categories){
+  if(!enabledKeys.includes(key)){counts[key]=0;continue;}
   if(key==="NURO"){counts[key]=parsedCb.total;continue;}
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
