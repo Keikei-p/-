@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/shared-count-standings.cjs'
+      - 'tests/partner-week-boundary-contract.test.cjs'
       - 'functions-partner-workspace/submission-publication-guard.cjs'
       - 'index.html'
       - 'partner-workspace.html'
@@ -47,5 +49,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs tests/partner-published-count-browser-contract.test.cjs tests/partner-existing-ranking.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-one-login-same-app.test.cjs tests/partner-original-team-card-parity.test.mjs
+          node --test tests/partner-week-boundary-contract.test.cjs tests/partner-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/owner-product-visibility-rankings.test.mjs tests/partner-published-count-browser-contract.test.cjs tests/partner-existing-ranking.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-one-login-same-app.test.cjs tests/partner-original-team-card-parity.test.mjs
           echo 'PARTNER_ON_OFF_SAVE_HISTORIC_COUNTS_NO_DEPLOY_PASS'
