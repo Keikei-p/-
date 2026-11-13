@@ -71,7 +71,8 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   constructor(code,message){super(message);this.code=code;}
  }
  const service=makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,
-  enabled:()=>true,now:()=>now});
+  enabled:()=>true,ownerCorrectionReadEnabled:()=>true,
+  ownerCorrectionWriteEnabled:()=>true,now:()=>now});
  const browser=uid=>env.authenticatedContext(uid,{
   email:uid+"@example.test",email_verified:true
  }).firestore();
@@ -154,6 +155,56 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
    "/partnerWorkAudits/"+date+"__"+worker+"__v2").get();
   assert.equal(history.exists,true);
   assert.equal(history.data().previousCounts.NURO,2);
+  // Real emulator-backed Owner v3 correction, not just a fake-DB unit test.
+  // This and the partner count submit share the exact same staff/day ledger.
+  const list=await service.listHubPartnerCounts(request(owner,{
+   date,partnerCompanyId:partner
+  }));
+  assert.equal(list.containsFinance,false);
+  assert.equal(list.entries.length,1);
+  assert.equal(list.entries[0].version,2);
+  assert.equal(list.entries[0].counts.NURO,3);
+  assert.equal(list.entries[0].counts["SB光・AIR"],1);
+  assert.deepEqual(list.entries[0].sbBreakdown,
+   {"SB光":0,"SB AIR":0,"旧未分類":1});
+  const receipt=await service.correctHubPartnerCounts(request(owner,{
+   date,partnerCompanyId:partner,staffId:worker,expectedVersion:2,
+   counts:{...empty,NURO:5,"SB光・AIR":1},
+   sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":1},
+   correctionReason:"登録済みの件数を確認して訂正"
+  }));
+  assert.equal(receipt.saved,true);
+  assert.equal(receipt.version,3);
+  assert.equal(receipt.totalCount,6);
+  assert.equal(receipt.containsFinance,false);
+  const ownerAfter=await service.view(request(owner,{date}));
+  assert.equal(ownerAfter.partners[0].totalCount,6);
+  const partnerAfter=await service.view(request(worker,data));
+  assert.deepEqual(partnerAfter.records.map(x=>[
+   x.version,x.counts.NURO,x.counts["SB光・AIR"],x.totalCount
+  ]),[[3,5,1,6]]);
+  const historyV3=await db.doc("companies/"+partner+
+   "/partnerWorkAudits/"+date+"__"+worker+"__v3").get();
+  assert.equal(historyV3.exists,true);
+  assert.equal(historyV3.data().correctionKind,"hub_owner_existing_count_v3");
+  assert.equal(historyV3.data().correctedByOwnerUid,owner);
+  assert.equal(historyV3.data().previousCounts.NURO,3);
+  assert.equal(historyV3.data().counts.NURO,5);
+  await assert.rejects(service.correctHubPartnerCounts(request(owner,{
+   date,partnerCompanyId:partner,staffId:worker,expectedVersion:2,
+   counts:{...empty,NURO:10,"SB光・AIR":1},
+   sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":1},
+   correctionReason:"過去版を使った不正な訂正依頼"
+  })),err=>err.code==="aborted");
+  await assert.rejects(service.listHubPartnerCounts(request(worker,{
+   date,partnerCompanyId:partner,workspaceCompanyId:partner
+  })),err=>err.code==="permission-denied");
+  await assert.rejects(service.correctHubPartnerCounts(request(worker,{
+   date,partnerCompanyId:partner,staffId:worker,expectedVersion:3,
+   counts:{...empty,NURO:7,"SB光・AIR":1},
+   sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":1},
+   correctionReason:"協力店側から管理者の権限を偽装"
+  })),err=>err.code==="permission-denied");
   const originalRecords=await db.doc("records/counts-integration-original").get();
   assert.equal(originalRecords.data().totalRevenue,before.records.totalRevenue);
   for(const name of COLLECTIONS){
