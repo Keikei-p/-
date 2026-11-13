@@ -1,0 +1,48 @@
+name: NICO owner correction v3 same immutable partner ledger (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/index.js'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'staging/partner-owner-correction-v3/**'
+      - '.github/workflows/nico-owner-correction-v3-same-ledger-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-owner-read-write-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED: ''
+      GCLOUD_PROJECT: demo-nico-owner-audit
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify correction flags are OFF and no production access
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
+          grep -Fq 'ownerCorrectionReadEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'ownerCorrectionWriteEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled"' functions-partner-workspace/index.js
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check tests/partner-workspace.test.cjs
+      - name: Owner server correction, no finance, correction audit, old split and fallback
+        run: |
+          set -euo pipefail
+          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs
+          echo 'OWNER_EXISTING_LEDGER_CORRECTION_NO_DEPLOY_PASS'
