@@ -99,6 +99,33 @@ test("unreported staff and explicit zero results are never conflated",()=>{
  assert.equal(missing.reportStatus,"未報告");
  assert.equal(zero.count,0);
  assert.equal(missing.count,0);
+ assert(Number.isSafeInteger(zero.rank),"submitted zero stays ranked");
+ assert.equal(missing.rank,null,"unreported staff never get a numerical rank");
+ const partner=build({...fixture(2),context:auth("partner_owner")});
+ assert.equal(partner.own.people.find(p=>p.id==="partner:p3").rank,null);
+ assert(!partner.publicRanking.members.some(p=>p.name==="協力店未報告"),
+  "unreported person is not disclosed as a ranked participant");
+ assert(partner.publicRanking.members.some(p=>p.name==="協力店0件"),
+  "submitted 0 has ranking eligibility");
+});
+test("public company ranks exclude wholly unreported company but include submitted zero",()=>{
+ const x=fixture(2);
+ const silent=src("silent","partner",[],[],[["noReport","未報告担当者"]]);
+ silent.companyLabel="未報告会社";
+ x.approvedCompanyIds.push("silent");
+ x.context.approvedCompanyIds.push("silent");
+ x.sources.push(silent);
+ const hub=build(x);
+ assert.equal(hub.companyBreakdown.find(c=>c.id==="silent").count,0,
+  "Owner may still inspect an unreported company");
+ const partner=build({...x,context:{...auth("partner_owner"),
+  approvedCompanyIds:["hub","partner","silent"]}});
+ assert(!partner.publicRanking.companies.some(c=>c.name==="未報告会社"));
+ assert(partner.publicRanking.companies.some(c=>c.name==="協力店A"));
+ const zero=fixture(0);
+ const zeroPartner=build({...zero,context:auth("partner_owner")});
+ assert(zeroPartner.publicRanking.companies.some(c=>c.name==="協力店A"&&c.count===0),
+  "a submitted zero is a legitimate reported company");
 });
 test("period selections use actual day/week/month boundaries, month-to-date prev month same elapsed days",()=>{
  const x=fixture(3);
@@ -259,4 +286,103 @@ test("NFKC financial labels fail closed in canonical and Functions ranking, ordi
   const result=buildFn(valid);
   assert.equal(result.companyBreakdown.find(x=>x.id==="partner").name,"協力店Ａ");
  }
+});
+
+test("team detail uses saved teams across transfers, with identical server package output",()=>{
+ const x=fixture(3);
+ x.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ const source=x.sources[1];
+ source.teams.push({id:"newTeam",name:"異動先",goalCount:null});
+ source.roster[0].teamId="newTeam";
+ const moved=rec("partner","moved","p1","2026-11-07",2);
+ moved.teamId="newTeam";
+ source.records.push(moved);
+ source.lines.push(ln(moved,"partnerSku01",2));
+ const before=structuredClone(x);
+ const result=build(x);
+ assert.deepEqual(buildVendorDashboard(x),result);
+ assert.deepEqual(x,before);
+ const old=result.teamBreakdown.find(t=>t.id==="partner:team");
+ const next=result.teamBreakdown.find(t=>t.id==="partner:newTeam");
+ assert.equal(old.detail.members.find(p=>p.id==="partner:p1").count,3);
+ assert.equal(next.detail.members.find(p=>p.id==="partner:p1").count,2);
+ assert.equal(old.detail.members.find(p=>p.id==="partner:p2").reportStatus,"確定0件");
+ assert(!old.detail.members.some(p=>p.id==="partner:p3"));
+ for(const team of result.teamBreakdown){
+  assert.equal(team.detail.members.reduce((n,p)=>n+p.count,0),team.count);
+  assert.equal(team.detail.products.reduce((n,p)=>n+p.count,0),team.count);
+ }
+ x.context=auth("partner_owner");
+ const partner=build(x);
+ assert(!("teamBreakdown" in partner));
+ assert(!JSON.stringify(partner.publicRanking).includes("detail"));
+});
+
+test("registered unreported teams, explicit zero and nullable count goals remain distinct",async()=>{
+ const {projectOwnerPartnerTeamCards}=await import("../ranking/unified-partner-team-cards.mjs");
+ const x=fixture(3);
+ x.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ x.sources[1].teams[0].goalCount=10;
+ x.sources[1].teams.push({id:"unreported",name:"未報告班",goalCount:null},
+  {id:"zero",name:"0件報告班",goalCount:0});
+ x.sources[1].roster.push({uid:"p4",name:"新メンバー",teamId:"zero"});
+ const zero=rec("partner","zero-report","p4","2026-11-08",0);
+ zero.teamId="zero";
+ x.sources[1].records.push(zero);
+ const response=build(x);
+ const model=projectOwnerPartnerTeamCards(response,{month:"2026-11"});
+ const company=model.companies[0];
+ const unreported=company.teams.find(t=>t.key===JSON.stringify(["partner","unreported"]));
+ const reportedZero=company.teams.find(t=>t.key===JSON.stringify(["partner","zero"]));
+ const active=company.teams.find(t=>t.key===JSON.stringify(["partner","team"]));
+ assert.equal(unreported.reportStatus,"未報告");
+ assert.equal(unreported.goalCount,null);
+ assert.equal(reportedZero.reportStatus,"確定0件");
+ assert.equal(reportedZero.goalCount,0);
+ assert.equal(reportedZero.memberCount,1);
+ assert.equal(active.goalCount,10);
+ assert.equal(active.memberCount,3);
+ assert.equal(active.products.reduce((n,p)=>n+p.count,0),3);
+ x.context=auth("partner_owner");
+ assert(!build(x).publicRanking.teams.some(t=>t.name==="未報告班"));
+});
+
+test("product-filtered team detail retains report evidence from saved lines",async()=>{
+ const {projectOwnerPartnerTeamCards}=await import("../ranking/unified-partner-team-cards.mjs");
+ const x=fixture(3);
+ x.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ x.filters={productId:"nuro"};
+ const result=build(x);
+ const model=projectOwnerPartnerTeamCards(result,{month:"2026-11"});
+ const team=model.companies[0].teams.find(t=>t.key===JSON.stringify(["partner","team"]));
+ assert.equal(team.count,3);
+ assert.equal(team.reportStatus,"報告済");
+ assert.equal(team.people[0].reportStatus,"一部未報告");
+});
+
+test('colon-containing company/team IDs cannot alias another company team',async()=>{
+ const {projectOwnerPartnerTeamCards}=await import('../ranking/unified-partner-team-cards.mjs');
+ const x=fixture(3),rename=id=>id==='hub'?'a':'a:b';
+ x.period={kind:'month',day:'2026-11-08',asOf:'2026-11-08'};
+ x.hubCompanyId='a';x.approvedCompanyIds=['a','a:b'];
+ x.context.hubCompanyId='a';x.context.viewerCompanyId='a';
+ x.context.approvedCompanyIds=['a','a:b'];
+ for(const source of x.sources){
+  const old=source.companyId,cid=rename(old),teamId=old==='hub'?'b:team':'team';
+  source.companyId=cid;source.teams[0].id=teamId;
+  for(const row of [...source.records,...source.lines,...source.products])row.companyId=cid;
+  for(const row of [...source.records,...source.lines,...source.roster])row.teamId=teamId;
+ }
+ for(const group of x.productGroups)group.companyId=rename(group.companyId);
+ const result=build(x);
+ const teams=result.teamBreakdown;
+ assert.equal(teams.length,2);
+ assert.equal(teams[0].id,teams[1].id,'legacy display IDs collide; identities must remain separate');
+ assert.equal(teams.find(t=>t.companyId==='a').count,1);
+ assert.equal(teams.find(t=>t.companyId==='a:b').count,3);
+ assert.deepEqual(buildVendorDashboard(x),result);
+ const model=projectOwnerPartnerTeamCards(result,{month:'2026-11'});
+ assert.equal(model.total,3);
+ assert.equal(model.companies[0].teams[0].key,JSON.stringify(['a:b','team']));
+ assert.equal(model.companies[0].teams[0].people[0].count,3);
 });

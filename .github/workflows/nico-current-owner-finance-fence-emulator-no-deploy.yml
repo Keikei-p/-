@@ -1,0 +1,84 @@
+name: NICO current owner-correction + finance deny emulator (DEMO ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/index.js'
+      - 'security/secondary-finance-read-fence.mjs'
+      - 'tests/secondary-finance-read-fence-emulator.test.mjs'
+      - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/rules.test.cjs'
+      - 'tests/internal-owner-finance-visibility.test.cjs'
+      - 'index.html'
+      - '.github/workflows/nico-current-owner-finance-fence-emulator-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  locally-isolated-finance-count-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_RULES_APPROVAL: ''
+      NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Reject all production identity and changed live sales Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_RULES_APPROVAL"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          node --check security/secondary-finance-read-fence.mjs
+          node --check functions-partner-workspace/service.cjs
+          node --check tests/secondary-finance-counts-integration-emulator.test.mjs
+          node security/secondary-finance-read-fence.mjs --check
+          node --test tests/partner-workspace.test.cjs tests/internal-owner-finance-visibility.test.cjs
+      - name: Install ONLY local Firestore emulator tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund
+          npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Verify partner secondary GET and LIST denied while current count service saves
+        shell: bash
+        env:
+          FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
+          GCLOUD_PROJECT: demo-nico-secondary-finance-fence
+          GOOGLE_CLOUD_PROJECT: demo-nico-secondary-finance-fence
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-nico-secondary-finance-fence
+          firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore \
+            'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs'
+          echo 'CURRENT_OWNER_COUNT_AND_PARTNER_MONEY_FENCE_DEMO_PASS'
+      - name: Re-run ALL original internal owner sales Rules under candidate fence
+        shell: bash
+        env:
+          FIREBASE_PROJECT_ID: demo-sales-support
+          GCLOUD_PROJECT: demo-sales-support
+          GOOGLE_CLOUD_PROJECT: demo-sales-support
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-sales-support
+          firebase emulators:exec --project demo-sales-support --only firestore \
+            'NICO_EMULATOR_REVIEW_SECONDARY_FENCE=1 node --test --test-concurrency=1 tests/rules.test.cjs'
+          echo 'INTERNAL_OWNER_SALES_REGRESSION_UNDER_FINANCE_FENCE_PASS'
+          echo 'NO_PRODUCTION_FIRESTORE_WRITES_NO_RULES_DEPLOY_NO_FUNCTIONS_DEPLOY'
