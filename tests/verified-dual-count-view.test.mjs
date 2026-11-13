@@ -73,6 +73,36 @@ test("internal dashboard presents company/team tied counts as 1,1 without alteri
  assert(!words(root).includes("単価"));
  assert(!words(root).includes("キャッシュバック"));
 });
+test("missing partner report is never displayed as a rank, but submitted zero remains ranked",()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const inputValue=input(role);
+  inputValue.sources[1].roster.push({uid:"pMissing",name:"未報告担当X",teamId:"team"});
+  inputValue.sources[1].roster.push({uid:"pZero",name:"報告済み0件担当",teamId:"team"});
+  const r={companyId:"partner",sourceId:"2026-11-08__pZero",uid:"pZero",
+   date:"2026-11-08",teamId:"team",totalCount:0,reportStatus:"no_result",
+   memberNameSnapshot:"報告済み0件担当",teamNameSnapshot:"第一班",workLocation:""};
+  inputValue.sources[1].records.push(r);
+  const value=buildVerifiedCountDashboard(inputValue);
+  const missing=(role==="hub_owner"?value.memberRanking:value.own.people)
+   .find(p=>p.name==="未報告担当X");
+  const zero=(role==="hub_owner"?value.memberRanking:value.own.people)
+   .find(p=>p.name==="報告済み0件担当");
+  assert.equal(missing.rank,null);
+  assert(Number.isSafeInteger(zero.rank));
+  const root=new Node("main");
+  renderVerifiedDualCountDashboard({document:doc,root,payload:value});
+  const output=words(root);
+  assert(!output.includes("未報告担当X"));
+  assert(output.includes("報告済み0件担当"));
+  const forgery=structuredClone(value);
+  const forged=(role==="hub_owner"?forgery.memberRanking:forgery.own.people)
+   .find(p=>p.name==="未報告担当X");
+  forged.rank=999;
+  assert.throws(()=>renderVerifiedDualCountDashboard({document:doc,root,payload:forgery}),
+   /件数の権限/);
+  assert.equal(root.children.length,0);
+ }
+});
 test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
