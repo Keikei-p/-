@@ -76,6 +76,7 @@ function checkSources(sources,companyIds,hub){
  if(!Array.isArray(sources)||sources.length!==companyIds.length)stop();
  const seen=new Set(),recordKeys=new Set(),lineKeys=new Set();
  let readTime=null;
+ const teamMetadata=new Map();
  const rows=[],sku=new Map(),names=new Map(),roster=new Map();
  const coverage=new Map();
  for(const s of sources){
@@ -107,6 +108,9 @@ function checkSources(sources,companyIds,hub){
    if(!t||!id(t.id)||teamNames.has(t.id)||
       (t.goalCount!=null&&count(t.goalCount)<0))stop();
    teamNames.set(t.id,label(t.name));
+   teamMetadata.set(s.companyId+":"+t.id,{id:s.companyId+":"+t.id,
+    companyId:s.companyId,companyName:company,name:label(t.name),
+    goalCount:t.goalCount==null?null:count(t.goalCount),memberCount:0});
   }
   for(const p of s.products){
    if(p.companyId!==s.companyId||!id(p.sourceId))stop();
@@ -119,6 +123,7 @@ function checkSources(sources,companyIds,hub){
    if(!p||!id(p.uid)||!id(p.teamId)||!teamNames.has(p.teamId))stop();
    const key=s.companyId+":"+p.uid;
    if(roster.has(key))stop();
+   teamMetadata.get(s.companyId+":"+p.teamId).memberCount++;
    roster.set(key,{id:key,companyId:s.companyId,companyName:company,
     uid:p.uid,teamId:p.teamId,teamName:teamNames.get(p.teamId),
     name:label(p.name)});
@@ -153,7 +158,7 @@ function checkSources(sources,companyIds,hub){
     uid:h.uid,teamId:h.teamId,teamName:teamNames.get(h.teamId),
     name:roster.get(s.companyId+":"+h.uid).name,
     date:date(line.date),productKey:s.companyId+":"+line.productId,count:n,
-    unidentified:false});
+    unidentified:false,reported:true,reportStatus:h.reportStatus});
   }
   for(const h of headers.values()){
    if(totals.get(h.sourceId)!==h.totalCount)stop();
@@ -165,7 +170,7 @@ function checkSources(sources,companyIds,hub){
     reported:true,reportStatus:h.reportStatus});
   }
  }
- return {rows,sku,names,roster,coverage,readTime};
+ return {rows,sku,names,roster,coverage,readTime,teamMetadata};
 }
 function mappings(groups,sku) {
  if(!Array.isArray(groups)||groups.length>5000)stop();
@@ -280,7 +285,16 @@ export function buildVerifiedCountDashboard({
    oldScores.set(key,add(oldScores.get(key)||0,r.count));
   }
  }
- const statuses=new Map();
+ const statuses=new Map(),teamDetails=new Map();
+ // Registered teams remain visible even before their first report. Metadata
+ // is current membership; historical counts below keep saved team attribution.
+ for(const team of parsed.teamMetadata.values()){
+  if(filters.companyId&&filters.companyId!==team.companyId)continue;
+  if(filters.teamId&&filters.teamId!==team.id.slice(team.companyId.length+1))continue;
+  teams.set(team.id,{id:team.id,companyId:team.companyId,
+   companyName:team.companyName,name:team.name,count:0});
+  teamDetails.set(team.id,{people:new Map(),products:new Map()});
+ }
  for(const r of current){
   const cid=r.companyId;
   put(allCompany,cid,()=>({id:cid,name:parsed.names.get(cid),
@@ -300,6 +314,26 @@ export function buildVerifiedCountDashboard({
   if(r.teamId!==null)put(teams,r.companyId+":"+r.teamId,
    ()=>({id:r.companyId+":"+r.teamId,companyId:cid,
     companyName:r.companyName,name:r.teamName,count:0}),r.count);
+  // Attribute details to the saved record team, never the current roster.
+  // Reuse the same authorized, mapped, filtered rows as every total above.
+  if(r.teamId!==null){
+   const key=r.companyId+":"+r.teamId;
+   if(!teamDetails.has(key))teamDetails.set(key,{people:new Map(),products:new Map()});
+   const detail=teamDetails.get(key);
+   if(r.uid!==null){
+    const personKey=r.companyId+":"+r.uid;
+    if(!detail.people.has(personKey))detail.people.set(personKey,
+     {id:personKey,name:r.name,count:0,days:new Set()});
+    const person=detail.people.get(personKey);
+    person.count=add(person.count,r.count);
+    if(r.reported)person.days.add(r.date);
+   }
+   if(r.productKey!==null){
+    const productId=productKey(r.productKey);
+    put(detail.products,productId,()=>({id:productId,
+     name:productName(r.productKey),count:0}),r.count);
+   }
+  }
   if(r.productKey!==null){
    const key=productKey(r.productKey);
    put(products,key,()=>({id:key,name:productName(r.productKey),
@@ -371,7 +405,20 @@ export function buildVerifiedCountDashboard({
   productRanking:rankedProducts};
  if(context.role==="hub_owner"){
   const data={...common,role:"hub_owner",
-   companyBreakdown:companyRows,teamBreakdown:[...teams.values()],
+   companyBreakdown:companyRows,teamBreakdown:[...teams.values()].map(team=>{
+    const detail=teamDetails.get(team.id);
+    const members=[...detail.people.values()].map(p=>({id:p.id,name:p.name,
+     count:p.count,reportStatus:p.days.size===0?"未報告":p.count===0?"確定0件":
+      p.days.size<range.days?"一部未報告":"報告済"}));
+    const teamProducts=[...detail.products.values()];
+    if(members.reduce((sum,p)=>add(sum,p.count),0)!==team.count||
+       teamProducts.reduce((sum,p)=>add(sum,p.count),0)!==team.count)stop();
+    const metadata=parsed.teamMetadata.get(team.id);
+    const reported=members.some(p=>p.reportStatus!=="未報告");
+    return {...team,detail:{schema:"nico-team-count-detail-v1",members,products:teamProducts,
+     goalCount:metadata.goalCount,memberCount:metadata.memberCount,
+     reportStatus:!reported?"未報告":team.count===0?"確定0件":"報告済"}};
+   }),
    filters:{...filters}};
   auditNoFinancialKeys(data);
   return data;
@@ -392,7 +439,8 @@ export function buildVerifiedCountDashboard({
  const publicCompanies=ordered(companyRows.map(x=>({
   id:x.id,name:x.name,count:x.count
  })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
- const publicTeams=ordered([...teams.values()].map(x=>({
+ const publicTeams=ordered([...teams.values()].filter(x=>
+  [...teamDetails.get(x.id).people.values()].some(p=>p.days.size>0)).map(x=>({
   id:x.id,name:x.name,company:x.companyName,count:x.count
  })),x=>x.count).map(x=>({
   rank:x.rank,name:x.name,company:x.company,count:x.count

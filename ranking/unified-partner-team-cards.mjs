@@ -9,7 +9,7 @@ const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:売上|単価|収益|報酬|利益|キャッシュバック|[¥￥$€]|(?:cashback|revenue|unitPrice|price|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円))/i;
 const stop=()=>{throw Error("PARTNER_TEAM_MONTH_UNVERIFIED");};
 const goodName=value=>{
- if(typeof value!=="string"||!value.trim()||value.length>100||MONEY.test(value))stop();
+ if(typeof value!=="string"||!value.trim()||value.length>100||MONEY.test(value.normalize("NFKC")))stop();
  return value.trim();
 };
 const count=value=>{
@@ -56,20 +56,42 @@ export function projectOwnerPartnerTeamCards(response,{month}={}){
   company.teams.push({key:team.id,companyId:team.companyId,
    name:goodName(team.name),count:team.count,people:[],peopleVerified:false});
  }
- // Only names and individual counts already approved in the server response.
- // Current teamId and historical team snapshots can differ; if exact person
- // attribution cannot be verified, never pretend that per-team people are complete.
- for(const person of response.memberRanking){
-  if(!ID.test(person.companyId||"")||!ID.test(person.teamId||"")||
-     !ID.test(person.id||"")||!person.id.startsWith(person.companyId+":"))stop();
-  const company=partnerCompanies.get(person.companyId);
-  if(!company)continue;
-  if(goodName(person.companyName)!==company.name)stop();
-  const team=company.teams.find(t=>t.key===person.companyId+":"+person.teamId);
-  if(!team)continue;
-  if(!["未報告","報告済","一部未報告","確定0件"].includes(person.reportStatus))stop();
-  team.people.push({name:goodName(person.name),count:count(person.count),
-   reportStatus:person.reportStatus});
+ // Legacy person rankings carry CURRENT roster team IDs. Equality of totals
+ // does not prove historical attribution (two transferred people may cancel).
+ // Accept only explicit server detail built from saved record team snapshots.
+ for(const source of response.teamBreakdown){
+  const team=partnerCompanies.get(source.companyId)?.teams.find(t=>t.key===source.id);
+  if(!team||source.detail===undefined)continue;
+  const detail=source.detail;
+  if(!detail||detail.schema!=="nico-team-count-detail-v1"||
+     !Array.isArray(detail.members)||!Array.isArray(detail.products)||
+     Object.keys(detail).sort().join("|")!=="goalCount|memberCount|members|products|reportStatus|schema")stop();
+  if(!["未報告","確定0件","報告済"].includes(detail.reportStatus)||
+     (detail.reportStatus!=="報告済"&&team.count!==0))stop();
+  team.reportStatus=detail.reportStatus;
+  team.memberCount=count(detail.memberCount);
+  team.goalCount=detail.goalCount===null?null:count(detail.goalCount);
+  const memberIds=new Set(),productIds=new Set();
+  team.people=detail.members.map(person=>{
+   if(Object.keys(person).sort().join("|")!=="count|id|name|reportStatus"||
+      !ID.test(person.id||"")||!person.id.startsWith(source.companyId+":")||
+      memberIds.has(person.id)||
+      !["未報告","報告済","一部未報告","確定0件"].includes(person.reportStatus))stop();
+   memberIds.add(person.id);
+   const n=count(person.count);
+   if((person.reportStatus==="未報告"||person.reportStatus==="確定0件")&&n!==0)stop();
+   return {name:goodName(person.name),count:n,reportStatus:person.reportStatus};
+  });
+  team.products=detail.products.map(product=>{
+   if(Object.keys(product).sort().join("|")!=="count|id|name"||
+      !ID.test(product.id||"")||productIds.has(product.id))stop();
+   productIds.add(product.id);
+   return {name:goodName(product.name),count:count(product.count)};
+  });
+  if(team.people.reduce((sum,p)=>sum+p.count,0)!==team.count||
+     team.products.reduce((sum,p)=>sum+p.count,0)!==team.count)stop();
+  team.peopleVerified=true;
+  team.productsVerified=true;
  }
  // Product breakdown exists at COMPANY scope only in the v1 verified
  // response; do not attribute company products to individual teams.
@@ -94,10 +116,7 @@ export function projectOwnerPartnerTeamCards(response,{month}={}){
   // silently attribute unidentified quantities to any SKU or team.
   if(products>company.count)stop();
   for(const team of company.teams){
-   const peopleTotal=team.people.reduce((s,p)=>s+p.count,0);
-   team.peopleVerified=peopleTotal===team.count &&
-    (team.count===0||team.people.some(p=>p.reportStatus!=="未報告"));
-   if(!team.peopleVerified)team.people=[]; // refuse a misleading partial list
+   if(!team.peopleVerified)team.people=[];
   }
   company.teams.sort((a,b)=>a.name.localeCompare(b.name,"ja")||a.key.localeCompare(b.key));
   grandTotal+=company.count;
@@ -106,6 +125,15 @@ export function projectOwnerPartnerTeamCards(response,{month}={}){
  if(!Number.isSafeInteger(grandTotal)||
     grandTotal!==response.summary.partner)stop();
  return Object.freeze({month,companies:result,total:grandTotal});
+}
+
+function goalText(team){
+ if(team.goalCount==null)return "件数目標未設定";
+ const remaining=Math.max(0,team.goalCount-team.count);
+ // An explicit zero target has no defined ratio, rather than Infinity/NaN.
+ const progress=team.goalCount===0?"進捗率対象外":
+  "進捗"+Math.round(team.count/team.goalCount*100)+"%";
+ return "目標"+team.goalCount+"件 / 残"+remaining+"件 / "+progress;
 }
 
 /** Render alongside existing self cards, not in a second dashboard. */
@@ -141,18 +169,23 @@ export function renderOwnerPartnerTeamCards({document,root,response,month}={}){
    heading.appendChild(el(document,"strong","team-detail-title",company.name+"・"+team.name));
    heading.appendChild(el(document,"strong","team-detail-total",team.count+"件"));
    detail.appendChild(heading);
-   detail.appendChild(el(document,"div","team-goal-summary","目標未設定（会社別の件数目標は未接続）"));
+   detail.appendChild(el(document,"div","team-goal-summary",goalText(team)));
    detail.appendChild(el(document,"h4","team-detail-title","担当者別の件数"));
    if(team.peopleVerified){
     for(const person of team.people)
      detail.appendChild(el(document,"div","team-overview-card-result",
       person.name+"　"+person.count+"件"));
     if(!team.people.length)
-     detail.appendChild(el(document,"p","empty-message","報告済みの担当者はありません。"));
+     detail.appendChild(el(document,"p","empty-message",team.reportStatus==="未報告"?"未報告":"報告済みの担当者はありません。"));
    }else detail.appendChild(el(document,"p","empty-message",
     "担当者別件数を検証できません。班移動・過去の所属履歴を確認してください。"));
    detail.appendChild(el(document,"h4","team-detail-title","班別の商材内訳"));
-   detail.appendChild(el(document,"p","empty-message",
+   if(team.productsVerified){
+    for(const product of team.products)
+     detail.appendChild(el(document,"div","team-overview-card-result",
+      product.name+"　"+product.count+"件"));
+    if(!team.products.length)detail.appendChild(el(document,"p","empty-message",team.reportStatus==="未報告"?"未報告":"報告済み0件"));
+   }else detail.appendChild(el(document,"p","empty-message",
     "商材内訳は班単位の承認済み集計に接続してから表示します。会社合計を班へ推測配分しません。"));
   };
   for(const team of company.teams){
@@ -161,9 +194,9 @@ export function renderOwnerPartnerTeamCards({document,root,response,month}={}){
    button.setAttribute("aria-pressed","false");
    button.appendChild(el(document,"div","team-overview-card-name",team.name));
    button.appendChild(el(document,"div","team-overview-card-members",
-    team.peopleVerified?team.people.length+"人（報告済み）":"担当人数は未照合"));
-   button.appendChild(el(document,"div","team-overview-card-result",team.count+"件"));
-   button.appendChild(el(document,"div","team-overview-card-goal","件数目標未設定"));
+    team.memberCount===undefined?"担当人数は未照合":team.memberCount+"人"));
+   button.appendChild(el(document,"div","team-overview-card-result",team.reportStatus==="未報告"?"未報告":team.count+"件"));
+   button.appendChild(el(document,"div","team-overview-card-goal",goalText(team)));
    button.addEventListener("click",()=>{selected=team.key===selected?null:team.key;show()});
    grid.appendChild(button);
   }

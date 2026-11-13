@@ -260,3 +260,75 @@ test("NFKC financial labels fail closed in canonical and Functions ranking, ordi
   assert.equal(result.companyBreakdown.find(x=>x.id==="partner").name,"協力店Ａ");
  }
 });
+
+test("team detail uses saved teams across transfers, with identical server package output",()=>{
+ const x=fixture(3);
+ x.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ const source=x.sources[1];
+ source.teams.push({id:"newTeam",name:"異動先",goalCount:null});
+ source.roster[0].teamId="newTeam";
+ const moved=rec("partner","moved","p1","2026-11-07",2);
+ moved.teamId="newTeam";
+ source.records.push(moved);
+ source.lines.push(ln(moved,"partnerSku01",2));
+ const before=structuredClone(x);
+ const result=build(x);
+ assert.deepEqual(buildVendorDashboard(x),result);
+ assert.deepEqual(x,before);
+ const old=result.teamBreakdown.find(t=>t.id==="partner:team");
+ const next=result.teamBreakdown.find(t=>t.id==="partner:newTeam");
+ assert.equal(old.detail.members.find(p=>p.id==="partner:p1").count,3);
+ assert.equal(next.detail.members.find(p=>p.id==="partner:p1").count,2);
+ assert.equal(old.detail.members.find(p=>p.id==="partner:p2").reportStatus,"確定0件");
+ assert(!old.detail.members.some(p=>p.id==="partner:p3"));
+ for(const team of result.teamBreakdown){
+  assert.equal(team.detail.members.reduce((n,p)=>n+p.count,0),team.count);
+  assert.equal(team.detail.products.reduce((n,p)=>n+p.count,0),team.count);
+ }
+ x.context=auth("partner_owner");
+ const partner=build(x);
+ assert(!("teamBreakdown" in partner));
+ assert(!JSON.stringify(partner.publicRanking).includes("detail"));
+});
+
+test("registered unreported teams, explicit zero and nullable count goals remain distinct",async()=>{
+ const {projectOwnerPartnerTeamCards}=await import("../ranking/unified-partner-team-cards.mjs");
+ const x=fixture(3);
+ x.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ x.sources[1].teams[0].goalCount=10;
+ x.sources[1].teams.push({id:"unreported",name:"未報告班",goalCount:null},
+  {id:"zero",name:"0件報告班",goalCount:0});
+ x.sources[1].roster.push({uid:"p4",name:"新メンバー",teamId:"zero"});
+ const zero=rec("partner","zero-report","p4","2026-11-08",0);
+ zero.teamId="zero";
+ x.sources[1].records.push(zero);
+ const response=build(x);
+ const model=projectOwnerPartnerTeamCards(response,{month:"2026-11"});
+ const company=model.companies[0];
+ const unreported=company.teams.find(t=>t.key==="partner:unreported");
+ const reportedZero=company.teams.find(t=>t.key==="partner:zero");
+ const active=company.teams.find(t=>t.key==="partner:team");
+ assert.equal(unreported.reportStatus,"未報告");
+ assert.equal(unreported.goalCount,null);
+ assert.equal(reportedZero.reportStatus,"確定0件");
+ assert.equal(reportedZero.goalCount,0);
+ assert.equal(reportedZero.memberCount,1);
+ assert.equal(active.goalCount,10);
+ assert.equal(active.memberCount,3);
+ assert.equal(active.products.reduce((n,p)=>n+p.count,0),3);
+ x.context=auth("partner_owner");
+ assert(!build(x).publicRanking.teams.some(t=>t.name==="未報告班"));
+});
+
+test("product-filtered team detail retains report evidence from saved lines",async()=>{
+ const {projectOwnerPartnerTeamCards}=await import("../ranking/unified-partner-team-cards.mjs");
+ const x=fixture(3);
+ x.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};
+ x.filters={productId:"nuro"};
+ const result=build(x);
+ const model=projectOwnerPartnerTeamCards(result,{month:"2026-11"});
+ const team=model.companies[0].teams.find(t=>t.key==="partner:team");
+ assert.equal(team.count,3);
+ assert.equal(team.reportStatus,"報告済");
+ assert.equal(team.people[0].reportStatus,"一部未報告");
+});

@@ -38,6 +38,17 @@ const payload=()=>({
  ],
  filters:{}
 });
+function detailedPayload(){
+ const x=payload();
+ for(const team of x.teamBreakdown){
+  team.detail={schema:"nico-team-count-detail-v1",
+   goalCount:null,memberCount:2,reportStatus:"報告済",
+   members:x.memberRanking.filter(p=>p.companyId===team.companyId).map(p=>({
+    id:p.id,name:p.name,count:p.count,reportStatus:p.reportStatus})),
+   products:[{id:"approved-nuro",name:"NURO",count:team.count}]};
+ }
+ return x;
+}
 function change(f){const x=payload();f(x);return x}
 class Node{
  constructor(tag,text=""){this.tag=tag;this.children=[];this._text=text;this.dataset={};this.attrs={};this.listeners={};this.className="";}
@@ -54,7 +65,7 @@ const document={
  createDocumentFragment:()=>new Node("#fragment")
 };
 test("owner-only snapshot groups same-named teams by company without moving originals",()=>{
- const out=projectOwnerPartnerTeamCards(payload(),{month:"2026-11"});
+ const out=projectOwnerPartnerTeamCards(detailedPayload(),{month:"2026-11"});
  assert.equal(out.companies.length,2);
  assert.equal(out.total,7);
  assert.equal(out.companies[0].teams[0].key,"companyA:t1");
@@ -65,7 +76,7 @@ test("owner-only snapshot groups same-named teams by company without moving orig
 });
 test("render reuses existing team overview card CSS and opens one company team at a time",()=>{
  const root=new Node("root");
- const model=renderOwnerPartnerTeamCards({document,root,response:payload(),month:"2026-11"});
+ const model=renderOwnerPartnerTeamCards({document,root,response:detailedPayload(),month:"2026-11"});
  assert.equal(model.total,7);
  const rootChildren=root.nodes;
  assert.equal(rootChildren.filter(x=>x.className==="team-overview-card").length,2);
@@ -75,7 +86,7 @@ test("render reuses existing team overview card CSS and opens one company team a
  assert.equal(partnerA.attrs["aria-pressed"],"true");
  assert.match(root.textContent,/協力店スタッフA.*3件/);
  assert.doesNotMatch(root.textContent,/¥|単価|キャッシュバック|売上/);
- assert.match(root.textContent,/商材内訳は班単位の承認済み集計に接続/);
+ assert.match(root.textContent,/NURO.*5件/);
 });
 test("historical unknown team stays separate and cannot be silently assigned",()=>{
  const x=change(d=>{
@@ -84,7 +95,7 @@ test("historical unknown team stays separate and cannot be silently assigned",()
  });
  const out=projectOwnerPartnerTeamCards(x,{month:"2026-11"});
  assert.equal(out.companies[0].unassignedCount,1);
- assert.equal(out.companies[0].teams[0].peopleVerified,true);
+ assert.equal(out.companies[0].teams[0].peopleVerified,false);
 });
 test("incomplete historical staff attribution hides misleading names",()=>{
  const x=change(d=>{
@@ -119,4 +130,44 @@ test("module never opens financial database or writes company data",()=>{
  assert.match(s,/root\.replaceChildren\(fragment\)/);
  assert.match(s,/team-overview-grid/);
  assert.match(s,/team-overview-card/);
+});
+
+test("legacy equal totals cannot prove attribution after reciprocal transfers",()=>{
+ const x=payload(); // both totals match but no historical detail contract
+ const out=projectOwnerPartnerTeamCards(x,{month:"2026-11"});
+ assert.equal(out.companies[0].teams[0].peopleVerified,false);
+ assert.deepEqual(out.companies[0].teams[0].people,[]);
+});
+test("explicit team detail must reconcile both members and mapped products",()=>{
+ for(const field of ["members","products"]){
+  const x=detailedPayload();
+  x.teamBreakdown[1].detail[field][0].count++;
+  assert.throws(()=>projectOwnerPartnerTeamCards(x,{month:"2026-11"}));
+ }
+ const x=detailedPayload();
+ x.teamBreakdown[1].detail.members.push({...x.teamBreakdown[1].detail.members[0]});
+ assert.throws(()=>projectOwnerPartnerTeamCards(x,{month:"2026-11"}));
+});
+
+test("count goal, remaining and progress render without monetary cells",()=>{
+ const x=detailedPayload();
+ x.teamBreakdown[1].detail.goalCount=10;
+ const root=new Node("root");
+ renderOwnerPartnerTeamCards({document,root,response:x,month:"2026-11"});
+ assert.match(root.textContent,/目標10件 \/ 残5件 \/ 進捗50%/);
+ assert.doesNotMatch(root.textContent,/Infinity|NaN|¥|円|単価|売上/);
+ x.teamBreakdown[1].detail.goalCount=0;
+ renderOwnerPartnerTeamCards({document,root,response:x,month:"2026-11"});
+ assert.match(root.textContent,/目標0件 \/ 残0件 \/ 進捗率対象外/);
+});
+
+test("team detail rejects nested unexpected fields and fullwidth financial names",()=>{
+ for(const field of ["members","products"]){
+  const x=detailedPayload();
+  x.teamBreakdown[1].detail[field][0].privateNote="hidden";
+  assert.throws(()=>projectOwnerPartnerTeamCards(x,{month:"2026-11"}));
+ }
+ const x=detailedPayload();
+ x.teamBreakdown[1].detail.products[0].name="ＮＵＲＯ ￥８０００";
+ assert.throws(()=>projectOwnerPartnerTeamCards(x,{month:"2026-11"}));
 });

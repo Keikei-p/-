@@ -6,6 +6,11 @@ on:
       - 'index.html'
       - 'partner-workspace.html'
       - 'ranking/unified-partner-team-cards.mjs'
+      - 'ranking/verified-dual-count-view.mjs'
+      - 'tests/verified-dual-count-view.test.mjs'
+      - 'ranking/verified-dual-count-dashboards.mjs'
+      - 'functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs'
+      - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/unified-partner-team-cards.test.mjs'
       - 'tests/unified-partner-team-mount.test.mjs'
       - 'tests/partner-original-team-card-parity.test.mjs'
@@ -34,6 +39,8 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           node --check ranking/unified-partner-team-cards.mjs
           node --check ranking/verified-joint-ranking-panel.mjs
+          node --check ranking/verified-dual-count-dashboards.mjs
+          node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           node <<'NODE'
           const fs=require('node:fs');
           const content=fs.readFileSync('index.html','utf8');
@@ -48,4 +55,5 @@ jobs:
           set -euo pipefail
           node --test tests/unified-partner-team-cards.test.mjs tests/unified-partner-team-mount.test.mjs tests/partner-original-team-card-parity.test.mjs
           node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-count-dashboard.test.cjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/verified-dual-count-view.test.mjs
           echo 'NO_DEPLOY: no Firebase or production changes'

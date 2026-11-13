@@ -55,7 +55,30 @@ function shape(value){
   }
   if(value.summary.own+value.summary.partner!==value.summary.total)halt();
   list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount"]);
-  list(value.teamBreakdown,["id","companyId","companyName","name","count"]);
+  if(!Array.isArray(value.teamBreakdown)||value.teamBreakdown.length>5000)halt();
+  for(const team of value.teamBreakdown){
+   const fields=["id","companyId","companyName","name","count"];
+   strict(team,team.detail===undefined?fields:[...fields,"detail"]);
+   if(team.detail!==undefined){
+    const d=team.detail;
+    strict(d,["schema","members","products","goalCount","memberCount","reportStatus"]);
+    if(d.schema!=="nico-team-count-detail-v1"||
+       !Number.isSafeInteger(d.memberCount)||d.memberCount<0||
+       !(d.goalCount===null||(Number.isSafeInteger(d.goalCount)&&d.goalCount>=0))||
+       !["未報告","確定0件","報告済"].includes(d.reportStatus))halt();
+    list(d.members,["id","name","count","reportStatus"]);
+    list(d.products,["id","name","count"]);
+    for(const rows of [d.members,d.products]){
+     const ids=new Set();
+     for(const row of rows){
+      if(!ID.test(row.id||"")||ids.has(row.id)||
+         !Number.isSafeInteger(row.count)||row.count<0)halt();
+      ids.add(row.id);
+     }
+     if(rows.reduce((sum,row)=>sum+row.count,0)!==team.count)halt();
+    }
+   }
+  }
   list(value.memberRanking,PERSON);
   list(value.productRanking,PRODUCT);
   for(const product of value.productRanking)
