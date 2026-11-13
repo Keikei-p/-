@@ -108,6 +108,25 @@ test("unreported staff and explicit zero results are never conflated",()=>{
  assert(partner.publicRanking.members.some(p=>p.name==="協力店0件"),
   "submitted 0 has ranking eligibility");
 });
+test("public company ranks exclude wholly unreported company but include submitted zero",()=>{
+ const x=fixture(2);
+ const silent=src("silent","partner",[],[],[["noReport","未報告担当者"]]);
+ silent.companyLabel="未報告会社";
+ x.approvedCompanyIds.push("silent");
+ x.context.approvedCompanyIds.push("silent");
+ x.sources.push(silent);
+ const hub=build(x);
+ assert.equal(hub.companyBreakdown.find(c=>c.id==="silent").count,0,
+  "Owner may still inspect an unreported company");
+ const partner=build({...x,context:{...auth("partner_owner"),
+  approvedCompanyIds:["hub","partner","silent"]}});
+ assert(!partner.publicRanking.companies.some(c=>c.name==="未報告会社"));
+ assert(partner.publicRanking.companies.some(c=>c.name==="協力店A"));
+ const zero=fixture(0);
+ const zeroPartner=build({...zero,context:auth("partner_owner")});
+ assert(zeroPartner.publicRanking.companies.some(c=>c.name==="協力店A"&&c.count===0),
+  "a submitted zero is a legitimate reported company");
+});
 test("period selections use actual day/week/month boundaries, month-to-date prev month same elapsed days",()=>{
  const x=fixture(3);
  const day=build(x);
