@@ -202,7 +202,7 @@
 - `.github/workflows/nico-unified-team-cards-no-deploy.yml`: **PRのみ**でNode構文・既存UI回帰と追加テストを実行。本番デプロイ、機密認証、DB書込なし。
 
 ### 実施した検証
-- GitHub Actions `NICO unified partner team cards (NO DEPLOY)` 最新検証: **33件 PASS / 0 FAIL**（新規12、既存21）。
+- GitHub Actions `NICO unified partner team cards (NO DEPLOY)` 最新検証: **34件 PASS / 0 FAIL**（新規13、既存21）。Sales App Validation も SUCCESS。
 - 既存Protected change gateは**FAILED（意図した安全停止）**。`index.html` は保護ファイルのため、正式な`sales-production-reviewed`と署名済み`docs/SALES_RELEASE_SIGNOFF.md`がなければmainマージ不可。バイパスしない。
 - 別の複数の過去ワークフローは改変した `index.html` の固定ハッシュを不一致として停止。本番公開ゲートのピンを勝手に更新しない。
 - 本PRはDraft・NO DEPLOY。**本番のFirebase/Firestore/Rules/Functions/Hosting、既存実績・自社売上・単価・CB・ユーザーを変更していない**。
