@@ -1178,7 +1178,7 @@ test("same-email login guidance and explicit transfer action exist in invite UI"
  assert.match(invite,/auth\/email-already-in-use/);
 });
 
-test("new approved monthly and daily ranking API excludes finance and OFF counts, without mutating source",async()=>{
+test("new approved day week month ranking API excludes finance and OFF counts, without mutating source",async()=>{
  const {db,api,req,zero}=setup(true),date="2026-10-31";
  db.seed("products/nuro",{companyId:"hub",name:"NURO光",active:true,unitPrice:10000});
  db.seed("products/ym",{companyId:"hub",name:"YM純新規",active:true,unitPrice:20000});
@@ -1210,7 +1210,8 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  const before=clone([...db.store]);
  const owner=await api.view(req("h",{date,sharedCountRankings:true,rankingPeriod:"month"}));
  const partner=await api.view(req("p",{date,sharedCountRankings:true,rankingPeriod:"day"}));
- for(const result of [owner,partner]){
+ const weekly=await api.view(req("p",{date,sharedCountRankings:true,rankingPeriod:"week"}));
+ for(const result of [owner,partner,weekly]){
   assert.equal(result.scope,"approved_partner_counts_only");
   assert.equal(result.fullyJoint,false);
   assert.equal(result.includesDirect,false);
@@ -1227,6 +1228,9 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  assert.equal(owner.end,date);
  assert.equal(partner.period,"day");
  assert.equal(partner.start,date);
+ assert.equal(weekly.period,"week");
+ assert.equal(weekly.start,"2026-10-26");
+ assert.equal(weekly.end,date,"current unfinished week must stop at verified server today");
  assert.deepEqual([...db.store],before,"ranking reads may not write existing source records or settings");
  // The old company-level quick count is used only on dates with no staff
  // source; a second quick report on an already verified staff day is ignored.
@@ -1249,6 +1253,15 @@ test("new approved monthly and daily ranking API excludes finance and OFF counts
  assert.equal(mixed.historicalCompanyOnlyCount,4);
  assert.equal(mixed.peopleComplete,false);
  assert.equal(mixed.companies[0].totalCount,7);
+ const mixedWeek=await api.view(req("p",{
+  date,sharedCountRankings:true,rankingPeriod:"week"
+ }));
+ assert.equal(mixedWeek.totalCount,7);
+ assert.equal(mixedWeek.historicalCompanyOnlyCount,4);
+ assert.equal(mixedWeek.people[0].totalCount,3);
+ assert.equal(mixedWeek.start,"2026-10-26");
+ assert.equal(mixedWeek.end,date);
+ assert.doesNotMatch(JSON.stringify(mixedWeek),/cashback|unitPrice|123456|50000|999/);
  assert.doesNotMatch(JSON.stringify(mixed),/cashback|unitPrice|123456|50000|999/);
  db.store.get("companies/hub/rankingProductVisibility/shared").partnerOverrides.partner=[];
  const off=await api.view(req("p",{date,sharedCountRankings:true}));
