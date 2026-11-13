@@ -248,7 +248,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
    add(companies,document,"h3","nico-dual-title","会社別内訳");
    for(const row of data.companyBreakdown){
     const line=el(document,"div","nico-dual-company-row");
-    add(line,document,"span","nico-dual-company-name",row.name+"（"+row.kind+"）");
+    add(line,document,"span","nico-dual-company-name",row.name+"（"+row.kind+"・"+row.reportStatus+"）");
     add(line,document,"strong","nico-dual-company-count",row.count+"件");
     companies.appendChild(line);
    }
@@ -257,7 +257,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
    add(teams,document,"h3","nico-dual-title","班別内訳");
    for(const row of data.teamBreakdown){
     const line=el(document,"div","nico-dual-company-row");
-    add(line,document,"span","nico-dual-company-name",row.companyName+"・"+row.name);
+    add(line,document,"span","nico-dual-company-name",row.companyName+"・"+row.name+"（"+(row.detail?.reportStatus??"報告状態未確認")+"）");
     add(line,document,"strong","nico-dual-company-count",row.count+"件");
     teams.appendChild(line);
    }
