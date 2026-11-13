@@ -64,7 +64,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   const visible=raw=>({counts:Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?raw.counts[k]:0])),
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
   const companyName=name(s.name),companyKey=key("company",hubId,s.cid),teamNames=new Map(),pMap=new Map(),
-   tMap=new Map(),entries=new Map(),reports=new Set();
+   tMap=new Map(),entries=new Map(),reports=new Set(),publishedStaffDates=new Set();
   let companyPersonIdentityMissing=false;
   for(const t of s.teams){
    if(!t||!id(t.id)||teamNames.has(t.id))fail();
@@ -81,6 +81,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    const raw=counts(e.counts);
    if(raw.total!==e.totalCount)fail();
    const c=visible(raw);
+   // A report containing ONLY currently OFF categories is not a submitted
+   // zero for ranking purposes. Keep its original entry and daily summary;
+   // a genuine all-zero staff submission remains eligible for rank 0.
+   if(raw.total>0&&c.total===0)continue;
+   publishedStaffDates.add(e.date);
    const tid=id(e.teamIdSnapshot)&&teamNames.has(e.teamIdSnapshot)?e.teamIdSnapshot:null;
    const personName=e.staffNameSnapshot==null?null:name(e.staffNameSnapshot);
    if(tid){
@@ -126,6 +131,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    const raw=counts(x.counts,Number.MAX_SAFE_INTEGER);
    if(raw.total!==x.totalCount)fail();
    const c=visible(raw);
+   // Staff-day submission eligibility comes from the real individual rows,
+   // not from the daily total: a genuine 0 report can coexist with an OFF-only
+   // positive report. Legacy company-only 0 is itself a submitted 0.
+   const visibleReport=x.source==="staff-entries-v1"?
+    publishedStaffDates.has(r.date):raw.total===0||c.total>0;
    const daily=zero();let recorded=0,rows=0;
    for(const e of entries.values())if(e.date===r.date){
     rows++;const v=counts(e.counts);recorded=sum(recorded,v.total);
@@ -137,11 +147,15 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
        KEYS.some(k=>daily[k]!==raw.counts[k]))fail();
    }else{
     if(rows)fail();
-    verifiedPeople=false;
-    historicalCompanyOnlyCount=sum(historicalCompanyOnlyCount,c.total);
+    if(visibleReport){
+     verifiedPeople=false;
+     historicalCompanyOnlyCount=sum(historicalCompanyOnlyCount,c.total);
+    }
    }
-   companyCount=sum(companyCount,c.total);reportedDays++;reportCount++;
-   for(const k of KEYS)companyProducts[k]=sum(companyProducts[k],c.counts[k]);
+   if(visibleReport){
+    companyCount=sum(companyCount,c.total);reportedDays++;reportCount++;
+    for(const k of KEYS)companyProducts[k]=sum(companyProducts[k],c.counts[k]);
+   }
   }
   if([...entries.values()].some(e=>!reports.has(e.date)))fail();
   totalCount=sum(totalCount,companyCount);
