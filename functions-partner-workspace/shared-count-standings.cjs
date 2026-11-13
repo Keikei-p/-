@@ -64,7 +64,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   const visible=raw=>({counts:Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?raw.counts[k]:0])),
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
   const companyName=name(s.name),companyKey=key("company",hubId,s.cid),teamNames=new Map(),pMap=new Map(),
-   tMap=new Map(),entries=new Map(),reports=new Set(),publishedStaffDates=new Set();
+   tMap=new Map(),reportedStaffIdsByTeam=new Map(),entries=new Map(),reports=new Set(),publishedStaffDates=new Set();
   let companyPersonIdentityMissing=false;
   for(const t of s.teams){
    if(!t||!id(t.id)||teamNames.has(t.id))fail();
@@ -92,7 +92,14 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     const k=key("team",s.cid,tid);
     const t=tMap.get(k)||{key:k,name:teamNames.get(tid),companyName,companyKey,totalCount:0,
      counts:zero(),reportedStaffCount:0};
-    t.reportedStaffCount++;
+    // A person reporting on five dates is ONE reported staff member,
+    // not five people. Distinct membership is scoped to the saved team.
+    const seenStaff=reportedStaffIdsByTeam.get(k)||new Set();
+    if(!seenStaff.has(e.staffId)){
+     seenStaff.add(e.staffId);
+     reportedStaffIdsByTeam.set(k,seenStaff);
+     t.reportedStaffCount++;
+    }
     t.totalCount=sum(t.totalCount,c.total);
     for(const p of KEYS)t.counts[p]=sum(t.counts[p],c.counts[p]);
     tMap.set(k,t);
