@@ -1276,6 +1276,82 @@ test("new approved day week month ranking API excludes finance and OFF counts, w
  });
  assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,3);
 });
+test("approved weekly ranking crosses Sep/Oct without leaking or attributing company-only reports",async()=>{
+ const {db,api,req,zero}=setup(true);
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro"],partnerOverrides:{partner:["nuro"]}});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",
+  active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}]});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,products:[{
+   id:"nuro",companyId:"hub",name:"NURO光",active:true
+  }]});
+ Object.assign(db.store.get("partnerRelations/partner"),{
+  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
+  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true
+ });
+ for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
+  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
+   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
+   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
+   combinedRankingApproved:true,individualNamesApproved:true
+  });
+ const team=(await api.manage(req("p",{action:"addTeam",name:"週の担当班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"週の担当",
+  teamId:team}))).staffId;
+ await api.submit(req("p",{
+  date:"2026-10-01",staffId:staff,expectedVersion:0,
+  counts:{...zero(),NURO:2}
+ }));
+ const legacy=(date,count)=>db.seed(
+  "companies/hub/partnerQuickCountDays/"+date+"/reports/partner",{
+   hubCompanyId:"hub",partnerCompanyId:"partner",date,
+   partnerCompanyName:"協力店",version:1,
+   counts:{...zero(),NURO:count},totalCount:count,
+   cashback:17000,unitPrice:99999
+  });
+ legacy("2026-09-30",4);
+ legacy("2026-09-27",99);
+ legacy("2026-10-05",99);
+ const before=clone([...db.store]);
+ for(const role of ["h","p"]){
+  const week=await api.view(req(role,{
+   date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"week"
+  }));
+  assert.equal(week.period,"week");
+  assert.equal(week.start,"2026-09-28");
+  assert.equal(week.end,"2026-10-04");
+  assert.equal(week.totalCount,6,"cross-month Sep30 + Oct1 only");
+  assert.equal(week.companies[0].totalCount,6);
+  assert.equal(week.people[0].totalCount,2,
+   "company-only legacy may never be attributed to staff");
+  assert.equal(week.historicalCompanyOnlyCount,4);
+  assert.equal(week.peopleComplete,false);
+  assert.doesNotMatch(JSON.stringify(week),
+   /unitPrice|totalRevenue|cashback|99999|17000|revenuePerUnit/);
+  const day=await api.view(req(role,{
+   date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"day"
+  }));
+  const month=await api.view(req(role,{
+   date:"2026-10-01",sharedCountRankings:true,rankingPeriod:"month"
+  }));
+  assert.equal(day.totalCount,2);
+  assert.equal(month.totalCount,2);
+ }
+ assert.deepEqual([...db.store],before,"week aggregation must remain read-only");
+ for(const period of ["quarter",null,"all"]){
+  await assert.rejects(api.view(req("p",{
+   date:"2026-10-01",sharedCountRankings:true,rankingPeriod:period
+  })),{code:"invalid-argument"});
+ }
+ await assert.rejects(api.view(req("p",{
+  date:"2026-11-01",sharedCountRankings:true,rankingPeriod:"week"
+ })),{code:"invalid-argument"});
+});
 test("new ranking mode defaults disabled; missing approved mapping fails closed",async()=>{
  const standard=setup();
  await assert.rejects(standard.api.view(standard.req("h",{
