@@ -1317,16 +1317,34 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
  const publicCatalog=db.store.get("companies/hub/rankingCountPublicCatalog/shared");
  visibility.enabledHubProductIds=["nuro"];visibility.version++;publicCatalog.version++;
- await save({...zero(),NURO:4,"SB光・AIR":3},1);
+ const hidden=await api.view(req("p",{date}));
+ assert.deepEqual(hidden.enabledCategories,["NURO"]);
+ assert.equal(hidden.records[0].counts.NURO,2);
+ assert.equal(hidden.records[0].counts["SB光・AIR"],0,"OFF is never copied to partner HTTP");
+ assert.equal(hidden.records[0].totalCount,2);
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts["SB光・AIR"],3);
+ // The browser sends zero for OFF. The same trusted transaction restores
+ // the original stored OFF value while saving the new ON figure.
+ await save({...zero(),NURO:4,"SB光・AIR":0},1);
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ assert.deepEqual(db.store.get(entryPath).counts,{...zero(),NURO:4,"SB光・AIR":3});
+ assert.deepEqual(db.store.get(summaryPath).counts,{...zero(),NURO:4,"SB光・AIR":3});
+ assert.equal(db.store.get(summaryPath).totalCount,7);
  const before=clone([...db.store]);
- await assert.rejects(save({...zero(),NURO:4,"SB光・AIR":0},2),e=>e.code==="failed-precondition");
- assert.deepEqual([...db.store],before,"OFF historical count and audit must not change");
+ await assert.rejects(save({...zero(),NURO:4,"SB光・AIR":3},2),e=>e.code==="failed-precondition");
+ assert.deepEqual([...db.store],before,"OFF history cannot be explicitly edited by a forged browser");
  visibility.partnerOverrides={partner:[]};visibility.version++;publicCatalog.version++;
- await assert.rejects(save({...zero(),NURO:5,"SB光・AIR":3},2),e=>e.code==="failed-precondition");
- assert.deepEqual(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts,
-  {...zero(),NURO:4,"SB光・AIR":3});
- visibility.partnerOverrides={};visibility.version++;publicCatalog.version++;
+ await assert.rejects(save({...zero(),NURO:0,"SB光・AIR":0},2),e=>e.code==="failed-precondition");
+ assert.deepEqual(db.store.get(entryPath).counts,{...zero(),NURO:4,"SB光・AIR":3});
+ // Turning ON again reveals the original count; its history was not zeroed.
+ visibility.partnerOverrides={};visibility.enabledHubProductIds=["nuro","combined"];
+ visibility.version++;publicCatalog.version++;
+ const restored=await api.view(req("p",{date}));
+ assert.deepEqual(restored.enabledCategories,["NURO","SB光・AIR"]);
+ assert.equal(restored.records[0].counts["SB光・AIR"],3);
  await save({...zero(),NURO:5,"SB光・AIR":3},2);
+ assert.equal(db.store.get(summaryPath).totalCount,8);
  assert.equal([...db.store.keys()].filter(k=>k.includes("partnerWorkAudits/")).length,3);
  assert.deepEqual(db.store.get("records/old"),original);
  assert.deepEqual(db.store.get("products/money"),money);
