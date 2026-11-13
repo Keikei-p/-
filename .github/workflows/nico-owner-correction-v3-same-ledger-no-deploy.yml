@@ -5,6 +5,7 @@ on:
     paths:
       - 'functions-partner-workspace/service.cjs'
       - 'functions-partner-workspace/index.js'
+      - 'index.html'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'staging/partner-owner-correction-v3/**'
@@ -41,8 +42,13 @@ jobs:
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
           node --check tests/partner-workspace.test.cjs
+          node --check staging/partner-owner-correction-v3/owner-ui.mjs
+          node --check staging/partner-owner-correction-v3/owner-client.mjs
+          node --check staging/partner-owner-correction-v3/mobile-bootstrap.mjs
+          node --check tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+          grep -Fq 'NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED=false' index.html
       - name: Owner server correction, no finance, correction audit, old split and fallback
         run: |
           set -euo pipefail
-          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-money-free-workspace.test.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
           echo 'OWNER_EXISTING_LEDGER_CORRECTION_NO_DEPLOY_PASS'
