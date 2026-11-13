@@ -115,6 +115,7 @@ function shape(value){
   list(value.memberRanking,PERSON);
   checkedPersonRanking(value.memberRanking);
   list(value.productRanking,PRODUCT);
+  checkedCompetition(value.productRanking);
   for(const product of value.productRanking)
    list(product.companies,["companyId","companyName","count"]);
   if(!value.filters||typeof value.filters!=="object"||
@@ -135,7 +136,7 @@ function shape(value){
    checkedCompetition(value.publicRanking[key]);
  }
 }
-function validate(result){
+export function validateVerifiedDualCountDashboard(result){
  if(!result||typeof result!=="object"||Array.isArray(result)||
     result.schema!=="nico-verified-dual-count-v1"||
     !["hub_owner","partner_owner"].includes(result.role)||
@@ -233,7 +234,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
  if(!document||!root||typeof root.replaceChildren!=="function")halt();
  root.replaceChildren();
  try{
-  const data=validate(payload);
+  const data=validateVerifiedDualCountDashboard(payload);
   const page=el(document,"section","nico-dual-dashboard");
   add(page,document,"h2","nico-dual-heading","全社獲得件数・合同ランキング");
   add(page,document,"p","nico-dual-period",

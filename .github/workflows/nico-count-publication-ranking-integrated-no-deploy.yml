@@ -14,6 +14,8 @@ on:
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-dual-count-view.test.mjs'
+      - 'ranking/verified-inline-joint-ranking-cards.mjs'
+      - 'tests/verified-inline-joint-ranking-cards.test.mjs'
       - 'tests/verified-joint-ranking-panel.test.mjs'
       - 'tests/partner-original-team-card-parity.test.mjs'
       - 'tests/partner-published-count-browser-contract.test.cjs'
@@ -75,6 +77,7 @@ jobs:
             tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
             tests/owner-product-visibility-rankings.test.mjs \
             tests/verified-dual-count-view.test.mjs \
+            tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/verified-joint-ranking-panel.test.mjs \
             tests/partner-original-team-card-parity.test.mjs \
             tests/partner-published-count-browser-contract.test.cjs \
