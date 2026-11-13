@@ -11,9 +11,9 @@ const payload=()=>({
  readTime:"2026-11-13T01:00:00.000Z",unit:"件",role:"hub_owner",
  summary:{own:10,partner:7,total:17,unidentified:0},
  companyBreakdown:[
-  {id:"hub",name:"NICO FACTORY",kind:"自社",count:10,unidentifiedCount:0},
-  {id:"companyA",name:"協力店A",kind:"協力店",count:5,unidentifiedCount:0},
-  {id:"companyB",name:"協力店B",kind:"協力店",count:2,unidentifiedCount:0}
+  {id:"hub",name:"NICO FACTORY",kind:"自社",count:10,unidentifiedCount:0,reportStatus:"報告済"},
+  {id:"companyA",name:"協力店A",kind:"協力店",count:5,unidentifiedCount:0,reportStatus:"報告済"},
+  {id:"companyB",name:"協力店B",kind:"協力店",count:2,unidentifiedCount:0,reportStatus:"報告済"}
  ],
  teamBreakdown:[
   {id:"hub:t1",companyId:"hub",companyName:"NICO FACTORY",name:"1班",count:10},
