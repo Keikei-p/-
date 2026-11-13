@@ -448,7 +448,11 @@ export function buildVerifiedCountDashboard({
  // Publish ranked, aggregate-only organization comparisons. This is the
  // same already-verified set of ON-only source lines as member/SKU ranks.
  // No team ID, UID, salary, unit price or source report can leave this API.
- const publicCompanies=ordered(companyRows.map(x=>({
+ // A partner company with no verified report must not appear as a
+ // tied 0-case company in public rankings. Confirmed zero reports are included.
+ const reportedCompanies=new Set(current.filter(r=>
+  r.reported===true||r.unidentified===true).map(r=>r.companyId));
+ const publicCompanies=ordered(companyRows.filter(x=>reportedCompanies.has(x.id)).map(x=>({
   id:x.id,name:x.name,count:x.count
  })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
  const publicTeams=ordered([...teams.values()].filter(x=>
