@@ -10,6 +10,9 @@ on:
       - 'tests/verified-dual-count-view.test.mjs'
       - 'ranking/verified-dual-count-dashboards.mjs'
       - 'ranking/verified-two-month-count-input.mjs'
+      - 'ranking/owner-product-visibility-rankings.mjs'
+      - 'functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs'
+      - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'ranking/owner-visible-count-server-handler.mjs'
       - 'functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs'
       - 'ranking/owner-visible-count-atomic-loader.mjs'
@@ -57,6 +60,8 @@ jobs:
           node --check ranking/verified-joint-ranking-panel.mjs
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check ranking/verified-two-month-count-input.mjs
+          node --check ranking/owner-product-visibility-rankings.mjs
+          node --check functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-visible-count-server-handler.mjs
           node --check functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
           node --check ranking/owner-visible-count-atomic-loader.mjs
@@ -83,4 +88,5 @@ jobs:
           node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/verified-dual-count-view.test.mjs
           node --test tests/verified-two-month-count-input.test.mjs tests/canonical-joint-count-sku-reader.test.mjs
           node --test tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs
+          node --test tests/owner-product-visibility-rankings.test.mjs
           echo 'NO_DEPLOY: no Firebase or production changes'
