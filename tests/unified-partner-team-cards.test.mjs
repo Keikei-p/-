@@ -91,7 +91,12 @@ test("render reuses existing team overview card CSS and opens one company team a
 test("historical unknown team stays separate and cannot be silently assigned",()=>{
  const x=change(d=>{
   d.teamBreakdown.find(t=>t.companyId==="companyA").count=4;
-  d.memberRanking.find(p=>p.companyId==="companyA"&&p.id.endsWith("u2")).count=1;
+  const changed=d.memberRanking.find(p=>p.companyId==="companyA"&&p.id.endsWith("u2"));
+  changed.count=1;
+  // Keep the fixture's global ranking consistent with the new count.
+  // companyB:u1 (2件) remains 3位; companyA:u2 (1件) becomes 4位.
+  // Only the company's unmatched historical 1件 remains unassigned.
+  changed.rank=4;
  });
  const out=projectOwnerPartnerTeamCards(x,{month:"2026-11"});
  assert.equal(out.companies[0].unassignedCount,1);
