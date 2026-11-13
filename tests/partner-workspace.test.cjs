@@ -1314,6 +1314,13 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  const date="2026-10-31";
  const save=(counts,version)=>api.submit(req("p",{date,staffId:staff,counts,expectedVersion:version}));
  await save({...zero(),NURO:2,"SB光・AIR":3},0);
+ const beforeUnsupported=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{
+  date,staffId:staff,expectedVersion:1,counts:{...zero(),NURO:2,"SB光・AIR":3},
+  cbCounts:{NURO:{"20000":2}}
+ })),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],beforeUnsupported,
+  "Unsupported cashback tiers must not be silently discarded or persisted");
  const visibility=db.store.get("companies/hub/rankingProductVisibility/shared");
  const publicCatalog=db.store.get("companies/hub/rankingCountPublicCatalog/shared");
  visibility.enabledHubProductIds=["nuro"];visibility.version++;publicCatalog.version++;
