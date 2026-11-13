@@ -65,6 +65,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
   const companyName=name(s.name),companyKey=key("company",hubId,s.cid),teamNames=new Map(),pMap=new Map(),
    tMap=new Map(),entries=new Map(),reports=new Set();
+  let companyPersonIdentityMissing=false;
   for(const t of s.teams){
    if(!t||!id(t.id)||teamNames.has(t.id))fail();
    teamNames.set(t.id,name(t.name));
@@ -104,10 +105,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
     pMap.set(k,p);
    }else{
     missingPersonIdentity=true;
+    companyPersonIdentityMissing=true;
     unverifiedPersonCount=sum(unverifiedPersonCount,c.total);
    }
   }
-  let companyCount=0,reportedDays=0,verifiedPeople=!missingPersonIdentity;
+  let companyCount=0,reportedDays=0,verifiedPeople=!companyPersonIdentityMissing;
   const companyProducts=zero();
   for(const r of s.reports){
    if(!r||!date(r.date)||r.date<start||r.date>end||reports.has(r.date))fail();
