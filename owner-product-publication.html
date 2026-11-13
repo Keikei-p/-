@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#173b64">
+  <title>商材ON/OFF設定 | NICO FACTORY</title>
+  <link rel="stylesheet" href="./ranking/owner-product-visibility-panel.css">
+  <style>
+    :root{font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;color-scheme:light}
+    *{box-sizing:border-box}
+    body{margin:0;background:#f5f7fb;color:#18304b}
+    main{max-width:780px;margin:0 auto;padding:18px 12px 48px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+    h1{font-size:1.28rem;margin:0}
+    a{color:#1458a5}
+    .note{margin:0 0 16px;font-size:.9rem;line-height:1.8}
+    .status{min-height:42px;font-size:.87rem;color:#47617c}
+    .nico-owner-publications{margin:12px auto;max-width:none;box-shadow:0 1px 8px #14273b12;border-radius:12px}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>商材ON/OFF設定</h1>
+    <a href="./index.html">実績管理に戻る</a>
+  </header>
+  <p class="note">自社オーナー専用の商材公開設定です。ON/OFFは協力店への公開対象を指定します。既存の実績・件数・売上・履歴は変更しません。協力店の入力機能と合同ランキングの公開は別の本番工程です。</p>
+  <p id="identity-status" class="status" role="status" aria-live="polite">ログイン状態を確認しています。</p>
+  <div id="owner-product-visibility-root"></div>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
+import {mountOwnerProductVisibilityDashboard}
+  from "./ranking/owner-product-visibility-dashboard-mount.mjs";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
+  authDomain: "sales-management-cc116.firebaseapp.com",
+  projectId: "sales-management-cc116",
+  storageBucket: "sales-management-cc116.firebasestorage.app",
+  messagingSenderId: "904932511564",
+  appId: "1:904932511564:web:6583e8b0c585231b9049e"
+};
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);
+auth.languageCode="ja";
+const functions=getFunctions(app,"asia-northeast1");
+const root=document.getElementById("owner-product-visibility-root");
+const status=document.getElementById("identity-status");
+
+// A browser role flag never authorizes a request. The server callable
+// independently verifies the current UID, Owner membership and company.
+const panel=mountOwnerProductVisibilityDashboard({
+  featureEnabled:true,document,root,auth,functions,httpsCallable,
+  onAuthStateChanged
+});
+onAuthStateChanged(auth,user=>{
+  status.textContent=!user
+   ?"実績管理画面からログインしてください。"
+   :!user.emailVerified
+     ?"認証済みメールアドレスが必要です。"
+     :"オーナー権限をサーバーで確認しています。";
+});
+window.addEventListener("pagehide",()=>panel.destroy(),{once:true});
+</script>
+</body>
+</html>

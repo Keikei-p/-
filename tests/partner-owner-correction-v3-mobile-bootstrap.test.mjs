@@ -94,6 +94,27 @@ test("approved hub company discovery returns only active-visible count-only labe
   {partnerCompanyId:"inactive",name:"協力店B",active:false}
  ]);
 });
+
+test("current workspace readiness hint never grants correction access; disabled writer remains read-only",async()=>{
+ const data={...workspace(),ownerCorrectionAvailable:true};
+ assert.equal(countOnlyRegisteredCompanies(data,date).length,2);
+ assert.throws(()=>countOnlyRegisteredCompanies({...data,ownerCorrectionAvailable:"enabled"},date));
+ for(const name of ["協力店 ＣＢ５０００","会社 ＲＥＶＥＮＵＥ８０００","会社 ２万円"]){
+  assert.throws(()=>countOnlyRegisteredCompanies({...workspace(),
+   registeredCompanies:[{...companies()[0],name}]},date));
+ }
+ const f=fixture({hub:()=>data});f.fn.canCorrect=()=>false;
+ const panel=await mountVerifiedOwnerCorrection(f.fn);
+ panel.selectCompany(cid);await new Promise(resolve=>setImmediate(resolve));
+ await panel.save();
+ assert.equal(f.seen.list.length,1);
+ assert.equal(f.seen.correct.length,0);
+ const editor=f.root.children[0].children[5];
+ assert.equal(editor.children[7].disabled,true);
+ assert.equal(editor.children[6].disabled,true);
+ assert.match(f.root.children[0].children[6].textContent,/訂正機能は停止中/);
+ panel.destroy();
+});
 test("one mobile screen: hub discovery -> company -> staff -> save -> backend version readback",async()=>{
  const f=fixture();
  const panel=await mountVerifiedOwnerCorrection(f.fn);

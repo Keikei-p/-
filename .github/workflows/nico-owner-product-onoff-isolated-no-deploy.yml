@@ -1,0 +1,119 @@
+name: NICO Owner product ON/OFF isolated release candidate (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'owner-product-publication.html'
+      - 'tests/owner-product-onoff-single-release.test.mjs'
+      - 'tools/hosting/owner-product-onoff-additive-guard.mjs'
+      - 'tests/owner-product-onoff-additive-guard.test.mjs'
+      - 'tools/hosting/inspect-owner-onoff-hosting-readonly.mjs'
+      - 'tests/inspect-owner-onoff-hosting-readonly.test.mjs'
+      - 'tools/hosting/release-owner-onoff-two-assets.mjs'
+      - 'tests/release-owner-onoff-two-assets.test.mjs'
+      - 'tools/production/inspect-owner-onoff-anonymous-get-readonly.mjs'
+      - 'tests/inspect-owner-onoff-anonymous-get-readonly.test.mjs'
+      - 'tools/hosting/run-owner-onoff-exact-two-release.mjs'
+      - 'tests/run-owner-onoff-exact-two-release.test.mjs'
+      - '.github/workflows/nico-owner-onoff-static-two-production.yml'
+      - '.github/workflows/nico-owner-product-onoff-isolated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  owner-onoff-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_OWNER_PRODUCT_VISIBILITY_ENABLED: ''
+      FIREBASE_PROJECT_ID: demo-nico-onoff-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Lock the reviewed source scope and deny production credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = demo-nico-onoff-only
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = a872c0e44dda229f0ea731454a79723cc637d3a4
+          git diff --name-only origin/main...HEAD | tee /tmp/nico-onoff-changed-files.txt
+          if grep -Ev '^(tools/hosting/release-owner-onoff-two-assets\.mjs|tests/release-owner-onoff-two-assets\.test\.mjs|\.github/workflows/nico-owner-onoff-static-two-production\.yml|\.github/workflows/nico-owner-product-onoff-isolated-no-deploy\.yml)$' /tmp/nico-onoff-changed-files.txt; then
+            echo 'STOP_UNREVIEWED_CHANGE_SCOPE'
+            exit 1
+          fi
+          test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 3
+          git diff --exit-code origin/main...HEAD -- index.html firestore.rules firebase.json functions functions-ranking-approvals functions-partner-workspace ranking partner
+      - name: Test isolated page, complete Hosting asset closure, Owner callables and data safety
+        run: |
+          node --check tools/hosting/owner-product-onoff-additive-guard.mjs
+          node --check tools/hosting/inspect-owner-onoff-hosting-readonly.mjs
+          node --check tools/hosting/release-owner-onoff-two-assets.mjs
+          node --check tools/production/inspect-owner-onoff-anonymous-get-readonly.mjs
+          node --check tools/hosting/run-owner-onoff-exact-two-release.mjs
+          node --test tests/run-owner-onoff-exact-two-release.test.mjs tests/inspect-owner-onoff-anonymous-get-readonly.test.mjs tests/release-owner-onoff-two-assets.test.mjs tests/inspect-owner-onoff-hosting-readonly.test.mjs tests/owner-product-onoff-additive-guard.test.mjs tests/owner-product-onoff-single-release.test.mjs tests/owner-product-visibility-callables.test.cjs tests/owner-product-visibility-firebase-bridge.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          echo 'OWNER_ONOFF_STAGING_TESTED_ONLY=true'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'PARTNER_COUNT_ENABLED=false'
+          echo 'JOINT_RANKING_ENABLED=false'
+      - name: Observe current public Hosting asset parity (GET only, never publish)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {ONOFF_ASSETS} from './tools/hosting/owner-product-onoff-additive-guard.mjs';
+          for(const path of Object.keys(ONOFF_ASSETS)){
+            let exact=false,code='unverified';
+            try{
+              const r=await fetch('https://nico-factory.web.app'+path+
+                '?owner_onoff_readonly='+process.env.GITHUB_SHA,{
+                method:'GET',redirect:'error',signal:AbortSignal.timeout(12000),
+                headers:{'Cache-Control':'no-cache'}});
+              code=String(r.status);
+              if(r.ok){
+                const body=await r.text();
+                const src=readFileSync('.'+path,'utf8');
+                exact=body.length===src.length&&body===src;
+              }
+            }catch{code='unavailable'}
+            console.log('LIVE_OWNER_ONOFF_ASSET '+path+' '+(exact?'EXACT':'MISSING_OR_DIFFERENT')+' HTTP_'+code);
+          }
+          console.log('LIVE_HOSTING_READ_ONLY_NO_DEPLOY');
+          NODE
+      - name: Observe unauthenticated callable endpoint presence (HEAD only, no writes)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const base='https://asia-northeast1-sales-management-cc116.cloudfunctions.net/';
+          for(const name of ['getOwnerProductVisibility','setOwnerProductVisibility']){
+            let status='unavailable';
+            try{
+              const r=await fetch(base+name,{method:'HEAD',
+                redirect:'error',signal:AbortSignal.timeout(12000)});
+              status=String(r.status);
+            }catch{ /* unknown endpoint state, do not infer absence */ }
+            console.log('OWNER_ONOFF_CALLABLE_HEAD '+name+' HTTP_'+status);
+          }
+          console.log('UNAUTHENTICATED_HEAD_CANNOT_PROVE_ENABLED_OR_OWNER_ACCESS');
+          NODE
+
+      - name: Diagnose anonymous GET-callable feature gate (no credentials, never write)
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {inspectOwnerOnOffAnonymousLiveGet}
+            from './tools/production/inspect-owner-onoff-anonymous-get-readonly.mjs';
+          const result=await inspectOwnerOnOffAnonymousLiveGet();
+          console.log('LIVE_OWNER_PRODUCT_ONOFF '+result.classification+
+            ' HTTP_'+result.httpStatus);
+          console.log('NO_OWNER_TOKEN_NO_FINANCE_GET_NO_PRODUCTION_WRITE');
+          NODE

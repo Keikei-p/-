@@ -98,16 +98,15 @@ test("Owner correction UI lists saved reports only and cannot submit a new staff
  const ownerBlock=extract(index,
   'function openOwnerPartnerCountEditor(parent,company){',
   '\n// Original internal owner sees existing teams PLUS partner-company teams.');
- assert(ownerBlock.includes('const recorded=new Set(entry.records.filter(row=>'),
-  "staff dropdown must exclude unreported staff");
- assert(ownerBlock.includes('recorded.has(p.id)'),
-  "only saved entries may be selectable for correction");
- assert(ownerBlock.includes('if(!record||!Number.isSafeInteger(record.version)||record.version<1)return;'),
-  "submit must refuse new records without a verified version");
- assert(ownerBlock.includes('expectedVersion:record.version'),
-  "submit must carry exact saved version, never an implicit zero");
- assert(!ownerBlock.includes('record?.version??0'),
-  "no new staff-day reports in Owner correction UI");
+ assert(ownerBlock.includes('./staging/partner-owner-correction-v3/mobile-bootstrap.mjs'),
+  "reuse the existing versioned correction UI and audited SB split contract");
+ assert(ownerBlock.includes('"listHubPartnerCounts"'));
+ assert(ownerBlock.includes('"correctHubPartnerCounts"'));
+ assert(!ownerBlock.includes('partnerInlineSave('),"Owner must not use normal partner submission");
+ const ui=fs.readFileSync('staging/partner-owner-correction-v3/owner-ui.mjs','utf8');
+ assert(ui.includes('selected=current?.entries.find('),"only server-returned existing entries are selectable");
+ assert(ui.includes('expectedVersion:previous.version'),"existing revision is mandatory");
+ assert(!ui.includes('previous?.version??0'),"Owner correction cannot create a first report");
 });
 
 test("Owner correction editor excludes unreported staff and retains original login identity",()=>{
@@ -115,13 +114,12 @@ test("Owner correction editor excludes unreported staff and retains original log
  const end=index.indexOf("\n// Original internal owner sees",start);
  assert(start>=0&&end>start);
  const owner=index.slice(start,end);
- assert.match(owner,/const initiatingOwnerUid=auth\.currentUser\?\.uid;/);
- assert.match(owner,/auth\.currentUser\?\.uid===initiatingOwnerUid/);
- assert.match(owner,/if\(!record\)\{/);
- assert.match(owner,/recorded\.has\(p\.id\)/);
- assert.match(owner,/if\(!record\|\|!Number\.isSafeInteger\(record\.version\)/);
- assert.match(owner,/ownerPartnerCompanyId:company\.partnerCompanyId/);
- assert.match(owner,/includeOwnerCorrectionEntries:true/);
+ assert.match(owner,/const initiatingOwner=auth\.currentUser;/);
+ assert.match(owner,/auth\.currentUser===initiatingOwner/);
+ assert.match(owner,/subscribeAuth:callback=>onAuthStateChanged/);
+ assert.match(owner,/item\.partnerCompanyId===company\.partnerCompanyId&&item\.active===true/);
+ assert.match(owner,/canCorrect:\(\)=>NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED&&current\(\)/);
+ assert(!owner.includes('ownerPartnerCompanyId:'),"no second Owner correction API");
  assert.doesNotMatch(owner,/signInWithEmailAndPassword|updateDoc\(|deleteDoc\(/);
 });
 

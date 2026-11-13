@@ -12674,161 +12674,103 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
 });
 // Hub Owner-only partner count correction. The UI never impersonates a partner
 // and never touches sales records, prices, historical team snapshots or raw data.
+const NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED=false;
 let ownerPartnerCorrectionNonce=0;
+let ownerPartnerCorrectionDispose=()=>{};
 function openOwnerPartnerCountEditor(parent,company){
  const nonce=++ownerPartnerCorrectionNonce;
- const initiatingOwnerUid=auth.currentUser?.uid;
+ ownerPartnerCorrectionDispose();
+ const initiatingOwner=auth.currentUser;
  const old=parent.querySelector("#ownerPartnerCorrectionPanel");
  if(old)old.remove();
+ if(!initiatingOwner||!isCurrentCompanyOwner()||
+    currentCompanyData?.companyKind==="partner"||company.active!==true||
+    !partnerMainValidId(company.partnerCompanyId))return;
  const editor=document.createElement("section");
- editor.id="ownerPartnerCorrectionPanel";
- editor.className="p-inline-row";
+ editor.id="ownerPartnerCorrectionPanel";editor.className="p-inline-row";
  editor.style.marginTop="12px";
  const heading=document.createElement("strong");
  heading.textContent=company.name+"｜件数確認・訂正（自社Owner専用）";
- const controls=document.createElement("div");
- controls.style.display="flex";controls.style.flexWrap="wrap";
- controls.style.gap="8px";controls.style.alignItems="center";
  const date=document.createElement("input");
  date.type="date";date.value=partnerMainDate();date.max=partnerMainDate();
  date.setAttribute("aria-label","協力店の対象日");
- const staff=document.createElement("select");
- staff.setAttribute("aria-label","協力店の担当者");
+ date.style.minHeight="44px";
  const reload=document.createElement("button");
- reload.type="button";reload.textContent="読み直す";
- const fields=document.createElement("div");
- fields.style.display="grid";fields.style.gap="8px";
- fields.style.gridTemplateColumns="repeat(auto-fit,minmax(130px,1fr))";
- const save=document.createElement("button");
- save.type="button";save.textContent="件数を保存・訂正";
- save.disabled=true;
- const status=document.createElement("p");
- status.setAttribute("role","status");
- controls.append(date,staff,reload);
- editor.append(heading,controls,fields,save,status);
- parent.append(editor);
- let snapshot=null,busy=false;
- const stillHere=()=>nonce<=ownerPartnerCorrectionNonce&&editor.isConnected&&
-  auth.currentUser?.uid===initiatingOwnerUid&&isCurrentCompanyOwner()&&
-  currentCompanyData?.companyKind!=="partner";
- const render=()=>{
-  fields.replaceChildren();
-  save.disabled=true;
-  const entry=snapshot?.ownerCorrectionEntries;
-  const staffId=staff.value;
-  if(!entry||!staffId||busy)return;
-  const record=entry.records.find(r=>r.staffId===staffId);
-  // The Owner is allowed to CORRECT existing reports only. Never display
-  // a zero-filled form as an invitation to create a missing staff report.
-  if(!record){
-   status.textContent="未報告のため訂正対象外です。協力店本人の件数入力をご利用ください。";
+ reload.type="button";reload.textContent="読み直す";reload.style.minHeight="44px";
+ const status=document.createElement("p");status.setAttribute("role","status");
+ const holder=document.createElement("div");
+ editor.append(heading,date,reload,status,holder);parent.append(editor);
+ let panel=null,loadGeneration=0,disposed=false;
+ const stillHere=()=>!disposed&&nonce===ownerPartnerCorrectionNonce&&
+  editor.isConnected&&auth.currentUser===initiatingOwner&&
+  isCurrentCompanyOwner()&&currentCompanyData?.companyKind!=="partner";
+ const dispose=()=>{
+  disposed=true;++loadGeneration;panel?.destroy();panel=null;
+  holder.replaceChildren();
+ };
+ ownerPartnerCorrectionDispose=dispose;
+ const load=async()=>{
+  if(!stillHere())return;
+  const generation=++loadGeneration,selectedDate=date.value;
+  panel?.destroy();panel=null;
+  const content=document.createElement("div");holder.replaceChildren(content);
+  status.textContent="既存のオーナー件数訂正機能を読み込んでいます…";
+  const current=()=>stillHere()&&generation===loadGeneration&&
+   date.value===selectedDate&&content.isConnected;
+  let mountVerifiedOwnerCorrection;
+  try{
+   ({mountVerifiedOwnerCorrection}=await import("./staging/partner-owner-correction-v3/mobile-bootstrap.mjs"));
+  }catch{
+   if(current())status.textContent="件数確認画面のファイルを読み込めません。画面の公開完了後に読み直してください。";
    return;
   }
-  for(const key of entry.enabledCategories){
-   const label=document.createElement("label");
-   label.textContent=key;
-   const input=document.createElement("input");
-   input.type="number";input.min="0";input.max="9999";input.step="1";
-   input.inputMode="numeric";input.dataset.countKey=key;
-   input.value=String(record?.counts?.[key]??0);
-   label.append(input);fields.append(label);
-  }
-  save.disabled=entry.enabledCategories.length===0;
-  status.textContent=entry.enabledCategories.length===0?
-   "公開ONの商材がありません。過去の件数は保護されています。":
-   "登録済み・第"+record.version+"版（過去の班情報は保持）";
- };
- const load=async()=>{
-  // The mounted editor belongs to one verified Owner session. Do not
-  // request partner data after logout / account switch / panel replacement.
-  if(!stillHere())return;
-  const loadId=++ownerPartnerCorrectionNonce;
-  busy=true;save.disabled=true;fields.replaceChildren();
-  status.textContent="協力店の件数を読み込んでいます…";
-  const actor=auth.currentUser?.uid,selectedDate=date.value;
   try{
-   const result=(await readPartnerWorkDay({date:selectedDate,
-    partnerCompanyId:company.partnerCompanyId,
-    includeOwnerCorrectionEntries:true})).data;
-   if(loadId!==ownerPartnerCorrectionNonce||!stillHere()||
-      actor!==auth.currentUser?.uid||date.value!==selectedDate)return;
-   const entry=result?.ownerCorrectionEntries;
-   if(result?.role!=="hub"||result.ownerCorrectionAvailable!==true||
-      entry?.partnerCompanyId!==company.partnerCompanyId||
-      entry.date!==selectedDate||!Array.isArray(entry.staff)||
-      !Array.isArray(entry.records)||!Array.isArray(entry.enabledCategories)||
-      !Array.isArray(entry.categories)||
-      entry.enabledCategories.some(k=>!entry.categories.includes(k))||
-      new Set(entry.enabledCategories).size!==entry.enabledCategories.length)
-    throw Error("owner_partner_count_schema");
-   snapshot=result;
-   const previous=staff.value;staff.replaceChildren();
-   const recorded=new Set(entry.records.filter(row=>
-    Number.isSafeInteger(row.version)&&row.version>=1).map(row=>row.staffId));
-   // Archived staff may have real submitted reports that the hub Owner
-   // must still be able to correct without re-activating their login.
-   for(const member of entry.staff.filter(p=>recorded.has(p.id))){
-    const option=document.createElement("option");
-    option.value=member.id;
-    option.textContent=member.name+(member.active===false?"（退職・無効化済み）":"");
-    staff.append(option);
+   if(!current())return;
+   const mounted=await mountVerifiedOwnerCorrection({
+    root:content,auth,dom:document,enabled:current,
+    canCorrect:()=>NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED&&current(),
+    workspaceCallable:readPartnerWorkDay,
+    listCallable:httpsCallable(partnerCountFunctions,"listHubPartnerCounts",{timeout:18000}),
+    correctCallable:httpsCallable(partnerCountFunctions,"correctHubPartnerCounts",{timeout:22000}),
+    dateGetter:()=>date.value,
+    confirmChange:summary=>current()&&window.confirm(summary),
+    subscribeAuth:callback=>onAuthStateChanged(auth,user=>{
+     callback(user);
+     if(user!==initiatingOwner){dispose();editor.remove();}
+    }),
+    invalidateRanking:async receipt=>{
+     if(!current()||receipt.date!==selectedDate||
+        receipt.partnerCompanyId!==company.partnerCompanyId)
+      throw Error("stale_owner_correction");
+     const refreshed=(await readPartnerWorkDay({date:receipt.date})).data;
+     if(!current()||refreshed?.role!=="hub"||refreshed.date!==receipt.date||
+        !Array.isArray(refreshed.registeredCompanies)||
+        !refreshed.registeredCompanies.some(item=>
+         item.partnerCompanyId===receipt.partnerCompanyId&&item.active===true))
+      throw Error("owner_company_refresh_unverified");
+     partnerRankingDailyCache.clear();
+     partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
+     resetSameAppJointMonth();void mountSameAppJointMonth("hub");
+    }
+   });
+   if(!current()){mounted.destroy();return;}
+   if(!mounted.companies.some(item=>
+      item.partnerCompanyId===company.partnerCompanyId&&item.active===true)){
+    mounted.destroy();throw Error("owner_company_unverified");
    }
-   if([...staff.options].some(o=>o.value===previous))staff.value=previous;
-   busy=false;render();
-   if(!staff.options.length)status.textContent="この日に訂正できる登録済みの件数はありません。未報告は協力店から新規入力してください。";
+   panel=mounted;
+   if(panel.selectCompany(company.partnerCompanyId)!==true)
+    throw Error("owner_company_unverified");
+   status.textContent=NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED?
+    "登録済み件数の訂正と光・AIR内訳を、同じ本人権限で確認します。":
+    "登録済み件数を確認できます。訂正機能はサーバー配備・実アカウント検証が完了するまで停止中です。";
   }catch{
-   if(loadId!==ownerPartnerCorrectionNonce||!stillHere()||
-      actor!==auth.currentUser?.uid)return;
-   busy=false;snapshot=null;staff.replaceChildren();fields.replaceChildren();
-   save.disabled=true;
-   status.textContent="件数を取得できません。オーナー権限・公開設定・サービス公開状況を確認してください。";
+   if(!current())return;
+   panel?.destroy();panel=null;content.replaceChildren();
+   status.textContent="既存の件数訂正APIを使用できません。オーナー権限とサービス公開状況を確認してください。";
   }
  };
- date.onchange=()=>void load();
- staff.onchange=render;
- reload.onclick=()=>void load();
- save.onclick=async()=>{
-  const entry=snapshot?.ownerCorrectionEntries,selectedDate=date.value;
-  const actor=auth.currentUser?.uid,staffId=staff.value;
-  if(busy||!entry||!stillHere()||!entry.staff.some(p=>p.id===staffId)||
-     entry.date!==selectedDate||entry.enabledCategories.length===0)return;
-  const record=entry.records.find(r=>r.staffId===staffId);
-  if(!record||!Number.isSafeInteger(record.version)||record.version<1)return;
-  const counts=Object.fromEntries(entry.categories.map(key=>[key,0]));
-  for(const key of entry.enabledCategories){
-   const input=[...fields.querySelectorAll("input[data-count-key]")]
-    .find(node=>node.dataset.countKey===key);
-   if(!input||!/^(?:0|[1-9][0-9]{0,3})$/.test(input.value.trim())){
-    status.textContent=key+"の件数を0〜9999の整数で入力してください。";return;
-   }
-   counts[key]=Number(input.value);
-  }
-  busy=true;save.disabled=true;reload.disabled=true;date.disabled=true;staff.disabled=true;
-  status.textContent="訂正内容を保存・照合しています…";
-  try{
-   const response=(await partnerInlineSave({
-    ownerPartnerCompanyId:company.partnerCompanyId,date:selectedDate,staffId,
-    counts,expectedVersion:record.version})).data;
-   const checked=(await readPartnerWorkDay({
-    date:selectedDate,partnerCompanyId:company.partnerCompanyId,
-    includeOwnerCorrectionEntries:true})).data;
-   if(!editor.isConnected||actor!==auth.currentUser?.uid||date.value!==selectedDate)return;
-   const saved=checked?.ownerCorrectionEntries?.records?.find(r=>r.staffId===staffId);
-   if(checked.role!=="hub"||!response?.saved||
-      saved?.version!==response.version||
-      entry.categories.some(key=>saved?.counts?.[key]!==counts[key]))
-    throw Error("owner_save_recheck_failed");
-   snapshot=checked;
-   busy=false;reload.disabled=false;date.disabled=false;staff.disabled=false;
-   render();
-   status.textContent="保存・再取得照合が成功しました。第"+response.version+"版（履歴を保持）";
-  }catch{
-   if(actor!==auth.currentUser?.uid||!editor.isConnected)return;
-   status.textContent="保存または再照合に失敗しました。数字は確定表示していません。再読み込みして確認してください。";
-   busy=false;reload.disabled=false;date.disabled=false;staff.disabled=false;
-   save.disabled=true;
-  }
- };
+ date.onchange=()=>void load();reload.onclick=()=>void load();
  void load();
 }
 // Original internal owner sees existing teams PLUS partner-company teams.
@@ -12838,6 +12780,7 @@ async function loadOwnerPartnerCompanyTeams(){
  if(!target)return;
  const seq=++ownerPartnerTeamsNonce;
  ++ownerPartnerCorrectionNonce;
+ ownerPartnerCorrectionDispose();
  target.replaceChildren();
  if(!auth.currentUser||!isCurrentCompanyOwner()||currentCompanyData?.companyKind==="partner")return;
  const uid=auth.currentUser.uid;
@@ -12864,10 +12807,10 @@ async function loadOwnerPartnerCompanyTeams(){
    for(const team of company.teams)
     partnerMainAppendRow(target,company.name+"・"+team.name,
       company.active?"件数登録対象":"件数利用未承認");
-   if(result.ownerCorrectionAvailable===true&&company.active===true&&
+   if(company.active===true&&
       partnerMainValidId(company.partnerCompanyId)){
     const button=document.createElement("button");
-    button.type="button";button.textContent=company.name+"｜件数確認・訂正";
+    button.type="button";button.textContent=company.name+"｜登録済み件数を確認";
     button.onclick=()=>openOwnerPartnerCountEditor(target,company);
     target.append(button);
    }

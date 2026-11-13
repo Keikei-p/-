@@ -10,7 +10,7 @@ import {mountOwnerCorrection} from "./owner-ui.mjs";
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
-const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const invalid=(code="UNVERIFIED")=>{throw Error("OWNER_CORRECTION_BOOT_"+code)};
 const object=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const validDate=x=>typeof x==="string"&&DATE.test(x)&&
@@ -20,10 +20,11 @@ const validId=x=>typeof x==="string"&&ID.test(x);
 const exactKeys=(value,list)=>object(value)&&
  Object.keys(value).sort().join("|")===list.slice().sort().join("|");
 const safeLabel=x=>typeof x==="string"&&x.length>0&&x.length<=80&&
- x.trim()===x&&!MONEY.test(x);
+ x.trim()===x&&!MONEY.test(x.normalize("NFKC"));
 const ROOT_FIELDS=[
  "role","date","partners","registeredCompanies","categories",
- "sbBreakdownSchema","partnerTeamDetails","teamReports","teamStatusComplete"
+ "sbBreakdownSchema","partnerTeamDetails","teamReports","teamStatusComplete",
+ "ownerCorrectionAvailable"
 ];
 const COMPANY_FIELDS=["partnerCompanyId","name","active","teams"];
 
@@ -31,6 +32,8 @@ export function countOnlyRegisteredCompanies(raw,date){
  if(!object(raw)||raw.role!=="hub"||raw.date!==date||
     !Array.isArray(raw.registeredCompanies)||
     raw.registeredCompanies.length>100||
+    (Object.hasOwn(raw,"ownerCorrectionAvailable")&&
+     typeof raw.ownerCorrectionAvailable!=="boolean")||
     Object.keys(raw).some(k=>!ROOT_FIELDS.includes(k)))
   invalid("WORKSPACE_UNVERIFIED");
  const output=[],seen=new Set();
@@ -54,14 +57,15 @@ export function countOnlyRegisteredCompanies(raw,date){
 
 export async function mountVerifiedOwnerCorrection({
  root,auth,workspaceCallable,listCallable,correctCallable,
- dateGetter,confirmChange,subscribeAuth,invalidateRanking,enabled=()=>false,dom
+ dateGetter,confirmChange,subscribeAuth,invalidateRanking,enabled=()=>false,
+ canCorrect=()=>true,dom
 }={}){
  if(!root||!auth||typeof workspaceCallable!=="function"||
     typeof listCallable!=="function"||typeof correctCallable!=="function"||
     typeof dateGetter!=="function"||typeof confirmChange!=="function"||
     typeof subscribeAuth!=="function"||
     typeof invalidateRanking!=="function"||
-    typeof enabled!=="function"||!dom)
+    typeof enabled!=="function"||typeof canCorrect!=="function"||!dom)
   invalid("DEPENDENCIES");
  if(enabled()!==true)invalid("DISABLED");
  const owner=auth.currentUser,day=dateGetter();
@@ -83,7 +87,7 @@ export async function mountVerifiedOwnerCorrection({
  }
  try{
   const panel=mountOwnerCorrection({
-   root,companies,api:client,dateGetter,confirmChange,dom,
+   root,companies,api:client,dateGetter,confirmChange,canCorrect,dom,
    onVerifiedSave:async receipt=>{
     if(auth.currentUser!==owner||owner.emailVerified!==true||
        dateGetter()!==receipt.date||enabled()!==true)
