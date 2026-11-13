@@ -1,0 +1,144 @@
+name: NICO Owner partner product tab - index only release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/owner-partner-product-tab.test.mjs'
+      - 'tools/hosting/surgical-existing-index.mjs'
+      - '.github/workflows/nico-owner-partner-product-tab-index-only.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tools/hosting/surgical-existing-index.mjs'
+      - '.github/workflows/nico-owner-partner-product-tab-index-only.yml'
+permissions:
+  contents: read
+concurrency:
+  # Read-only PR checks must not be cancelled by frozen historical publishers.
+  # Actual main releases retain the shared production deployment lock.
+  group: ${{ github.event_name == 'pull_request' && format('nico-owner-partner-product-tab-pr-{0}', github.event.pull_request.number) || 'nico-surgical-index-release' }}
+  cancel-in-progress: false
+jobs:
+  validate-owner-tab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Lock original sales and identity source byte signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object index.html)" = 63f61cbf0badad066ff1c07380e79567c6c67c9e
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object owner-product-publication.html)" = 3ef6050e76343632fec17630b69bcb8b0b64ad48
+          test "$(git hash-object ranking/owner-product-visibility-dashboard-mount.mjs)" = d606cdf258f0a53c4b9295e009b567b475badf31
+          test "$(git hash-object ranking/owner-product-visibility-firebase-bridge.mjs)" = 1ade778691c27e9517d04cc69d3093af87af46fd
+          test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = 3721c8cdf2b826a0db848f4ce4d49ca946bf0c25
+          test "$(git hash-object ranking/owner-product-visibility-panel.css)" = c4ac92aef2418396e0a7a254da489d62794dde62
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = "$(git rev-parse e4ae09e1bf76892d7a115b66610f6d0809e6fb3b:functions-partner-workspace/service.cjs)"
+          test "$(git hash-object functions-ranking-approvals/index.js)" = "$(git rev-parse e4ae09e1bf76892d7a115b66610f6d0809e6fb3b:functions-ranking-approvals/index.js)"
+          git diff --exit-code e4ae09e1bf76892d7a115b66610f6d0809e6fb3b HEAD -- firestore.rules firebase.json functions functions-partner-workspace functions-ranking-approvals partner ranking/owner-product-visibility-dashboard-mount.mjs
+          node --check tools/hosting/surgical-existing-index.mjs
+      - name: Test real new tab and preserve all existing app behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-partner-product-tab.test.mjs tests/surgical-existing-index.test.mjs
+          node --test tests/sales-regressions.cjs
+          node --test tests/partner-existing-ranking.test.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs tests/legacy-finance-entry-guard.test.mjs tests/partner-money-free-workspace.test.cjs
+          echo 'OWNER_PARTNER_PRODUCT_TAB_INDEX_ONLY_STAGED=true'
+          echo 'PRODUCTION_DEPLOYED=false'
+  publish-index-only:
+    needs: validate-owner-tab
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          startsWith(github.event.head_commit.message, 'release(hosting): add Owner partner products tab only') &&
+          needs.validate-owner-tab.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+      NICO_INDEX_ONLY_EXPECTED_SOURCE_VERSION: sites/nico-factory/versions/6cd0ef86037773c1
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm reviewed HEAD is still current protected main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git log -1 --pretty=%s)" = 'release(hosting): add Owner partner products tab only'
+          test "$(git hash-object index.html)" = 63f61cbf0badad066ff1c07380e79567c6c67c9e
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+      - name: Confirm approved Owner ONOFF page and module already published
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in owner-product-publication.html ranking/owner-product-visibility-dashboard-mount.mjs ranking/owner-product-visibility-panel.css; do
+            curl --fail --silent --show-error --max-time 25 "https://nico-factory.web.app/$file?before_tab_release=$GITHUB_SHA" > "$RUNNER_TEMP/current_owner_asset"
+            cmp -s "$RUNNER_TEMP/current_owner_asset" "$file"
+          done
+      - name: Prepare existing protected Hosting credentials
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-tab.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-tab.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-tab.private.json" >> "$GITHUB_ENV"
+      - name: Install only existing local OAuth dependencies
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: GET-only preflight all current assets and one-index diff
+        shell: bash
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Publish ONLY index.html retaining all other live asset paths and hashes
+        shell: bash
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify exact production index bytes and the working tab route
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=false
+          for n in $(seq 1 10); do
+            curl --fail --silent --show-error --max-time 25 "https://nico-factory.web.app/?owner_tab=$GITHUB_SHA-$n" > "$RUNNER_TEMP/observed-index.html"
+            if cmp -s "$RUNNER_TEMP/observed-index.html" index.html; then ok=true; break; fi
+            sleep 3
+          done
+          test "$ok" = true
+          grep -Fq 'id="quickPartnerProductsButton"' "$RUNNER_TEMP/observed-index.html"
+          grep -Fq '協力店商材' "$RUNNER_TEMP/observed-index.html"
+          for route in /partner-workspace.html /owner-product-publication.html /owner-partner-admin.html; do
+            test "$(curl -fsSL --max-time 25 -o /dev/null -w '%{http_code}' "https://nico-factory.web.app$route")" = 200
+          done
+          echo 'OWNER_PARTNER_PRODUCTS_TAB_PUBLIC_BYTE_PARITY_PASS'
+          echo 'ORIGINAL_FINANCE_COUNTS_RULES_FUNCTIONS_UNCHANGED'
+      - name: Remove temporary secrets and HTML
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-owner-tab.private.json" "$RUNNER_TEMP/current_owner_asset" "$RUNNER_TEMP/observed-index.html"
