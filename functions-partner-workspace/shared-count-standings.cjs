@@ -37,9 +37,12 @@ function ranked(rows){
   });
 }
 function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
- if(!id(hubId)||!date(start)||!date(end)||start>end||
-    start.slice(0,7)!==end.slice(0,7)||!Array.isArray(sources)||
-    !sources.length||sources.length>20)fail();
+ // A calendar week can cross month boundaries. Never broaden the range
+ // beyond the existing 31-day monthly ledger read/verification budget.
+ const span=date(start)&&date(end)?
+  (Date.parse(end+"T00:00:00Z")-Date.parse(start+"T00:00:00Z"))/86400000:NaN;
+ if(!id(hubId)||!Number.isInteger(span)||span<0||span>30||
+    !Array.isArray(sources)||!sources.length||sources.length>20)fail();
  const seen=new Set(),companies=[],teams=[],people=[],products=zero(),published=new Set(),unreportedCompanies=[];
  let totalCount=0,reportCount=0,unverifiedTeamCount=0,
   unverifiedPersonCount=0,historicalCompanyOnlyCount=0;
