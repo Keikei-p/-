@@ -44,7 +44,7 @@ function checkedCompetition(items){
 }
 // Unreported roster entries are visible only in permitted reporting views,
 // but have NO numerical ranking. A submitted 0 is a ranked result.
-function checkedPersonRanking(items){
+function checkedPersonRanking(items,{globalSubset=false}={}){
  let previous=null,rank=0,eligible=0,unreported=false;
  for(const person of items){
   if(!["未報告","報告済","一部未報告","確定0件"].includes(person.reportStatus))halt();
@@ -57,8 +57,14 @@ function checkedPersonRanking(items){
      !Number.isSafeInteger(person.count)||person.count<0||
      (previous!==null&&person.count>previous))halt();
   eligible++;
-  if(previous!==person.count)rank=eligible;
-  if(person.rank!==rank)halt();
+  if(globalSubset){
+   if(previous!==null&&
+      (person.count===previous?person.rank!==rank:person.rank<=rank))halt();
+   rank=person.rank;
+  }else{
+   if(previous!==person.count)rank=eligible;
+   if(person.rank!==rank)halt();
+  }
   previous=person.count;
  }
 }
@@ -111,7 +117,7 @@ function shape(value){
   if(!Number.isSafeInteger(value.own.count)||value.own.count<0||
      !Number.isSafeInteger(value.own.unidentifiedCount)||value.own.unidentifiedCount<0)halt();
   list(value.own.people,PERSON);
-  checkedPersonRanking(value.own.people);
+  checkedPersonRanking(value.own.people,{globalSubset:true});
   list(value.own.products,["id","name","count"]);
   strict(value.publicRanking,["members","products","companies","teams"]);
   list(value.publicRanking.members,["rank","company","name","count"]);
