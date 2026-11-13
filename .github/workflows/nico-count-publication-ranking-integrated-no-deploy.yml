@@ -1,0 +1,85 @@
+name: NICO integrated ON OFF counts and four rankings (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'functions-ranking-approvals/ranking/**'
+      - 'ranking/**'
+      - 'staging/partner-owner-correction-v3/**'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-publication-write-ranking-consistency.test.cjs'
+      - 'tests/partner-week-boundary-contract.test.cjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'tests/owner-product-visibility-rankings.test.mjs'
+      - 'tests/verified-dual-count-view.test.mjs'
+      - 'tests/verified-joint-ranking-panel.test.mjs'
+      - 'tests/partner-original-team-card-parity.test.mjs'
+      - 'tests/partner-published-count-browser-contract.test.cjs'
+      - 'tests/partner-one-login-same-app.test.cjs'
+      - 'index.html'
+      - '.github/workflows/nico-count-publication-ranking-integrated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  integrated-ledger-and-dashboard:
+    name: verify-one-count-ledger-and-owner-partner-ranks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED: ''
+      GCLOUD_PROJECT: demo-nico-integration
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Proof of staging-only scope and hard-OFF production flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'ownerCorrectionWriteEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'ownerCorrectionReadEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED=false' index.html
+          grep -Fq 'allowedPartnerCategories' functions-partner-workspace/submission-publication-guard.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/submission-publication-guard.cjs
+          node --check functions-partner-workspace/shared-count-standings.cjs
+          node --check ranking/verified-dual-count-view.mjs
+          node --check tests/verified-dual-count-view.test.mjs
+      - name: One verified count source, owner edits and both dashboard rankings
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/partner-workspace.test.cjs \
+            tests/partner-publication-write-ranking-consistency.test.cjs \
+            tests/partner-week-boundary-contract.test.cjs \
+            tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
+            tests/owner-product-visibility-rankings.test.mjs \
+            tests/verified-dual-count-view.test.mjs \
+            tests/verified-joint-ranking-panel.test.mjs \
+            tests/partner-original-team-card-parity.test.mjs \
+            tests/partner-published-count-browser-contract.test.cjs \
+            tests/partner-one-login-same-app.test.cjs
+          echo 'ONE_LEDGER_ON_OFF_OWNER_CORRECTION_FOUR_RANKINGS_STAGING_PASS'
+      - name: No deployment, no release approval inferred from synthetic tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'RULES_FUNCTIONS_HOSTING_DEPLOYED=NO'
