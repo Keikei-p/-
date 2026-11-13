@@ -228,8 +228,7 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
  try{
   const data=validate(payload);
   const page=el(document,"section","nico-dual-dashboard");
-  add(page,document,"h2","nico-dual-heading",
-    data.role==="hub_owner"?"全社獲得件数・合同ランキング":"自社の獲得件数・成長");
+  add(page,document,"h2","nico-dual-heading","全社獲得件数・合同ランキング");
   add(page,document,"p","nico-dual-period",
    data.range.start+" 〜 "+data.range.end+"｜全て件数のみ");
   const metrics=el(document,"div","nico-dual-metrics");
@@ -256,38 +255,40 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
     teams.appendChild(line);
    }
    page.appendChild(teams);
-   page.appendChild(ranked(document,"会社ランキング",
-    competitionFromBreakdown(data.companyBreakdown,x=>({
-     name:x.name,count:x.count
-    })),"company"));
-   page.appendChild(ranked(document,"班ランキング",
-    competitionFromBreakdown(data.teamBreakdown,x=>({
-     name:x.name,company:x.companyName,count:x.count
-    })),"team"));
-   page.appendChild(ranked(document,"個人ランキング",data.memberRanking.filter(p=>p.rank!==null),"person"));
-   page.appendChild(ranked(document,"商材ランキング",data.productRanking,"product"));
-   if(data.summary.unidentified>0)
-    add(page,document,"p","nico-dual-unidentified",
-     "担当者未特定 "+data.summary.unidentified+"件（個人順位には加算しません）");
+   // Keep existing Owner-only company/team detail; the four ranking cards
+   // are rendered once below from the same server-verified snapshot.
   }else{
    metrics.appendChild(metric(document,data.own.company,data.own.count));
    page.appendChild(metrics);
-   page.appendChild(ranked(document,"自分たちの成果・前期比",data.own.people
-    .filter(p=>p.rank!==null),"person"));
-   page.appendChild(ranked(document,"自社の商材別件数",data.own.products
-    .map((p,i)=>({...p,rank:p.rank||i+1})),"product"));
-   page.appendChild(ranked(document,"公開承認済み・会社ランキング",
-    data.publicRanking.companies,"company"));
-   page.appendChild(ranked(document,"公開承認済み・班ランキング",
-    data.publicRanking.teams,"team"));
-   page.appendChild(ranked(document,"公開承認済み・個人ランキング",
-    data.publicRanking.members,"person"));
-   page.appendChild(ranked(document,"公開承認済み・商材ランキング",
-    data.publicRanking.products,"product"));
-   if(data.own.unidentifiedCount>0)
-    add(page,document,"p","nico-dual-unidentified",
-     "担当者未特定 "+data.own.unidentifiedCount+"件");
+   // The partner retains its own company KPI and existing detailed workspace.
+   // Public ranks are projected by the server; no private scores, IDs or
+   // financial fields are promoted to the shared ranking cards.
   }
+  // One four-card layout for both roles. Partner-only sub-rankings used to
+  // duplicate the same results and made partners look excluded. Never infer
+  // ranks from local own.people/own.products: use the server's joint order.
+  const rankings=data.role==="hub_owner"?[
+   ["会社ランキング",competitionFromBreakdown(data.companyBreakdown,x=>({
+    name:x.name,count:x.count
+   })),"company"],
+   ["班ランキング",competitionFromBreakdown(data.teamBreakdown,x=>({
+    name:x.name,company:x.companyName,count:x.count
+   })),"team"],
+   ["個人ランキング",data.memberRanking.filter(p=>p.rank!==null),"person"],
+   ["商材ランキング",data.productRanking,"product"]
+  ]:[
+   ["会社ランキング",data.publicRanking.companies,"company"],
+   ["班ランキング",data.publicRanking.teams,"team"],
+   ["個人ランキング",data.publicRanking.members,"person"],
+   ["商材ランキング",data.publicRanking.products,"product"]
+  ];
+  for(const [title,rows,kind] of rankings)
+   page.appendChild(ranked(document,title,rows,kind));
+  const unidentified=data.role==="hub_owner"?
+   data.summary.unidentified:data.own.unidentifiedCount;
+  if(unidentified>0)
+   add(page,document,"p","nico-dual-unidentified",
+    "担当者未特定 "+unidentified+"件（個人順位には加算しません）");
   root.replaceChildren(page);
   return page;
  }catch(error){root.replaceChildren();halt();}
