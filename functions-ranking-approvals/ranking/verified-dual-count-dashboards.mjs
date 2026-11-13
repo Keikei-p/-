@@ -401,7 +401,16 @@ export function buildVerifiedCountDashboard({
    companyId:cid,companyName:parsed.names.get(cid),count:n
   }))
  })),p=>p.count);
- const companyRows=[...allCompany.values()].sort((a,b)=>a.kind==="自社"?-1:
+ // A registered but unreported company has no numerical ranking.
+ // A genuine submitted zero (including legacy company-only Quick 0) remains
+ // eligible. This proof is server-derived from verified ON-only source rows.
+ const reportedCompanies=new Set(current.filter(r=>
+  r.reported===true||r.unidentified===true).map(r=>r.companyId));
+ const companyRows=[...allCompany.values()].map(company=>({
+  ...company,
+  reportStatus:!reportedCompanies.has(company.id)?"未報告":
+   company.count===0?"確定0件":"報告済"
+ })).sort((a,b)=>a.kind==="自社"?-1:
    b.kind==="自社"?1:a.name.localeCompare(b.name,"ja"));
  const self=companyRows.find(x=>x.id===hubCompanyId)?.count??0;
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
@@ -450,9 +459,7 @@ export function buildVerifiedCountDashboard({
  // No team ID, UID, salary, unit price or source report can leave this API.
  // A partner company with no verified report must not appear as a
  // tied 0-case company in public rankings. Confirmed zero reports are included.
- const reportedCompanies=new Set(current.filter(r=>
-  r.reported===true||r.unidentified===true).map(r=>r.companyId));
- const publicCompanies=ordered(companyRows.filter(x=>reportedCompanies.has(x.id)).map(x=>({
+ const publicCompanies=ordered(companyRows.filter(x=>x.reportStatus!=="未報告").map(x=>({
   id:x.id,name:x.name,count:x.count
  })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
  const publicTeams=ordered([...teams.values()].filter(x=>
