@@ -140,7 +140,7 @@ jobs:
                  [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; }; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
-            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = '6204cb3603a5e2cc1ae06e6f4680163f8e3309ba'
+            test "$(git hash-object scripts/ci/review-partner-sku-publication-write.cjs)" = 'b74fc09b9bfa80360052d30b4385a44b68c54793'
             test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2d242262b9d3e7adc9097f483334ac449c0f940b'
             if [ "$GITHUB_EVENT_NAME" = "push" ] ||
                [ "${GITHUB_HEAD_REF:-}" = "feat/partner-published-count-input-20261111" ]; then
