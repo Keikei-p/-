@@ -14,7 +14,8 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,now=()=>Date.now()}={}){
+ submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
+ ownerCorrectionWriteEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
@@ -1007,6 +1008,135 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     ...(enabledCategories===undefined?{}:{enabledCategories}),
     privateProducts:productList};
  }
+
+ // Owner correction v3, READ and WRITE are separately hard-OFF by default.
+ // The authenticated hub Owner owns the session. Neither a partner account,
+ // a selected workspaceCompanyId nor any browser role/finance flag grants access.
+ const ownerCorrectionShape=d=>d&&typeof d==="object"&&!Array.isArray(d)&&
+  Object.keys(d).sort().join("|")==="date|partnerCompanyId";
+ const unknownSb=n=>({"SB光":0,"SB AIR":0,"旧未分類":n});
+ const validOwnerReason=x=>typeof x==="string"&&x.trim()===x&&
+  x.length>=6&&x.length<=120&&!/[\\r\\n\\x00-\\x1f\\x7f]/.test(x)&&
+  !money.test(x.normalize("NFKC"));
+ const guardOwnerScope=async(uid,tx,companyId)=>{
+  const s=await scope(uid,tx);
+  if(s.kind!=="hub"||s.role!=="owner"||s.cid===companyId)fail();
+  const rel=await hubPartner(tx,s.cid,companyId);
+  if(!rel.active)fail("failed-precondition");
+  return s;
+ };
+ async function listHubPartnerCounts(request){
+  if(ownerCorrectionReadEnabled()!==true)fail("unavailable");
+  const a=await actor(request),d=request?.data||{};
+  if(!ownerCorrectionShape(d)||!ID.test(d.partnerCompanyId||""))
+   fail("invalid-argument");
+  const date=validDate(d.date);
+  return db.runTransaction(async tx=>{
+   const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
+   const query=collection(d.partnerCompanyId,"partnerWorkEntries")
+    .where("date","==",date).limit(201);
+   const entries=await tx.get(query);
+   if(entries.size>200)fail("resource-exhausted");
+   const rows=[];
+   for(const snap of entries.docs){
+    const x=snap.data()||{};
+    if(snap.id!==date+"__"+x.staffId||
+       x.companyId!==d.partnerCompanyId||x.hubCompanyId!==hub.cid||
+       x.date!==date||!ID.test(x.staffId||"")||
+       !Number.isSafeInteger(x.version)||x.version<1||x.version>999)
+     fail("data-loss");
+    const {counts,total}=validateCounts(x.counts);
+    if(total!==x.totalCount)fail("data-loss");
+    const staffName=x.staffNameSnapshot??"登録者（名称未確認）";
+    if(!validName(staffName))fail("data-loss");
+    const teamIdSnapshot=x.teamIdSnapshot??null;
+    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
+    // Keep old SB光・AIR together and mark its breakdown unclassified.
+    // Never infer a split into SB光 and SB AIR from a combined legacy total.
+    rows.push({staffId:x.staffId,staffName,teamIdSnapshot,
+     counts,totalCount:total,version:x.version,
+     sbBreakdown:unknownSb(counts["SB光・AIR"])});
+   }
+   rows.sort((x,y)=>x.staffId.localeCompare(y.staffId));
+   return {role:"hub",scope:"existing-partner-counts-only",
+    date,partnerCompanyId:d.partnerCompanyId,entries:rows,
+    sbBreakdownSchema:"sb-separated-v1",containsFinance:false};
+  });
+ }
+ async function correctHubPartnerCounts(request){
+  if(ownerCorrectionReadEnabled()!==true||
+     ownerCorrectionWriteEnabled()!==true)fail("unavailable");
+  const a=await actor(request),d=request?.data||{};
+  if(!d||typeof d!=="object"||Array.isArray(d)||
+     Object.keys(d).sort().join("|")!==
+      "correctionReason|counts|date|expectedVersion|partnerCompanyId|sbBreakdown|staffId"||
+     !ID.test(d.partnerCompanyId||"")||!ID.test(d.staffId||"")||
+     !Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<1||
+     d.expectedVersion>=999||!validOwnerReason(d.correctionReason))
+   fail("invalid-argument");
+  const date=validDate(d.date),{counts,total}=validateCounts(d.counts);
+  //光/AIR separation is explicitly out of scope for this release.
+  // An Owner may change the combined COUNT but cannot fabricate a breakdown.
+  const sb=d.sbBreakdown;
+  if(!sb||typeof sb!=="object"||Array.isArray(sb)||
+     Object.keys(sb).sort().join("|")!=="SB AIR|SB光|旧未分類"||
+     sb["SB光"]!==0||sb["SB AIR"]!==0||
+     sb["旧未分類"]!==counts["SB光・AIR"])
+   fail("failed-precondition");
+  return db.runTransaction(async tx=>{
+   const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
+   const er=entryRef(d.partnerCompanyId,date,d.staffId);
+   const summary=summaryRef(hub.cid,date,d.partnerCompanyId);
+   const [oldSnap,totalSnap,staffSnap]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(staffRef(d.partnerCompanyId,d.staffId))
+   ]);
+   const old=oldSnap.data()||{},daily=totalSnap.data()||{},staff=staffSnap.data()||{};
+   if(!oldSnap.exists||!totalSnap.exists||!staffSnap.exists||
+      old.companyId!==d.partnerCompanyId||old.hubCompanyId!==hub.cid||
+      old.date!==date||old.staffId!==d.staffId||
+      staff.companyId!==d.partnerCompanyId||
+      !ID.test(old.teamIdSnapshot||"")&&old.teamIdSnapshot!==null&&
+        old.teamIdSnapshot!==undefined)
+    fail("failed-precondition");
+   if(old.version!==d.expectedVersion)fail("aborted");
+   if(daily.source!=="staff-entries-v1"||daily.hubCompanyId!==hub.cid||
+      daily.partnerCompanyId!==d.partnerCompanyId||daily.date!==date||
+      !validCompanyName(daily.partnerName))fail("failed-precondition");
+   const {counts:prior,total:previousTotal}=validateCounts(old.counts);
+   const {counts:companyCounts,total:companyTotal}=validateCounts(daily.counts);
+   if(old.totalCount!==previousTotal||daily.totalCount!==companyTotal)
+    fail("data-loss");
+   const combined=old.sbBreakdown;
+   if(combined!==undefined&&
+      (typeof combined!=="object"||combined===null||
+       combined["SB光"]!==0||combined["SB AIR"]!==0||
+       combined["旧未分類"]!==prior["SB光・AIR"]))
+    fail("failed-precondition");
+   const updatedCounts={};let updatedTotal=0;
+   for(const key of KEYS){
+    const n=companyCounts[key]+counts[key]-prior[key];
+    if(!Number.isSafeInteger(n)||n<0||n>2000000)fail("data-loss");
+    updatedCounts[key]=n;updatedTotal+=n;
+   }
+   if(updatedTotal!==companyTotal+total-previousTotal||
+      !Number.isSafeInteger(updatedTotal))fail("data-loss");
+   if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
+   const nextVersion=d.expectedVersion+1,stamp=FieldValue.serverTimestamp();
+   const rowChanges={counts,totalCount:total,version:nextVersion,
+    updatedByUid:a.uid,updatedAt:stamp};
+   tx.update(er,rowChanges);
+   tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp});
+   const audit=collection(d.partnerCompanyId,"partnerWorkAudits")
+    .doc(date+"__"+d.staffId+"__v"+nextVersion);
+   tx.create(audit,{...old,...rowChanges,previousCounts:prior,
+    previousPrivateCounts:old.privateCounts||{},
+    correctionReason:d.correctionReason,correctedByOwnerUid:a.uid,
+    correctionKind:"hub_owner_existing_count_v3",createdAt:stamp});
+   return {saved:true,scope:"hub-owner-existing-only",
+    partnerCompanyId:d.partnerCompanyId,staffId:d.staffId,date,
+    version:nextVersion,totalCount:total,containsFinance:false};
+  });
+ }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
@@ -1132,6 +1262,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,view,submit,listHubPartnerCounts,correctHubPartnerCounts});
 }
 module.exports={makeWorkspace,KEYS};
