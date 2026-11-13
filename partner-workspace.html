@@ -261,6 +261,10 @@ font:inherit;font-size:13px;line-height:1.6}
  <h3 class="partner-panel-title">📊 件数分析</h3>
  <p class="partner-panel-note">選択した期間の件数を会社・担当者・商材の順で確認できます。</p>
  <div id="countAnalysisSummary" class="scroll"></div>
+ <section id="countInlineJointCompanies" hidden>
+  <h4>🏢 会社ランキング</h4>
+  <div id="countCompanyRank" class="scroll" aria-live="polite"></div>
+ </section>
 </div>
 <div id="partnerPanel-individual" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">🏆 個人ランキング</h3>
@@ -462,6 +466,9 @@ const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;
 // Shared count-only monthly view: disabled until real partner finance GET/LIST
 // denial, verified backup restore and live count save/correction are confirmed.
 const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;
+// Prefer the ORIGINAL ranking cards over the older separate joint board.
+// Never enable before verified server finance rules and full ledger sign-off.
+const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;
 let verifiedJointMonthMount=null,verifiedJointMonthEpoch=0,jointMonthStyles=null;
 function resetVerifiedJointMonth(){
  ++verifiedJointMonthEpoch;
@@ -471,7 +478,8 @@ function resetVerifiedJointMonth(){
  root.hidden=true;root.replaceChildren();
 }
 async function mountVerifiedJointMonthForPartner(){
- if(!NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||
+ if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||
+    !NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||
     verifiedJointMonthMount||activeCodeSession||data?.role!=="owner"||
     !auth.currentUser?.emailVerified||
     window.location.origin!=="https://nico-factory.web.app")return;
@@ -1017,7 +1025,9 @@ function renderCountOnlyDashboard(summary,days){
  renderProductRankMode();renderCountGoal();
 }
 function clearCountOnlyDashboard(){
- countExportRows=null;$("countGoalBox").hidden=true;
+ countExportRows=null;
+ $("countInlineJointCompanies").hidden=true;
+ $("countCompanyRank").replaceChildren();$("countGoalBox").hidden=true;
  $("partnerTeamCardGrid").replaceChildren();
  $("partnerTeamCompanyHeading").textContent="";
  $("partnerTeamCountDetail").hidden=true;
@@ -1028,6 +1038,62 @@ function clearCountOnlyDashboard(){
   "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
 function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
+// The server-verified count contract is the ONLY authority for a public
+// combined rank. Old local-only ranks are erased before this network read.
+// Neither a financial collection nor a browser-supplied role is consulted.
+async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
+ if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||
+    data?.role!=="owner"||activeCodeSession)return;
+ const identity=auth.currentUser;
+ const roots={companies:$("countCompanyRank"),teams:$("countTeamRank"),
+  people:$("countStaffRank"),products:$("countProductRank")};
+ const clear=()=>{
+  for(const target of Object.values(roots))target.replaceChildren();
+  $("countInlineJointCompanies").hidden=true;
+ };
+ const valid=()=>gen===countLoadId&&currentCountIdentity()===uid&&
+  identity===auth.currentUser&&identity?.emailVerified===true&&
+  data?.role==="owner"&&!activeCodeSession&&!$("dashboardBox").hidden&&
+  window.location.origin==="https://nico-factory.web.app";
+ clear();
+ if(!valid()){
+  $("countDashboardStatus").textContent="合同ランキングの認証を確認できません。";
+  return;
+ }
+ $("countProductMode").disabled=true;
+ $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
+  "｜自社・協力店の合同順位を照合中…";
+ try{
+  const [{createVerifiedJointMonthHttpBridge},{renderVerifiedInlineJointCards}]=
+   await Promise.all([
+    import("./ranking/verified-joint-month-http-bridge.mjs"),
+    import("./ranking/verified-inline-joint-ranking-cards.mjs")
+   ]);
+  if(!valid())return;
+  const bridge=createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,fetcher:window.fetch.bind(window),
+   endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+   expectedRole:"partner_owner"
+  });
+  const payload=await bridge.load({
+   period:{kind:countPeriod,day,asOf:today},filters:{}
+  });
+  if(!valid())return;
+  renderVerifiedInlineJointCards({
+   document,roots,payload,expectedRole:"partner_owner",
+   period:countPeriod,start:dates[0],end:dates.at(-1)
+  });
+  $("countInlineJointCompanies").hidden=false;
+  $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
+   "｜自社・協力店の合同件数・順位を照合済み";
+ }catch(error){
+  if(!valid())return;
+  clear();
+  $("countDashboardStatus").textContent=
+   "合同ランキングが未照合のため順位を非表示にしました。件数の保存内容は変更していません。";
+  console.error("joint_inline_count_unverified",error?.code||"unverified");
+ }
+}
 async function loadCountDashboard(){
  if(!data||data.role==="hub"||$("dashboardBox").hidden)return;
  const gen=++countLoadId;
@@ -1065,6 +1131,8 @@ async function loadCountDashboard(){
   $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
     " の集計完了（"+dates.length+"日分・件数のみ）";
   $("countCsv").disabled=false;
+  if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)
+   await refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates});
  }catch(error){
   if(gen!==countLoadId)return;
   clearCountOnlyDashboard();
@@ -1072,7 +1140,9 @@ async function loadCountDashboard(){
   console.error("count-only dashboard verification failed",error?.code||"incomplete");
  }
 }
-$("countProductMode").onchange=renderProductRankMode;
+$("countProductMode").onchange=()=>{
+ if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)renderProductRankMode();
+};
 $("countTeamSelect").onchange=renderTeamCountDetail;
 $("countGoalSave").onclick=()=>{
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
