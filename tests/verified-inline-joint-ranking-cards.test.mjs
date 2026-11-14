@@ -168,7 +168,7 @@ test("owner ranking source rejects ledger drift and unknown or double-counted co
 test("finance-coded labels without amounts never reach owner or partner ranking cards",()=>{
  const invalidNames=[
   "NURO cashback tier","NURO cash_back","NURO unitPrice","協力店 ＣＢ",
-  "契約 revenue rank","会社 salary tier","表示\\n改行","name@example.com"
+  "契約 revenue rank","会社 salary tier","表示"+String.fromCharCode(10)+"改行","name@example.com"
  ];
  for(const role of ["hub_owner","partner_owner"]){
   for(const label of invalidNames){
