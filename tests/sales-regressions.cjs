@@ -3,7 +3,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const path = require('node:path');
-const html = fs.readFileSync(process.env.SALES_HTML || path.join(__dirname, '../index.html'), 'utf8');
+const html = fs.readFileSync(process.env.SALES_HTML || path.join(__dirname, '../index.html'), 'utf8').replace(/\r\n/g, '\n');
 function source(name) {
   let start = html.indexOf(`function ${name}(`);
   if (html.slice(start - 6, start) === "async ") start -= 6;

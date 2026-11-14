@@ -1,0 +1,149 @@
+{
+  "name": "sites/nico-factory/versions/6cd0ef86037773c1",
+  "status": "FINALIZED",
+  "fileCount": "33",
+  "config": {
+    "headers": [
+      {
+        "headers": {
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        },
+        "glob": "/index.html"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "/__/firebase/init.js",
+      "hash": "f7801f0193074b012f03f3c54700fefae5ba438f2ec3f8772d920a70b626638f"
+    },
+    {
+      "path": "/__/firebase/init.json",
+      "hash": "18ab76912449adcddb99861bcd58acfef62030fcda8412acc1252d4e194c7e4a"
+    },
+    {
+      "path": "/finance-boundary-check.html",
+      "hash": "ac9ece081c1e2b4de3e98554113339c1804d74fd0e55468f9ffa2058aec8105c"
+    },
+    {
+      "path": "/finance-boundary-four.html",
+      "hash": "0e95701eae7088e5f8603d1701046c9dd3d9fc94c767456927fbfe2bdd5151a6"
+    },
+    {
+      "path": "/finance-partner-boundary-check.html",
+      "hash": "b5cc8266cbe224bf91ba93977ed52d9f83efcc60a1e64eb075d934ffa9d7a370"
+    },
+    {
+      "path": "/icon-180.png",
+      "hash": "afc3b42e12af22e26c245b75c14df3eac8113ce8023855afa394ab40edbe2c5e"
+    },
+    {
+      "path": "/icon-192.png",
+      "hash": "11c963f2116c367d9806bc15f64377bfd83543e730357a33c2053a3bfe388793"
+    },
+    {
+      "path": "/icon-512.png",
+      "hash": "d23aaf5ebb85070c2758ee249c52c38764d5bfb6a4c22a368f41322644ca9d4b"
+    },
+    {
+      "path": "/index.html",
+      "hash": "cc036983777637abac37476422761e07ee84a81916d484d6815698e1e107f0c1"
+    },
+    {
+      "path": "/login-self-check.html",
+      "hash": "943aafc476a26a867345beca65964a5318464baf173628aaeac83a2504804281"
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "hash": "6b1fe3dd1ab073dd0bdf4527bf2c1ca11738da416a144bef9fe8d2a2f3e7071b"
+    },
+    {
+      "path": "/owner-partner-admin-assets/mobile-bootstrap.mjs",
+      "hash": "58655aa4af8f1aa3f4363330c20c6fde9f386c4edb261341beb18e4d7268c230"
+    },
+    {
+      "path": "/owner-partner-admin-assets/owner-client.mjs",
+      "hash": "9f783ed2b5ca11244c0dcd22357eef26e2eb62287eeed677a3a37519838a846d"
+    },
+    {
+      "path": "/owner-partner-admin-assets/owner-ui.mjs",
+      "hash": "9780e00345ce96f17e5094771b24b63ee5e978b2939c4e7ac772cc503d71caab"
+    },
+    {
+      "path": "/owner-partner-admin.html",
+      "hash": "0807ffe7340965dcf887c51f4e59f26dd02395869ddf51fe8464b4e4db607281"
+    },
+    {
+      "path": "/owner-partner-counts-readonly.html",
+      "hash": "b7b0f491fe54bf11dd3ea1751173ad87e4a8ee5683467c8c03d72def0e6b2e4f"
+    },
+    {
+      "path": "/owner-partner-setup.html",
+      "hash": "c34f281166baa72616ed9caa0a839030243d98ea9c3486f67d945f7b6177e36b"
+    },
+    {
+      "path": "/owner-product-publication.html",
+      "hash": "e37a6dbe9cfd5750f4904da3b7ad4fcc659c7d66340cfc1feba5583169eb52af"
+    },
+    {
+      "path": "/partner-counts.html",
+      "hash": "5ebb6fb0c6c6bfed7aefa213de29ac573fcc5814caab37bf9f66d7faf5d8ef72"
+    },
+    {
+      "path": "/partner-invite.html",
+      "hash": "dd93e534b40a0a64e96ed7c28e7bc0679e764535188ca5f58f9f337c3bb50632"
+    },
+    {
+      "path": "/partner-workspace.html",
+      "hash": "97f9e5cb7412694bb63726e9ddee3c4e5bde954246b5ced97ce1c0ddbdd69a9d"
+    },
+    {
+      "path": "/ranking/owner-partner-setup-mount.mjs",
+      "hash": "57b6a957cd67f541cbec5930a11d3d344ded374d1f87250fc570114ee0e90fd7"
+    },
+    {
+      "path": "/ranking/owner-product-visibility-dashboard-mount.mjs",
+      "hash": "38ecb43c299fd28efa814157dde4cef83b47310c94df1999ec1d75a259ab1802"
+    },
+    {
+      "path": "/ranking/owner-product-visibility-firebase-bridge.mjs",
+      "hash": "a5ae9796c8dae8e14039531be27e6ada95f0061541d538d1a41fed243ad6fa0e"
+    },
+    {
+      "path": "/ranking/owner-product-visibility-panel.css",
+      "hash": "625635d3e2f58fd3afb1f55a12d70fb6a7e54c841744713c0ce0ca277a171e94"
+    },
+    {
+      "path": "/ranking/owner-product-visibility-panel.mjs",
+      "hash": "8b8e5e7e6bf909b69647ec169037544e4a7f4b671140683541090cd5c651bbc9"
+    },
+    {
+      "path": "/ranking/owner-ranking-consent-firebase-bridge.mjs",
+      "hash": "c885b1d7351c6230fae3fce2929006f28b6438d66a3f1aab2bface0721d57050"
+    },
+    {
+      "path": "/ranking/owner-ranking-consent-panel.css",
+      "hash": "de6b286e3feece0c4a3b07b9306acc59b76cbb1ac683f0b6a71a2eaa5e5bb438"
+    },
+    {
+      "path": "/ranking/owner-ranking-consent-panel.mjs",
+      "hash": "eb5d783ad99df5c358ebced899262f09eee0491088f4976bfd205ddbc7c09851"
+    },
+    {
+      "path": "/ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs",
+      "hash": "b05e217cb562bc2f9a137a43cc1be234fe186789288b193bdc5a23ed15cc4747"
+    },
+    {
+      "path": "/ranking/owner-reviewed-sku-mapping-panel.css",
+      "hash": "6c6bd70539c788c7bd1849e380f542bc3c193cb0f91c8132814a119b8a6d75ad"
+    },
+    {
+      "path": "/ranking/owner-reviewed-sku-mapping-panel.mjs",
+      "hash": "9a053751f58ba8f30e9d9e7dbc41b3937b13c5d19cad2eacc7b78d0d135d6051"
+    },
+    {
+      "path": "/service-worker.js",
+      "hash": "0fb9da85f2e940c79f014ca13e89f75cf379c20f99ccfdbdbafe625066e77d15"
+    }
+  ]
+}
