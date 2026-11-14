@@ -21842,14 +21842,10 @@ function buildProductInputGroups(
             ),
           revenuePerUnit:
             snapshot
-              ? Number(
-                  snapshot.revenuePerUnit ||
-                  0
-                )
-              : Number(
-                  product.revenue ||
-                  0
-                ),
+              ? (snapshot.revenuePerUnit == null || String(snapshot.revenuePerUnit).trim() === ""
+                  ? null : Number(snapshot.revenuePerUnit))
+              : (product.revenue == null || String(product.revenue).trim() === ""
+                  ? null : Number(product.revenue)),
           historicalOnly:
             false,
           planOrder:
@@ -21927,10 +21923,8 @@ function buildProductInputGroups(
               {
                 cashback,
                 revenuePerUnit:
-                  Number(
-                    result.revenuePerUnit ||
-                    0
-                  )
+                  result.revenuePerUnit == null || String(result.revenuePerUnit).trim() === ""
+                    ? null : Number(result.revenuePerUnit)
               }
             );
 
@@ -21995,7 +21989,8 @@ function buildProductInputGroups(
               ),
             revenuePerUnit:
               snapshot
-                ? Number(snapshot.revenuePerUnit ?? 0)
+                ? (snapshot.revenuePerUnit == null || String(snapshot.revenuePerUnit).trim() === ""
+                    ? null : Number(snapshot.revenuePerUnit))
                 : (option.revenuePerUnit == null ? null : Number(option.revenuePerUnit)),
             historicalOnly:
               false,
@@ -22064,10 +22059,8 @@ function buildProductInputGroups(
             0
           ),
         revenuePerUnit:
-          Number(
-            result.revenuePerUnit ||
-            0
-          ),
+          result.revenuePerUnit == null || String(result.revenuePerUnit).trim() === ""
+            ? null : Number(result.revenuePerUnit),
         historicalOnly:
           true,
         planOrder:
@@ -22732,11 +22725,21 @@ function verifyNewRecordPricing(results, productCatalog) {
     if (!matching || !Number.isSafeInteger(cb) || cb < 0) {
       return "選択中のCBプランが現在の商材設定と一致しません。再読み込みしてください。";
     }
+    // Validate the stored catalog value before any Number() normalization:
+    // blank, null and boolean rates must never become an approved zero rate.
+    const rawPlans = explicit
+      ? product.pricingOptions.filter(option => Number(option?.cashback ?? 0) === cb)
+      : [{revenuePerUnit:product.revenue}];
+    const rawRate = rawPlans.length === 1 ? rawPlans[0]?.revenuePerUnit : null;
+    if (!["number","string"].includes(typeof rawRate) || String(rawRate).trim() === "" ||
+        !Number.isSafeInteger(Number(rawRate)) || Number(rawRate) < 0) {
+      return "商材の売上単価が未設定または不正です。0円として補完せずオーナーに確認してください。";
+    }
     if (matching.revenuePerUnit == null ||
-        row.revenuePerUnit == null || row.revenuePerUnit === "" ||
+        !["number","string"].includes(typeof row.revenuePerUnit) || String(row.revenuePerUnit).trim() === "" ||
         !Number.isSafeInteger(price) || price < 0 ||
         !Number.isSafeInteger(Number(matching.revenuePerUnit)) ||
-        price !== Number(matching.revenuePerUnit)) {
+        price !== Number(matching.revenuePerUnit) || price !== Number(rawRate)) {
       return "商材の保存単価が現在の設定と一致しません。再読み込みしてから登録してください。";
     }
   }
@@ -22751,18 +22754,22 @@ function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) 
     const next = nextMap[key];
     const priorCount = Number(previous?.count ?? 0);
     const nextCount = Number(next?.count ?? 0);
+    if (!["number","string"].includes(typeof previous?.revenuePerUnit) || String(previous.revenuePerUnit).trim() === "" ||
+        !Number.isSafeInteger(Number(previous.revenuePerUnit)) || Number(previous.revenuePerUnit) < 0) {
+      return "過去実績の保存単価が未設定または不正です。金額を補完せずオーナーに確認してください。";
+    }
     if (nextCount === priorCount) {
       // Existing sales retain the saved unit price on an unchanged line.
-      if (next && Number(next.revenuePerUnit) !== Number(previous.revenuePerUnit))
+      if (next && (!["number","string"].includes(typeof next.revenuePerUnit) ||
+          String(next.revenuePerUnit).trim() === "" || Number(next.revenuePerUnit) !== Number(previous.revenuePerUnit)))
         return "既存の売上単価は通常の実績更新では変更できません。オーナーの金額訂正を利用してください。";
       continue;
     }
     if (priorCount > 0) {
-      const current = (productCatalog || []).find(p => p.id === previous.productId);
-      const explicit = current && Array.isArray(current.pricingOptions) &&
-        current.pricingOptions.find(opt => Number(opt.cashback) === Number(previous.cashback ?? 0));
-      if (!explicit || !Number.isSafeInteger(Number(explicit.revenuePerUnit)) ||
-          Number(previous.revenuePerUnit) !== Number(explicit.revenuePerUnit))
+      // Use the same validated catalog formats as new entries. A CB0 legacy
+      // revenue rate is valid too; never replace the saved rate or pick one
+      // of several CB plans. A real price change still needs Owner correction.
+      if (verifyNewRecordPricing({[key]:previous}, productCatalog))
         return "過去実績の売上単価が現在と異なります。件数変更の前にオーナーが金額訂正を確認してください。";
     }
     if (next) {
