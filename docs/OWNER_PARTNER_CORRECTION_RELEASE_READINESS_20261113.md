@@ -23,7 +23,7 @@
 
 このワークフロー、保護ハッシュ、`sales-production-reviewed`の承認、独立した`docs/SALES_RELEASE_SIGNOFF.md`は**勝手に変更・代筆・回避しない**。独立レビュー後、既存Functionsを誤更新しない限定的な新リリース工程を別途承認する。
 
-## 金額遮断：本番公開を止める7つの静的リスク
+## 金額遮断：本番公開を止める8つの静的リスク
 
 最新PRの静的本番切替プリフライトに次が残る。
 
@@ -34,8 +34,9 @@
 5. `DIRECT_BROWSER_FINANCE_COLLECTION_revenueGoals`
 6. `LEGACY_RECORDS_DIRECT_QUERY`
 7. `LEGACY_RECORDS_DIRECT_WRITE`
+8. `LEGACY_SECONDARY_OWN_COMPANY_FINANCE_ROUTE`（旧自社画面を選ぶと協力店二重所属のサーバー確認を省略し得る。**遮断候補の本番適用・実UID検証前に公開しない**）
 
-上記は既存自社の売上/単価表示や入力を無条件に消してよいという意味ではない。既存Ownerの金額アクセスを残し、協力店・二重所属・停止会社等からの金額原票GET/LIST/書込をサーバー/Rules双方で拒否する。古い端末/PWAの経路も対象。段階的な画面非表示だけでは情報遮断の本番証明にならない。
+新たな8番は、現行ブラウザの選択分岐から見つかった**潜在的な旧画面経路**で、個人情報漏えい発生の実証ではない。既存の自社・協力店画面切替を勝手に削除せず、同意済み本番の金融Rules拒否と実UIDの画面/GET/LISTの二重確認で閉じる。\n\n上記は既存自社の売上/単価表示や入力を無条件に消してよいという意味ではない。既存Ownerの金額アクセスを残し、協力店・二重所属・停止会社等からの金額原票GET/LIST/書込をサーバー/Rules双方で拒否する。古い端末/PWAの経路も対象。段階的な画面非表示だけでは情報遮断の本番証明にならない。
 
 候補 `security/secondary-finance-read-fence.mjs` は**DEMO Firestore Emulator限定**の生成物で、`firestore.rules` は変更していない。旧自社権限を持つ二重所属者向けの部分対策であり、全協力店役割の本番金額遮断が証明されたわけではない。
 
@@ -89,7 +90,7 @@
 - [旧Owner訂正独立パッケージ #43550814145](https://github.com/Keikei-p/-/actions/runs/43550814145): 新統合コードが旧凍結パッケージの期待SHAと違い、パッケージ組立安全停止。
 - **残る失敗を「全部同じ原因」と決めつけない。** 個別ログを見て、現在の統合スイートで再現する機能障害は最小パッチ＋回帰テストで修正。凍結済み過去release向け条件は維持し、正式な独立レビュー無しに期待SHAを更新しない。
 
-### 現行ファイナンス切替診断が報告した7つのNO-GO
+### 現行ファイナンス切替診断が報告した7つのNO-GO＋旧自社画面の迂回経路
 [read-onlyソース棚卸し #43550814142](https://github.com/Keikei-p/-/actions/runs/43550814142) に次が出力された。**静的候補診断**であり、実FirebaseセキュリティRulesの結果でもない。
 1. `FINANCE_RAW_RULES_ALLOW_PARTNER_OR_UNVERIFIED`
 2. `DIRECT_BROWSER_FINANCE_COLLECTION_records`
@@ -98,6 +99,7 @@
 5. `DIRECT_BROWSER_FINANCE_COLLECTION_revenueGoals`
 6. `LEGACY_RECORDS_DIRECT_QUERY`
 7. `LEGACY_RECORDS_DIRECT_WRITE`
+8. `LEGACY_SECONDARY_OWN_COMPANY_FINANCE_ROUTE`（旧自社画面を選ぶと協力店二重所属のサーバー確認を省略し得る。**遮断候補の本番適用・実UID検証前に公開しない**）
 
 既存Ownerの実績・売上・単価と旧端末/PWAの入力が稼働しているため、単に金融読取を削除・Rulesを全拒否して解消してはいけない。会社所属、兼務、所属移行、停止権限の**実UIDを使った財務GET/LIST拒否**と、Ownerの現行読み書き成功の両方が必要。
 
