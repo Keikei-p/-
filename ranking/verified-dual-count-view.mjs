@@ -96,8 +96,30 @@ function shape(value){
       (company.reportStatus==="確定0件"&&company.count!==0)||
       (company.reportStatus==="報告済"&&company.count===0))halt();
   }
+  // Owner ranking totals must reconcile with the exact validated company
+  // ledger. Duplicate/foreign companies must never become ranked twice.
+  const companies=new Map();
+  let companyTotal=0;
+  for(const company of value.companyBreakdown){
+   if(typeof company.id!=="string"||!company.id||
+      companies.has(company.id)||company.unidentifiedCount>company.count)halt();
+   companyTotal+=company.count;
+   if(!Number.isSafeInteger(companyTotal))halt();
+   companies.set(company.id,company);
+  }
+  if(companyTotal!==value.summary.total)halt();
   if(!Array.isArray(value.teamBreakdown)||value.teamBreakdown.length>5000)halt();
+  const teamKeys=new Set();
   for(const team of value.teamBreakdown){
+   const company=companies.get(team.companyId);
+   const teamKey=JSON.stringify([team.companyId,team.id]);
+   if(!company||typeof team.id!=="string"||!team.id||
+      teamKeys.has(teamKey)||!Number.isSafeInteger(team.count)||
+      team.count<0||team.count>company.count)halt();
+   teamKeys.add(teamKey);
+   if(company.reportStatus==="未報告"&&
+      (team.count!==0||team.detail!==undefined&&
+       team.detail.reportStatus!=="未報告"))halt();
    const fields=["id","companyId","companyName","name","count"];
    strict(team,team.detail===undefined?fields:[...fields,"detail"]);
    if(team.detail!==undefined){
@@ -106,7 +128,10 @@ function shape(value){
     if(d.schema!=="nico-team-count-detail-v1"||
        !Number.isSafeInteger(d.memberCount)||d.memberCount<0||
        !(d.goalCount===null||(Number.isSafeInteger(d.goalCount)&&d.goalCount>=0))||
-       !["未報告","確定0件","報告済"].includes(d.reportStatus))halt();
+       !["未報告","確定0件","報告済"].includes(d.reportStatus)||
+       (d.reportStatus==="未報告"&&team.count!==0)||
+       (d.reportStatus==="確定0件"&&team.count!==0)||
+       (d.reportStatus==="報告済"&&team.count===0))halt();
     list(d.members,["id","name","count","reportStatus"]);
     list(d.products,["id","name","count"]);
     for(const rows of [d.members,d.products]){
