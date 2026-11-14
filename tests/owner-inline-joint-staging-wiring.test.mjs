@@ -76,6 +76,7 @@ test("enabled staging wiring registers render observer and month/auth hooks with
  const inputs=elements.get("dashboardMonth");
  inputs.value="";
  const fake={
+  $:id=>elements.get(id)||null,
   document:{
    getElementById(id){return elements.get(id)||null},
    createElement(tag){return mk(tag)},
