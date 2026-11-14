@@ -382,7 +382,8 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
   companies:{panel:"teamRankingContent",label:"合同・会社件数ランキング"}
  };
  if(monthInput&&Object.values(slots).every(s=>$(s.panel))){
-  const roots={},cards={};
+  const roots={},cards={},modeControls=[],dateControls=[];
+  let periodKind="month",periodDay="";
   for(const [key,slot] of Object.entries(slots)){
    const card=document.createElement("section");
    card.className="nico-owner-inline-joint-count";
@@ -390,9 +391,39 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
    card.setAttribute("aria-label",slot.label);
    const heading=document.createElement("h3");
    heading.textContent=slot.label;
+   const choices=document.createElement("div");
+   choices.className="ranking-period-controls";
+   const mode=document.createElement("select");
+   mode.setAttribute("aria-label","合同ランキングの集計期間");
+   for(const [value,label] of [["month","月"],["week","週"],["day","日"]]){
+    const option=document.createElement("option");
+    option.value=value;option.textContent=label;mode.append(option);
+   }
+   mode.value=periodKind;
+   const date=document.createElement("input");
+   date.type="date";date.hidden=true;
+   date.setAttribute("aria-label","合同ランキングの基準日");
+   modeControls.push(mode);dateControls.push(date);
+   mode.addEventListener("change",()=>{
+    if(!["month","week","day"].includes(mode.value))return;
+    periodKind=mode.value;
+    for(const control of modeControls)control.value=periodKind;
+    for(const input of dateControls)input.hidden=periodKind==="month";
+    void refresh(auth.currentUser);
+   });
+   date.addEventListener("change",()=>{
+    const requested=date.value;
+    if(!/^20\d\d-\d\d-\d\d$/.test(requested)||
+       requested.slice(0,7)!==monthInput.value||
+       requested>japanDay()||requested<monthInput.value+"-01")return;
+    periodDay=requested;
+    for(const input of dateControls)input.value=periodDay;
+    void refresh(auth.currentUser);
+   });
+   choices.append(mode,date);
    const list=document.createElement("div");
    list.className="nico-owner-inline-joint-list";
-   card.append(heading,list);
+   card.append(heading,choices,list);
    $(slot.panel).append(card);
    roots[key]=list;cards[key]=card;
   }
@@ -413,6 +444,16 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
    const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
    return p.year+"-"+p.month+"-"+p.day;
   };
+  const monthLast=month=>new Date(Date.UTC(
+   Number(month.slice(0,4)),Number(month.slice(5)),0
+  )).toISOString().slice(0,10);
+  const syncPeriodDay=(month,asOf)=>{
+   const last=monthLast(month),max=last<asOf?last:asOf;
+   if(periodDay.slice(0,7)!==month||periodDay>max)periodDay=max;
+   for(const input of dateControls){
+    input.min=month+"-01";input.max=max;input.value=periodDay;
+   }
+  };
   async function refresh(user){
    const epoch=++generation;
    clear();
@@ -421,6 +462,8 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
    const month=monthInput.value,asOf=japanDay();
    if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||
       month+"-01">asOf)return;
+   syncPeriodDay(month,asOf);
+   const kind=periodKind,day=kind==="month"?month+"-01":periodDay;
    try{
     const verified=await companyForOwner(user);
     if(epoch!==generation||auth.currentUser!==user||!verified)return;
@@ -436,17 +479,16 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
      expectedRole:"hub_owner"
     });
     const payload=await bridge.load({
-     period:{kind:"month",day:month+"-01",asOf},filters:{}
+     period:{kind,day,asOf},filters:{}
     });
     if(epoch!==generation||auth.currentUser!==user||
-       monthInput.value!==month)return;
-    const endOfMonth=new Date(Date.UTC(Number(month.slice(0,4)),
-      Number(month.slice(5)),0)).toISOString().slice(0,10);
-    const end=endOfMonth<asOf?endOfMonth:asOf;
-    // No original finance ranking nodes are ever passed as render targets.
+       monthInput.value!==month||periodKind!==kind||
+       (kind!=="month"&&periodDay!==day))return;
+    // The bridge has already verified the exact server period range.
+    // Never pass original finance ranking elements as render targets.
     renderVerifiedInlineJointCards({
      document,roots,payload,expectedRole:"hub_owner",
-     period:"month",start:month+"-01",end
+     period:kind,start:payload.range.start,end:payload.range.end
     });
     if(epoch!==generation||auth.currentUser!==user)return;
     for(const card of Object.values(cards))card.hidden=false;

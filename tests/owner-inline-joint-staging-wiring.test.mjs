@@ -26,7 +26,7 @@ test("Owner and partner use same verified count endpoint and strict role/range",
  const partner=read("../partner-workspace.html");
  assert.ok(staging.includes('expectedRole:"hub_owner"'));
  assert.ok(staging.includes('renderVerifiedInlineJointCards({'));
- assert.ok(staging.includes('period:"month",start:month+"-01",end'));
+ assert.ok(staging.includes('period:kind,start:payload.range.start,end:payload.range.end'));
  assert.ok(staging.includes('getVerifiedJointCountRanking'));
  assert.ok(partner.includes("getVerifiedJointCountRanking"));
  assert.ok(staging.includes('monthInput.addEventListener("change"'));
@@ -112,4 +112,16 @@ test("enabled staging wiring registers render observer and month/auth hooks with
  observers[0].callback();
  assert.equal(fake.document.head.children.length,0,
   "No style and no remote fetch before verified real owner auth");
+});
+
+test("Owner same-card day/week/month are verified server periods, not new financial computations",()=>{
+ assert.ok(staging.includes('for(const [value,label] of [["month","月"],["week","週"],["day","日"]])'));
+ assert.ok(staging.includes('period:{kind,day,asOf},filters:{}'));
+ assert.ok(staging.includes('period:kind,start:payload.range.start,end:payload.range.end'));
+ assert.ok(staging.includes('periodDay.slice(0,7)!==month'));
+ assert.ok(staging.includes('periodKind!==kind'));
+ assert.ok(staging.includes('monthInput.value!==month'));
+ assert.ok(staging.includes('input.hidden=periodKind==="month"'));
+ assert.ok(!staging.includes('recordsCollectionQuery('));
+ assert.ok(!staging.includes('revenuePerUnit'));
 });
