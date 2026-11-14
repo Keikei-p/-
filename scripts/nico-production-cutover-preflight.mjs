@@ -43,6 +43,15 @@ export function inspectProductionCutover({rules,index}={}){
    if(sdk.test(index)||scoped.test(index))
     blocked.push("DIRECT_BROWSER_FINANCE_COLLECTION_"+collection);
   }
+  // An explicit "own company" preference bypasses the secondary partner
+  // lookup in the reviewed legacy login page. Its internal-only membership
+  // probe cannot see active partnerWorkspaceContexts. Flag this route until
+  // server-side money denial and a reviewed login transition coexist.
+  // This is a source tripwire, NOT an authorization or exploit proof.
+  if(/const\\s+ownCompanyPreferred\\s*=\\s*partnerMainOwnCompanyPreferred\\s*\\(/.test(index)&&
+     /if\\s*\\(\\s*!partnerWorkspaceId\\s*&&\\s*!ownCompanyPreferred\\s*\\)/.test(index)&&
+     /await\\s+enterApplication\\s*\\(\\s*user\\s*\\)/.test(index))
+    blocked.push("LEGACY_SECONDARY_OWN_COMPANY_FINANCE_ROUTE");
   // Old helper resolves recordsCollectionQuery() to the raw records path.
   if(/function\s+recordsCollectionQuery\s*\(/.test(index))
    blocked.push("LEGACY_RECORDS_DIRECT_QUERY");
