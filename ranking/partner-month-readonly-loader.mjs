@@ -11,10 +11,12 @@
  * are never written or modified. No client-provided proof or company label.
  */
 import {buildPartnerCountRankingSource} from "./partner-workspace-count-source.mjs";
+import {auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const MONTH=/^(20\d\d)-(0[1-9]|1[0-2])$/;
-const MAX_ENTRIES=2000,MAX_TEAMS=150;
+const MAX_ENTRIES=2000,MAX_TEAMS=150,MAX_STAFF=150;
+const FORBIDDEN_NAME=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const halt=()=>{throw Error("PARTNER_RANK_LIVE_MONTH_NOT_APPROVED_OR_INCOMPLETE");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","prototype","constructor"].includes(x);
@@ -90,6 +92,7 @@ export function createPartnerMonthTransactionReader({db}={}) {
   const hub=c(hubCompanyId),partner=c(partnerCompanyId);
   const rel=db.collection("partnerRelations").doc(partnerCompanyId);
   const teamQuery=partner.collection("partnerWorkTeams").limit(MAX_TEAMS+1);
+  const staffQuery=partner.collection("partnerWorkStaff").limit(MAX_STAFF+1);
   const entryQuery=partner.collection("partnerWorkEntries")
    .where("date",">=",days[0])
    .where("date","<=",days.at(-1)).limit(MAX_ENTRIES+1);
@@ -97,14 +100,14 @@ export function createPartnerMonthTransactionReader({db}={}) {
    .collection("reports").doc(partnerCompanyId));
   // Every result is from the SAME caller-owned read-only transaction. No
    // independent client GETs can supply faux completeness/readTime proof.
-   const [hubSnap,partnerSnap,relSnap,teamSnap,entrySnap,...dailySnaps]=
+   const [hubSnap,partnerSnap,relSnap,teamSnap,staffSnap,entrySnap,...dailySnaps]=
     await Promise.all([
      tx.get(hub),tx.get(partner),tx.get(rel),
-     tx.get(teamQuery),tx.get(entryQuery),
+     tx.get(teamQuery),tx.get(staffQuery),tx.get(entryQuery),
      ...daily.map(ref=>tx.get(ref))
     ]);
    const {key,iso}=isoTime(entrySnap);
-   for(const snap of [hubSnap,partnerSnap,relSnap,teamSnap,...dailySnaps])
+   for(const snap of [hubSnap,partnerSnap,relSnap,teamSnap,staffSnap,...dailySnaps])
     requireSameTime(snap,key);
    const hubCompany=doc(hubSnap),partnerCompany=doc(partnerSnap),
      relation=doc(relSnap);
@@ -114,12 +117,32 @@ export function createPartnerMonthTransactionReader({db}={}) {
       partnerCompany.hubCompanyId!==hubCompanyId)halt();
    verifiedRelation(relation,hubCompanyId,partnerCompanyId);
    if(!Array.isArray(entrySnap?.docs)||!Array.isArray(teamSnap?.docs)||
-      entrySnap.docs.length>MAX_ENTRIES||teamSnap.docs.length>MAX_TEAMS)halt();
+      !Array.isArray(staffSnap?.docs)||
+      entrySnap.docs.length>MAX_ENTRIES||teamSnap.docs.length>MAX_TEAMS||
+      staffSnap.docs.length>MAX_STAFF)halt();
    const teams=teamSnap.docs.map(s=>{
     const t=doc(s);
     if(!id(s.id)||t.companyId!==partnerCompanyId)halt();
     return {id:s.id,name:t.name,goalCount:null};
    });
+   // Only active current partnerWorkStaff may be added as unreported.
+   // Historical/inactive staff remain visible ONLY through actual saved
+   // entry snapshots. Never assign old counts to the current team.
+   const verifiedTeams=new Set(teams.map(t=>t.id)),seenStaff=new Set();
+   const activeRoster=[];
+   for(const snapshot of staffSnap.docs){
+    const person=doc(snapshot);
+    if(!id(snapshot.id)||seenStaff.has(snapshot.id)||
+       person.companyId!==partnerCompanyId||
+       typeof person.active!=="boolean")halt();
+    seenStaff.add(snapshot.id);
+    if(person.active!==true)continue;
+    if(!id(person.teamId)||!verifiedTeams.has(person.teamId)||
+       typeof person.name!=="string"||
+       person.name.trim().length<1||person.name.length>80||
+       FORBIDDEN_NAME.test(person.name.normalize("NFKC")))halt();
+    activeRoster.push({uid:snapshot.id,name:person.name.trim(),teamId:person.teamId});
+   }
    // A removed historical team cannot be silently remapped to the user's
    // current team. buildPartnerCountRankingSource refuses unknown snapshots.
    const entries=entrySnap.docs.map(s=>{
@@ -140,7 +163,7 @@ export function createPartnerMonthTransactionReader({db}={}) {
    }
    // The only two ways to pass are: complete empty month OR every saved
    // entry exactly agrees with the owner company's dated count summary.
-   return buildPartnerCountRankingSource({
+   const source=buildPartnerCountRankingSource({
     hubCompanyId,partnerCompanyId,companyLabel:partnerCompany.name,
     period:month,readTime:iso,
     relation,proof:{
@@ -149,6 +172,10 @@ export function createPartnerMonthTransactionReader({db}={}) {
      historicalTeamsVerified:true,snapshotConsistent:true
     },teams,entries,summaries
    });
+   // No raw staff documents or user-private data may leave this reader.
+   const result={...source,roster:activeRoster};
+   auditNoFinancialKeys(result);
+   return result;
  };
 }
 
