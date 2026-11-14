@@ -16,6 +16,10 @@ permissions:
   contents: read
 jobs:
   validate:
+    # Unique check-run display name prevents this legacy, source-pinned partner
+    # guard from colliding with the REQUIRED Sales App Validation 'validate'.
+    # Keep its existing SHA pins, tests, job id, deployment gates and triggers.
+    name: validate-partner-verified-invite
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
