@@ -6,7 +6,8 @@
 import {validateVerifiedDualCountDashboard} from "./verified-dual-count-view.mjs";
 const FAIL=()=>{throw Error("VERIFIED_INLINE_JOINT_COUNT_BLOCKED");};
 const FIELDS=["companies","teams","people","products"];
-const NAME_BAD=/(?:売上|単価|収益|報酬|利益|キャッシュバック|[¥￥$€]|\d[\d,.]*\s*円)/i;
+// Keep view-level label filtering at least as strict as the verified response.
+const NAME_BAD=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 function name(value){
  if(typeof value!=="string"||!value.trim()||value.length>100||
     NAME_BAD.test(value.normalize("NFKC")))FAIL();
