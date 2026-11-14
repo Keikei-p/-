@@ -989,7 +989,7 @@ test('Existing reported counts can be corrected at their immutable saved unit ra
   assert.match(c.verifyChangedRecordPricing({
     e:{...correction.e},
     newlyAdded:{productId:'e',cashback:2000,count:1,revenuePerUnit:2000}
-  },old,[electric]),/単価/);
+  },old,[electric]),/CB|単価/);
   const freshProduct={id:'new',pricingOptions:[{cashback:0,revenuePerUnit:7000}]};
   assert.equal(c.verifyChangedRecordPricing({
     e:{...correction.e},
@@ -1612,9 +1612,9 @@ test('all products: selected cashback plan determines sale rate; no cashback amo
   assert.match(mock.verifyNewRecordPricing({l:{productId:'legacy',cashback:20000,count:1,revenuePerUnit:20000}},[legacy]),/旧形式/);
 });
 
-test('existing records: adding one deal at an obsolete price is stopped, unchanged old snapshots remain untouched',()=>{
+test('existing counts correct at saved rate; newly added obsolete-price plans remain blocked',()=>{
   const mock=context(['resultVariantKey','normalizeExistingResultMap','getProductPricingOptions',
-    'verifyNewRecordPricing','verifyChangedRecordPricing'],{
+    'verifyNewRecordPricing','verifyChangedRecordPricing','calculateResultsTotals'],{
     parseLegacyCashbackProductName:()=>({hasCashbackPlan:false})
   });
   const product={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
@@ -1622,9 +1622,17 @@ test('existing records: adding one deal at an obsolete price is stopped, unchang
   const original=JSON.stringify(old);
   const same={electric__cb_0:{...old.electric__cb_0}};
   assert.equal(mock.verifyChangedRecordPricing(same,old,[product]),'');
+  const corrected={electric__cb_0:{...old.electric__cb_0,count:6}};
+  assert.equal(mock.verifyChangedRecordPricing(corrected,old,[product]),'');
+  assert.equal(mock.calculateResultsTotals(corrected).revenue,12000,
+    'historical price must not become 10000 when quantity is corrected');
   assert.match(mock.verifyChangedRecordPricing({
-    electric__cb_0:{...old.electric__cb_0,count:6}
-  },old,[product]),/単価/);
+    electric__cb_0:{...old.electric__cb_0,count:6,revenuePerUnit:10000}
+  },old,[product]),/金額訂正/);
+  assert.match(mock.verifyChangedRecordPricing({
+    electric__cb_0:{...corrected.electric__cb_0},
+    newCB:{productId:'electric',cashback:2000,count:1,revenuePerUnit:2000}
+  },old,[product]),/CB|単価/);
   assert.equal(JSON.stringify(old),original);
 });
 
