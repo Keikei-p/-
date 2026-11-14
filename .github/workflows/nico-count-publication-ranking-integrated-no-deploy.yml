@@ -49,6 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -81,6 +82,18 @@ jobs:
           cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
           node --check tests/verified-dual-count-view.test.mjs
           node --check sales-archive.js
+      - name: Protect the already released #706 count save hotfix during joint-rank integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never publish the old count-save pricing path while upgrading ranks.
+          # Approved #706 merge is now an explicit ancestor of this staging PR.
+          git merge-base --is-ancestor 74f36fe402c5ed5e64d2addaf0a85c36628e1ac9 HEAD
+          test "$(git rev-parse 74f36fe402c5ed5e64d2addaf0a85c36628e1ac9:index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+          grep -Fq 'NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false' sales-archive.js
+          grep -Fq 'NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false' partner-workspace.html
+          node --test tests/count-pricing-update-hotfix.test.cjs tests/count-pricing-live-package.test.mjs
+          echo 'ALREADY_LIVE_COUNT_SAVE_706_PRESERVED_IN_STAGING_NO_DEPLOY'
       - name: Read-only finance cutover and legacy secondary route stop-gate
         shell: bash
         run: |
