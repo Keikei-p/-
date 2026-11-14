@@ -132,3 +132,31 @@ test("redacted public rank gaps remain visible without weakening count or tie va
  const equal=projectVerifiedInlineJointCards(tied,opts("partner_owner")).companies;
  assert.deepEqual(equal.map(x=>x.rank),[1,1]);
 });
+
+test("owner ranking source rejects ledger drift and unknown or double-counted companies/teams",()=>{
+ const valid=payload("hub_owner");
+ assert.equal(projectVerifiedInlineJointCards(valid,opts("hub_owner")).companies.length,2);
+ const corruptions=[
+  d=>{d.summary.own++;d.summary.total++;}, // self+partner looks consistent, company sum does not
+  d=>{d.companyBreakdown.push(structuredClone(d.companyBreakdown[0]));},
+  d=>{d.teamBreakdown[0].companyId="unknown-company";},
+  d=>{d.teamBreakdown.push(structuredClone(d.teamBreakdown[0]));},
+  d=>{d.teamBreakdown[0].detail.reportStatus="未報告";},
+  d=>{d.companyBreakdown[0].unidentifiedCount=d.companyBreakdown[0].count+1;}
+ ];
+ for(const modify of corruptions){
+  const invalid=structuredClone(valid);
+  modify(invalid);
+  assert.throws(()=>projectVerifiedInlineJointCards(invalid,opts("hub_owner")),
+   /合同件数の権限|VERIFIED_INLINE_JOINT_COUNT_BLOCKED/);
+ }
+ const rootElements=roots();
+ renderVerifiedInlineJointCards({document,roots:rootElements,
+  payload:valid,...opts("hub_owner")});
+ const invalid=structuredClone(valid);
+ invalid.teamBreakdown[0].companyId="foreign-company";
+ assert.throws(()=>renderVerifiedInlineJointCards({document,roots:rootElements,
+  payload:invalid,...opts("hub_owner")}));
+ assert(Object.values(rootElements).every(x=>x.children.length===0),
+  "do not leave previous company's ranking visible after a failed verification");
+});
