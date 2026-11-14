@@ -25,6 +25,7 @@ const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const STOP=()=>{throw Error("CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED");};
+const FORBIDDEN_STAFF_NAME=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const valid=x=>typeof x==="string"&&ID.test(x)&&
  !["constructor","prototype","__proto__"].includes(x);
 const array=x=>Array.isArray(x);
@@ -74,7 +75,8 @@ function partnerRankingSource(source){
       !valid(person.uid)||seenCurrent.has(person.uid)||
       !teamIds.has(person.teamId)||
       typeof person.name!=="string"||!person.name.trim()||
-      person.name.length>80)STOP();
+      person.name.length>80||
+      FORBIDDEN_STAFF_NAME.test(person.name.normalize("NFKC")))STOP();
    seenCurrent.add(person.uid);
    // Only registered active staff may override the current presentation
    // name/team. The original records' teamId snapshot is NEVER changed.
