@@ -106,3 +106,29 @@ test("bad owner product rank is refused before displaying it to a partner",()=>{
  invalid.productRanking[0].rank=99;
  assert.throws(()=>projectVerifiedInlineJointCards(invalid,opts("hub_owner")));
 });
+
+test("redacted public rank gaps remain visible without weakening count or tie validation",()=>{
+ const candidate=payload("partner_owner");
+ const ranks=candidate.publicRanking.companies;
+ assert.equal(ranks.length,2);
+ assert(ranks[0].count>ranks[1].count);
+ ranks[1].rank=ranks[0].rank+2; // a private competitor is not exposed
+ const result=projectVerifiedInlineJointCards(candidate,opts("partner_owner"));
+ assert.deepEqual(result.companies.map(x=>x.rank),[ranks[0].rank,ranks[1].rank]);
+ const elements=roots();
+ renderVerifiedInlineJointCards({document,roots:elements,payload:candidate,...opts("partner_owner")});
+ assert(textOf(elements.companies).includes(ranks[1].rank+"位"));
+ for(const alter of [
+  d=>{d.publicRanking.companies[1].rank=d.publicRanking.companies[0].rank;},
+  d=>{d.publicRanking.companies[1].count=d.publicRanking.companies[0].count;},
+  d=>{d.publicRanking.companies[1].count=d.publicRanking.companies[0].count+1;}
+ ]){
+  const invalid=structuredClone(candidate);alter(invalid);
+  assert.throws(()=>renderVerifiedInlineJointCards({
+   document,roots:elements,payload:invalid,...opts("partner_owner")}));
+  assert(Object.values(elements).every(x=>x.children.length===0));
+ }
+ const tied=payload("partner_owner",2,2);
+ const equal=projectVerifiedInlineJointCards(tied,opts("partner_owner")).companies;
+ assert.deepEqual(equal.map(x=>x.rank),[1,1]);
+});
