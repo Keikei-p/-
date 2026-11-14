@@ -1,6 +1,6 @@
 # NICO FACTORY — 自社Owner協力店訂正・ランキング 本番切替判定
 
-**2026-11-13／開発ブランチ PR #701／STAGING・NO DEPLOY／署名未取得**
+**2026-11-14／統合 Draft PR #704／STAGING・NO DEPLOY／署名未取得**
 
 この文書は確認済みコードとテストの事実を整理した**公開停止記録**です。管理者署名でもデプロイ許可でもありません。
 
@@ -59,3 +59,43 @@
 - 公開判断：**NO-GO（安全条件・管理者レビュー・実環境証明が未了）**
 
 次の重点は「実UIDの金額GET/LIST拒否と自社Owner既存操作の両立」と「独立復元確認」であり、過去の1文書不一致を先に書き換えない。
+
+## 2026-11-14 統合候補の実測・本番阻害要因（機能追加を止め、完成作業のみ）
+
+**唯一の統合対象:** [Draft PR #704](https://github.com/Keikei-p/-/pull/704) / 候補SHA `74d1475276a77cbad315504ca7d6b3b1bd4a1c31` / 基準main `1f75da8c9fdc7a997089d962b7fa12f974fc70c4`。このSHA以降Codexが更新した場合は最新HEADを検証してから作業する。本書は**実証した内容と未実証内容を分離する判定書**であり、管理者の承認・署名ではない。
+
+### GitHubで合格を確認した工程
+- [統合214テスト #43550813824](https://github.com/Keikei-p/-/actions/runs/43550813824): 214/214 PASS（件数保存・訂正・商材ON/OFF・4合同ランキング・未報告/0件・過去月・共通/Functions版のコード一致。オフラインのみ）。
+- [Sales App Validation #43550814003](https://github.com/Keikei-p/-/actions/runs/43550814003): SUCCESS。
+- [商材ON/OFF・過去件数 #43550814024](https://github.com/Keikei-p/-/actions/runs/43550814024): SUCCESS。
+- [Owner訂正・金額遮断エミュレータ #43550814174](https://github.com/Keikei-p/-/actions/runs/43550814174): SUCCESS **ただしDEMOのみ**。本番UID/本番ルールの拒否成功を意味しない。
+- [Owner APIソース棚卸し #43550814142](https://github.com/Keikei-p/-/actions/runs/43550814142): 7/7 PASS、6コードベースにおけるOwner callable名衝突なし。**実Firebase上での関数名・リージョン・コードベース棚卸しは未実施。**
+
+### 失敗CIの原因を混同しない
+- [本番保護ゲート #43550814092](https://github.com/Keikei-p/-/actions/runs/43550814092): `index.html`変更について維持管理者が付ける `sales-production-reviewed` と、真正な署名入り `docs/SALES_RELEASE_SIGNOFF.md` が不足。**保護を解除・自動代筆してはいけない**。
+- [旧版4順位検査 #43550813694](https://github.com/Keikei-p/-/actions/runs/43550813694): 旧 `functions-partner-workspace/index.js` の固定blob SHAと統合版が違うため初期ステップで停止。
+- [旧版同一画面検査 #43550814087](https://github.com/Keikei-p/-/actions/runs/43550814087): 旧 `service.cjs` / `index.html` 版を固定した検査で停止。
+- [旧版班カード検査 #43550814163](https://github.com/Keikei-p/-/actions/runs/43550814163): 12試験中10件成功、2件は元画面のblobハッシュ固定との不一致。
+- [旧Owner訂正独立パッケージ #43550814145](https://github.com/Keikei-p/-/actions/runs/43550814145): 新統合コードが旧凍結パッケージの期待SHAと違い、パッケージ組立安全停止。
+- **残る失敗を「全部同じ原因」と決めつけない。** 個別ログを見て、現在の統合スイートで再現する機能障害は最小パッチ＋回帰テストで修正。凍結済み過去release向け条件は維持し、正式な独立レビュー無しに期待SHAを更新しない。
+
+### 現行ファイナンス切替診断が報告した7つのNO-GO
+[read-onlyソース棚卸し #43550814142](https://github.com/Keikei-p/-/actions/runs/43550814142) に次が出力された。**静的候補診断**であり、実FirebaseセキュリティRulesの結果でもない。
+1. `FINANCE_RAW_RULES_ALLOW_PARTNER_OR_UNVERIFIED`
+2. `DIRECT_BROWSER_FINANCE_COLLECTION_records`
+3. `DIRECT_BROWSER_FINANCE_COLLECTION_products`
+4. `DIRECT_BROWSER_FINANCE_COLLECTION_recordCorrections`
+5. `DIRECT_BROWSER_FINANCE_COLLECTION_revenueGoals`
+6. `LEGACY_RECORDS_DIRECT_QUERY`
+7. `LEGACY_RECORDS_DIRECT_WRITE`
+
+既存Ownerの実績・売上・単価と旧端末/PWAの入力が稼働しているため、単に金融読取を削除・Rulesを全拒否して解消してはいけない。会社所属、兼務、所属移行、停止権限の**実UIDを使った財務GET/LIST拒否**と、Ownerの現行読み書き成功の両方が必要。
+
+### 公開までの作業を絞る
+1. **実Firebaseの読取限定確認**：Functions名/地域/codebase、既存全関数の上書きリスク、料金設定。
+2. **バックアップと隔離復元**：全件スナップショット、売上・過去実績・監査・件数の復元照合。
+3. **実アカウント認証と金額遮断**：Ownerの正常な金融操作を維持し、協力店/兼務・移行アカウントで4原票のGET/LIST拒否を証明。現行Rulesの解消策はこの結果に基づく最小限の安全修正のみ。
+4. **当月の既存件数の読取照合**：会社・班・個人・公開ON商材・旧会社Quick・光/AIR合算を正本と突合し、以前からの1文書差異はユーザー指示どおり別記。
+5. **真正なレビュー→段階公開**：管理者が署名した新統合HEADの限定スコープ公開許可、旧4APIを勝手にデプロイしない仕組み、初期OFFと失敗時の停止/復旧、公開後に両社実アカウントで動作・金額遮断を再確認。
+
+機能追加は行わない。**現状の本番判定はNO-GO**であり、署名済み・実UID/隔離復元済みと偽らない。
