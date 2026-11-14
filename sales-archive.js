@@ -398,6 +398,9 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
   }
   let generation=0,oldCardStyle=null;
   const clear=()=>{
+   // The old independent count panel is a fallback until a fresh verified
+   // server response is rendered. Never hide it after a failed refresh.
+   if(oldCardStyle)oldCardStyle.disabled=true;
    for(const key of Object.keys(slots)){
     cards[key].hidden=true;
     roots[key].replaceChildren();
@@ -453,9 +456,27 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
      oldCardStyle.textContent="#ownerSharedCardIndividual,#ownerSharedCardProduct,#ownerSharedCardTeam{display:none!important}";
      document.head.append(oldCardStyle);
     }
+    oldCardStyle.disabled=false;
    }catch{
     if(epoch===generation)clear(); // Never show partial or stale joint ranks.
    }
+  }
+  // index.html assigns the month programmatically on first login and after
+  // a successful record write. Input "change" events are NOT fired then.
+  // Observe only the original count summary to refresh the joint count ranks
+  // when the existing dashboard renders. No financial values are read.
+  const monthlyCount=$("monthlyCount");
+  let renderedRefreshQueued=false;
+  if(monthlyCount&&typeof MutationObserver==="function"){
+   const observer=new MutationObserver(()=>{
+    if(renderedRefreshQueued)return;
+    renderedRefreshQueued=true;
+    queueMicrotask(()=>{
+     renderedRefreshQueued=false;
+     void refresh(auth.currentUser);
+    });
+   });
+   observer.observe(monthlyCount,{childList:true,characterData:true,subtree:true});
   }
   monthInput.addEventListener("change",()=>{void refresh(auth.currentUser);});
   onAuthStateChanged(auth,user=>{void refresh(user);});
