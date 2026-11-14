@@ -30,16 +30,24 @@ function list(items,fields){
  if(!Array.isArray(items)||items.length>5000)halt();
  for(const item of items)strict(item,fields);
 }
-function checkedCompetition(items){
- let last=null,rank=0;
+// Public ranks can skip numbers when the server hides private participants.
+ // Hub-owned product ranks remain complete and must have dense competition ranks.
+function checkedCompetition(items,{allowRedactedGaps=false}={}){
+ let last=null,lastRank=0,rank=0;
  for(const [index,row] of items.entries()){
   if(!Number.isSafeInteger(row.count)||row.count<0||
      !Number.isSafeInteger(row.rank)||row.rank<1||
      typeof row.name!=="string"||!row.name.trim()||
      (last!==null&&row.count>last))halt();
-  if(index===0||row.count!==last)rank=index+1;
-  if(row.rank!==rank)halt();
+  if(allowRedactedGaps){
+   if(last!==null&&
+      (row.count===last?row.rank!==lastRank:row.rank<=lastRank))halt();
+  }else{
+   if(index===0||row.count!==last)rank=index+1;
+   if(row.rank!==rank)halt();
+  }
   last=row.count;
+  lastRank=row.rank;
  }
 }
 // Unreported roster entries are visible only in permitted reporting views,
@@ -133,7 +141,7 @@ function shape(value){
   list(value.publicRanking.companies,["rank","name","count"]);
   list(value.publicRanking.teams,["rank","name","company","count"]);
   for(const key of ["members","products","companies","teams"])
-   checkedCompetition(value.publicRanking[key]);
+   checkedCompetition(value.publicRanking[key],{allowRedactedGaps:true});
  }
 }
 export function validateVerifiedDualCountDashboard(result){
