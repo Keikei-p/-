@@ -20,6 +20,8 @@ on:
       - 'ranking/verified-inline-joint-ranking-cards.mjs'
       - 'tests/verified-inline-joint-ranking-cards.test.mjs'
       - 'partner-workspace.html'
+      - 'sales-archive.js'
+      - 'tests/owner-inline-joint-staging-wiring.test.mjs'
       - 'tests/partner-inline-joint-staging-wiring.test.mjs'
       - 'tests/verified-joint-ranking-panel.test.mjs'
       - 'tests/partner-original-team-card-parity.test.mjs'
@@ -78,6 +80,7 @@ jobs:
           cmp ranking/partner-month-readonly-loader.mjs functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs
           cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
           node --check tests/verified-dual-count-view.test.mjs
+          node --check sales-archive.js
       - name: Read-only finance cutover and legacy secondary route stop-gate
         shell: bash
         run: |
@@ -103,6 +106,7 @@ jobs:
             tests/partner-month-readonly-loader.test.mjs \
             tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/partner-inline-joint-staging-wiring.test.mjs \
+            tests/owner-inline-joint-staging-wiring.test.mjs \
             tests/verified-joint-ranking-panel.test.mjs \
             tests/partner-original-team-card-parity.test.mjs \
             tests/partner-published-count-browser-contract.test.cjs \
