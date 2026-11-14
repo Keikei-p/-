@@ -26,6 +26,8 @@ on:
       - 'tests/partner-published-count-browser-contract.test.cjs'
       - 'tests/partner-one-login-same-app.test.cjs'
       - 'index.html'
+      - 'scripts/nico-production-cutover-preflight.mjs'
+      - 'tests/nico-production-cutover-preflight.test.mjs'
       - '.github/workflows/nico-count-publication-ranking-integrated-no-deploy.yml'
 permissions:
   contents: read
@@ -76,6 +78,13 @@ jobs:
           cmp ranking/partner-month-readonly-loader.mjs functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs
           cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
           node --check tests/verified-dual-count-view.test.mjs
+      - name: Read-only finance cutover and legacy secondary route stop-gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/nico-production-cutover-preflight.mjs
+          node --test tests/nico-production-cutover-preflight.test.mjs
+          echo 'FINANCE_LEGACY_SECONDARY_RELEASE_STOP_GATE_VERIFIED_NO_DEPLOY'
       - name: One verified count source, owner edits and both dashboard rankings
         shell: bash
         run: |
