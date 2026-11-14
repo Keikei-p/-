@@ -125,3 +125,105 @@ test("Owner same-card day/week/month are verified server periods, not new financ
  assert.ok(!staging.includes('recordsCollectionQuery('));
  assert.ok(!staging.includes('revenuePerUnit'));
 });
+
+test("Owner period selectors change server GET kind, logout and errors clear old rankings",async()=>{
+ const nodes=new Map(),actions=new Map(),requests=[],rendered=[],observerCallbacks=[];
+ const make=id=>({
+  id,hidden:false,children:[],value:"",handlers:{},
+  append(...children){this.children.push(...children)},
+  replaceChildren(...children){this.children=[...children]},
+  setAttribute(){},
+  addEventListener(kind,fn){this.handlers[kind]=fn;actions.set(id+":"+kind,fn)}
+ });
+ for(const id of ["dashboardMonth","monthlyCount",
+   "individualRankingContent","productRankingContent","teamRankingContent"])
+  nodes.set(id,make(id));
+ const nowParts=new Intl.DateTimeFormat("en-US",{
+  timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+ }).formatToParts(new Date());
+ const dt=Object.fromEntries(nowParts.map(x=>[x.type,x.value]));
+ const today=dt.year+"-"+dt.month+"-"+dt.day,month=today.slice(0,7);
+ nodes.get("dashboardMonth").value=month;
+ const principal={uid:"owner-1",emailVerified:true},auth={currentUser:principal};
+ let broken=false;
+ const modules={
+  "./ranking/verified-joint-month-http-bridge.mjs":{
+   createVerifiedJointMonthHttpBridge({featureEnabled,expectedRole}){
+    assert.equal(featureEnabled,true);assert.equal(expectedRole,"hub_owner");
+    return {async load({period,filters}){
+     assert.deepEqual(Object.keys(filters),[]);
+     requests.push(period);
+     if(broken)throw Error("SERVER_RESPONSE_REJECTED");
+     return {role:"hub_owner",period:period.kind,
+      range:{start:period.kind==="month"?period.day.slice(0,7)+"-01":period.day,end:period.asOf}};
+    }};
+   }
+  },
+  "./ranking/verified-inline-joint-ranking-cards.mjs":{
+   renderVerifiedInlineJointCards(o){
+    assert.equal(o.expectedRole,"hub_owner");
+    assert.equal(o.period,o.payload.period);
+    assert.equal(o.start,o.payload.range.start);
+    assert.equal(o.end,o.payload.range.end);
+    rendered.push(o.period);
+    for(const node of Object.values(o.roots))node.replaceChildren(make("verified-rank"));
+   }
+  }
+ };
+ const env={
+  $:id=>nodes.get(id)||null,
+  document:{
+   getElementById:id=>nodes.get(id)||null,
+   createElement:tag=>make(tag),
+   head:make("head")
+  },
+  auth,companyForOwner:async()=>({id:"hub"}),
+  onAuthStateChanged(_auth,fn){actions.set("auth",fn);return ()=>{}},
+  MutationObserver:class{constructor(fn){observerCallbacks.push(fn)}observe(){}},
+  queueMicrotask:callback=>queueMicrotask(callback),
+  window:{
+   location:{origin:"https://nico-factory.web.app"},
+   fetch(){throw Error("UNEXPECTED_DIRECT_FETCH")}
+  },
+  __load:async path=>{assert.ok(modules[path]);return modules[path]},
+  Date,Intl,Promise,console
+ };
+ const enabled=staging.replace(
+  "const NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false;",
+  "const NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=true;")
+  .replace('import("./ranking/verified-joint-month-http-bridge.mjs")',
+   '__load("./ranking/verified-joint-month-http-bridge.mjs")')
+  .replace('import("./ranking/verified-inline-joint-ranking-cards.mjs")',
+   '__load("./ranking/verified-inline-joint-ranking-cards.mjs")');
+ vm.runInNewContext(enabled,env);
+ const settle=async()=>{
+  for(let i=0;i<5;i++)await Promise.resolve();
+  await new Promise(resolve=>setImmediate(resolve));
+ };
+ actions.get("auth")(principal);await settle();
+ assert.equal(requests.at(-1).kind,"month");
+ assert.equal(requests.at(-1).day,month+"-01");
+ assert.equal(rendered.at(-1),"month");
+ const card=nodes.get("individualRankingContent").children[0];
+ const controls=card.children[1],periodSelect=controls.children[0],dateInput=controls.children[1];
+ assert.equal(dateInput.hidden,true);
+ periodSelect.value="week";periodSelect.handlers.change();await settle();
+ assert.equal(requests.at(-1).kind,"week");assert.equal(dateInput.hidden,false);
+ assert.equal(requests.at(-1).day,today);
+ periodSelect.value="day";periodSelect.handlers.change();await settle();
+ assert.equal(requests.at(-1).kind,"day");assert.equal(rendered.at(-1),"day");
+ // A programmatic dashboard rerender must refresh from verified server.
+ const previous=requests.length;
+ observerCallbacks[0]();await settle();
+ assert.equal(requests.length,previous+1);
+ assert.equal(requests.at(-1).kind,"day");
+ // A failed response must never leave stale joint count cards.
+ broken=true;periodSelect.value="month";periodSelect.handlers.change();await settle();
+ assert.equal(card.hidden,true);
+ assert.equal(nodes.get("teamRankingContent").children[0].hidden,true);
+ assert.equal(nodes.get("teamRankingContent").children[1].hidden,true);
+ assert.equal(env.document.head.children[0].disabled,true);
+ broken=false;auth.currentUser=null;actions.get("auth")(null);await settle();
+ assert.equal(card.hidden,true);
+ assert.equal(card.children[2].children.length,0);
+});
