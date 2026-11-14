@@ -62,6 +62,25 @@ function partnerRankingSource(source){
    uid:r.uid,name:r.memberNameSnapshot,teamId:r.teamId,lastDate:r.date
   });
  }
+ // A complete partner-month reader also supplies active registered staff,
+ // including people with no saved report. They must remain UNREPORTED, not
+ // become fake submitted zero counts. Saved-entry-only historical members
+ // stay in the map; a current team move never rewrites historical entry rows.
+ if(source.roster!==undefined){
+  if(!array(source.roster)||source.roster.length>150)STOP();
+  const seenCurrent=new Set(),teamIds=new Set(source.teams.map(x=>x.id));
+  for(const person of source.roster){
+   if(!person||Object.keys(person).sort().join("|")!=="name|teamId|uid"||
+      !valid(person.uid)||seenCurrent.has(person.uid)||
+      !teamIds.has(person.teamId)||
+      typeof person.name!=="string"||!person.name.trim()||
+      person.name.length>80)STOP();
+   seenCurrent.add(person.uid);
+   // Only registered active staff may override the current presentation
+   // name/team. The original records' teamId snapshot is NEVER changed.
+   roster.set(person.uid,{uid:person.uid,name:person.name,teamId:person.teamId});
+  }
+ }
  const result={
   ...source,completeWindows:{current:true,previous:false},
   roster:[...roster.values()].map(({lastDate:_discard,...v})=>v)
