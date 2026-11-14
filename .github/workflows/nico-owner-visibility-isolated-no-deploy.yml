@@ -11,6 +11,8 @@ on:
       - tests/verified-dual-count-dashboards.test.mjs
       - ranking/unified-partner-team-cards.mjs
       - tests/unified-partner-team-cards.test.mjs
+      - ranking/verified-joint-ranking-panel.mjs
+      - tests/verified-joint-ranking-panel.test.mjs
       - .github/workflows/nico-owner-visibility-isolated-no-deploy.yml
 permissions:
   contents: read
@@ -41,7 +43,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|ranking/verified-dual-count-dashboards.mjs|functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs|tests/verified-dual-count-dashboards.test.mjs|ranking/unified-partner-team-cards.mjs|tests/unified-partner-team-cards.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
+              ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|ranking/verified-dual-count-dashboards.mjs|functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs|tests/verified-dual-count-dashboards.test.mjs|ranking/unified-partner-team-cards.mjs|tests/unified-partner-team-cards.test.mjs|ranking/verified-joint-ranking-panel.mjs|tests/verified-joint-ranking-panel.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_SCOPE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
@@ -52,12 +54,14 @@ jobs:
           node --check tests/verified-dual-count-dashboards.test.mjs
           node --check ranking/unified-partner-team-cards.mjs
           node --check tests/unified-partner-team-cards.test.mjs
+          node --check ranking/verified-joint-ranking-panel.mjs
+          node --check tests/verified-joint-ranking-panel.test.mjs
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
           node --check tests/owner-product-visibility-rankings.test.mjs
       - name: Verify Owner ON OFF applies only verified IDs and preserves counts
         run: |
-          node --test tests/owner-product-visibility-rankings.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/unified-partner-team-cards.test.mjs
+          node --test tests/owner-product-visibility-rankings.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/unified-partner-team-cards.test.mjs tests/verified-joint-ranking-panel.test.mjs
           echo 'OWNER_VISIBILITY_PURE_COUNT_PROJECTION_PASS_NO_DEPLOY'
       - name: Never deploy or infer production signoff
         run: |

@@ -85,8 +85,9 @@ function rankBreakdown(value,companyKey=null){
  const ordered=value.map((row,index)=>{
   if(!obj(row)||!number(row.count)||typeof row.id!=="string")BLOCK();
   const id=text(row.id);
-  if(seen.has(id))BLOCK();
-  seen.add(id);
+  const identity=companyKey===null?id:JSON.stringify([row.companyId??row[companyKey],id]);
+  if(seen.has(identity))BLOCK();
+  seen.add(identity);
   return {id,index,name:text(row.name),count:row.count,
    company:companyKey===null?null:text(row[companyKey])};
  }).sort((a,b)=>b.count-a.count||
@@ -121,10 +122,48 @@ export function verifiedJointCountView(response,{month,role}={}){
      !number(response.summary.own)||
      !number(response.summary.partner)||
      response.summary.own+response.summary.partner!==response.summary.total)BLOCK();
-  people=rankRows(response.memberRanking,["name","count","rank"],"companyName");
+  // The verified source retains unreported roster entries with rank:null
+  // for Owner's missing-report workflow. They MUST NOT appear in standings.
+  const eligible=response.memberRanking.filter(p=>{
+   if(p?.rank===null){
+    if(p.reportStatus!=="未報告"||p.count!==0)BLOCK();
+    return false;
+   }
+   if(p?.reportStatus==="未報告")BLOCK();
+   return true;
+  });
+  people=rankRows(eligible,["name","count","rank"],"companyName");
   products=rankRows(response.productRanking,["name","count","rank"]);
-  companies=rankBreakdown(response.companyBreakdown);
-  teams=rankBreakdown(response.teamBreakdown,"companyName");
+  // Owner company/team metadata also contains registered but unreported
+  // entries. They belong in the management drilldown, never in the ranking.
+  // Genuine submitted zero counts remain rankable, including old Quick days.
+  for(const row of response.companyBreakdown){
+   if(!obj(row)||!number(row.count)||
+      !["未報告","確定0件","報告済"].includes(row.reportStatus)||
+      (row.reportStatus==="未報告"&&row.count!==0)||
+      (row.reportStatus==="確定0件"&&row.count!==0)||
+      (row.reportStatus==="報告済"&&row.count===0))BLOCK();
+  }
+  // An unreported company cannot contain a verified reported team, even
+  // when both happen to total zero. Do not rely only on numeric totals.
+  for(const team of response.teamBreakdown){
+   if(!obj(team)||!number(team.count))BLOCK();
+   if(team.detail!==undefined){
+    if(!obj(team.detail)||!["未報告","確定0件","報告済"].includes(
+       team.detail.reportStatus)||
+       (team.detail.reportStatus==="未報告"&&team.count!==0)||
+       (team.detail.reportStatus==="確定0件"&&team.count!==0)||
+       (team.detail.reportStatus==="報告済"&&team.count===0))BLOCK();
+   }
+   const company=response.companyBreakdown.find(x=>x.id===team.companyId);
+   if(!company||company.reportStatus==="未報告"&&
+      team.detail!==undefined&&team.detail.reportStatus!=="未報告")BLOCK();
+  }
+  companies=rankBreakdown(response.companyBreakdown.filter(
+   row=>row.reportStatus!=="未報告"));
+  teams=rankBreakdown(response.teamBreakdown.filter(row=>
+   row.detail?.reportStatus!=="未報告"&&
+   (row.detail!==undefined||row.count>0)),"companyName");
   if(companies.reduce((total,x)=>total+x.count,0)!==response.summary.total)BLOCK();
  }else{
   if(!obj(response.publicRanking)||!obj(response.own)||
