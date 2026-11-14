@@ -265,7 +265,7 @@ test("active registered staff without saved reports remain explicitly unreported
   name:"退職者",kind:"managed"
  });
  const original=clone([...f.documents]);
- const result=await createPartnerMonthReadOnlyLoader({db:f.db})(request());
+ const result=await createPartnerMonthReadOnlyLoader({db:f.db,clock:()=>new Date("2026-11-14T00:00:00Z")})(request());
  assert.deepEqual(result.roster,[{
   uid:"newStaff",name:"登録済み未報告",teamId:"team1"
  }]);
@@ -286,7 +286,27 @@ test("active registered staff without saved reports remain explicitly unreported
   const row={...f.documents.get(base+"newStaff")};
   modify(row);
   bad.documents.set(base+"newStaff",row);
-  await assert.rejects(createPartnerMonthReadOnlyLoader({db:bad.db})(request()),
+  await assert.rejects(createPartnerMonthReadOnlyLoader({db:bad.db,clock:()=>new Date("2026-11-14T00:00:00Z")})(request()),
    /INCOMPLETE/,"invalid roster must fail before publication");
  }
+});
+
+test("historical month never promotes today's registered staff to an old missing report",async()=>{
+ const f=fake();
+ f.documents.set("companies/partner/partnerWorkStaff/newStaff",{
+  companyId:"partner",active:true,teamId:"team1",
+  name:"来月からの新規担当",kind:"managed"
+ });
+ const past=await createPartnerMonthReadOnlyLoader({
+  db:f.db,clock:()=>new Date("2026-12-10T02:00:00Z")
+ })(request());
+ assert.deepEqual(past.roster,[],
+  "present-day roster must not invent past-month registration or missing reports");
+ assert.equal(past.records.length,2,"historical saved records are retained");
+ assert.equal(past.lines.reduce((sum,row)=>sum+row.count,0),4);
+ const now=await createPartnerMonthReadOnlyLoader({
+  db:f.db,clock:()=>new Date("2026-11-14T02:00:00Z")
+ })(request());
+ assert.deepEqual(now.roster,[{uid:"newStaff",
+  name:"来月からの新規担当",teamId:"team1"}]);
 });
