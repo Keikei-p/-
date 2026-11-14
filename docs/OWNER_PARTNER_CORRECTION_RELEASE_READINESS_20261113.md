@@ -39,6 +39,16 @@
 
 候補 `security/secondary-finance-read-fence.mjs` は**DEMO Firestore Emulator限定**の生成物で、`firestore.rules` は変更していない。旧自社権限を持つ二重所属者向けの部分対策であり、全協力店役割の本番金額遮断が証明されたわけではない。
 
+## 既存の実Firebase読み取り・隔離復元の証跡（2026-11-12実行、11-14再確認）
+
+過去の「復元が全く未実施」という整理を修正する。実際の[本番読み取り専用Workflow #42036092110](https://github.com/Keikei-p/-/actions/runs/42036092110)では2026-11-12 06:37 UTCにcontrolled/ offline双方が**SUCCESS**。限定GETで本番Firestore **512文書**のスナップショットを取得し、隔離ローカルエミュレータへ復元したこと、文書ID・フィールド一致（`fieldsAndIdsRestored: true`）、元DBの全件指紋が変わらない（`fullInventoryStableBefore: true`）、本番書込0（`productionDocumentWrites: 0`）、Rules未適用（`applied: false`）をログで確認した。ライブRulesは当時レビュー対象のSHA-256 `d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179` と一致した。
+
+**未証明の事項：** 同ログは`metadataTimestampsRestored: false` と `managedBackupRestored: false` を明記。つまり全メタデータ・管理バックアップからの完全復旧を証明していない。512文書は**11月12日時点の件数**で、最新の本番データ件数とは限らない。実UIDの金額GET/LIST拒否や現在のRulesが当時と同一かもこの証跡からは断言できない。リリース直前には最新スナップショット・管理バックアップの独立復旧と、その時点のルール/実アカウント再検証が必要。
+
+### 2026-11-14 金額遮断の再現テスト（安全なオフライン検証）
+
+`tests/secondary-finance-read-fence-emulator.test.mjs` に、**自社の旧所属を残したまま協力店へ二重所属した架空UID**を同一条件で比較する試験を追加。現行の`firestore.rules`が金額原票の読取を許すことと、既存の**未デプロイ**候補`security/secondary-finance-read-fence.mjs`ではGET/LISTを拒否することを対照確認する。CI合格は現在確認中。候補を本番に反映したとは扱わない。
+
 ## 必須のGo/No-Go（未完了）
 
 - [ ] 対象Firebase `sales-management-cc116` にある**実際の**Functions名、リージョン、codebase、ソースSHA、料金上限を読み取り棚卸し。知らない既存関数の上書き/削除は禁止
