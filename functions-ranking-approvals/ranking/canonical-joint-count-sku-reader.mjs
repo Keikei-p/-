@@ -14,13 +14,18 @@ import {createInternalMonthTransactionReader}
  from "./internal-month-count-tx-reader.mjs";
 import {createPartnerMonthTransactionReader}
  from "./partner-month-readonly-loader.mjs";
+import {createPartnerLegacyQuickMonthReader}
+ from "./partner-legacy-quick-count-reader.mjs";
 import {auditNoFinancialKeys}
  from "../security/public-projection.mjs";
+import {mergeVerifiedTwoMonthInputs}
+ from "./verified-two-month-count-input.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const STOP=()=>{throw Error("CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED");};
+const FORBIDDEN_STAFF_NAME=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const valid=x=>typeof x==="string"&&ID.test(x)&&
  !["constructor","prototype","__proto__"].includes(x);
 const array=x=>Array.isArray(x);
@@ -57,6 +62,26 @@ function partnerRankingSource(source){
   if(!old||r.date>=old.lastDate)roster.set(r.uid,{
    uid:r.uid,name:r.memberNameSnapshot,teamId:r.teamId,lastDate:r.date
   });
+ }
+ // A complete partner-month reader also supplies active registered staff,
+ // including people with no saved report. They must remain UNREPORTED, not
+ // become fake submitted zero counts. Saved-entry-only historical members
+ // stay in the map; a current team move never rewrites historical entry rows.
+ if(source.roster!==undefined){
+  if(!array(source.roster)||source.roster.length>150)STOP();
+  const seenCurrent=new Set(),teamIds=new Set(source.teams.map(x=>x.id));
+  for(const person of source.roster){
+   if(!person||Object.keys(person).sort().join("|")!=="name|teamId|uid"||
+      !valid(person.uid)||seenCurrent.has(person.uid)||
+      !teamIds.has(person.teamId)||
+      typeof person.name!=="string"||!person.name.trim()||
+      person.name.length>80||
+      FORBIDDEN_STAFF_NAME.test(person.name.normalize("NFKC")))STOP();
+   seenCurrent.add(person.uid);
+   // Only registered active staff may override the current presentation
+   // name/team. The original records' teamId snapshot is NEVER changed.
+   roster.set(person.uid,{uid:person.uid,name:person.name,teamId:person.teamId});
+  }
  }
  const result={
   ...source,completeWindows:{current:true,previous:false},
@@ -169,12 +194,23 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
  if(typeof clock!=="function")STOP();
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
- const loadPartner=createPartnerMonthTransactionReader({db});
- return async function readCounts({tx,month,context}={}){
+ const loadPartner=createPartnerMonthTransactionReader({db,clock});
+ const loadLegacyQuick=createPartnerLegacyQuickMonthReader({db});
+ return async function readCounts({tx,month,context,secondMonth}={}){
   if(!tx||typeof tx.get!=="function"||!context||
      !valid(context.hubCompanyId)||!MONTH.test(month||"")||
      !array(context.approvedCompanyIds)||
      !context.approvedCompanyIds.includes(context.hubCompanyId))STOP();
+  // Fail before issuing any Firestore read for a forged/unrelated second month.
+  // A cross-month week can span exactly two adjacent calendar months.
+  if(secondMonth!==undefined){
+   if(!MONTH.test(secondMonth)||secondMonth===month)STOP();
+   const toMonthIndex=m=>{
+    const [year,num]=m.split("-").map(Number);
+    return year*12+num;
+   };
+   if(Math.abs(toMonthIndex(secondMonth)-toMonthIndex(month))!==1)STOP();
+  }
   const hubId=context.hubCompanyId;
   const hubRef=db.collection("companies").doc(hubId);
   const mappingRef=hubRef.collection("rankingSkuMappings").doc("shared");
@@ -192,10 +228,27 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
      !mappingSnap.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
   sameTime(mappingSnap,hubSource.readTime);
-  return composeCanonicalMonthlyRankingInput({
+  // Recover legacy company-only daily reports from the SAME verified
+  // transaction, without assigning their counts to a guessed staff/team.
+  // The legacy reader rejects overlap with staff-summary or staff entries.
+  const legacyByCompany=await Promise.all(partners.map((partnerCompanyId,i)=>
+   loadLegacyQuick({
+    tx,context,hubCompanyId:hubId,partnerCompanyId,month,
+    source:partnerSources[i]
+   })
+  ));
+  const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:doc(mappingSnap),hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
+  const primary={...original,unassigned:legacyByCompany.flat()};
+  auditNoFinancialKeys(primary);
+  if(secondMonth===undefined)return primary;
+  // Both reads are performed with the SAME transaction supplied by the
+  // trusted server loader; no second transaction is created here.
+  const secondary=await readCounts({tx,month:secondMonth,context});
+  const merged=mergeVerifiedTwoMonthInputs({primary,secondary});
+  return {...merged,verifiedMonths:[month,secondMonth]};
  };
 }
