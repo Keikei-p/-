@@ -942,6 +942,20 @@ test('Existing reported counts can be corrected at their immutable saved unit ra
   const electric={id:'e',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
   const old={e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}};
   const untouched=JSON.stringify(old);
+  // Confirm the reported incident even if the price truly NEVER changed:
+  // legacy catalog rows may have only 'revenue', not pricingOptions.
+  // The previous validator rejected these because it demanded explicit tiers.
+  const oldFormatProduct={id:'legacySame',name:'保存単価同額',revenue:10000};
+  const unchangedPriceOld={x:{productId:'legacySame',cashback:0,count:2,revenuePerUnit:10000}};
+  const unchangedPriceNext={x:{...unchangedPriceOld.x,count:3}};
+  assert.equal(c.verifyChangedRecordPricing(
+    unchangedPriceNext,unchangedPriceOld,[oldFormatProduct]),'');
+  const samePriceTotals=c.calculateResultsTotals(unchangedPriceNext);
+  assert.equal(samePriceTotals.count,3);
+  assert.equal(samePriceTotals.revenue,30000);
+  assert.equal(c.validateFinancialRecordForSave({
+    results:unchangedPriceNext,totalCount:3,totalRevenue:30000
+  }),true);
   // Catalog was repriced AFTER the sales report. Correct counts at that
   // saved rate, never silently converting all five earlier deals to 10,000.
   const correction={e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}};
