@@ -113,13 +113,22 @@ export function buildOwnerVisibleCountRanking({input,publication}={}){
  // Preserve every original report, team and historical person, but recompute
  // its PUBLISHED count from the filtered line items. Never mutate originals.
  const sources=input.sources.map(source=>{
-  const lines=source.lines.filter(l=>allowed.has(key(source.companyId,l.productId)));
+  const products=source.products.filter(p=>allowed.has(key(source.companyId,p.sourceId)));
+  const enabled=products.length>0;
+  // A record whose only lines are hidden by the Owner's OFF setting is NOT
+  // a confirmed public zero. Keep the original saved record untouched, but
+  // never publish its participant name or company/team as a reported 0.
+  // Genuine saved zero reports remain eligible only with an ON mapped SKU.
+  const candidateLines=source.lines.filter(l=>allowed.has(key(source.companyId,l.productId)));
   const sums=new Map();
-  for(const line of lines)
+  for(const line of candidateLines)
    sums.set(line.recordId,(sums.get(line.recordId)||0)+line.count);
-  return {...source,lines,
-   products:source.products.filter(p=>allowed.has(key(source.companyId,p.sourceId))),
-   records:source.records.map(r=>({...r,totalCount:sums.get(r.sourceId)||0}))};
+  const records=source.records
+   .filter(r=>enabled&&(r.totalCount===0||(sums.get(r.sourceId)||0)>0))
+   .map(r=>({...r,totalCount:sums.get(r.sourceId)||0}));
+  const selected=new Set(records.map(r=>r.sourceId));
+  const lines=candidateLines.filter(l=>selected.has(l.recordId));
+  return {...source,products,records,lines};
  });
  const productGroups=input.productGroups.filter(g=>allowed.has(key(g.companyId,g.productId)));
  const unassigned=(input.unassigned||[]).filter(x=>allowed.has(key(x.companyId,x.productId)));
