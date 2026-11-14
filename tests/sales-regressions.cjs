@@ -932,42 +932,169 @@ test('Unverified CB rate displays as missing rather than falsely showing zero ye
   assert(!text.includes('CB2000 ¥2000'));
 });
 
-test('Existing unchanged prices are not overwritten; invalid new and changed counts stop saving',()=>{
+test('Existing reported counts can be corrected at their immutable saved unit rate',()=>{
   const c=context(['getProductPricingOptions','verifyNewRecordPricing','verifyChangedRecordPricing',
-    'normalizeExistingResultMap','resultVariantKey','validateFinancialRecordForSave','recordConflict'],{
+    'normalizeExistingResultMap','resultVariantKey','validateFinancialRecordForSave',
+    'calculateResultsTotals','recordConflict'],{
     parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
     normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b)
   });
   const electric={id:'e',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
   const old={e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}};
   const untouched=JSON.stringify(old);
+  // Confirm the reported incident even if the price truly NEVER changed:
+  // legacy catalog rows may have only 'revenue', not pricingOptions.
+  // The previous validator rejected these because it demanded explicit tiers.
+  const oldFormatProduct={id:'legacySame',name:'保存単価同額',revenue:10000};
+  const unchangedPriceOld={x:{productId:'legacySame',cashback:0,count:2,revenuePerUnit:10000}};
+  const unchangedPriceNext={x:{...unchangedPriceOld.x,count:3}};
+  assert.equal(c.verifyChangedRecordPricing(
+    unchangedPriceNext,unchangedPriceOld,[oldFormatProduct]),'');
+  const samePriceTotals=c.calculateResultsTotals(unchangedPriceNext);
+  assert.equal(samePriceTotals.count,3);
+  assert.equal(samePriceTotals.revenue,30000);
+  assert.equal(c.validateFinancialRecordForSave({
+    results:unchangedPriceNext,totalCount:3,totalRevenue:30000
+  }),true);
+  // Catalog was repriced AFTER the sales report. Correct counts at that
+  // saved rate, never silently converting all five earlier deals to 10,000.
+  const correction={e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}};
   assert.equal(c.verifyChangedRecordPricing(old,old,[electric]),'');
-  assert.match(c.verifyChangedRecordPricing({
-    e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
-  },old,[electric]),/単価/);
-  // Updating a stale snapshot and its count together would silently overwrite
-  // five historical prices; the owner must audit/correct the old price first.
+  assert.equal(c.verifyChangedRecordPricing(correction,old,[electric]),'');
+  assert.deepEqual(
+    [...Object.entries(correction)].map(([key,value])=>[key,value.revenuePerUnit]),
+    [['e',2000]]
+  );
+  const correctedTotals=c.calculateResultsTotals(correction);
+  assert.equal(correctedTotals.count,6);
+  assert.equal(correctedTotals.revenue,12000);
+  assert.equal(c.validateFinancialRecordForSave({
+    results:correction,totalCount:6,totalRevenue:12000
+  }),true);
+  assert.equal(JSON.stringify(old),untouched,'historical saved row must not be mutated');
+
+  // Historical rate tampering and missing price stay blocked even if the
+  // current product catalog now uses the tampered amount.
   assert.match(c.verifyChangedRecordPricing({
     e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
   },old,[electric]),/金額訂正/);
-  assert.equal(c.verifyChangedRecordPricing({
-    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
-  },{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},[electric]),'');
-  assert.equal(JSON.stringify(old),untouched);
-  assert.equal(c.validateFinancialRecordForSave({
-    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},
-    totalCount:5,totalRevenue:50000
-  }),true);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:null}
+  },old,[electric]),/金額訂正/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:0}
+  },old,[electric]),/金額訂正/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
+  },{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},[electric]),/金額訂正/);
   assert.throws(()=>c.validateFinancialRecordForSave({
-    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}},
-    totalCount:5,totalRevenue:50000
+    results:correction,totalCount:6,totalRevenue:60000
   }),/合計/);
   assert.throws(()=>c.validateFinancialRecordForSave({
     results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},
     totalCount:5,totalRevenue:0
   }),/未設定/);
+
+  // No previously reported positive count: a fresh product row MUST still
+  // use the current approved price, never a stale historical or CB value.
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:1,revenuePerUnit:2000}
+  },{e:{productId:'e',cashback:0,count:0,revenuePerUnit:2000}},[electric]),/単価/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{...correction.e},
+    newlyAdded:{productId:'e',cashback:2000,count:1,revenuePerUnit:2000}
+  },old,[electric]),/CB|単価/);
+  const freshProduct={id:'new',pricingOptions:[{cashback:0,revenuePerUnit:7000}]};
+  assert.equal(c.verifyChangedRecordPricing({
+    e:{...correction.e},
+    fresh:{productId:'new',cashback:0,count:1,revenuePerUnit:7000}
+  },old,[electric,freshProduct]),'');
+  // A deleted product's historical line can still be corrected with its
+  // exact old unit rate. This must never recreate the product catalog.
+  assert.equal(c.verifyChangedRecordPricing(correction,old,[]),'');
+  assert.equal(c.verifyChangedRecordPricing({},old,[electric]),'');
 });
 
+test('2班 leader: saving an extra count persists the original unit rate and atomic audit', async()=>{
+  const date='2026-11-14',recordId='legacy-record-1',uid='leader2';
+  const initial={companyId:'hub',uid,date,teamId:'team2',teamNameSnapshot:'2班',
+    memberNameSnapshot:'現場リーダー',workLocation:'現場A',reportStatus:'submitted',
+    results:{legacy:{productId:'legacy',productName:'既存商材',cashback:0,count:2,revenuePerUnit:10000}},
+    totalCount:2,totalRevenue:20000,updatedAt:'baseline',createdByUid:'creator',custom:'do-not-delete'};
+  const original=structuredClone(initial);
+  let stored=structuredClone(initial),audit=null,recordWrites=0,errors=[],success=[];
+  const documentFunctions={
+    doc:(...args)=>args.length===1
+      ? {id:'audit-new',path:'recordCorrections/audit-new'}
+      : {id:args.at(-1),path:args.slice(1).join('/')},
+    collection:(db,name)=>({path:name}),
+    serverTimestamp:()=> 'test-timestamp'
+  };
+  const ctx=context(['resultVariantKey','normalizeExistingResultMap','getProductPricingOptions',
+    'verifyNewRecordPricing','verifyChangedRecordPricing','recordConflict',
+    'recordRevision','calculateResultsTotals','validateFinancialRecordForSave',
+    'persistDailyRecord'],{
+    ...documentFunctions,db:{},currentUser:{uid},currentUserData:{
+      uid,companyId:'hub',name:'現場リーダー',teamId:'team2',role:'leader'
+    },
+    members:[{id:uid,uid,name:'現場リーダー',teamId:'team2',active:true}],
+    products:[{id:'legacy',name:'既存商材',revenue:10000}],
+    teams:[{id:'team2',name:'2班',active:true}],records:[{id:recordId,...structuredClone(initial)}],
+    dashboardMonth:{value:'2026-11'},recordsSubscribedMonth:'2026-11',
+    recordSaveStatus:{style:{},textContent:''},saveRecordButton:{textContent:'実績を更新'},
+    recordDate:{value:date},recordMember:{value:uid},recordLocation:{value:'現場A'},
+    recordCorrectionTeam:{value:'team2'},editingRecordId:recordId,
+    recordSaveInProgress:false,editingRecordRevision:null,zeroResultRequested:false,
+    isCurrentCompanyOwner:()=>false,isCurrentTeamLeader:()=>true,
+    canCurrentUserCorrectRecord:()=>true,
+    clearMessages:()=>{},showError:e=>errors.push(e),showSuccess:m=>success.push(m),
+    setRecordSaveInProgress:v=>{ctx.recordSaveInProgress=v},
+    getCurrentInputResults:()=>({legacy:{
+      productId:'legacy',productName:'既存商材',cashback:0,count:3,revenuePerUnit:10000
+    }}),
+    validateProductInputRows:()=>'',findDailyRecord:()=>({id:recordId,...structuredClone(initial)}),
+    parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
+    normalizeCashbackOptions:()=>[0],
+    query:()=>({}),where:()=>({}),recordsCollectionQuery:()=>({}),
+    getDocsFromServer:async()=>({size:1,docs:[{id:recordId}]}),
+    runTransaction:async(db,fn)=>fn({
+      get:async()=>({id:recordId,exists:()=>true,data:()=>stored}),
+      set:(ref,data,options)=>{
+        if(ref.path==='records/'+recordId) {
+          assert(options.mergeFields.includes('results'));
+          stored={...stored,...data};
+          recordWrites++;
+        } else if(ref.path==='recordCorrections/audit-new') {
+          audit=structuredClone(data);
+        } else throw Error('unexpected write path '+ref.path);
+      }
+    }),
+    getDoc:async()=>({exists:()=>true,data:()=>structuredClone(stored)}),
+    renderDashboard:()=>{},createMonthOptions:()=>{},subscribeSelectedMonthRecords:()=>{},
+    formatYen:n=>'¥'+n.toLocaleString('ja-JP'),
+    recordFormLookupGeneration:0
+  });
+  ctx.editingRecordRevision=ctx.recordRevision(initial);
+  const click=handler('saveRecordButton');
+  require('node:vm').runInContext(click,ctx);
+  await ctx.saveRecordButton.onclick();
+  assert.deepEqual(errors,[],'leader must not be blocked when saved and catalog rates match');
+  assert.equal(recordWrites,1,'exactly one guarded record transaction');
+  assert.equal(stored.totalCount,3);
+  assert.equal(stored.totalRevenue,30000);
+  assert.equal(stored.results.legacy.revenuePerUnit,10000);
+  assert.equal(stored.createdByUid,'creator');
+  assert.equal(stored.custom,'do-not-delete');
+  assert.equal(audit.before.totalCount,2);
+  assert.equal(audit.before.totalRevenue,20000);
+  assert.equal(audit.after.totalCount,3);
+  assert.equal(audit.after.totalRevenue,30000);
+  assert.equal(audit.before.results.legacy.revenuePerUnit,10000);
+  assert.equal(audit.after.results.legacy.revenuePerUnit,10000);
+  assert.deepEqual(initial,original,'original record cannot be rewritten by client');
+  assert.equal(ctx.recordSaveInProgress,false);
+  assert(success.some(message=>message.includes('保存')));
+});
 
 test('Changing current product price recalculates ALL existing deals on screen, without touching Firestore history',()=>{
   const catalog=[
@@ -1580,9 +1707,9 @@ test('all products: selected cashback plan determines sale rate; no cashback amo
   assert.match(mock.verifyNewRecordPricing({l:{productId:'legacy',cashback:20000,count:1,revenuePerUnit:20000}},[legacy]),/旧形式/);
 });
 
-test('existing records: adding one deal at an obsolete price is stopped, unchanged old snapshots remain untouched',()=>{
+test('existing counts correct at saved rate; newly added obsolete-price plans remain blocked',()=>{
   const mock=context(['resultVariantKey','normalizeExistingResultMap','getProductPricingOptions',
-    'verifyNewRecordPricing','verifyChangedRecordPricing'],{
+    'verifyNewRecordPricing','verifyChangedRecordPricing','calculateResultsTotals'],{
     parseLegacyCashbackProductName:()=>({hasCashbackPlan:false})
   });
   const product={id:'electric',name:'とくする電気',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
@@ -1590,9 +1717,17 @@ test('existing records: adding one deal at an obsolete price is stopped, unchang
   const original=JSON.stringify(old);
   const same={electric__cb_0:{...old.electric__cb_0}};
   assert.equal(mock.verifyChangedRecordPricing(same,old,[product]),'');
+  const corrected={electric__cb_0:{...old.electric__cb_0,count:6}};
+  assert.equal(mock.verifyChangedRecordPricing(corrected,old,[product]),'');
+  assert.equal(mock.calculateResultsTotals(corrected).revenue,12000,
+    'historical price must not become 10000 when quantity is corrected');
   assert.match(mock.verifyChangedRecordPricing({
-    electric__cb_0:{...old.electric__cb_0,count:6}
-  },old,[product]),/単価/);
+    electric__cb_0:{...old.electric__cb_0,count:6,revenuePerUnit:10000}
+  },old,[product]),/金額訂正/);
+  assert.match(mock.verifyChangedRecordPricing({
+    electric__cb_0:{...corrected.electric__cb_0},
+    newCB:{productId:'electric',cashback:2000,count:1,revenuePerUnit:2000}
+  },old,[product]),/CB|単価/);
   assert.equal(JSON.stringify(old),original);
 });
 

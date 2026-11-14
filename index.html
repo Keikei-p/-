@@ -22758,14 +22758,26 @@ function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) 
       continue;
     }
     if (priorCount > 0) {
-      const current = (productCatalog || []).find(p => p.id === previous.productId);
-      const explicit = current && Array.isArray(current.pricingOptions) &&
-        current.pricingOptions.find(opt => Number(opt.cashback) === Number(previous.cashback ?? 0));
-      if (!explicit || !Number.isSafeInteger(Number(explicit.revenuePerUnit)) ||
-          Number(previous.revenuePerUnit) !== Number(explicit.revenuePerUnit))
-        return "過去実績の売上単価が現在と異なります。件数変更の前にオーナーが金額訂正を確認してください。";
+      // A correction to an already-reported line must use its saved rate.
+      // The current catalog price may have changed after the report date.
+      // Never reprice historical sales, turn missing rates into zero, or
+      // silently mix today's approved rate into the existing line.
+      if (next) {
+        const savedRate = Number(previous.revenuePerUnit);
+        const nextRate = Number(next.revenuePerUnit);
+        if (previous.revenuePerUnit == null || previous.revenuePerUnit === "" ||
+            next.revenuePerUnit == null || next.revenuePerUnit === "" ||
+            !Number.isSafeInteger(savedRate) || savedRate < 0 ||
+            !Number.isSafeInteger(nextRate) || nextRate !== savedRate)
+          return "保存済み売上単価は件数訂正で変更できません。オーナーの金額訂正を利用してください。";
+      }
+      // Valid historical rate + same product/CB: only the count is corrected.
+      // validateFinancialRecordForSave still checks count * saved rate and
+      // persistDailyRecord writes an audit in the same guarded transaction.
+      continue;
     }
     if (next) {
+      // A zero-count historical line becoming positive is a new sale.
       const problem = verifyNewRecordPricing({[key]:next},productCatalog);
       if (problem) return "件数変更前に単価の再確認が必要です。"+problem;
     }
