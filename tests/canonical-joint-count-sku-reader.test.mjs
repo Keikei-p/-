@@ -191,7 +191,7 @@ test("verified active partner roster preserves no-report staff and historic coun
   x=>{x.partnerSources[0].roster.push({...x.partnerSources[0].roster[1]});},
   x=>{x.partnerSources[0].roster[1].teamId="foreign";},
   x=>{x.partnerSources[0].roster[1].name="CB"},
-  x=>{x.partnerSources[0].roster[1].uid="not:allowed"}
+  x=>{x.partnerSources[0].roster[1].uid="not/allowed"}
  ]){
   const bad=structuredClone(input);
   change(bad);
