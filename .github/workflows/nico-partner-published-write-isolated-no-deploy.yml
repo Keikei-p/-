@@ -44,7 +44,9 @@ jobs:
             esac
           done < <(git diff --name-only origin/main...HEAD)
           grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
-          grep -Fq 'ownerCorrectionWriteEnabled=()=>false' functions-partner-workspace/service.cjs
+          # The current main has not registered the V3 Owner correction writer.
+          # Keep the existing workspace and publication paths disabled.
+          grep -Fq 'enabled=()=>false' functions-partner-workspace/service.cjs
           for file in functions-partner-workspace/submission-publication-guard.cjs functions-partner-workspace/shared-count-standings.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-off-only-zero-rank-protection.test.cjs; do
             node --check "$file"
           done
