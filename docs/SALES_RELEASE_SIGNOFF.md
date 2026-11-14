@@ -982,3 +982,36 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - **未完了**: PR #322の最新HEADに対する保護ゲートと全体CI、main統合、Functions 2本、Hosting 1ファイル、公開後の画面・実メール受信・実アカウント招待確認。実際に成功していない項目を完了扱いしない。
 
 - **保護ゲート再審査**: 専用CIとSales App Validation成功後、接続中の管理者GitHubアカウントでPR #322に `sales-production-reviewed` ラベルが付与された。最初の保護ゲートはラベル付与前に起動していたため、この追記でラベル付きの最新HEADを再検証する。本人の独立署名取得済みとは表示しない。
+
+---
+
+# PR #705 — 保存済み単価を保護した件数追加の緊急復旧（2026-11-14）
+
+## 対象と理由
+
+- 対象：NICO FACTORY 営業実績アプリ、Firebase project `sales-management-cc116`、本番 `https://nico-factory.web.app/`。
+- 復旧対象：2班リーダーが既存日の件数を追加・更新すると、「過去実績の売上単価が現在と異なります」と表示され保存できない障害。
+- 根本原因：旧形式の商材マスターに `pricingOptions` がない場合、保存済み単価と現行 `revenue` が**同額でも**件数訂正を不適切に拒否する条件があった。
+- リリース対象：PR #705 `fix/sales-count-correction-historical-price-20261114` の修正。**コード上の挙動変更は `index.html` の `verifyChangedRecordPricing` のみ**。関連テストは `tests/sales-regressions.cjs`。
+
+## 検証結果（署名とは別）
+
+- [x] [Sales App Validation #43585820532](https://github.com/Keikei-p/-/actions/runs/43585820532) SUCCESS：販売回帰 **74/74**（保存ボタン→原子的訂正→監査履歴の2班リーダー試験を含む）、Rules emulator **48/48**、他の検証も成功。
+- [x] [Record Audit Preflight #43585820640](https://github.com/Keikei-p/-/actions/runs/43585820640) SUCCESS。
+- [x] [Month-scoped sales history #43585820536](https://github.com/Keikei-p/-/actions/runs/43585820536) SUCCESS。
+- [x] 修正対象は保存済み行の数量のみ。既存の保存時単価・CB・記録ID・保存済み件数・元売上・作成者/日時は自動書換えしない。新規行の現在単価審査、曖昧なCB、単価未設定、修正権限、同時編集競合、訂正監査は維持。
+- [x] Firestore Rules、Functions、Auth、データ移行、ランキング・協力店機能は変更しない。
+
+## 本番公開の必須承認（未完了・実施済みと書かない）
+
+- [ ] **保守管理者によるPR #705の独立レビュー**：対象diff、元売上への影響、変更範囲を確認。
+- [ ] **本人の真正な署名／承認日時**：署名者 `未記入`、日付 `未記入`。アシスタントによる代筆・推定・電子署名の偽装禁止。
+- [ ] 保守管理者が `sales-production-reviewed` ラベルを付け、最新HEADのprotected-change-guardがPASS。
+- [ ] 現行Firebase Hosting版とリリース対象HTMLの差分・他アセット不変・回復手順を独立に確認。必要なバックアップ/隔離復元の記録を再点検。
+- [ ] 承認済みHEADをmainへ反映した後に**既存 `index.html` のみ**を限定公開。全Hosting資産上書き、Rules、Functions、Firestoreデータの書込み禁止。
+- [ ] 新旧Hosting URLとiPhone実アカウントで、ログイン、2班の既存記録＋1件保存、訂正履歴、金額権限、Ownerの従来売上表示、他班拒否を検証。公開版/コミットSHAを確認。
+- [ ] 不具合時は元Hosting版へロールバックし、元Firestore記録は初期化しない。
+
+**判定：NO-GO（コード/模擬テストPASS、管理者署名・本番配備・実機保存は未了）。**
+
+この未署名のレビュー記録を**承認済みの文書とみなしてはいけない**。ユーザーの「本番にして」はリリース希望であり、GitHubの実管理者署名・独立レビューを代行するものではない。
