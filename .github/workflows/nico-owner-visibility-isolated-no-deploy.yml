@@ -6,6 +6,9 @@ on:
       - ranking/owner-product-visibility-rankings.mjs
       - functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
       - tests/owner-product-visibility-rankings.test.mjs
+      - ranking/verified-dual-count-dashboards.mjs
+      - functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+      - tests/verified-dual-count-dashboards.test.mjs
       - .github/workflows/nico-owner-visibility-isolated-no-deploy.yml
 permissions:
   contents: read
@@ -36,17 +39,21 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
+              ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|ranking/verified-dual-count-dashboards.mjs|functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs|tests/verified-dual-count-dashboards.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_SCOPE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
           cmp ranking/owner-product-visibility-rankings.mjs functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
+          cmp ranking/verified-dual-count-dashboards.mjs functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          node --check ranking/verified-dual-count-dashboards.mjs
+          node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          node --check tests/verified-dual-count-dashboards.test.mjs
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
           node --check tests/owner-product-visibility-rankings.test.mjs
       - name: Verify Owner ON OFF applies only verified IDs and preserves counts
         run: |
-          node --test tests/owner-product-visibility-rankings.test.mjs
+          node --test tests/owner-product-visibility-rankings.test.mjs tests/verified-dual-count-dashboards.test.mjs
           echo 'OWNER_VISIBILITY_PURE_COUNT_PROJECTION_PASS_NO_DEPLOY'
       - name: Never deploy or infer production signoff
         run: |
