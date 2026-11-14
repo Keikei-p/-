@@ -138,6 +138,9 @@ test("owner ranking source rejects ledger drift and unknown or double-counted co
  assert.equal(projectVerifiedInlineJointCards(valid,opts("hub_owner")).companies.length,2);
  const corruptions=[
   d=>{d.summary.own++;d.summary.total++;}, // self+partner looks consistent, company sum does not
+  d=>{d.summary.own++;d.summary.partner--;}, // total unchanged; own/partner switched
+  d=>{d.summary.unidentified++;}, // withheld count is not supported by company ledger
+  d=>{d.productRanking[0].count++;}, // product totals contradict the count ledger
   d=>{d.companyBreakdown.push(structuredClone(d.companyBreakdown[0]));},
   d=>{d.teamBreakdown[0].companyId="unknown-company";},
   d=>{d.teamBreakdown.push(structuredClone(d.teamBreakdown[0]));},
