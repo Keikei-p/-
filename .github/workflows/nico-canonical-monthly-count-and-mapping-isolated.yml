@@ -54,8 +54,11 @@ jobs:
               *) echo "STOP_UNREVIEWED_CANONICAL_SOURCE: $file"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/review/owner-product-visibility-core-no-deploy-20261114...HEAD)
-          grep -Fq 'NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false' sales-archive.js
-          grep -Fq 'NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false' partner-workspace.html
+          # The current main has no new inline-card flag, which is stricter
+          # than staging OFF. Reject either explicit enablement.
+          ! grep -Fq 'NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=true' sales-archive.js
+          ! grep -Fq 'NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=true' partner-workspace.html
+          grep -Fq 'NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED=false' sales-archive.js
           grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
       - name: Verify equal canonical and backend mirrored read-only modules
         shell: bash
