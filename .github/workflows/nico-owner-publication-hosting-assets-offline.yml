@@ -1,0 +1,35 @@
+name: NICO owner publication Hosting asset preflight (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-factory-sync.yml'
+      - '.github/workflows/nico-owner-publication-hosting-assets-offline.yml'
+      - 'tests/nico-owner-publication-hosting-assets.test.mjs'
+      - 'ranking/owner-product-visibility-*.mjs'
+      - 'ranking/owner-product-visibility-panel.css'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  asset-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check manual-only static Hosting packaging without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          node --test tests/nico-owner-publication-hosting-assets.test.mjs
+          echo 'OWNER_PUBLICATION_ASSET_PREFLIGHT_PASS_NO_DEPLOY'

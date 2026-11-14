@@ -64,3 +64,44 @@ test("unverified browser scope cannot bypass publication",async()=>{
   previousCounts:zeros(),nextCounts:zeros()}),
   /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
 });
+
+
+test("global OFF cannot be overridden by a partner-specific ON, and never rewrites history",async()=>{
+ const globallyOff={...visibility,version:2,enabledHubProductIds:[],
+  partnerOverrides:{[cid]:["nuro"]}};
+ const catalogV2={...catalog,version:2};
+ const expected=allowedPartnerCategories({hubId,cid,ownerUid,
+  visibility:globallyOff,mapping,products:[product]});
+ assert.deepEqual(expected,[]);
+ const {tx,verify,scope}=fixture({visible:globallyOff,publicCatalog:catalogV2});
+ const before={...zeros(),NURO:3};
+ await assert.doesNotReject(verify({tx,scope,previousCounts:before,
+  nextCounts:{...before}}));
+ await assert.rejects(verify({tx,scope,previousCounts:before,
+  nextCounts:{...before,NURO:4}}),/PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
+ await assert.rejects(verify({tx,scope,previousCounts:before,
+  nextCounts:{...before,NURO:0}}),/PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
+});
+
+test("company-specific OFF blocks new input even when the hub product is globally ON",async()=>{
+ const partnerOff={...visibility,version:3,
+  partnerOverrides:{[cid]:[]}};
+ const catalogV3={...catalog,version:3};
+ const expected=allowedPartnerCategories({hubId,cid,ownerUid,
+  visibility:partnerOff,mapping,products:[product]});
+ assert.deepEqual(expected,[]);
+ const {tx,verify,scope}=fixture({visible:partnerOff,publicCatalog:catalogV3});
+ const before={...zeros(),NURO:2};
+ await assert.doesNotReject(verify({tx,scope,previousCounts:before,
+  nextCounts:{...before}}));
+ await assert.rejects(verify({tx,scope,previousCounts:before,
+  nextCounts:{...before,NURO:1}}),/PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
+ const reenabled={...partnerOff,version:4,partnerOverrides:{[cid]:["nuro"]}};
+ const {tx:txOn,verify:verifyOn,scope:scopeOn}=fixture({
+  visible:reenabled,publicCatalog:{...catalog,version:4}});
+ const visibleAgain=allowedPartnerCategories({hubId,cid,ownerUid,
+  visibility:reenabled,mapping,products:[product]});
+ assert.deepEqual(visibleAgain,["NURO"]);
+ await assert.doesNotReject(verifyOn({tx:txOn,scope:scopeOn,
+  previousCounts:before,nextCounts:{...before,NURO:3}}));
+});

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {createOwnerReviewedSkuMappingStore}
  from "../ranking/owner-reviewed-sku-mapping-store.mjs";
 
@@ -116,6 +117,36 @@ test("partner user, double membership, revoked relation, unknown SKU and finance
  assert.equal(f.writes,0);
 });
 
+test("fullwidth amount-bearing Owner SKU labels cannot create an invalid saved mapping",async()=>{
+ for(const [product,name] of [
+  ["nuro","ＮＵＲＯ ＣＢ５０００"],
+  ["nuro","ＮＵＲＯ ＲＥＶＥＮＵＥ９０００"],
+  ["air","SoftBank ＵＮＩＴＰＲＩＣＥ１５０００"],
+  ["legacy","SB光・AIR（旧合算・未分類） ＣＢ５０００"]
+ ]){
+  const f=fake(),original=structuredClone(f.state.get("products/"+product));
+  f.state.set("products/"+product,{...original,name});
+  const before=structuredClone([...f.state.entries()]);
+  await assert.rejects(
+   f.store.change({principal:owner,partnerCompanyId:"partner",
+    partnerProductId:product==="legacy"?"partnerSku05":"partnerSku01",
+    hubProductId:product,expectedVersion:0}),
+   /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/,
+   "financial aliases must be rejected by the writer, not only later at ranking time"
+  );
+  assert.equal(f.writes,0);
+  assert.equal(f.state.has("companies/hub/rankingSkuMappings/shared"),false);
+  assert.deepEqual([...f.state.entries()],before,"no financial original or mapping/audit changed");
+ }
+});
+test("owner mapping writer and deployable isolated Function use identical financial fence",()=>{
+ const canonical=readFileSync(new URL(
+  "../ranking/owner-reviewed-sku-mapping-store.mjs",import.meta.url),"utf8");
+ const deployable=readFileSync(new URL(
+  "../functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs",
+  import.meta.url),"utf8");
+ assert.equal(deployable,canonical);
+});
 test("same partner cannot reuse a hub SKU across categories; audit removal remains possible",async()=>{
  const f=fake();
  await f.store.change({principal:owner,partnerCompanyId:"partner",

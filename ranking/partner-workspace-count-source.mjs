@@ -27,7 +27,7 @@ const validDay=v=>{
  return dt.getUTCFullYear()===y&&dt.getUTCMonth()+1===m&&dt.getUTCDate()===d;
 };
 function label(s) {
- if(typeof s!=="string"||!s.trim()||s.length>80||MONEY.test(s))stop();
+ if(typeof s!=="string"||!s.trim()||s.length>80||MONEY.test(s.normalize("NFKC")))stop();
  return s.replace(/[\r\n\t]/g," ").trim();
 }
 function safeNumber(n,max=Number.MAX_SAFE_INTEGER){

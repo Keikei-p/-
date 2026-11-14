@@ -121,6 +121,23 @@ test("period selections use actual day/week/month boundaries, month-to-date prev
  assert.equal(jan.range.previousStart,"2026-12-01");
  assert.equal(jan.range.previousEnd,"2026-12-31");
 });
+test("hub company/team rankings use competition ties and exclude unreported from official ranks",()=>{
+ const tied=build(fixture(1));
+ assert.deepEqual(tied.companyBreakdown.map(x=>[x.id,x.rank,x.count]),
+  [["hub",1,1],["partner",1,1]]);
+ assert.deepEqual(tied.teamBreakdown.map(x=>[x.companyId,x.rank,x.count]),
+  [["hub",1,1],["partner",1,1]]);
+ const absent=fixture(2);
+ absent.sources[1].records=[];
+ absent.sources[1].lines=[];
+ const noReport=build(absent);
+ assert.equal(noReport.companyBreakdown.find(x=>x.id==="partner").rank,null);
+ assert.equal(noReport.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,false);
+ assert.equal(noReport.teamBreakdown.some(x=>x.companyId==="partner"),false);
+ const zero=build(fixture(0));
+ assert.equal(zero.companyBreakdown.find(x=>x.id==="partner").rank,2);
+ assert.equal(zero.teamBreakdown.find(x=>x.companyId==="partner").rank,2);
+});
 test("owner company/team/product split; partner gets own detail and only approved public name+rank+count",()=>{
  const x=fixture(3);
  x.personGoals=[{companyId:"partner",uid:"p1",goalCount:8}];
@@ -251,12 +268,137 @@ test("NFKC financial labels fail closed in canonical and Functions ranking, ordi
   ]){
    const input=fixture(2),original=structuredClone(input);
    edit(input);
-   assert.throws(()=>buildFn(input),/INCOMPLETE_OR_UNAUTHORIZED/,value);
+   assert.throws(()=>buildFn(input),
+     /INCOMPLETE_OR_UNAUTHORIZED|Public document may embed monetary details/,
+     value+" must fail closed before publication");
    assert.equal(original.sources[1].companyLabel,"協力店A");
   }
   const valid=fixture(2);
   valid.sources[1].companyLabel="協力店Ａ";
   const result=buildFn(valid);
   assert.equal(result.companyBreakdown.find(x=>x.id==="partner").name,"協力店Ａ");
+ }
+});
+
+test("joint leaderboard ranks submitted zero, never scores unreported staff",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const original=fixture(2),before=structuredClone(original);
+  const hub=buildFn(original);
+  const submitted=hub.memberRanking.find(x=>x.id==="partner:p2");
+  const missing=hub.memberRanking.find(x=>x.id==="partner:p3");
+  assert.equal(submitted.reportStatus,"確定0件");
+  assert.equal(submitted.count,0);
+  assert(Number.isSafeInteger(submitted.rank)&&submitted.rank>0);
+  assert.equal(missing.reportStatus,"未報告");
+  assert.equal(missing.count,0);
+  assert.equal(missing.rank,null,
+   "a never-submitted staff member must not tie a genuine zero submission");
+  assert.equal(hub.memberRanking.at(-1).id,"partner:p3");
+  const partner=buildFn({...fixture(2),context:auth("partner_owner")});
+  assert.equal(partner.own.people.find(x=>x.id==="partner:p3").rank,null);
+  assert.equal(partner.own.people.find(x=>x.id==="partner:p3").reportStatus,"未報告");
+  assert(partner.publicRanking.members.some(x=>x.name==="協力店0件"&&x.count===0));
+  assert(!partner.publicRanking.members.some(x=>x.name==="協力店未報告"),
+   "public ranked names must contain only submitted reports");
+  assert.equal(partner.publicRanking.members.length,3);
+  assert.deepEqual(original,before,
+   "rank projection must not mutate source, counts or historical data");
+ }
+});
+
+test("SKU-filtered rankings retain submitted markers: zero is ranked, missing is not",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2),before=structuredClone(input);
+  const hub=buildFn({...input,filters:{productId:"nuro"}});
+  const submitted=hub.memberRanking.find(x=>x.id==="partner:p1");
+  const savedZero=hub.memberRanking.find(x=>x.id==="partner:p2");
+  const unreported=hub.memberRanking.find(x=>x.id==="partner:p3");
+  assert.equal(submitted.count,2);
+  assert.equal(submitted.reportStatus,"報告済");
+  assert.equal(savedZero.count,0);
+  assert.equal(savedZero.reportStatus,"確定0件");
+  assert(Number.isSafeInteger(savedZero.rank));
+  assert.equal(unreported.reportStatus,"未報告");
+  assert.equal(unreported.rank,null);
+  const partner=buildFn({...input,context:auth("partner_owner"),
+   filters:{productId:"nuro"}});
+  assert(partner.publicRanking.members.some(x=>x.name==="協力店0件"&&x.count===0));
+  assert(!partner.publicRanking.members.some(x=>x.name==="協力店未報告"));
+  assert.deepEqual(input,before,"SKU selection never changes original ledger");
+ }
+});
+
+test("a company without a submitted record never ties a submitted zero in public ranks",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2);
+  input.sources[1].records=[];
+  input.sources[1].lines=[];
+  const before=structuredClone(input);
+  const hub=buildFn(input);
+  assert.equal(hub.companyBreakdown.find(x=>x.id==="partner").count,0);
+  assert.equal(hub.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,false);
+  assert.equal(hub.companyBreakdown.find(x=>x.id==="hub").hasVerifiedSubmission,true);
+  const partner=buildFn({...input,context:auth("partner_owner")});
+  assert.equal(partner.own.count,0);
+  assert.deepEqual(partner.publicRanking.companies,
+   [{rank:1,name:"自社",count:1}]);
+  assert(!partner.publicRanking.members.some(x=>x.company==="協力店A"));
+  assert.deepEqual(input,before,"unreported companies are never zero-filled");
+ }
+});
+
+
+test("saved zero company is ranked, unreported company is not",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(0);
+  input.sources[0].records=[];input.sources[0].lines=[];
+  const original=structuredClone(input),owner=buildFn(input);
+  assert.equal(owner.companyBreakdown.find(x=>x.id==="hub").hasVerifiedSubmission,false);
+  assert.equal(owner.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,true);
+  const partner=buildFn({...input,context:auth("partner_owner")});
+  assert.deepEqual(partner.publicRanking.companies,[{rank:1,name:"協力店A",count:0}]);
+  assert.deepEqual(input,original);
+ }
+});
+
+test("colon-containing company and team IDs never combine different companies' team counts",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2);
+  // Both display IDs become hub:a:team. The source identity is the pair,
+  // so it must not make the partner's score part of the internal team.
+  const own=input.sources[0],partner=input.sources[1];
+  own.teams[0].id="a:team";
+  for(const row of [...own.roster,...own.records,...own.lines])row.teamId="a:team";
+  partner.companyId="hub:a";
+  for(const row of [...partner.records,...partner.lines,...partner.products])row.companyId="hub:a";
+  for(const row of input.productGroups)if(row.companyId==="partner")row.companyId="hub:a";
+  input.approvedCompanyIds=["hub","hub:a"];
+  input.context.approvedCompanyIds=["hub","hub:a"];
+  const before=structuredClone(input),hub=buildFn(input);
+  assert.deepEqual(hub.teamBreakdown.map(x=>[x.companyId,x.count]),
+   [["hub",1],["hub:a",2]]);
+  assert.deepEqual(hub.summary,{own:1,partner:2,total:3,unidentified:0});
+  const partnerView=buildFn({...input,context:{...input.context,
+   role:"partner_owner",viewerCompanyId:"hub:a"}});
+  assert.deepEqual(partnerView.publicRanking.teams,[
+   {rank:1,name:"営業班",company:"協力店A",count:2},
+   {rank:2,name:"営業班",company:"自社",count:1}
+  ]);
+  assert.deepEqual(input,before,"ranking never changes original team snapshots");
+ }
+});
+
+test("reviewed group ID cannot collide with an unmatched partner SKU",()=>{
+ for(const buildFn of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  const input=fixture(2),before=structuredClone(input);
+  // A verified internal SKU and a different unmatched partner SKU would
+  // otherwise share this display/aggregation ID and inflate a product rank.
+  input.productGroups[0].groupId="unmapped:partner:partnerSku05";
+  input.productGroups[0].groupName="SB光・AIR";
+  input.sources[1].lines[0].count=1;
+  input.sources[1].lines.push(ln(input.sources[1].records[0],"partnerSku05",1,1));
+  const original=structuredClone(input);
+  assert.throws(()=>buildFn(input),/VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED/);
+  assert.deepEqual(input,original,"reject without modifying any original count lines");
  }
 });

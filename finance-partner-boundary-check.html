@@ -50,6 +50,8 @@ input{width:100%;padding:12px;border:1px solid #aebdcc;border-radius:10px;font-s
 <div class="output"><span>ログインと自社所属</span><span id="identity">未確認</span></div>
 <div class="output"><span>商材の金額原票（LIST / GET）</span><span id="products">未確認</span></div>
 <div class="output"><span>実績の金額原票（LIST / GET）</span><span id="records">未確認</span></div>
+<div class="output"><span>実績訂正履歴の金額原票（LIST / GET）</span><span id="recordCorrections">未確認</span></div>
+<div class="output"><span>売上目標の金額原票（LIST / GET）</span><span id="revenueGoals">未確認</span></div>
 <div class="output"><span>協力店件数画面（読取のみ）</span><span id="counts">未確認</span></div>
 <p class="muted" id="meaning">**重要：** 自社から協力店に移った実アカウントは、Rules変更前にこの画面で「LIST許可・GET許可」を確認し、<strong>画面を閉じずに</strong>切替後も再実行してください。旧自社情報の読み取りが拒否されても、本人の所属情報と直前に検証した文書IDをこの画面内だけで一時保持し、GETも試します。再読み込みすると文書IDは消え、その場合は「GET未検証」と表示します。独立した実UID照合と件数入力継続確認は別途必要です。</p>
 <p><a href="./">営業実績管理へ戻る</a></p>
@@ -61,6 +63,9 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/12.
 const PROJECT="sales-management-cc116";
 const BASE="https://firestore.googleapis.com/v1/projects/"+PROJECT+"/databases/(default)/documents";
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
+// Four root-level financial originals: a partial two-collection PASS is never
+// considered complete boundary proof. Values remain omitted from all probes.
+const FINANCE_COLLECTIONS=Object.freeze(["products","records","recordCorrections","revenueGoals"]);
 const $=id=>document.getElementById(id);
 // A named diagnostic-only Firebase app prevents this sign-in/out from
 // switching the normal sales-app Firebase Auth session.
@@ -223,7 +228,7 @@ $("logout").onclick=async()=>{
 $("run").onclick=async()=>{
   if(busy)return;
   busy=true;$("run").disabled=true;
-  for(const name of ["identity","products","records","counts"])label(name,"検証中");
+  for(const name of ["identity",...FINANCE_COLLECTIONS,"counts"])label(name,"検証中");
   $("status").textContent="Firestoreの権限を読み取りのみで確認中";
   try{
     const user=auth.currentUser;
@@ -310,7 +315,7 @@ $("run").onclick=async()=>{
       account.role==="partner-candidate"?"旧自社所属（独立UID照合は別）":
       "現在の会社所属は未確認");
     const results={};
-    for(const name of ["products","records"]){
+    for(const name of FINANCE_COLLECTIONS){
       const handoffId=account.role==="partner-verified"&&
         ownerHandoff?.company===account.company?ownerHandoff.ids?.[name]:null;
       const result=await checkCollection(token,name,account.company,handoffId);
@@ -322,8 +327,8 @@ $("run").onclick=async()=>{
     // Firebase Auth user never grants the partner additional rights.
     if(account.role==="owner"&&["products","records"].every(name=>
       results[name].listStatus==="allowed"&&results[name].getStatus==="allowed")){
-      const ids=Object.fromEntries(["products","records"].map(name=>
-        [name,previous.get(account.company+":"+name)]));
+      const ids=Object.fromEntries(FINANCE_COLLECTIONS.map(name=>
+        [name,previous.get(account.company+":"+name)||null]));
       // An Owner GET/LIST success alone is not a trusted company link.
       // The authenticated Hub workspace must independently confirm which
       // partner companies are currently active and count-sharing approved.
@@ -357,7 +362,7 @@ $("run").onclick=async()=>{
     else label("counts","協力店件数は未確認","unknown");
     $("status").textContent="診断終了。金額遮断の本番承認には別途、独立した実UID照合が必要です。";
   }catch{
-    for(const name of ["products","records","counts"])label(name,"未確認");
+    for(const name of [...FINANCE_COLLECTIONS,"counts"])label(name,"未確認");
     label("identity","認証・所属の確認が必要");
     $("status").textContent="診断を完了できませんでした。診断専用ログインと利用中の会社・所属を確認してください。";
   }finally{busy=false;$("run").disabled=!auth.currentUser;}

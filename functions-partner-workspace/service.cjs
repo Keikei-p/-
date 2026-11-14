@@ -9,16 +9,20 @@ const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME=/^[\p{L}\p{N} 　・ー（）()_.-]{1,60}$/u;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
-const money=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+// Partner-owned names become public ranking labels. Validate the SAME
+// normalized financial aliases at write time so a successful count entry
+// cannot later fail the stricter count-only ranking projection.
+const money=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
+const moneyName=x=>money.test(x.normalize("NFKC"));
 const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
- x.trim().length<=80&&!money.test(x);
+ x.trim().length<=80&&!moneyName(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,now=()=>Date.now()}={}){
+ submissionPublicationEnabled=()=>false,ownerCorrectionEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
- const validName=x=>typeof x==="string"&&NAME.test(x)&&!money.test(x);
+ const validName=x=>typeof x==="string"&&NAME.test(x)&&!moneyName(x);
  const validDate=x=>{
   if(typeof x!=="string"||!DATE.test(x))fail("invalid-argument");
   const t=Date.parse(x+"T00:00:00Z"),d=new Date(t);
@@ -35,7 +39,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {counts,total};
  };
  const validPrivateName=x=>typeof x==="string"&&x.trim().length>0&&
- x.trim().length<=80&&!money.test(x);
+ x.trim().length<=80&&!moneyName(x);
  const validatePrivateCounts=x=>{
   if(!x||typeof x!=="object"||Array.isArray(x)||Object.keys(x).length>100)
     fail("invalid-argument");
@@ -246,7 +250,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     rel.hubCompanyId!==hubId||c.hubCompanyId!==hubId||
     c.companyKind!=="partner"||c.active!==true||
     !validCompanyName(c.name))fail("failed-precondition");
-  return {active:rel.active===true&&rel.countSharingApproved===true};
+  return {active:rel.active===true&&rel.countSharingApproved===true,
+  companyName:clean(c.name)};
  }
  const canStaff=(s,staff)=>{
   return ["owner","leader"].includes(s.role)||
@@ -622,21 +627,34 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // The separate direct-company ranking is intentionally NOT guessed here.
  async function loadSharedPartnerRankings(s,date,period){
   if(sharedRankingEnabled()!==true)fail("unavailable");
-  if(!["day","month"].includes(period))fail("invalid-argument");
+  if(!["day","week","month"].includes(period))fail("invalid-argument");
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
   const today=jstToday(),month=date.slice(0,7);
-  const start=period==="month"?month+"-01":date;
-  const end=period==="month"?
-   (month===today.slice(0,7)?today:
-    new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)):
-   date;
+  // This legacy partner-only path uses independent Firestore reads, not
+  // the verified two-month atomic snapshot required for a cross-month week.
+  // Week-to-date inside one month is allowed; crossing months fails closed.
+  const weekMonday=new Date(date+"T12:00:00Z");
+  weekMonday.setUTCDate(weekMonday.getUTCDate()-((weekMonday.getUTCDay()+6)%7));
+  const weekSunday=new Date(weekMonday);
+  weekSunday.setUTCDate(weekSunday.getUTCDate()+6);
+  const start=period==="month"?month+"-01":
+   period==="week"?weekMonday.toISOString().slice(0,10):date;
+  const formalEnd=period==="month"?
+   new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10):
+   period==="week"?weekSunday.toISOString().slice(0,10):date;
+  const end=formalEnd>today?today:formalEnd;
   if(end<start||end>today)fail("invalid-argument");
+  // Never publish a partially reconciled cross-month weekly leaderboard.
+  // The canonical atomic ranking endpoint has a separate two-month gate.
+  if(period==="week"&&start.slice(0,7)!==end.slice(0,7))
+   fail("failed-precondition");
   const days=[];
   for(let cursor=new Date(start+"T00:00:00Z");cursor<=new Date(end+"T00:00:00Z");
       cursor.setUTCDate(cursor.getUTCDate()+1))
    days.push(cursor.toISOString().slice(0,10));
-  if(days.length<1||days.length>31)fail("resource-exhausted");
+  if(days.length<1||days.length>31||
+     (period==="week"&&days.length>7))fail("resource-exhausted");
   const [hub,relations,visibility,mapping,publicCatalog]=await Promise.all([
    db.collection("companies").doc(hubId).get(),
    db.collection("partnerRelations").where("hubCompanyId","==",hubId).limit(101).get(),
@@ -756,10 +774,16 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  async function view(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date);
   const s=await scope(a.uid,null,d.workspaceCompanyId);
+  const correctionRequested=d.includeOwnerCorrectionEntries===true;
+  if(d.includeOwnerCorrectionEntries!==undefined&&
+     (!correctionRequested||s.kind!=="hub"||s.role!=="owner"||
+      ownerCorrectionEnabled()!==true||submissionPublicationEnabled()!==true||
+      !ID.test(d.partnerCompanyId||"")||d.includeTeamStatus!==undefined))
+   fail("invalid-argument");
   if(d.sharedCountRankings!==undefined){
    if(d.sharedCountRankings!==true||
       (d.rankingPeriod!==undefined&&
-       !["day","month"].includes(d.rankingPeriod))||
+       !["day","week","month"].includes(d.rankingPeriod))||
       d.partnerCompanyId!==undefined||d.includeTeamStatus!==undefined)
     fail("invalid-argument");
    return loadSharedPartnerRankings(s,date,d.rankingPeriod||"day");
@@ -795,7 +819,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    registeredCompanies.sort((a,b)=>a.name.localeCompare(b.name,"ja"));
    // Explicitly scoped, on-demand shared-count breakdown. Never read
    // financial originals, private products, or reveal staff identities.
-   let partnerTeamDetails=null;
+   let partnerTeamDetails=null,ownerCorrectionEntries=null,partnerStaffEntryCount=0,
+    partnerStaffCategoryTotals=null;
    const selectedPartnerId=clean(d.partnerCompanyId);
    if(selectedPartnerId){
     if(!ID.test(selectedPartnerId))fail("invalid-argument");
@@ -806,6 +831,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      collection(selectedPartnerId,"partnerWorkEntries").where("date","==",date).limit(201).get()
     ]);
     if(teamSnaps.size>150||entrySnaps.size>200)fail("resource-exhausted");
+    partnerStaffEntryCount=entrySnaps.size;
+    partnerStaffCategoryTotals=Object.fromEntries(KEYS.map(k=>[k,0]));
     const rows=new Map();
     for(const sn of teamSnaps.docs){
      const t=sn.data()||{};
@@ -818,13 +845,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      });
     }
     let unverifiedTeamCount=0,verifiedSharedCount=0;
+    const verifiedStaffDays=new Set();
     for(const sn of entrySnaps.docs){
      const e=sn.data()||{};
+     // The doc path is authoritative: foreign, alias and duplicate staff
+     // rows cannot inflate Owner company/team count-only summaries.
      if(e.companyId!==selectedPartnerId||e.hubCompanyId!==s.cid||
         e.date!==date||!ID.test(e.staffId||"")||
-        !Number.isSafeInteger(e.version)||e.version<1)fail("data-loss");
+        sn.id!==date+"__"+e.staffId||
+        verifiedStaffDays.has(e.staffId)||
+        !Number.isSafeInteger(e.version)||e.version<1||e.version>999)
+      fail("data-loss");
+     verifiedStaffDays.add(e.staffId);
      const item=validateCounts(e.counts);
      if(item.total!==e.totalCount)fail("data-loss");
+     // Validate each SKU independently. Equal grand totals may hide one
+     // incorrectly assigned product when two counts were swapped.
+     for(const key of KEYS)partnerStaffCategoryTotals[key]+=item.counts[key];
      const row=rows.get(e.teamIdSnapshot||"");
      if(!row){
       // Never fabricate an old team based on someone's current membership.
@@ -841,6 +878,46 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      teams:[...rows.values()].sort((a,b)=>a.name.localeCompare(b.name,"ja")),
      verifiedSharedCount,unverifiedTeamCount,scope:"shared_counts_only"
     };
+    if(correctionRequested){
+     // The hub Owner sees only count-only, bounded staff data of an already
+     // approved partner. No raw financial records or partner private catalog.
+     const blank=Object.fromEntries(KEYS.map(key=>[key,0]));
+     const policy=await verifySubmissionPublication({
+      tx:{get:ref=>ref.get()},
+      scope:{verifiedByServer:true,kind:"partner",uid:a.uid,
+       cid:selectedPartnerId,hubId:s.cid},
+      previousCounts:blank,nextCounts:blank
+     }).catch(()=>fail("failed-precondition"));
+     const peopleSnap=await collection(selectedPartnerId,"partnerWorkStaff").limit(151).get();
+     if(peopleSnap.size>150)fail("resource-exhausted");
+     const published=new Set(policy.enabledCategories);
+     const staff=peopleSnap.docs.map(doc=>{
+      const p=doc.data()||{};
+      if(!ID.test(doc.id)||p.companyId!==selectedPartnerId||
+         !validName(p.name)||!ID.test(p.teamId||"")||
+         typeof p.active!=="boolean")fail("data-loss");
+      return {id:doc.id,name:clean(p.name),teamId:p.teamId,
+       active:p.active===true};
+     });
+     const ids=new Set(staff.map(p=>p.id));
+     const records=entrySnaps.docs.map(doc=>{
+      const e=doc.data()||{},row=validateCounts(e.counts);
+      if(!ID.test(e.staffId||"")||doc.id!==date+"__"+e.staffId||
+         !ids.has(e.staffId)||e.companyId!==selectedPartnerId||
+         e.hubCompanyId!==s.cid||
+         e.date!==date||!Number.isSafeInteger(e.version)||
+         e.version<1||e.version>999||row.total!==e.totalCount)
+       fail("data-loss");
+      const visible=Object.fromEntries(KEYS.map(k=>
+       [k,published.has(k)?row.counts[k]:0]));
+      return {staffId:e.staffId,version:e.version,counts:visible,
+       totalCount:Object.values(visible).reduce((a,b)=>a+b,0),
+       teamIdSnapshot:e.teamIdSnapshot??null};
+     });
+     ownerCorrectionEntries={partnerCompanyId:selectedPartnerId,
+      date,companyName:chosen.name,enabledCategories:policy.enabledCategories,
+      categories:KEYS,staff,records};
+    }
    }
    const qs=await collection(s.cid,"partnerWorkCountDays").doc(date)
     .collection("reports").limit(201).get();
@@ -865,9 +942,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    partners.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
    if(partnerTeamDetails){
     const report=partners.find(x=>x.partnerCompanyId===partnerTeamDetails.partnerCompanyId);
-    partnerTeamDetails.unreconciledWithCompanyReport=Boolean(report&&
+    // Missing aggregate + saved per-person entries is an orphaned ledger,
+    // never an OK/verified count comparison. Missing with no entries is
+    // genuinely "not reported", distinct from a submitted 0.
+    partnerTeamDetails.companyReportStatus=report?"submitted":"not_reported";
+    partnerTeamDetails.unreconciledWithCompanyReport=report?
      report.totalCount!==partnerTeamDetails.verifiedSharedCount+
-       partnerTeamDetails.unverifiedTeamCount);
+       partnerTeamDetails.unverifiedTeamCount||
+     KEYS.some(key=>report.counts[key]!==partnerStaffCategoryTotals[key]):
+     partnerStaffEntryCount>0;
    }
    // Extra Firestore reads are opt-in. Default report/dashboard calls retain
    // their existing cost. Only approved hub Owner can invoke this branch.
@@ -899,15 +982,20 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
      const seenStaff=new Set();
      let unattributedEntries=0,reportedTotal=0;
+     const reportedCategories=Object.fromEntries(KEYS.map(k=>[k,0]));
      for(const doc of entriesSnap.docs){
       const row=doc.data()||{};
-      if(!ID.test(doc.id)||!ID.test(row.staffId||"")||
-         row.companyId!==cid||row.date!==date||
-         seenStaff.has(row.staffId))fail("data-loss");
+      // The optional all-company team status must use exactly the same
+      // saved staff/day identity and hub boundary as the correction API.
+      if(!ID.test(row.staffId||"")||
+         doc.id!==date+"__"+row.staffId||
+         row.companyId!==cid||row.hubCompanyId!==s.cid||
+         row.date!==date||seenStaff.has(row.staffId))fail("data-loss");
       seenStaff.add(row.staffId);
       const normalized=validateCounts(row.counts);
       if(row.totalCount!==normalized.total)fail("data-loss");
       reportedTotal+=normalized.total;
+      for(const key of KEYS)reportedCategories[key]+=normalized.counts[key];
       const team=status.get(row.teamIdSnapshot);
       if(!team){unattributedEntries++;continue;}
       // A saved zero-count row counts as submitted, not missing.
@@ -917,10 +1005,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }
      const aggregate=partners.find(p=>p.partnerCompanyId===cid);
      const consistent=unattributedEntries===0 &&
-      (aggregate?aggregate.totalCount===reportedTotal:seenStaff.size===0);
+      (aggregate?aggregate.totalCount===reportedTotal&&
+       KEYS.every(key=>aggregate.counts[key]===reportedCategories[key]):
+       seenStaff.size===0);
      const teams=[...status.values()].map(team=>({
-      ...team,status:team.reportedStaffCount>0?"submitted":
-       !consistent?"unverified":
+      // A submitted row is not independently verified when its saved
+      // product counts disagree with the company's original day report.
+      ...team,status:!consistent?"unverified":
+       team.reportedStaffCount>0?"submitted":
        team.staffCount>0?"missing":"not_expected"
      }));
      teamReports.push({partnerCompanyId:cid,name:company.name,
@@ -929,11 +1021,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    return {role:"hub",date,partners,registeredCompanies,categories:KEYS,
     ...(partnerTeamDetails?{partnerTeamDetails}:{}),
+    ...(ownerCorrectionEnabled()===true&&submissionPublicationEnabled()===true?
+     {ownerCorrectionAvailable:true}:{}),
+    ...(ownerCorrectionEntries?{ownerCorrectionEntries}:{}),
     ...(teamReports?{teamReports,teamStatusComplete:true}:{})};
   }
   // Company-wide partner breakdown is reserved for a verified internal hub
   // Owner; do not silently ignore forged hub options in a partner session.
-  if(d.includeTeamStatus===true||d.partnerCompanyId!=null)fail();
+  if(d.includeTeamStatus===true||d.partnerCompanyId!=null||
+     d.includeOwnerCorrectionEntries!==undefined)fail();
   const [teams,staff,entries,privateProducts]=await Promise.all([
     collection(s.cid,"partnerWorkTeams").limit(151).get(),
     collection(s.cid,"partnerWorkStaff").limit(151).get(),
@@ -957,13 +1053,27 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    allowed.set(sn.id,{id:sn.id,name:clean(x.name),teamId:x.teamId,
      kind:x.kind,role:x.role,uid:x.uid||null,active:x.active===true});
   }
-  const rows=[];
+  const rows=[],seenEntryStaff=new Set();
   for(const sn of entries.docs){
    const x=sn.data()||{};
-   if(x.companyId!==s.cid||x.date!==date||!ID.test(x.staffId||""))fail("data-loss");
-   if(!allowed.has(x.staffId))continue;
+   // Validate the stored original BEFORE applying any role-based projection.
+   // An aliased/duplicate staff-day record must never enter a count ranking
+   // or be silently ignored because its staff member is no longer visible.
+   if(x.companyId!==s.cid||x.hubCompanyId!==s.hubId||
+      x.date!==date||!ID.test(x.staffId||"")||
+      sn.id!==date+"__"+x.staffId||seenEntryStaff.has(x.staffId)||
+      !Number.isSafeInteger(x.version)||x.version<1||x.version>999)
+    fail("data-loss");
+   seenEntryStaff.add(x.staffId);
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
+   if(!allowed.has(x.staffId)){
+    // An Owner/leader must never receive an apparently complete team and
+    // person ranking if a historic staff record is missing from the roster.
+    // Members still only see their own staff-day entry: other staff stay hidden.
+    if(s.role==="owner"||s.role==="leader")fail("data-loss");
+    continue;
+   }
    // Return only saved, immutable attribution metadata from the original entry.
    // Never infer a historical team from the member's current teamId.
    // Old entries without a snapshot stay unverified in the dashboard.
@@ -976,8 +1086,31 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
+  // Read the same count-only publication policy used by submit(). This
+  // display read never authorizes a write; submit rechecks in its transaction.
+  let enabledCategories;
+  if(submissionPublicationEnabled()===true){
+   const zero=Object.fromEntries(KEYS.map(key=>[key,0]));
+   try{
+    const policy=await verifySubmissionPublication({
+     tx:{get:ref=>ref.get()},
+     scope:{verifiedByServer:true,kind:s.kind,uid:a.uid,cid:s.cid,hubId:s.hubId},
+     previousCounts:zero,nextCounts:zero
+    });
+    enabledCategories=policy.enabledCategories;
+   }catch{fail("failed-precondition");}
+  }
+  // OFF history remains intact in Firestore, but must not leak through a
+  // partner's count-only read (including developer tools or cached API JSON).
+  const publicRows=enabledCategories===undefined?rows:rows.map(row=>{
+   const allowed=new Set(enabledCategories);
+   const visible=Object.fromEntries(KEYS.map(k=>[k,allowed.has(k)?row.counts[k]:0]));
+   return {...row,counts:visible,
+    totalCount:KEYS.reduce((sum,k)=>sum+visible[k],0)};
+  });
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
-    teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    teams:visibleTeams,staff:[...allowed.values()],records:publicRows,categories:KEYS,
+    ...(enabledCategories?{enabledCategories}:{}),
     privateProducts:productList};
  }
  async function submit(request){
@@ -987,23 +1120,49 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   const s=await scope(a.uid,null,d.workspaceCompanyId);
-  if(s.kind!=="partner")fail();
+  // Owner correction is an explicit opt-in and never changes identity,
+  // partner membership, sales masters or private partner products.
+  const ownerTarget=d.ownerPartnerCompanyId;
+  const ownerCorrection=ownerTarget!==undefined;
+  if(ownerCorrection){
+   if(!ID.test(ownerTarget)||ownerCorrectionEnabled()!==true||
+      submissionPublicationEnabled()!==true||s.kind!=="hub"||
+      s.role!=="owner"||d.workspaceCompanyId!==undefined||hasPrivateCounts)
+    fail();
+  }else if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
    const fresh=await scope(a.uid,tx,d.workspaceCompanyId);
-   if(fresh.kind!=="partner"||fresh.cid!==s.cid)fail();
-   const sr=staffRef(s.cid,staffId),ss=await tx.get(sr),person=ss.data()||{};
-   if(!ss.exists||person.active!==true||person.companyId!==s.cid||
-      !validName(person.name)||!canStaff(fresh,person))fail();
-   const er=entryRef(s.cid,date,staffId),summary=summaryRef(s.hubId,date,s.cid);
+   let target=fresh;
+   if(ownerCorrection){
+    if(fresh.kind!=="hub"||fresh.role!=="owner"||fresh.cid!==s.cid)fail();
+    const partner=await hubPartner(tx,fresh.cid,ownerTarget);
+    if(!partner.active)fail("failed-precondition");
+    target={kind:"partner",uid:a.uid,cid:ownerTarget,hubId:fresh.cid,
+     companyName:partner.companyName,role:"owner"};
+   }else if(fresh.kind!=="partner"||fresh.cid!==s.cid)fail();
+   const sr=staffRef(target.cid,staffId),ss=await tx.get(sr),person=ss.data()||{};
+   // An internal hub Owner may correct an already submitted historical
+   // report even after the partner employee is archived. A normal partner
+   // submission still requires an ACTIVE staff member. Existing-record
+   // enforcement and optimistic version checks below remain mandatory.
+   if(!ss.exists||typeof person.active!=="boolean"||
+      (person.active!==true&&!ownerCorrection)||
+      person.companyId!==target.cid||
+      !validName(person.name)||!canStaff(target,person))fail();
+   const er=entryRef(target.cid,date,staffId),summary=summaryRef(target.hubId,date,target.cid);
    const privateProductIds=Object.keys(requestedPrivate||{});
    // All reads happen before writes. Do not infer product ownership from IDs.
-   const [oldSnap,totalSnap,...productSnapshots]=await Promise.all([
-    tx.get(er),tx.get(summary),
-    ...privateProductIds.map(id=>tx.get(privateProductRef(s.cid,id)))
+   // Normal partner saves update the same shared day summary as an Owner
+   // correction. Reconcile its existing staff rows inside this transaction
+   // for both paths, so a new save cannot perpetuate or repair source drift.
+   const dayQuery=collection(target.cid,"partnerWorkEntries").where("date","==",date).limit(201);
+   const [oldSnap,totalSnap,dayEntries,...productSnapshots]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(dayQuery),
+    ...privateProductIds.map(id=>tx.get(privateProductRef(target.cid,id)))
    ]);
    for(let i=0;i<privateProductIds.length;i++){
     const doc=productSnapshots[i],x=doc?.data()||{};
-    if(!doc?.exists||x.companyId!==s.cid||x.origin!=="partner_custom"||
+    if(!doc?.exists||x.companyId!==target.cid||x.origin!=="partner_custom"||
        x.visibility!=="private"||(x.active!==true&&requestedPrivate[privateProductIds[i]]>0))
       fail("failed-precondition");
    }
@@ -1011,28 +1170,114 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(oldSnap.exists&&old.version!==d.expectedVersion||!oldSnap.exists&&d.expectedVersion!==0)
      fail("aborted");
    if(d.expectedVersion>=999)fail("resource-exhausted");
+   // Owner corrections may edit only an already-registered staff report;
+   // never create a missing report or rewrite a historical quick-count day.
+   if(ownerCorrection&&(!oldSnap.exists||!totalSnap.exists))
+    fail("failed-precondition");
+   if(!Array.isArray(dayEntries?.docs)||dayEntries.size>200)
+    fail("resource-exhausted");
+   if(!oldSnap.exists&&dayEntries.size>=200)fail("resource-exhausted");
+   if(totalSnap.exists||dayEntries.size>0||oldSnap.exists){
+    // A staff save updates the entire partner day summary. Before
+    // any writes, prove that every saved staff entry already reconciles
+    // with each original category total, not just the grand total. Otherwise
+    // a stale/corrupt aggregate could be perpetuated by a valid correction.
+    if(!totalSnap.exists||dayEntries.size===0)fail("data-loss");
+    const dailyCounts=Object.fromEntries(KEYS.map(key=>[key,0]));
+    const staffDays=new Set();
+    let dailyTotal=0,targetFound=false;
+    for(const doc of dayEntries.docs){
+     const entry=doc.data()||{};
+     if(!ID.test(entry.staffId||"")||
+        doc.id!==date+"__"+entry.staffId||
+        entry.companyId!==target.cid||entry.hubCompanyId!==target.hubId||
+        entry.date!==date||staffDays.has(entry.staffId)||
+        !Number.isSafeInteger(entry.version)||entry.version<1||
+        entry.version>999)fail("data-loss");
+     staffDays.add(entry.staffId);
+     const checked=validateCounts(entry.counts);
+     if(checked.total!==entry.totalCount)fail("data-loss");
+     dailyTotal+=checked.total;
+     if(!Number.isSafeInteger(dailyTotal))fail("data-loss");
+     for(const key of KEYS){
+      dailyCounts[key]+=checked.counts[key];
+      if(!Number.isSafeInteger(dailyCounts[key]))fail("data-loss");
+     }
+     if(entry.staffId===staffId){
+      targetFound=true;
+      if(entry.version!==old.version||
+         KEYS.some(key=>checked.counts[key]!==old.counts?.[key]))
+       fail("data-loss");
+     }
+    }
+    const daySummary=validateCounts(existing.counts);
+    if(targetFound!==oldSnap.exists||existing.source!=="staff-entries-v1"||
+       daySummary.total!==dailyTotal||
+       existing.totalCount!==dailyTotal||
+       KEYS.some(key=>daySummary.counts[key]!==dailyCounts[key]))
+     fail("data-loss");
+    // Historical ledger identity must match its document paths before any
+    // save; never "heal" foreign / corrupt source documents.
+    if(existing.partnerCompanyId!==target.cid||
+       existing.hubCompanyId!==target.hubId||existing.date!==date)
+     fail("data-loss");
+   }
+   // A partner's normal edit must not silently repair or overwrite an
+   // aliased historical entry. Owner correction already validates the full
+   // day; apply the same saved identity boundary to partner edits.
+   if(oldSnap.exists&&!ownerCorrection){
+    const saved=validateCounts(old.counts);
+    if(old.companyId!==target.cid||old.hubCompanyId!==target.hubId||
+       old.staffId!==staffId||old.date!==date||
+       old.totalCount!==saved.total||
+       !Number.isSafeInteger(old.version)||old.version<1||old.version>999)
+     fail("data-loss");
+   }
+   // Even a new staff report must not extend a foreign or corrupt day
+   // summary. This is a read-only precondition, never an auto-repair.
+   if(totalSnap.exists&&!ownerCorrection){
+    const savedDay=validateCounts(existing.counts);
+    if(existing.partnerCompanyId!==target.cid||
+       existing.hubCompanyId!==target.hubId||existing.date!==date||
+       existing.totalCount!==savedDay.total)
+     fail("data-loss");
+   }
    // Never mix per-person entries with the earlier one-total-per-partner UI.
    if(totalSnap.exists&&existing.source!=="staff-entries-v1")fail("failed-precondition");
    const previousPrivate=oldSnap.exists?validatePrivateCounts(old.privateCounts||{}).counts:{};
+   if(ownerCorrection&&old.privateTotalCount!==
+      validatePrivateCounts(previousPrivate).total)fail("data-loss");
    const privateNext={...previousPrivate,...(requestedPrivate||{})};
    const privateValidated=validatePrivateCounts(privateNext);
    const prior=oldSnap.exists?validateCounts(old.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
-   // STAGING / hard OFF: validate server-owned publication in this SAME
-   // transaction against the original saved staff counts, before any writes.
-   // Never trust browser-provided prior counts or a claimed company/owner.
+   // STAGING / hard OFF: the client sees zero for an unpublished SKU,
+   // but its historical count stays in the original ledger. Require zero
+   // from the client and restore the saved value on the SERVER only.
+   // The Owner publication policy is verified inside this transaction.
+   let effectiveCounts=counts,effectiveTotal=total;
    if(submissionPublicationEnabled()===true){
     try{
-     await verifySubmissionPublication({tx,
-      scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
-      previousCounts:prior,nextCounts:counts});
+     const policy=await verifySubmissionPublication({tx,
+      scope:{verifiedByServer:true,kind:target.kind,uid:a.uid,cid:target.cid,hubId:target.hubId},
+      previousCounts:prior,nextCounts:prior});
+     // A completely OFF catalog is not a zero-count submission. Reject
+     // rather than create a misleading new version or no-op audit entry.
+     if(policy.enabledCategories.length===0)fail("failed-precondition");
+     const allowed=new Set(policy.enabledCategories);
+     effectiveCounts={...counts};
+     for(const key of KEYS)if(!allowed.has(key)){
+      if(counts[key]!==0)fail("failed-precondition");
+      effectiveCounts[key]=prior[key];
+     }
+     effectiveTotal=KEYS.reduce((n,key)=>n+effectiveCounts[key],0);
     }catch{fail("failed-precondition");}
    }
    const aggregate={};let aggregateTotal=0;
    for(const key of KEYS){
-    const n=previous[key]+counts[key]-prior[key];
+    const n=previous[key]+effectiveCounts[key]-prior[key];
     if(!Number.isSafeInteger(n)||n<0)fail("data-loss");
     aggregate[key]=n;aggregateTotal+=n;
    }
@@ -1049,21 +1294,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
-   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
+   const row={companyId:target.cid,hubCompanyId:target.hubId,staffId,date,
+     counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
-   const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
-     partnerName:clean(s.companyName),date,counts:aggregate,totalCount:aggregateTotal,
+   const sum={source:"staff-entries-v1",hubCompanyId:target.hubId,partnerCompanyId:target.cid,
+     partnerName:clean(target.companyName),date,counts:aggregate,totalCount:aggregateTotal,
      updatedAt:nowStamp};
    if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
-   const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
+   const audit=collection(target.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
-     privateTotalCount:privateValidated.total};
+     // Hub Owner corrections are count-only; partner-private totals must not
+     // escape in the correction response even though they remain persisted.
+     ...(!ownerCorrection?{privateTotalCount:privateValidated.total}:{})};
   });
  }
  return Object.freeze({manage,accept,view,submit});

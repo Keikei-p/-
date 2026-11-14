@@ -7,6 +7,7 @@ on:
       - 'functions-partner-workspace/service.cjs'
       - 'functions-partner-workspace/index.js'
       - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'functions-partner-workspace/approved-published-categories.cjs'
       - 'tests/secondary-finance-read-fence-emulator.test.mjs'
       - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
       - '.github/workflows/nico-secondary-finance-current-count-gate-no-deploy.yml'
@@ -17,6 +18,7 @@ on:
       - 'functions-partner-workspace/service.cjs'
       - 'functions-partner-workspace/index.js'
       - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'functions-partner-workspace/approved-published-categories.cjs'
       - 'tests/secondary-finance-read-fence-emulator.test.mjs'
       - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
       - '.github/workflows/nico-secondary-finance-current-count-gate-no-deploy.yml'
@@ -55,11 +57,12 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$NICO_RULES_APPROVAL"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object index.html)" = 856d61de0fc5ec48392a10f665ce277b03d9418e
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
-          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
-          test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = 25e41cbcc6dcbcc3d26792278e05ad263b817f43
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = d5cee512085c98abe8a1e64d540639df7e85ab51
+          test "$(git hash-object functions-partner-workspace/index.js)" = aac2924f8d376743f743ae91cfa04b3f1ee30604
+          test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = a56ae6100ce70602ed90233af038549129941cd9
+          test "$(git hash-object functions-partner-workspace/approved-published-categories.cjs)" = 0e020d2b38152cd3669d65bf005bc76fba2cc568
           node --check security/secondary-finance-read-fence.mjs
           node --check tests/secondary-finance-counts-integration-emulator.test.mjs
           node --check tests/secondary-finance-read-fence-emulator.test.mjs

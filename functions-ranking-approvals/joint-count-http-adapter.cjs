@@ -17,13 +17,13 @@ const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
 // A newly introduced response field must be explicitly security-reviewed.
 // A blacklist alone cannot catch an unforeseen finance field (e.g. salary).
 const PUBLIC_FIELDS=new Set([
- "schema","role","unit","period","range","readTime","start","end",
+ "schema","role","unit","period","scope","range","readTime","start","end",
  "previousStart","previousEnd","days","summary","own","partner","total",
  "unidentified","memberRanking","productRanking","companyBreakdown",
  "teamBreakdown","filters","publicRanking","members","products","people",
  "companies","teams","id","name","company","companyId","companyName","kind",
  "teamId","teamName","uid","productId","count","unidentifiedCount",
- "ownCount","partnerCount","rank","reportStatus","reportedDays",
+ "ownCount","partnerCount","rank","hasVerifiedSubmission","reportStatus","reportedDays",
  "previousCount","change","growth","topProduct","remainingToGoal",
  "personalBestStatus"
 ]);
@@ -81,12 +81,29 @@ const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj,key);
 const exact=(obj,keys)=>obj!==null&&typeof obj==="object"&&
  !Array.isArray(obj)&&Object.keys(obj).length===keys.length&&
  keys.every(key=>own(obj,key));
+const scopedEnvelope=(data,keys)=>data!==null&&typeof data==="object"&&
+ (own(data,"scope")?
+  ["joint","own","partner"].includes(data.scope)&&exact(data,[...keys,"scope"]):
+  exact(data,keys));
 const rankRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
- rows.every(row=>exact(row,keys)&&
+ rows.every((row,i)=>exact(row,keys)&&
   Number.isSafeInteger(row.rank)&&row.rank>0&&
   Number.isSafeInteger(row.count)&&row.count>=0&&
   keys.filter(k=>["name","company"].includes(k)).every(k=>
-   typeof row[k]==="string"&&row[k].trim().length>0));
+   typeof row[k]==="string"&&row[k].trim().length>0)&&
+  // Standard competition ranking: equal counts tie; the next place skips.
+  // The trusted canonical builder emits highest score first.
+  (i===0?row.rank===1:
+   rows[i-1].count>=row.count&&
+   row.rank===(rows[i-1].count===row.count?rows[i-1].rank:i+1)));
+const sumCounts=rows=>{
+ let sum=0;
+ for(const row of rows){
+  sum+=row.count;
+  if(!Number.isSafeInteger(sum))return null;
+ }
+ return sum;
+};
 // The shared allowlist covers both roles. Enforce the exact role envelope too:
 // otherwise a partner response could smuggle hub-only aggregate fields that
 // happen to be individually allowlisted (for example partner/total/people).
@@ -94,6 +111,84 @@ const HUB_ENVELOPE=["schema","role","unit","period","range","readTime",
  "summary","memberRanking","productRanking","companyBreakdown","teamBreakdown","filters"];
 const PARTNER_ENVELOPE=["schema","role","unit","period","range","readTime",
  "own","publicRanking"];
+const HUB_COMPANY_ROW=["id","name","kind","count","unidentifiedCount",
+ "hasVerifiedSubmission","rank"];
+const HUB_TEAM_ROW=["id","companyId","companyName","name","count","rank"];
+function validHubCompanyRow(row){
+ return exact(row,HUB_COMPANY_ROW)&&
+  typeof row.id==="string"&&typeof row.name==="string"&&
+  ["自社","協力店"].includes(row.kind)&&
+  Number.isSafeInteger(row.count)&&row.count>=0&&
+  Number.isSafeInteger(row.unidentifiedCount)&&row.unidentifiedCount>=0&&
+  row.unidentifiedCount<=row.count&&
+  typeof row.hasVerifiedSubmission==="boolean"&&
+  (row.hasVerifiedSubmission?
+   Number.isSafeInteger(row.rank)&&row.rank>0:
+   row.rank===null);
+}
+function validHubTeamRow(row){
+ return exact(row,HUB_TEAM_ROW)&&
+  ["id","companyId","companyName","name"].every(key=>
+   typeof row[key]==="string"&&row[key].trim().length>0)&&
+  Number.isSafeInteger(row.count)&&row.count>=0&&
+  Number.isSafeInteger(row.rank)&&row.rank>0;
+}
+function hubPublicScopeSafe(data){
+ if(!scopedEnvelope(data,HUB_ENVELOPE)||
+    !exact(data.summary,["own","partner","total","unidentified"])||
+    Object.values(data.summary).some(x=>!Number.isSafeInteger(x)||x<0)||
+    !Array.isArray(data.companyBreakdown)||data.companyBreakdown.length>10000||
+    !data.companyBreakdown.every(validHubCompanyRow)||
+    !Array.isArray(data.teamBreakdown)||data.teamBreakdown.length>10000||
+    !data.teamBreakdown.every(validHubTeamRow)||
+    !Array.isArray(data.memberRanking)||data.memberRanking.length>10000||
+    !Array.isArray(data.productRanking)||data.productRanking.length>10000)
+  return false;
+ const companies=data.companyBreakdown,teams=data.teamBreakdown;
+ const self=companies.filter(x=>x.kind==="自社");
+ const companyIds=new Set(companies.map(x=>x.id));
+ if(self.length!==1||companyIds.size!==companies.length||
+    teams.some(x=>!companyIds.has(x.companyId)))return false;
+ const totals=data.summary;
+ const companyTotal=sumCounts(companies),teamTotal=sumCounts(teams);
+ const memberTotal=sumCounts(data.memberRanking);
+ const productTotal=sumCounts(data.productRanking);
+ const unidentified=companies.reduce((n,x)=>n+x.unidentifiedCount,0);
+ if([companyTotal,teamTotal,memberTotal,productTotal].some(x=>x===null)||
+    !Number.isSafeInteger(unidentified)||
+    totals.own!==self[0].count||
+    totals.total!==companyTotal||
+    totals.partner!==totals.total-totals.own||
+    totals.unidentified!==unidentified||
+    teamTotal!==memberTotal||
+    memberTotal!==totals.total-unidentified||
+    productTotal!==totals.total)return false;
+ // Original product records cannot be manufactured or moved between firms.
+ // A product's own/partner breakdown must reconcile to exact company counts.
+ for(const row of data.productRanking){
+  if(!row||!Number.isSafeInteger(row.count)||row.count<0||
+     !Number.isSafeInteger(row.ownCount)||row.ownCount<0||
+     !Number.isSafeInteger(row.partnerCount)||row.partnerCount<0||
+     row.ownCount+row.partnerCount!==row.count||
+     !Array.isArray(row.companies)||row.companies.length>10000)
+    return false;
+  let ownCount=0,partnerCount=0;
+  const seen=new Set();
+  for(const company of row.companies){
+   if(!company||typeof company.companyId!=="string"||
+      !companyIds.has(company.companyId)||seen.has(company.companyId)||
+      !Number.isSafeInteger(company.count)||company.count<0)
+    return false;
+   seen.add(company.companyId);
+   if(company.companyId===self[0].id)ownCount+=company.count;
+   else partnerCount+=company.count;
+  }
+  if(!Number.isSafeInteger(ownCount)||!Number.isSafeInteger(partnerCount)||
+     ownCount!==row.ownCount||partnerCount!==row.partnerCount)return false;
+ }
+ return true;
+}
+
 const PARTNER_OWN_FIELDS=new Set(["company","count","unidentifiedCount","people","products"]);
 const OWN_PRODUCT_ROW=["id","name","count"];
 const OWN_PERSON_ROW=["id","name","companyId","companyName","teamId",
@@ -114,16 +209,36 @@ function partnerOwnScopeSafe(ownData){
  return true;
 }
 function partnerPublicScopeSafe(data){
- if(!exact(data,PARTNER_ENVELOPE)||!partnerOwnScopeSafe(data.own))return false;
+ if(!scopedEnvelope(data,PARTNER_ENVELOPE)||!partnerOwnScopeSafe(data.own))return false;
+ // The partner's own-company detail is independent of the selected PUBLIC
+ // scope. Prove it against its own rows, never a different firm's total.
+ if(own(data,"scope")&&(!exact(data.own,["company","count","unidentifiedCount","people","products"])||
+    sumCounts(data.own.products)!==data.own.count||
+    sumCounts(data.own.people)!==data.own.count-data.own.unidentifiedCount||
+    new Set(data.own.products.map(x=>x.id)).size!==data.own.products.length||
+    new Set(data.own.people.map(x=>x.id)).size!==data.own.people.length))return false;
  const p=data.publicRanking;
  if(!p||typeof p!=="object"||Array.isArray(p)||
     !own(p,"members")||!own(p,"products")||
     Object.keys(p).some(k=>!["members","products","companies","teams"].includes(k)))
   return false;
- return rankRows(p.members,["rank","company","name","count"])&&
-  rankRows(p.products,["rank","name","count"])&&
-  (!own(p,"companies")||rankRows(p.companies,["rank","name","count"]))&&
-  (!own(p,"teams")||rankRows(p.teams,["rank","name","company","count"]));
+ // The published contract always contains all FOUR leaderboards.
+ // A partial page is not a verified joint ranking; don't silently present it.
+ if(!exact(p,["members","products","companies","teams"])||
+    !rankRows(p.members,["rank","company","name","count"])||
+    !rankRows(p.products,["rank","name","count"])||
+    !rankRows(p.companies,["rank","name","count"])||
+    !rankRows(p.teams,["rank","name","company","count"]))return false;
+ const productTotal=sumCounts(p.products),companyTotal=sumCounts(p.companies);
+ const memberTotal=sumCounts(p.members),teamTotal=sumCounts(p.teams);
+ // Unidentified company-code rows belong to companies and products but
+ // NEVER to a fabricated person or team. They can explain only the gap
+ // between total published counts and attributable counts.
+ return productTotal!==null&&companyTotal!==null&&
+  memberTotal!==null&&teamTotal!==null&&
+  productTotal===companyTotal&&memberTotal===teamTotal&&
+  memberTotal<=companyTotal&&
+  (data.scope!==undefined&&data.scope!=="joint"||data.own.count<=companyTotal);
 }
 /**
  * Calling this function never accesses live data. While the feature flag
@@ -160,6 +275,11 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
     return;
    }
    if(req.method!=="GET"){deny(res,405,origin);return;}
+   const scopeValues=path.searchParams.getAll("scope");
+   if(scopeValues.length>1||scopeValues.some(x=>!["joint","own","partner"].includes(x))){
+    deny(res,400,origin);return;
+   }
+   const requestedScope=scopeValues[0]??"joint";
    if(req.headers?.["content-length"]!==undefined&&
       (!/^(?:0+)$/.test(String(req.headers["content-length"])))){
     deny(res,400,origin);return;
@@ -190,9 +310,10 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    if(response.status===200){
     if(!data||data.schema!=="nico-verified-dual-count-v1"||
        !["hub_owner","partner_owner"].includes(data.role)||
+       (own(data,"scope")?data.scope!==requestedScope:scopeValues.length>0)||
        !moneyFree(data)||
        (data.role==="partner_owner"&&!partnerPublicScopeSafe(data))||
-       (data.role==="hub_owner"&&!exact(data,HUB_ENVELOPE)))fail();
+       (data.role==="hub_owner"&&!hubPublicScopeSafe(data)))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||
             Object.keys(data).length!==1||
             !["request_blocked","service_disabled"].includes(data.error))fail();

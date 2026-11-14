@@ -171,7 +171,11 @@ function mappings(groups,sku) {
  if(!Array.isArray(groups)||groups.length>5000)stop();
  const lookup=new Map(),names=new Map();
  for(const r of groups){
-  if(!r||!id(r.companyId)||!id(r.productId)||!id(r.groupId))stop();
+  // "unmapped:" is reserved for unmatched source SKUs. A reviewed group
+   // using that prefix would silently merge an unrelated unmapped product
+   // into a confirmed SKU rank, so reject the entire ranking.
+   if(!r||!id(r.companyId)||!id(r.productId)||!id(r.groupId)||
+      r.groupId.startsWith("unmapped:"))stop();
   const key=r.companyId+":"+r.productId;
   if(!sku.has(key)||lookup.has(key))stop();
   const name=label(r.groupName);
@@ -220,8 +224,9 @@ function goalIndex(items,roster){
 export function buildVerifiedCountDashboard({
  context,hubCompanyId,approvedCompanyIds,sources,
  period,filters={},productGroups=[],unassigned=[],personGoals=[],
- historicalBest=[]
+ historicalBest=[],scope
 }={}){
+ if(scope!==undefined&&!["joint","own","partner"].includes(scope))stop();
  if(!id(hubCompanyId)||!Array.isArray(approvedCompanyIds))stop();
  ownerContext(context,hubCompanyId,approvedCompanyIds);
  if(!period||Object.keys(period).sort().join("|")!==
@@ -244,6 +249,9 @@ export function buildVerifiedCountDashboard({
   (filters.teamId==null||filters.teamId===""||filters.teamId===r.teamId)&&
   (filters.uid==null||filters.uid===""||filters.uid===r.uid)&&
   (filters.productId==null||filters.productId===""||
+    // Report markers have no product key. Keep them for submitted/zero status
+    // even when a single SKU is selected; they contribute exactly 0 counts.
+    r.reported===true||
     (r.productKey!==null&&
      (filters.productId===productKey(r.productKey)||filters.productId===r.productKey)))
  );
@@ -297,7 +305,9 @@ export function buildVerifiedCountDashboard({
     statuses.get(p.id).add(r.reportStatus);
    }
   }
-  if(r.teamId!==null)put(teams,r.companyId+":"+r.teamId,
+  // ':' is valid in both source IDs. Use the complete identity pair for
+  // aggregation; the legacy display ID alone can alias a different team.
+  if(r.teamId!==null)put(teams,JSON.stringify([r.companyId,r.teamId]),
    ()=>({id:r.companyId+":"+r.teamId,companyId:cid,
     companyName:r.companyName,name:r.teamName,count:0}),r.count);
   if(r.productKey!==null){
@@ -350,7 +360,15 @@ export function buildVerifiedCountDashboard({
       p.count>best.get(p.id)?"自己ベスト更新":"過去記録以下":"比較不可"
   };
  });
- const rankedPeople=ordered(personRows,p=>p.count);
+ // Unreported is NOT an official 0-count rank. Keep it visible in
+ // the owner's count-only people list, but never score or publish the
+ // person's name in the cross-company competition until submitted.
+ const rankedParticipants=ordered(
+  personRows.filter(p=>p.reportStatus!=="未報告"),p=>p.count);
+ const missingParticipants=personRows.filter(p=>p.reportStatus==="未報告")
+  .sort((x,y)=>x.name.localeCompare(y.name,"ja")||x.id.localeCompare(y.id))
+  .map(p=>({...p,rank:null}));
+ const rankedPeople=[...rankedParticipants,...missingParticipants];
  const rankedProducts=ordered([...products.values()].map(p=>({
   id:p.id,name:p.name,count:p.count,ownCount:p.ownCount,
   partnerCount:p.partnerCount,
@@ -358,20 +376,50 @@ export function buildVerifiedCountDashboard({
    companyId:cid,companyName:parsed.names.get(cid),count:n
   }))
  })),p=>p.count);
- const companyRows=[...allCompany.values()].sort((a,b)=>a.kind==="自社"?-1:
+ const submittedCompanies=new Set(current.filter(r=>r.reported===true||
+  r.unidentified===true).map(r=>r.companyId));
+ const companyRows=[...allCompany.values()].map(x=>({...x,
+  hasVerifiedSubmission:submittedCompanies.has(x.id)}))
+  .sort((a,b)=>a.kind==="自社"?-1:
    b.kind==="自社"?1:a.name.localeCompare(b.name,"ja"));
+ // The hub dashboard needs the same competition ranks as the partner view.
+ // An unreported company remains visible for management but has no rank.
+ // Preserve the existing self-first management display order.
+ const verifiedCompanyRanks=new Map(ordered(
+  companyRows.filter(x=>x.hasVerifiedSubmission),x=>x.count)
+  .map(x=>[x.id,x.rank]));
+ const ownerCompanyBreakdown=companyRows.map(x=>({...x,
+  rank:verifiedCompanyRanks.get(x.id)??null}));
+ // Every team here comes from a verified submitted record, including
+ // an explicitly submitted zero. Never invent teams for missing reports.
+ const verifiedTeamRanks=new Map(ordered([...teams.values()],x=>x.count)
+  .map(x=>[JSON.stringify([x.companyId,x.id]),x.rank]));
+ // Keep the existing stable management display order; only attach the rank.
+ // A JSON tuple avoids ambiguous colon-containing company/team IDs.
+ const ownerTeamBreakdown=[...teams.values()].map(x=>({...x,
+  rank:verifiedTeamRanks.get(JSON.stringify([x.companyId,x.id]))}));
  const self=companyRows.find(x=>x.id===hubCompanyId)?.count??0;
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
  if(total!==rankedProducts.reduce((a,p)=>add(a,p.count),0))stop();
  const unknown=companyRows.reduce((a,b)=>add(a,b.unidentifiedCount),0);
+ // Cross-check ALL four independently rendered count rankings. The only
+ // legitimately missing people/teams are separately verified unattributed
+ // company-code rows. Never publish a partial person/team total as a full
+ // company/product ranking, even if source rows are individually valid.
+ const attributable=total-unknown;
+ if(attributable<0||
+    rankedPeople.reduce((n,p)=>add(n,p.count),0)!==attributable||
+    [...teams.values()].reduce((n,t)=>add(n,t.count),0)!==attributable)
+  stop();
  const common={schema:"nico-verified-dual-count-v1",period:period.kind,
+  ...(scope===undefined?{}:{scope}),
   range,readTime:parsed.readTime,unit:"件",
   summary:{own:self,partner:total-self,total,unidentified:unknown},
   memberRanking:rankedPeople.map(({topProducts,...p})=>p),
   productRanking:rankedProducts};
  if(context.role==="hub_owner"){
   const data={...common,role:"hub_owner",
-   companyBreakdown:companyRows,teamBreakdown:[...teams.values()],
+   companyBreakdown:ownerCompanyBreakdown,teamBreakdown:ownerTeamBreakdown,
    filters:{...filters}};
   auditNoFinancialKeys(data);
   return data;
@@ -380,24 +428,38 @@ export function buildVerifiedCountDashboard({
  const ownPeople=common.memberRanking.filter(x=>x.companyId===ownCompany);
  const ownProducts=rankedProducts.filter(x=>x.companies.some(c=>c.companyId===ownCompany))
   .map(p=>({id:p.id,name:p.name,count:p.companies.find(c=>c.companyId===ownCompany).count}));
- const publicMembers=rankedPeople.map(x=>({
+ // Narrow ONLY the already-approved public rows. Never infer a company's
+ // class from its display name or return classification totals/private IDs.
+ const inScope=cid=>scope===undefined||scope==="joint"||
+  (scope==="own"?cid===hubCompanyId:cid!==hubCompanyId);
+ const publicMembers=ordered(rankedParticipants.filter(x=>inScope(x.companyId)),x=>x.count).map(x=>({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
- const publicProducts=rankedProducts.map(x=>({
+ const scopedProducts=rankedProducts.filter(x=>x.companies.some(c=>inScope(c.companyId)))
+  .map(x=>({...x,count:scope==="own"?x.ownCount:scope==="partner"?x.partnerCount:x.count}));
+ const publicProducts=ordered(scopedProducts,x=>x.count).map(x=>({
   rank:x.rank,name:x.name,count:x.count
  }));
  // Publish ranked, aggregate-only organization comparisons. This is the
  // same already-verified set of ON-only source lines as member/SKU ranks.
  // No team ID, UID, salary, unit price or source report can leave this API.
- const publicCompanies=ordered(companyRows.map(x=>({
-  id:x.id,name:x.name,count:x.count
- })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
- const publicTeams=ordered([...teams.values()].map(x=>({
+ // A company without a verified submission in this window is not a
+ // submitted zero-count company. Do not award it an official public rank.
+ const publicCompanies=ordered(companyRows.filter(x=>submittedCompanies.has(x.id)&&inScope(x.id))
+  .map(x=>({id:x.id,name:x.name,count:x.count})),x=>x.count)
+  .map(x=>({rank:x.rank,name:x.name,count:x.count}));
+ const publicTeams=ordered([...teams.values()].filter(x=>inScope(x.companyId)).map(x=>({
   id:x.id,name:x.name,company:x.companyName,count:x.count
  })),x=>x.count).map(x=>({
   rank:x.rank,name:x.name,company:x.company,count:x.count
  }));
+ const scopedTotal=companyRows.filter(x=>inScope(x.id)).reduce((n,x)=>add(n,x.count),0);
+ const scopedUnknown=companyRows.filter(x=>inScope(x.id)).reduce((n,x)=>add(n,x.unidentifiedCount),0);
+ if(publicProducts.reduce((n,x)=>add(n,x.count),0)!==scopedTotal||
+    publicMembers.reduce((n,x)=>add(n,x.count),0)!==scopedTotal-scopedUnknown||
+    publicTeams.reduce((n,x)=>add(n,x.count),0)!==scopedTotal-scopedUnknown)stop();
  const data={schema:common.schema,period:common.period,range,unit:"件",
+  ...(scope===undefined?{}:{scope}),
   readTime:common.readTime,role:"partner_owner",
   own:{company:parsed.names.get(ownCompany),
    count:companyRows.find(x=>x.id===ownCompany)?.count??0,

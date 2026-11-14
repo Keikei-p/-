@@ -18,7 +18,7 @@ const id=s=>typeof s==="string"&&ID.test(s)&&
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const read=s=>s?.exists===true&&typeof s.data==="function"?s.data():null;
 const label=s=>typeof s==="string"&&s.trim().length>0&&
- s.length<=80&&!MONEY.test(s)?s.trim():stop();
+ s.length<=80&&!MONEY.test(s.normalize("NFKC"))?s.trim():stop();
 const shape=(o,keys)=>obj(o)&&
  Object.keys(o).sort().join("|")===keys.slice().sort().join("|");
 function mapping(doc,hub,uid){

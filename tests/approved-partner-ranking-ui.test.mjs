@@ -11,13 +11,16 @@ const row=(name,n,rank)=>({key:"hash",name,totalCount:n,rank});
 const base=()=>({schema:"nico-approved-partner-count-rank-v1",scope:"approved_partner_counts_only",
  unit:"件",fullyJoint:false,includesDirect:false,role:"partner",
  date:"2026-10-31",period:"day",start:"2026-10-31",end:"2026-10-31",
- companies:[row("協力店A",3,1),row("協力店B",3,1),row("協力店C",1,3)],
- teams:[],people:[],products:[row("NURO",7,1)],
+ companies:[row("協力店A",3,null),row("協力店B",3,null),row("協力店C",1,null)],
+ teams:[],people:[],products:[row("NURO",7,null)],
  unreportedCompanies:[{key:"unknown",name:"未報告会社",status:"not_reported"}],
  totalCount:7,reportCount:3,partnerCountsComplete:false,
  unverifiedTeamCount:0,unverifiedPersonCount:0,historicalCompanyOnlyCount:0,
  peopleComplete:true,teamComplete:true
 });
+const complete=()=>({...base(),
+ companies:[row("協力店A",3,1),row("協力店B",3,1),row("協力店C",1,3)],
+ products:[row("NURO",7,1)],unreportedCompanies:[],partnerCountsComplete:true});
 test("partner dashboard preserves original eleven cards and new shared surface is strictly disabled",()=>{
  assert.equal(html.split('id="approvedSharedRankings"').length,2);
  assert.match(html,/const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;/);
@@ -30,10 +33,10 @@ test("partner dashboard preserves original eleven cards and new shared surface i
  assert.ok(html.indexOf('id="approvedSharedRankings"')<html.indexOf('id="recordsBox"'));
 });
 test("shared count UI validates 1,1,3, keeps zero and unknown report status separate",()=>{
- const response=base();
+ const response=complete();
  const result=verify(response,"2026-10-31","2026-10-31");
  assert.equal(result.totalCount,7);
- assert.equal(result.unreportedCompanies[0].status,"not_reported");
+ assert.equal(result.unreportedCompanies.length,0);
  assert.equal(result.companies[1].rank,1);
  assert.equal(result.companies[2].rank,3);
 });
@@ -49,4 +52,112 @@ test("shared count UI fails closed on finance extensions, duplicate wrong ranks 
   {...base(),companies:[row("売上10000円",3,1)]},
   {...base(),companies:[row("A",3,1)],unreportedCompanies:[{...base().unreportedCompanies[0],unitPrice:50000}]},
  ])assert.throws(()=>verify(bad,"2026-10-31","2026-10-31"),/UNVERIFIED/);
+});
+
+test("incomplete partner rankings show pending positions instead of false final ranks",()=>{
+ const pending=base();
+ assert.equal(verify(pending,"2026-10-31","2026-10-31"),pending);
+ assert.throws(()=>verify({...pending,companies:[row("協力店A",3,1)]},
+  "2026-10-31","2026-10-31"),/UNVERIFIED/);
+ assert.throws(()=>verify({...complete(),companies:[row("協力店A",3,null)]},
+  "2026-10-31","2026-10-31"),/UNVERIFIED/);
+});
+test("partly reported month status is explicitly distinguished from unreported and zero",()=>{
+ const payload=base();
+ payload.unreportedCompanies.push({
+  key:"hash",name:"協力店A",status:"partial_report"
+ });
+ assert.equal(verify(payload,"2026-10-31","2026-10-31"),payload);
+ const start=html.indexOf("function renderApprovedCountRanking(value){");
+ const end=html.indexOf("function renderApprovedCountRankingDetails(){",start);
+ assert(start>0&&end>start);
+ const nodes=new Map();
+ const $=id=>{
+  if(!nodes.has(id))nodes.set(id,{
+   value:"",textContent:"",children:[],
+   replaceChildren(...items){this.children=items;},
+   appendChild(x){this.children.push(x);}
+  });
+  return nodes.get(id);
+ };
+ const sandbox={ $,document:{createElement:()=>({value:"",textContent:""})},
+  countTable:()=>({}),renderApprovedCountRankingDetails:()=>{} };
+ vm.runInNewContext(html.slice(start,end)+
+  "\nthis.render=renderApprovedCountRanking;",sandbox);
+ sandbox.render(payload);
+ const summary=$("approvedSharedRankStatus").textContent;
+ assert.match(summary,/未報告 1社/);
+ assert.match(summary,/一部未報告 1社/);
+ assert.match(summary,/一部未確認/);
+ assert(!summary.includes("未報告 2社"),
+  "a partly reported company must not be shown as fully unreported");
+});
+test("shared ranking UI refuses contradictory or forged partial report status",()=>{
+ const normal=base();
+ for(const row of [
+  {key:"missing-company",name:"任意",status:"partial_report"},
+  {key:"hash",name:"協力店A",status:"not_reported"},
+  {key:"hash",name:"協力店A",status:"partially_confirmed"},
+  {key:"hash",name:"協力店A",status:"partial_report",revenue:50000}
+ ]){
+  assert.throws(()=>verify({...normal,unreportedCompanies:[row]},
+   "2026-10-31","2026-10-31"),/UNVERIFIED/);
+ }
+});
+
+
+test("old partner UI weekly switch requests exactly the cross-month Monday-Sunday interval",async()=>{
+ assert.match(html,/id="approvedSharedRankPeriod"[^>]*>[^\n]*value="week"/);
+ assert.match(html,/id="approvedSharedRankDay" type="date"/);
+ const start=html.indexOf("async function loadApprovedCountRanking(){");
+ const end=html.indexOf('\n$("approvedSharedRankCompanySelect").onchange=',start);
+ assert(start>=0&&end>start,"reviewed count-only weekly load handler exists");
+ const source=html.slice(start,end);
+ const el=Object.create(null),user={uid:"partnerOwner"};
+ const $=id=>{
+  if(!el[id])el[id]={value:"",hidden:false,textContent:"",
+   replaceChildren(){this.children=[]},children:[]};
+  return el[id];
+ };
+ $("approvedSharedRankMonth").value="2026-10";
+ $("approvedSharedRankPeriod").value="week";
+ $("approvedSharedRankDay").value="2026-10-01";
+ let captured=null,ranges=null,rendered=0;
+ const sandbox={
+  $,NICO_APPROVED_PARTNER_RANKING_RELEASED:true,
+  data:{role:"owner"},auth:{currentUser:user},activeCodeSession:"",
+  workspaceCompanyId:"partner",dateParts:{year:"2026",month:"10",day:"31"},
+  approvedRankIds:["Companies","Teams","People","Products","Details"],
+  get:async args=>{captured=args;return {data:{safe:true}}},
+  verifyApprovedCountRanking:(value,start,end,expected)=>{
+   ranges={start,end,expected};return value;
+  },
+  renderApprovedCountRanking:()=>{rendered++}
+ };
+ const ctx=vm.createContext(sandbox);
+ vm.runInContext('let approvedRankGeneration=0,approvedRankData=null;\n'+
+  source+'\nthis.loadApprovedCountRanking=loadApprovedCountRanking;',ctx);
+ await sandbox.loadApprovedCountRanking();
+ assert.equal(captured.date,"2026-10-01");
+ assert.equal(captured.rankingPeriod,"week");
+ assert.equal(captured.sharedCountRankings,true);
+ assert.deepEqual(JSON.parse(JSON.stringify(ranges)),{
+  start:"2026-09-28",end:"2026-10-04",
+  expected:{period:"week",role:"partner"}
+ });
+ assert.equal(rendered,1);
+ assert.doesNotMatch($("approvedSharedRankStatus").textContent,/件数を検証できません/);
+});
+
+test("approved partner rankings reject mismatched authenticated role or selected period",()=>{
+ const response=base();
+ assert.equal(verify(response,"2026-10-31","2026-10-31",{
+  period:"day",role:"partner"
+ }),response);
+ assert.throws(()=>verify(response,"2026-10-31","2026-10-31",{
+  period:"week",role:"partner"
+ }),/UNVERIFIED/);
+ assert.throws(()=>verify(response,"2026-10-31","2026-10-31",{
+  period:"day",role:"hub"
+ }),/UNVERIFIED/);
 });

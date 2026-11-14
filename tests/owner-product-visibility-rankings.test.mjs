@@ -1,4 +1,8 @@
 import test from "node:test";
+import {buildOwnerVisibleCountRanking as buildFunctionOwnerVisibleCountRanking}
+ from "../functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs";
+import {readFileSync} from "node:fs";
+
 import assert from "node:assert/strict";
 import {buildOwnerVisibleCountRanking,planOwnerProductToggle}
  from "../ranking/owner-product-visibility-rankings.mjs";
@@ -103,6 +107,86 @@ test("partner audience only receives published count-only public ranking",()=>{
  assert(!("companyBreakdown" in r));
  assert(!("teamBreakdown" in r));
  assert(!JSON.stringify(r).includes("SoftBank Air"));
+});
+
+test("saved total drift blocks every audience even when the extra product is OFF",()=>{
+ // Issue #352: an extra saved product row must never be guessed away or
+ // reclassified as a confirmed zero by a publication switch.
+ for(const role of ["hub_owner","partner_owner"]){
+  for(const enabled of [[],["nuro"],["nuro","air"]]){
+   const input=fixture();
+   input.sources[0].lines.push({...input.sources[0].lines[1],
+    sourceId:"l-hub-extra-saved-row",count:1});
+   input.context={...input.context,role,
+    viewerCompanyId:role==="hub_owner"?"hub":"partner"};
+   const before=structuredClone(input);
+   assert.throws(()=>run(input,publication(enabled)),
+    /VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED/);
+   assert.deepEqual(input,before,"inconsistent originals remain untouched for Owner review");
+  }
+ }
+});
+
+test("all OFF categories never leak historic reported partner name as a public zero",()=>{
+ const base=fixture(),partner={...base,context:{...base.context,
+  role:"partner_owner",viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ const before=structuredClone(partner);
+ for(const fn of [buildOwnerVisibleCountRanking,buildFunctionOwnerVisibleCountRanking]){
+  const off=fn({input:partner,publication:publication([])});
+  assert.deepEqual(off.publicRanking,{members:[],products:[],companies:[],teams:[]},
+   "OFF must not disclose names or historic participation through a zero rank");
+  assert.equal(off.own.count,0);
+  const own=off.own.people.find(x=>x.companyId==="partner");
+  assert(own&&own.reportStatus==="未報告"&&own.rank===null);
+  const internal=fn({input:base,publication:publication([])});
+  const reported=internal.memberRanking.find(x=>x.companyId==="partner");
+  assert(reported&&reported.reportStatus==="未報告"&&reported.rank===null);
+  assert.equal(internal.companyBreakdown.find(x=>x.id==="partner").hasVerifiedSubmission,false);
+ }
+ assert.deepEqual(partner,before,"neither legacy counts nor audit history change");
+});
+
+test("OFF-only positive historical report is not a submitted zero for an ON SKU",()=>{
+ const original=fixture(0),partner={...original,context:{...original.context,
+  role:"partner_owner",viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ const before=structuredClone(partner);
+ for(const fn of [buildOwnerVisibleCountRanking,buildFunctionOwnerVisibleCountRanking]){
+  const nuro=fn({input:partner,publication:publication(["nuro"])});
+  assert.equal(nuro.own.count,0);
+  assert(!nuro.publicRanking.members.some(x=>x.company==="協力店A"),
+   "OFF-only saved count cannot publish the person's identity as a zero rank");
+  assert(!nuro.publicRanking.companies.some(x=>x.name==="協力店A"),
+   "OFF-only company submission is not a confirmed published zero");
+  assert.equal(nuro.publicRanking.products[0].count,2,
+   "only approved internal NURO rows participate");
+  const recovered=fn({input:partner,publication:publication(["air"])});
+  assert.equal(recovered.own.count,4);
+  assert(recovered.publicRanking.members.some(x=>x.company==="協力店A"&&x.count===4));
+ }
+ assert.deepEqual(partner,before,"OFF and re-ON never rewrite source history");
+});
+
+test("genuine submitted zero remains ranked while unsubmitted remains excluded",()=>{
+ const base=fixture(0),partnerSource=base.sources[1];
+ partnerSource.lines[1].count=0;
+ partnerSource.records[0].totalCount=0;
+ const before=structuredClone(base);
+ const partner={...base,context:{...base.context,role:"partner_owner",
+  viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ for(const fn of [buildOwnerVisibleCountRanking,buildFunctionOwnerVisibleCountRanking]){
+  const result=fn({input:partner,publication:publication(["nuro"])});
+  assert(result.publicRanking.members.some(x=>x.company==="協力店A"&&x.count===0));
+  assert(result.publicRanking.companies.some(x=>x.name==="協力店A"&&x.count===0));
+  const owner=fn({input:base,publication:publication(["nuro"])});
+  assert.equal(owner.memberRanking.find(x=>x.companyId==="partner").reportStatus,"確定0件");
+ }
+ assert.deepEqual(base,before);
+});
+
+test("isolated ranking Function exactly matches canonical ON/OFF projection",()=>{
+ const source=readFileSync(new URL("../ranking/owner-product-visibility-rankings.mjs",import.meta.url),"utf8");
+ const isolated=readFileSync(new URL("../functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs",import.meta.url),"utf8");
+ assert.equal(isolated,source,"Function and canonical product gate must be identical");
 });
 
 test("wrong owner, forged settings, disabled SKU, unknown IDs and missing SKU mapping reject",()=>{

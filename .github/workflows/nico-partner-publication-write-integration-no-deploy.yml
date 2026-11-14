@@ -6,9 +6,11 @@ on:
       - 'functions-partner-workspace/service.cjs'
       - 'functions-partner-workspace/index.js'
       - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'functions-partner-workspace/approved-published-categories.cjs'
       - 'ranking/partner-submission-publication-guard.mjs'
       - 'tests/partner-workspace.test.cjs'
       - 'tests/partner-submission-publication-guard.test.mjs'
+      - 'tests/partner-publication-write-ranking-consistency.test.cjs'
       - 'scripts/ci/review-partner-sku-publication-write.cjs'
       - '.github/workflows/nico-partner-publication-write-integration-no-deploy.yml'
 permissions:
@@ -43,10 +45,12 @@ jobs:
         run: |
           node <<'NODE'
           const fs=require('node:fs'),assert=require('node:assert/strict');
-          const canonical=fs.readFileSync('ranking/partner-submission-publication-guard.mjs','utf8')
+          const canonical=fs.readFileSync('ranking/partner-submission-publication-guard.mjs','utf8').replace(/\r\n/g,'\n')
+            .replace('import {allowedPartnerCategories} from "../functions-partner-workspace/approved-published-categories.cjs";',
+              'const {allowedPartnerCategories}=require("./approved-published-categories.cjs");')
             .replace('export function createPartnerSubmissionPublicationGuard({db}={}){',
               'function createPartnerSubmissionPublicationGuard({db}={}){').trim();
-          const isolated=fs.readFileSync('functions-partner-workspace/submission-publication-guard.cjs','utf8')
+          const isolated=fs.readFileSync('functions-partner-workspace/submission-publication-guard.cjs','utf8').replace(/\r\n/g,'\n')
             .replace(/^"use strict";\n/,'')
             .replace(/\nmodule\.exports=\{createPartnerSubmissionPublicationGuard\};\s*$/,'').trim();
           assert.equal(isolated,canonical,'CANONICAL_VENDOR_DRIFT');
@@ -55,7 +59,10 @@ jobs:
           assert.match(index,/sharedRankingEnabled:/);
           const service=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
           assert.match(service,/submissionPublicationEnabled=\(\)=>false/);
-          assert.match(service,/previousCounts:prior,nextCounts:counts/);
+          assert.match(service,/previousCounts:prior,nextCounts:prior/);
+          assert.match(service,/if\(counts\[key\]!==0\)fail\("failed-precondition"\)/);
+          assert.match(service,/effectiveCounts\[key\]=prior\[key\]/);
+          assert.match(service,/policy\.enabledCategories\.length===0/);
           assert.ok(!/\btx\.delete\s*\(|\brecursiveDelete\s*\(/.test(service));
           NODE
       - name: Partner save and correction integration, finance regression

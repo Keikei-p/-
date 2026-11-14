@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {createRequire} from "node:module";
 import {createStagedOwnerVisibleCountHandler}
  from "../ranking/owner-visible-count-server-handler.mjs";
+const require=createRequire(import.meta.url);
+const {createJointCountHttpAdapter}=require(
+ "../functions-ranking-approvals/joint-count-http-adapter.cjs");
 
 const DAY="2026-11-08",MONTH="2026-11",TIME="2026-11-08T12:00:00Z";
 const copy=x=>structuredClone(x);
@@ -151,6 +155,47 @@ test("authenticated hub and partner receive consistent ON-only counts, no raw fi
  assert(f.ops.every(x=>x.kind!=="get"||
   !/\/(?:records|recordCorrections|revenueGoals)\//.test(x.path)));
 });
+
+test("authenticated public scopes use only approved ON counts and never accept forged or duplicate scopes",async()=>{
+ const f=fake(),run=handler(f),before=structuredClone(f.state);
+ for(const [scope,total] of [["joint",7],["own",2],["partner",5]]){
+  const response=await run(request("partner","month=2026-11&scope="+scope));
+  assert.equal(response.status,200);
+  const data=await response.json();assert.equal(data.scope,scope);assert.equal(data.own.count,5);
+  for(const rows of Object.values(data.publicRanking))assert.equal(rows.reduce((n,x)=>n+x.count,0),total);
+  assert.doesNotMatch(JSON.stringify(data.publicRanking),/companyId|teamId|uid|unitPrice|cashback/);
+ }
+ assert.deepEqual(f.state,before);
+ for(const suffix of ["scope=private","scope=own&scope=partner"]){
+  const untouched=fake();let reads=0;
+  const bad=handler(untouched,ctx=>{reads++;return countInput(ctx)});
+  assert.equal((await bad(request("partner","month=2026-11&"+suffix))).status,400);
+  assert.equal(reads,0);assert.equal(untouched.ops.length,0);
+ }
+});
+
+test("real HTTP boundary preserves scoped totals while independently reconciling the partner's own detail",async()=>{
+ const run=handler(fake());
+ const reply=()=>({statusCode:null,body:null,setHeader(){},
+  status(code){this.statusCode=code;return this},send(body){this.body=body;return this}});
+ const raw=scope=>({method:"GET",originalUrl:"/v1/owner-visible-counts?month=2026-11&scope="+scope,
+  headers:{origin:"https://nico-factory.web.app",authorization:"Bearer "+"partner".repeat(8)}});
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,loadHandler:()=>run});
+ for(const [scope,total] of [["joint",7],["own",2],["partner",5]]){
+  const res=reply();await adapter(raw(scope),res);assert.equal(res.statusCode,200);
+  const data=JSON.parse(res.body);assert.equal(data.scope,scope);assert.equal(data.own.count,5);
+  for(const rows of Object.values(data.publicRanking))assert.equal(rows.reduce((n,x)=>n+x.count,0),total);
+ }
+ for(const mutate of [data=>{data.scope="joint"},data=>{data.own.count++},
+  data=>{data.publicRanking.members[0].companyId="secret"}]){
+  const bad=createJointCountHttpAdapter({enabled:()=>true,loadHandler:()=>async request=>{
+   const data=await (await run(request)).json();mutate(data);
+   return new Response(JSON.stringify(data),{status:200});
+  }});
+  const res=reply();await bad(raw("own"),res);assert.equal(res.statusCode,503);
+  assert.deepEqual(JSON.parse(res.body),{error:"request_blocked"});
+ }
+});
 test("global OFF, partner-specific OFF, and re-ON preserve originals",async()=>{
  const f=fake(),run=handler(f),key="companies/hub/rankingProductVisibility/shared";
  const original=copy(f.state.get("products/nuro"));
@@ -180,7 +225,7 @@ test("malformed methods, query, origin and auth cannot reach data loader",async(
  const f=fake();let calls=0;
  const run=handler(f,c=>{calls++;return countInput(c)});
  for(const req of [
-  request("hub","month=2026-11&companyId=partner"),
+  request("hub","month=2026-11&companyId=unknown"),
   request("hub","month=2026-13"),
   request("hub","month=2026-11",{method:"POST"}),
   request("hub","month=2026-11",{origin:"https://evil.example"})
@@ -190,6 +235,97 @@ test("malformed methods, query, origin and auth cannot reach data loader",async(
  assert.equal(calls,0);
 });
 
+test("approved hub owner can scope all four ranking filters without touching source data",async()=>{
+ const f=fake(),run=handler(f);
+ const stateBefore=copy([...f.state]);
+ const byPartner=await run(request("hub",
+  "month=2026-11&companyId=partner"));
+ assert.equal(byPartner.status,200);
+ const visible=await byPartner.json();
+ assert.equal(visible.role,"hub_owner");
+ assert.deepEqual(visible.filters,{companyId:"partner"});
+ assert.deepEqual(visible.summary,{own:0,partner:5,total:5,unidentified:0});
+ assert.equal(visible.productRanking[0].count,5);
+ const detailed=await run(request("hub",
+  "month=2026-11&companyId=partner&teamId=team&uid=partnerStaff&productId=nuro"));
+ assert.equal(detailed.status,200);
+ const detail=await detailed.json();
+ assert.deepEqual(detail.filters,{companyId:"partner",teamId:"team",
+  uid:"partnerStaff",productId:"nuro"});
+ assert.equal(detail.summary.total,5);
+ assert.equal(detail.memberRanking.length,1);
+ assert.deepEqual([...f.state],stateBefore,"reporting filters cannot change stored counts");
+ assert(f.ops.every(x=>x.kind!=="transaction"||x.options?.readOnly===true));
+});
+test("real filtered owner API crosses the strict Functions HTTP finance gate intact",async()=>{
+ const f=fake(),load=handler(f);
+ const http=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>load
+ });
+ const send=async(path,actor="hub")=>{
+  const req={method:"GET",originalUrl:path,
+   headers:{origin:"https://nico-factory.web.app",
+    authorization:"Bearer "+actor.repeat(8)}};
+  const res={statusCode:null,body:"",headers:{},
+   setHeader(k,v){this.headers[k.toLowerCase()]=v;},
+   status(n){this.statusCode=n;return this;},
+   send(x){this.body=x;return this;}};
+  await http(req,res);
+  return res;
+ };
+ for(const [path,counts,filters] of [
+  ["/getVerifiedJointCountRanking?month=2026-11",
+   {own:2,partner:5,total:7,unidentified:0},{}],
+  ["/getVerifiedJointCountRanking?month=2026-11&companyId=partner",
+   {own:0,partner:5,total:5,unidentified:0},
+   {companyId:"partner"}],
+  ["/v1/owner-visible-counts?month=2026-11&companyId=partner&teamId=team&uid=partnerStaff&productId=nuro",
+   {own:0,partner:5,total:5,unidentified:0},
+   {companyId:"partner",teamId:"team",uid:"partnerStaff",productId:"nuro"}]
+ ]){
+  const res=await send(path);
+  assert.equal(res.statusCode,200,path+" must reach the real role-verified response");
+  const output=JSON.parse(res.body);
+  assert.equal(output.role,"hub_owner");
+  assert.deepEqual(output.summary,counts);
+  assert.deepEqual(output.filters,filters);
+  assert.equal(output.companyBreakdown.length,2,
+   "Owner's verified company registry is preserved for the company selector");
+  assert.equal(output.productRanking.reduce((n,r)=>n+r.count,0),counts.total);
+  assert.equal(output.teamBreakdown.reduce((n,r)=>n+r.count,0),counts.total);
+  assert.equal(output.memberRanking.reduce((n,r)=>n+r.count,0),counts.total);
+  assert(!/revenue|unitPrice|cashback|salary|10000|20000/.test(res.body),
+   "no financial source field or amount may be published");
+ }
+ // A partner token cannot transform an Owner filter into another firm's view,
+ // even when it reaches the direct Cloud Functions ingress.
+ const blocked=await send(
+  "/getVerifiedJointCountRanking?month=2026-11&companyId=hub","partner");
+ assert.equal(blocked.statusCode,403);
+ assert.deepEqual(JSON.parse(blocked.body),{error:"request_blocked"});
+ assert(f.ops.every(op=>op.kind!=="transaction"||op.options?.readOnly===true));
+});
+test("unapproved filter IDs, cross-account and duplicate query are denied before reading counts",async()=>{
+ const f=fake();let countReads=0;
+ const run=handler(f,c=>{countReads++;return countInput(c);});
+ for(const [who,query,expected] of [
+  ["hub","month=2026-11&companyId=foreign",403],
+  ["hub","month=2026-11&companyId=partner&companyId=hub",400],
+  ["hub","month=2026-11&teamId=team",400],
+  ["hub","month=2026-11&uid=partnerStaff",400],
+  ["hub","month=2026-11&productId=../../records",400],
+  ["hub","month=2026-11&companyId=partner%2Frecords",400],
+  ["hub","month=2026-11&companyId=",400],
+  ["hub","month=2026-11&companyId=partner&salary=5000",400],
+  ["partner","month=2026-11&companyId=hub",403],
+  ["partner","month=2026-11&productId=nuro",403]
+ ]){
+  const result=await run(request(who,query));
+  assert.equal(result.status,expected,who+" "+query);
+  assert.deepEqual(await result.json(),{error:"request_blocked"});
+ }
+ assert.equal(countReads,0,"no canonical or financial source read after rejected scope");
+});
 test("opt-in atomic snapshot path serves count-only ranking without legacy publication reads",async()=>{
  const f=fake(),ctx={...countInput({}).context};
  const publication={serverVerified:true,ownerSettingsRead:true,
@@ -221,4 +357,106 @@ test("opt-in atomic snapshot path serves count-only ranking without legacy publi
   })
  });
  assert.equal((await bad(request())).status,503);
+});
+
+
+test("authenticated canonical month snapshots answer exact day and same-month week without modifying ledgers",async()=>{
+ const f=fake(),run=handler(f);
+ const originals=[...f.state].map(([k,v])=>[k,copy(v)]);
+ const day=await run(request("partner","day=2026-11-08"));
+ assert.equal(day.status,200);
+ const dp=await day.json();
+ assert.equal(dp.period,"day");
+ assert.equal(dp.range.start,"2026-11-08");
+ assert.equal(dp.range.end,"2026-11-08");
+ assert.equal(dp.own.count,5);
+ assert.equal(dp.publicRanking.products[0].count,7);
+ const week=await run(request("hub","week=2026-11-08"));
+ assert.equal(week.status,200);
+ const wp=await week.json();
+ assert.equal(wp.period,"week");
+ assert.equal(wp.range.start,"2026-11-02");
+ assert.equal(wp.range.end,"2026-11-08");
+ assert.equal(wp.summary.total,7);
+ const empty=await run(request("hub","day=2026-11-09"));
+ assert.equal(empty.status,200);
+ const ep=await empty.json();
+ assert.equal(ep.summary.total,0,"no report must not be summed from the whole month");
+ const partial=await run(request("partner","week=2026-11-09"));
+ assert.equal(partial.status,200);
+ assert.equal((await partial.json()).range.end,"2026-11-09");
+ assert.deepEqual([...f.state],originals,"read-only period selection never alters source data");
+ assert(!f.ops.some(op=>/write|create|update|delete/.test(op.kind)));
+});
+
+test("cross-month weeks, future days and invalid query never return a misleading count",async()=>{
+ const f=fake(),run=handler(f);
+ for(const query of [
+  "week=2026-11-01", // starts October 26
+  "week=2026-11-30", // finishes December 6
+  "day=2026-11-10", // beyond trusted asOf November 9
+  "week=2026-11-10", // beyond trusted asOf
+  "day=2026-11-31",
+  "week=2026-11-32",
+  "day=2026-11-08&month=2026-11",
+  "day=2026-11-08&day=2026-11-08",
+  "kind=month"
+ ]){
+  const result=await run(request("hub",query));
+  assert.equal(result.status,400,"must fail closed: "+query);
+  assert.deepEqual(await result.json(),{error:"request_blocked"});
+ }
+});
+
+
+test("verified two-month joint week includes both company ledgers without partial owner/partner ranks",async()=>{
+ const f=fake(),months=[];
+ const publication={serverVerified:true,ownerSettingsRead:true,
+  ownerUidVerified:true,productMappingsReviewed:true,revision:2,
+  hubCompanyId:"hub",snapshotReadTime:TIME,
+  enabledHubProductIds:["nuro"],partnerOverrides:[]};
+ const input=countInput({});
+ input.period.asOf="2026-11-09";
+ input.snapshotReadTime=TIME;
+ input.verifiedMonths=["2026-11","2026-10"];
+ input.sources=input.sources.map(s=>{
+  const recent={...s.records[0],date:"2026-11-01"};
+  const currentLine={...s.lines[0],date:"2026-11-01"};
+  const old={...recent,sourceId:recent.sourceId+"October",date:"2026-10-31"};
+  const oldLine={...currentLine,sourceId:currentLine.sourceId+"October",
+   recordId:old.sourceId,date:"2026-10-31"};
+  return {...s,completeWindows:{current:true,previous:true},
+   records:[recent,old],lines:[currentLine,oldLine]};
+ });
+ const snapshot=copy(input);
+ const run=createStagedOwnerVisibleCountHandler({
+  enabled:true,db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async ({month,secondMonth,context})=>{
+   assert.equal(context.serverVerified,true);
+   months.push([month,secondMonth]);
+   return {input,publication};
+  }
+ });
+ const own=await run(request("hub","week=2026-11-01"));
+ assert.equal(own.status,200);
+ const board=await own.json();
+ assert.deepEqual(board.summary,{own:4,partner:10,total:14,unidentified:0});
+ assert.equal(board.range.start,"2026-10-26");
+ assert.equal(board.range.end,"2026-11-01");
+ const partner=await run(request("partner","week=2026-11-01"));
+ assert.equal(partner.status,200);
+ const publicView=await partner.json();
+ assert.equal(publicView.role,"partner_owner");
+ assert.equal(publicView.own.count,10);
+ assert.equal(publicView.publicRanking.products[0].count,14);
+ assert.deepEqual(months,[["2026-11","2026-10"],["2026-11","2026-10"]]);
+ assert.deepEqual(input,snapshot,"count originals remain immutable");
+ assert(!f.ops.some(x=>/write|create|update|delete/.test(x.kind)));
+ const corrupted=createStagedOwnerVisibleCountHandler({
+  enabled:true,db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async()=>({
+   input:{...input,verifiedMonths:["2026-11"]},publication
+  })
+ });
+ assert.equal((await corrupted(request("hub","week=2026-11-01"))).status,503);
 });

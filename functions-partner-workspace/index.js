@@ -13,7 +13,9 @@ const service=makeWorkspace({
  sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled",
  // Separate hard OFF: existing count save/correction behavior is unchanged
  // until owner SKU publication, finance denial and restore are verified.
- submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"
+ submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled",
+ // Independent hard OFF. Requires owner-signed review and backup+finance gates.
+ ownerCorrectionEnabled:()=>process.env.NICO_PARTNER_OWNER_CORRECTION_ENABLED==="enabled"
 });
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};

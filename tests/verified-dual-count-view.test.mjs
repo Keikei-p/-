@@ -73,6 +73,25 @@ test("internal dashboard presents company/team tied counts as 1,1 without alteri
  assert(!words(root).includes("単価"));
  assert(!words(root).includes("キャッシュバック"));
 });
+test("owner server company/team ranks are verified and unreported companies remain unranked",()=>{
+ const good=buildVerifiedCountDashboard(input("hub_owner")),root=new Node("main");
+ assert.deepEqual(good.companyBreakdown.map(x=>[x.id,x.rank]),[["hub",2],["partner",1]]);
+ assert.deepEqual(good.teamBreakdown.map(x=>[x.companyId,x.rank]),
+  [["hub",2],["partner",1]]);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ for(const change of [
+  d=>{d.companyBreakdown[0].rank=1;},
+  d=>{d.companyBreakdown[1].rank=null;},
+  d=>{d.teamBreakdown[0].rank=1;},
+  d=>{d.teamBreakdown[0].rank=null;},
+  d=>{d.companyBreakdown.push({...d.companyBreakdown[0]});}
+ ]){
+  const candidate=structuredClone(good);change(candidate);
+  assert.throws(()=>renderVerifiedDualCountDashboard({
+   document:doc,root,payload:candidate}),/件数の権限/);
+  assert.equal(root.children.length,0);
+ }
+});
 test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
@@ -149,6 +168,24 @@ test("malformed or financial API payload clears stale names and never displays p
   renderVerifiedDualCountDashboard({document:doc,root,payload:good});
  }
 });
+test("partner ranking renderer rejects NFKC disguised financial labels and keys",()=>{
+ const good=buildVerifiedCountDashboard(input("partner_owner"));
+ const root=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ for(const mutate of [
+  d=>{d.publicRanking.companies[0].name="協力店 ＣＢ２００００";},
+  d=>{d.publicRanking.members[0].name="担当 ＣＢ２００００";},
+  d=>{d.publicRanking.products[0]["ｒｅｖｅｎｕｅ"]=50000;}
+ ]){
+  const invalid=structuredClone(good);mutate(invalid);
+  assert.throws(()=>renderVerifiedDualCountDashboard({
+   document:doc,root,payload:invalid
+  }),/件数の権限/);
+  assert.equal(root.children.length,0,"invalid financial payload must clear stale content");
+  renderVerifiedDualCountDashboard({document:doc,root,payload:good});
+ }
+});
+
 test("server-bound controller refresh uses only period/filters and supports owner dropdown filtering",async()=>{
  const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>{}}};
  const calls=[],root=new Node("main");
@@ -165,8 +202,8 @@ test("server-bound controller refresh uses only period/filters and supports owne
  assert.equal(calls.length,1);
  const toolbar=find(root,"nico-dual-controls");
  assert(toolbar,"interactive filters on the dashboard");
- assert.equal(walk(toolbar).filter(x=>x.tagName==="select").length,5,
-  "period plus company/team/person/SKU filters");
+ assert.equal(walk(toolbar).filter(x=>x.tagName==="select").length,6,
+  "period, server-verified audience, company/team/person/SKU filters");
  assert(walk(toolbar).some(x=>x.tagName==="input"&&x.type==="date"));
  await ctrl.setFilter("companyId","partner");
  assert.equal(calls.at(-1).filters.companyId,"partner");
@@ -176,6 +213,42 @@ test("server-bound controller refresh uses only period/filters and supports owne
  assert.equal(calls.at(-1).period.kind,"month");
  ctrl.destroy();assert.equal(root.children.length,0);
 });
+test("same local team IDs in two companies never collide in the Owner filter UI",async()=>{
+ const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>""}};
+ const root=new Node("main"),calls=[];
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,asOf:"2026-11-08",
+  load:async ({period,filters})=>{
+   calls.push({...filters});
+   return buildVerifiedCountDashboard({...input("hub_owner"),period,filters});
+  }
+ });
+ assert.equal(await ctrl.refresh(),true);
+ const selections=()=>walk(find(root,"nico-dual-controls"))
+  .filter(node=>node.tagName==="select");
+ const get=(index)=>selections()[index];
+ assert.deepEqual(get(3).children.map(x=>x.value),[""],
+  "unscoped team IDs cannot silently merge two companies");
+ assert.deepEqual(get(4).children.map(x=>x.value),[""],
+  "unscoped staff identifiers are not cross-company selections");
+ assert.throws(()=>ctrl.setFilter("teamId","team"),/件数の権限/);
+ assert.throws(()=>ctrl.setFilter("uid","owner"),/件数の権限/);
+ assert.equal(await ctrl.setFilter("companyId","partner"),true);
+ assert.deepEqual(get(3).children.map(x=>x.value),["","team"]);
+ assert.deepEqual(get(4).children.map(x=>x.value),["","partnerOwner"]);
+ assert.equal(await ctrl.setFilter("teamId","team"),true);
+ assert.equal(calls.at(-1).companyId,"partner");
+ assert.equal(calls.at(-1).teamId,"team");
+ assert.equal(await ctrl.setFilter("uid","partnerOwner"),true);
+ assert.equal(await ctrl.setFilter("companyId","hub"),true);
+ assert.deepEqual(calls.at(-1),{companyId:"hub"},
+  "old company team/staff filter must be removed atomically");
+ assert.deepEqual(get(3).children.map(x=>x.value),["","team"]);
+ assert.deepEqual(get(4).children.map(x=>x.value),["","owner"]);
+ assert(!words(root).includes("単価"));
+ ctrl.destroy();
+});
+
 test("canonical month-only controller renders month picker without unsupported daily/filter actions",async()=>{
  const auth={currentUser:{uid:"owner",emailVerified:true,getIdToken:async()=>{}}};
  const root=new Node("main"),calls=[];
@@ -190,8 +263,11 @@ test("canonical month-only controller renders month picker without unsupported d
  assert.equal(await ctrl.refresh(),true);
  const toolbar=find(root,"nico-dual-controls");
  const selects=walk(toolbar).filter(x=>x.tagName==="select");
- assert.equal(selects.length,1,"month only, no fake unsupported company/person filters");
+ assert.equal(selects.length,2,"month and public scope; no company/person filters");
  assert.deepEqual(selects[0].children.map(x=>x.value),["month"]);
+ assert.deepEqual(selects[1].children.map(x=>[x.value,x.disabled]),
+  [["joint",false],["own",true],["partner",true]],
+  "legacy unscoped responses cannot enable unsupported scopes");
  const month=walk(toolbar).find(x=>x.tagName==="input");
  assert.equal(month.type,"month");
  assert.equal(month.value,"2026-11");
@@ -227,4 +303,233 @@ test("bad login, company filter attack and server errors do not reuse private ea
  assert.throws(()=>ctrl.setFilter("companyId","../../other"));
  assert.throws(()=>ctrl.setPeriod("month","2026-11-32"));
  ctrl.destroy();
+});
+
+test("count dashboard DOM visually separates unreported from confirmed zero",()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const original=input(role),company=original.sources[1];
+  company.roster.push({uid:"missing",name:"未報告スタッフ",teamId:"team"});
+  company.roster.push({uid:"zero",name:"報告済0件",teamId:"team"});
+  company.records.push({companyId:"partner",
+   sourceId:"2026-11-08__zero",uid:"zero",date:"2026-11-08",
+   teamId:"team",totalCount:0,reportStatus:"no_result",
+   memberNameSnapshot:"報告済0件",teamNameSnapshot:"第一班",workLocation:""});
+  const before=structuredClone(original),root=new Node("main");
+  const data=buildVerifiedCountDashboard(original);
+  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+  const findRow=name=>walk(root).find(node=>
+   node.className==="nico-dual-rank-row"&&node.children.some(child=>
+    child.className==="nico-dual-rank-name"&&child.textContent===name));
+  const missing=findRow("未報告スタッフ"),reportedZero=findRow("報告済0件");
+  if(role==="hub_owner"){
+   assert(missing,"hub Owner sees unreported in own private scope only");
+  }else{
+   assert(missing,"partner Owner still sees own unreported staff");
+   assert(!data.publicRanking.members.some(x=>x.name==="未報告スタッフ"));
+  }
+  assert(reportedZero,"explicit zero must remain listed and ranked");
+  const metric=(row,cls)=>row.children.find(x=>x.className===cls)?.textContent;
+  assert.equal(metric(missing,"nico-dual-rank-number"),"—");
+  assert.equal(metric(missing,"nico-dual-rank-score"),"未報告");
+  assert.match(metric(reportedZero,"nico-dual-rank-number"),/^[1-9][0-9]*位$/);
+  assert.equal(metric(reportedZero,"nico-dual-rank-score"),"0件");
+  assert.deepEqual(original,before,"DOM rendering never mutates count originals");
+ }
+});
+
+test("hub Owner count-only scope filters the same verified companies, teams, people, products",()=>{
+ const data=buildVerifiedCountDashboard(input("hub_owner")),snapshot=structuredClone(data);
+ const root=new Node("main");
+ const render=audience=>{
+  renderVerifiedDualCountDashboard({document:doc,root,payload:data,audience});
+  return words(root);
+ };
+ assert(render("joint").includes("5件"));
+ const own=render("own");
+ assert(own.includes("ランキング表示：自社のみ"));
+ assert(own.includes("本社担当"));assert(own.includes("2件"));
+ assert(!own.includes("協力店担当"));assert(!own.includes("3件"));
+ let ranks=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ assert.equal(ranks.length,4);
+ assert.deepEqual(walk(ranks[0]).filter(x=>x.className==="nico-dual-rank-score")
+  .map(x=>x.textContent),["2件"]);
+ const partner=render("partner");
+ assert(partner.includes("ランキング表示：協力店のみ"));
+ assert(partner.includes("協力店担当"));assert(partner.includes("3件"));
+ assert(!partner.includes("本社担当"));assert(!partner.includes("2件"));
+ ranks=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ assert.deepEqual(walk(ranks[0]).filter(x=>x.className==="nico-dual-rank-score")
+  .map(x=>x.textContent),["3件"]);
+ assert.deepEqual(data,snapshot,"changing scopes must never mutate published counts");
+ for(const unsafe of ["private","",null]){
+  assert.throws(()=>renderVerifiedDualCountDashboard({document:doc,root,payload:data,audience:unsafe}),
+   /件数の権限/);
+  assert.equal(root.children.length,0);
+ }
+});
+
+test("hub Owner selector reloads only verified count GET without passing client audience as role",async()=>{
+ const owner={uid:"owner",emailVerified:true,getIdToken:async()=>"stub"};
+ const auth={currentUser:owner},root=new Node("main"),calls=[];
+ const ctrl=createVerifiedDualCountController({
+  document:doc,root,auth,asOf:"2026-11-08",
+  availablePeriods:["month"],allowFilters:false,
+  load:async args=>{calls.push(args);return buildVerifiedCountDashboard({
+   ...input("hub_owner"),period:args.period
+  });}
+ });
+ assert.equal(await ctrl.refresh(),true);
+ const toolbar=find(root,"nico-dual-controls");
+ const selects=walk(toolbar).filter(x=>x.tagName==="select");
+ assert.equal(selects.length,2,"month and joint/own/partner scope");
+ assert.deepEqual(selects[1].children.map(o=>o.value),["joint","own","partner"]);
+ assert.equal(await ctrl.setAudience("partner"),true);
+ assert(words(root).includes("ランキング表示：協力店のみ"));
+ assert(!words(root).includes("本社担当"));
+ assert.deepEqual(calls.at(-1).filters,{});
+ assert.deepEqual(Object.keys(calls.at(-1)).sort(),["filters","period","scope"]);
+ assert.equal(calls.at(-1).scope,"partner");
+ assert.equal(await ctrl.setAudience("own"),true);
+ assert(words(root).includes("本社担当"));
+ assert(!words(root).includes("協力店担当"));
+ assert.throws(()=>ctrl.setAudience("hidden"),/件数の権限/);
+ ctrl.onAuthChange();
+ assert.equal(root.children.length,0,"identity switch clears the selected ranking");
+ ctrl.destroy();
+});
+
+test("partner audience cannot claim hub-only internal or alternate company boards",()=>{
+ const data=buildVerifiedCountDashboard(input("partner_owner")),root=new Node("main");
+ for(const scope of ["own","partner"]){
+  assert.throws(()=>renderVerifiedDualCountDashboard({
+   document:doc,root,payload:data,audience:scope
+  }),/件数の権限/);
+  assert.equal(root.children.length,0);
+ }
+});
+
+test("server-approved partner scopes reconcile all four boards for day, week and month without exposing IDs",()=>{
+ for(const kind of ["day","week","month"]){
+  const original={...input("partner_owner"),period:{kind,day:"2026-11-08",asOf:"2026-11-08"}};
+  const before=structuredClone(original);
+  for(const [scope,total] of [["joint",5],["own",2],["partner",3]]){
+   const data=buildVerifiedCountDashboard({...original,scope});
+   assert.equal(data.scope,scope);
+   assert.equal(data.own.count,3,"own-company detail is independent of the public scope");
+   for(const rows of Object.values(data.publicRanking)){
+    assert.equal(rows.reduce((n,x)=>n+x.count,0),total);
+    assert.equal(rows[0].rank,1,"each selected scope starts at rank one");
+   }
+   assert.doesNotMatch(JSON.stringify(data.publicRanking),/companyId|teamId|uid|hubNuro|partnerSku|revenue|unitPrice/);
+   const root=new Node("main");
+   renderVerifiedDualCountDashboard({document:doc,root,payload:data,audience:scope});
+   assert(words(root).includes({joint:"合同",own:"自社のみ",partner:"協力店のみ"}[scope]));
+   assert.throws(()=>renderVerifiedDualCountDashboard({document:doc,root,payload:data,
+    audience:scope==="joint"?"own":"joint"}),/件数の権限/);
+  }
+  assert.deepEqual(original,before,"scope changes never rewrite original counts");
+ }
+});
+
+test("scoped public rankings keep submitted zero and exclude unreported staff and companies",()=>{
+ const original=input("partner_owner");
+ original.sources[1]=src("partner","partnerOwner","partnerSku01",0);
+ const zero=buildVerifiedCountDashboard({...original,scope:"partner"});
+ for(const rows of Object.values(zero.publicRanking)){
+  assert.equal(rows.length,1);assert.equal(rows[0].count,0);assert.equal(rows[0].rank,1);
+ }
+ original.sources[1].records=[];original.sources[1].lines=[];
+ const missing=buildVerifiedCountDashboard({...original,scope:"partner"});
+ assert.deepEqual(missing.publicRanking,{members:[],products:[],companies:[],teams:[]});
+});
+
+test("partner scope selector fetches the requested public scope and resets on account change",async()=>{
+ const auth={currentUser:{uid:"partnerOwner",emailVerified:true,getIdToken:async()=>"stub"}},root=new Node("main"),calls=[];
+ let wrongEcho=false;
+ const ctrl=createVerifiedDualCountController({document:doc,root,auth,asOf:"2026-11-08",
+  availablePeriods:["day","week","month"],allowFilters:false,
+  load:async args=>{calls.push(args);return buildVerifiedCountDashboard({
+   ...input("partner_owner"),period:args.period,scope:wrongEcho?"joint":args.scope});}
+ });
+ assert.equal(await ctrl.refresh(),true);assert.equal(calls[0].scope,"joint");
+ const scopes=walk(find(root,"nico-dual-controls")).filter(x=>x.tagName==="select")[1];
+ assert.deepEqual(scopes.children.map(x=>[x.value,x.disabled]),
+  [["joint",false],["own",false],["partner",false]]);
+ for(const scope of ["own","partner"]){assert.equal(await ctrl.setAudience(scope),true);assert.equal(calls.at(-1).scope,scope);}
+ wrongEcho=true;assert.equal(await ctrl.setAudience("own"),false);
+ assert(!words(root).includes("会社ランキング"),"a wrong-scope response never renders");
+ ctrl.onAuthChange();wrongEcho=false;
+ assert.equal(await ctrl.refresh(),true);assert.equal(calls.at(-1).scope,"joint");
+ ctrl.destroy();
+});
+
+
+test("partner shows four joint leaderboard sections in exactly the hub order before own results",()=>{
+ const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
+ const frozen=structuredClone(data);
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const titles=walk(root).filter(x=>x.className==="nico-dual-ranking")
+  .map(section=>find(section,"nico-dual-title")?.textContent);
+ assert.deepEqual(titles,[
+  "公開承認済み・会社ランキング",
+  "公開承認済み・班ランキング",
+  "公開承認済み・個人ランキング",
+  "公開承認済み・商材ランキング",
+  "自分たちの成果・前期比",
+  "自社の商材別件数"
+ ]);
+ const text=words(root);
+ assert(text.includes("合同ランキング（公開承認済み・件数のみ）"));
+ assert(text.includes("自分の会社の件数内訳"));
+ for(const privateValue of ["単価","キャッシュバック","50000円","totalRevenue"])
+  assert(!text.includes(privateValue));
+ assert.deepEqual(data,frozen,"partner UI must not mutate verified counts");
+});
+
+test("own partner SKU ranking keeps count ties as 1,1 without affecting public joint ranks",()=>{
+ const value=input("partner_owner"),partner=value.sources[1];
+ partner.records[0].totalCount=4;
+ partner.lines[0].count=2;
+ partner.lines.push({...partner.lines[0],
+  sourceId:partner.lines[0].recordId+"__1",productId:"partnerSku02",count:2});
+ partner.products.push({companyId:"partner",sourceId:"partnerSku02",
+  name:"U-NEXT",active:true,sortOrder:1});
+ value.productGroups.push({companyId:"partner",productId:"partnerSku02",
+  groupId:"U-NEXT",groupName:"U-NEXT"});
+ const snapshot=structuredClone(value);
+ const data=buildVerifiedCountDashboard(value),root=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root,payload:data});
+ const sections=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ const ownProduct=sections[5],ranks=walk(ownProduct)
+  .filter(x=>x.className==="nico-dual-rank-number")
+  .map(x=>x.textContent);
+ assert.deepEqual(ranks,["1位","1位"]);
+ assert(words(sections[3]).includes("公開承認済み・商材ランキング"));
+ assert.deepEqual(value,snapshot,"ranking ties must not rewrite source rows");
+});
+
+
+test("hub leaderboard excludes unreported company and keeps saved zero",()=>{
+ const missing=input("hub_owner");
+ missing.sources[1].records=[];missing.sources[1].lines=[];
+ const original=structuredClone(missing),root=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root,
+  payload:buildVerifiedCountDashboard(missing)});
+ const sections=walk(root).filter(x=>x.className==="nico-dual-ranking");
+ const companies=sections.find(x=>words(x).includes("会社ランキング"));
+ assert(companies);assert(words(companies).includes("自社"));
+ assert(!words(companies).includes("協力店A"));
+ assert(words(root).includes("未報告"));
+ assert.deepEqual(missing,original);
+ const zero=input("hub_owner");
+ zero.sources[1].records[0].totalCount=0;
+ zero.sources[1].records[0].reportStatus="no_result";
+ zero.sources[1].lines[0].count=0;
+ const zeroRoot=new Node("main");
+ renderVerifiedDualCountDashboard({document:doc,root:zeroRoot,
+  payload:buildVerifiedCountDashboard(zero)});
+ const ranked=walk(zeroRoot).filter(x=>x.className==="nico-dual-ranking")
+  .find(x=>words(x).includes("会社ランキング"));
+ assert(words(ranked).includes("協力店A"));
+ assert(words(ranked).includes("0件"));
 });

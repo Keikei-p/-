@@ -113,13 +113,25 @@ export function buildOwnerVisibleCountRanking({input,publication}={}){
  // Preserve every original report, team and historical person, but recompute
  // its PUBLISHED count from the filtered line items. Never mutate originals.
  const sources=input.sources.map(source=>{
-  const lines=source.lines.filter(l=>allowed.has(key(source.companyId,l.productId)));
+  const enabledProducts=source.products.filter(p=>
+   allowed.has(key(source.companyId,p.sourceId)));
+  const enabled=enabledProducts.length>0;
+  // A saved report containing ONLY an OFF SKU is NOT a verified zero
+  // submission for any ON SKU. Do not publish its person/company/team as
+  // a tied 0-count rank or reveal that the person reported a hidden SKU.
+  // A genuinely saved zero-total report is retained only when this
+  // company has at least one Owner-published, mapped SKU.
+  const visibleLines=source.lines.filter(l=>
+   allowed.has(key(source.companyId,l.productId)));
   const sums=new Map();
-  for(const line of lines)
+  for(const line of visibleLines)
    sums.set(line.recordId,(sums.get(line.recordId)||0)+line.count);
-  return {...source,lines,
-   products:source.products.filter(p=>allowed.has(key(source.companyId,p.sourceId))),
-   records:source.records.map(r=>({...r,totalCount:sums.get(r.sourceId)||0}))};
+  const records=source.records
+   .filter(r=>enabled&&(r.totalCount===0||(sums.get(r.sourceId)||0)>0))
+   .map(r=>({...r,totalCount:sums.get(r.sourceId)||0}));
+  const visibleRecords=new Set(records.map(r=>r.sourceId));
+  const lines=visibleLines.filter(l=>visibleRecords.has(l.recordId));
+  return {...source,lines,products:enabledProducts,records};
  });
  const productGroups=input.productGroups.filter(g=>allowed.has(key(g.companyId,g.productId)));
  const unassigned=(input.unassigned||[]).filter(x=>allowed.has(key(x.companyId,x.productId)));

@@ -10,7 +10,7 @@ const FORBIDDEN=/^(?:totalRevenue|revenue|revenuePerUnit|unitPrice|price|pricing
 const halt=()=>{throw Error("合同件数の権限・結果を確認できません。ログインし直してください。");};
 function inspect(value,depth=0){
  if(depth>15)halt();
- if(typeof value==="string"&&MONEY.test(value))halt();
+ if(typeof value==="string"&&MONEY.test(value.normalize("NFKC")))halt();
  if(value===null||typeof value!=="object")return;
  if(Array.isArray(value)){
   if(value.length>5000)halt();
@@ -18,7 +18,7 @@ function inspect(value,depth=0){
   return;
  }
  for(const [k,v] of Object.entries(value)){
-  if(FORBIDDEN.test(k))halt();
+  if(FORBIDDEN.test(k.normalize("NFKC")))halt();
   inspect(v,depth+1);
  }
 }
@@ -54,8 +54,27 @@ function shape(value){
    if(!Number.isSafeInteger(value.summary[k])||value.summary[k]<0)halt();
   }
   if(value.summary.own+value.summary.partner!==value.summary.total)halt();
-  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount"]);
-  list(value.teamBreakdown,["id","companyId","companyName","name","count"]);
+  list(value.companyBreakdown,["id","name","kind","count","unidentifiedCount","hasVerifiedSubmission","rank"]);
+  if(value.companyBreakdown.some(x=>typeof x.hasVerifiedSubmission!=="boolean"))halt();
+  list(value.teamBreakdown,["id","companyId","companyName","name","count","rank"]);
+  // Server-certified competition ranks must match the verified submitted
+  // company/team counts. A missing report cannot be presented as rank 1 at 0.
+  const submitted=value.companyBreakdown.filter(x=>x.hasVerifiedSubmission);
+  const companyRanked=competitionFromBreakdown(submitted,x=>({
+   id:x.id,name:x.name,count:x.count
+  }));
+  const companyRankById=new Map(companyRanked.map(x=>[x.id,x.rank]));
+  if(companyRankById.size!==submitted.length||
+     value.companyBreakdown.some(x=>
+      x.rank!==(companyRankById.get(x.id)??null)))halt();
+  const teamRanked=competitionFromBreakdown(value.teamBreakdown,x=>({
+   id:x.id,companyId:x.companyId,name:x.name,
+   company:x.companyName,count:x.count
+  }));
+  const key=x=>JSON.stringify([x.companyId,x.id]);
+  const teamRankById=new Map(teamRanked.map(x=>[key(x),x.rank]));
+  if(teamRankById.size!==value.teamBreakdown.length||
+     value.teamBreakdown.some(x=>x.rank!==teamRankById.get(key(x))))halt();
   list(value.memberRanking,PERSON);
   list(value.productRanking,PRODUCT);
   for(const product of value.productRanking)
@@ -85,6 +104,8 @@ function validate(result){
     result.unit!=="件"||
     !result.range||!Number.isSafeInteger(result.range.days)||
     !/^\d{4}-\d\d-\d\dT/.test(result.readTime||""))halt();
+ const scopeKeys=Object.hasOwn(result,"scope")?["scope"]:[];
+ if(scopeKeys.length&&!["joint","own","partner"].includes(result.scope))halt();
  inspect(result);
  shape(result);
  if(result.role==="hub_owner"){
@@ -95,7 +116,7 @@ function validate(result){
      !Array.isArray(result.productRanking)||
      !result.filters||Object.keys(result).sort().join("|")!==
        ["schema","period","range","readTime","unit","summary","role",
-        "companyBreakdown","teamBreakdown","memberRanking","productRanking","filters"
+        "companyBreakdown","teamBreakdown","memberRanking","productRanking","filters",...scopeKeys
        ].sort().join("|"))halt();
  }else if(!result.own||!Number.isSafeInteger(result.own.count)||
     !Array.isArray(result.own.people)||!Array.isArray(result.own.products)||
@@ -104,7 +125,7 @@ function validate(result){
     !Array.isArray(result.publicRanking.companies)||
     !Array.isArray(result.publicRanking.teams)||
     Object.keys(result).sort().join("|")!==
-    ["schema","period","range","readTime","unit","role","own","publicRanking"
+    ["schema","period","range","readTime","unit","role","own","publicRanking",...scopeKeys
     ].sort().join("|"))halt();
  return result;
 }
@@ -129,9 +150,14 @@ function ranked(doc,heading,items,mode){
  const list=el(doc,"ol","nico-dual-rank-list");
  for(const row of items){
   const line=el(doc,"li","nico-dual-rank-row");
-  add(line,doc,"strong","nico-dual-rank-number",String(row.rank)+"位");
+  // A missing report must remain visible as 未報告, never 0件 or a
+  // tied numeric rank with a confirmed zero-count submission.
+  const unreported=mode==="person"&&row.reportStatus==="未報告";
+  add(line,doc,"strong","nico-dual-rank-number",
+   unreported?"—":String(row.rank)+"位");
   add(line,doc,"span","nico-dual-rank-name",row.name||"担当者未特定");
-  add(line,doc,"strong","nico-dual-rank-score",String(row.count)+"件");
+  add(line,doc,"strong","nico-dual-rank-score",
+   unreported?"未報告":String(row.count)+"件");
   const details=mode==="team"?row.company:mode==="person"?
    [row.companyName||row.company, row.teamName,
     row.reportStatus,row.growth==="比較不可"?"":row.growth,
@@ -161,6 +187,47 @@ function competitionFromBreakdown(items,convert){
   return {...row,rank};
  });
 }
+
+// The view-only audience switch never reads financial originals or invents
+// unsent counts. All rows come from the already verified server payload.
+// Company kind is server-owned, not a browser authorization claim.
+// Personal and own-company leaderboards use the same tie ranking as the
+// public hub board. Unreported people never receive a numeric rank.
+function rerankReportedPeople(rows){
+ const submitted=competitionFromBreakdown(
+  rows.filter(r=>r.reportStatus!=="未報告"),r=>({...r}));
+ const unreported=rows.filter(r=>r.reportStatus==="未報告")
+  .map(r=>({...r,rank:null}));
+ return [...submitted,...unreported];
+}
+function hubAudienceRows(data,audience){
+ if(!["joint","own","partner"].includes(audience))halt();
+ if(audience==="joint")return {
+  companies:data.companyBreakdown,teams:data.teamBreakdown,
+  people:data.memberRanking,products:data.productRanking,total:data.summary.total
+ };
+ const expectedKind=audience==="own"?"自社":"協力店";
+ if(data.companyBreakdown.some(x=>!["自社","協力店"].includes(x.kind)))halt();
+ const companies=data.companyBreakdown.filter(x=>x.kind===expectedKind);
+ const ids=new Set(companies.map(x=>x.id));
+ const total=companies.reduce((sum,x)=>sum+x.count,0);
+ if(!Number.isSafeInteger(total)||total!==
+    (audience==="own"?data.summary.own:data.summary.partner))halt();
+ const teams=data.teamBreakdown.filter(x=>ids.has(x.companyId));
+ // Re-rank only verified submissions within the selected company scope.
+ const members=rerankReportedPeople(data.memberRanking.filter(x=>ids.has(x.companyId)));
+ const products=competitionFromBreakdown(
+  data.productRanking.filter(x=>x.companies.some(c=>ids.has(c.companyId))),
+  x=>({...x,count:audience==="own"?x.ownCount:x.partnerCount,
+   ownCount:audience==="own"?x.ownCount:null,
+   partnerCount:audience==="partner"?x.partnerCount:null,
+   companies:x.companies.filter(c=>ids.has(c.companyId))
+  }));
+ const sum=products.reduce((n,x)=>n+x.count,0);
+ if(!Number.isSafeInteger(sum)||sum!==total)halt();
+ return {companies,teams,people:members,products,total};
+}
+
 const validDate=x=>{
  if(typeof x!=="string"||!/^\d{4}-\d\d-\d\d$/.test(x))return false;
  const [y,m,d]=x.split("-").map(Number);
@@ -171,34 +238,47 @@ const validDate=x=>{
  * Static scoped render. Does not generate menus or produce network requests.
  * Throws and empties the root if malformed/financial data reaches the browser.
  */
-export function renderVerifiedDualCountDashboard({document,root,payload}={}){
+export function renderVerifiedDualCountDashboard({document,root,payload,audience="joint"}={}){
  if(!document||!root||typeof root.replaceChildren!=="function")halt();
  root.replaceChildren();
  try{
   const data=validate(payload);
+  if(!["joint","own","partner"].includes(audience)||
+     (data.scope!==undefined&&data.scope!==audience)||
+     (data.role!=="hub_owner"&&audience!=="joint"&&data.scope!==audience))halt();
+  const board=data.role==="hub_owner"?hubAudienceRows(data,audience):null;
   const page=el(document,"section","nico-dual-dashboard");
   add(page,document,"h2","nico-dual-heading",
     data.role==="hub_owner"?"全社獲得件数・合同ランキング":"自社の獲得件数・成長");
+  if(data.role==="hub_owner")
+   add(page,document,"p","nico-dual-audience",
+    "ランキング表示："+({joint:"合同",own:"自社のみ",partner:"協力店のみ"}[audience]));
   add(page,document,"p","nico-dual-period",
    data.range.start+" 〜 "+data.range.end+"｜全て件数のみ");
   const metrics=el(document,"div","nico-dual-metrics");
   if(data.role==="hub_owner"){
-   metrics.appendChild(metric(document,"自社",data.summary.own));
-   metrics.appendChild(metric(document,"協力店",data.summary.partner));
-   metrics.appendChild(metric(document,"全体",data.summary.total));
+   if(audience==="joint"){
+    metrics.appendChild(metric(document,"自社",data.summary.own));
+    metrics.appendChild(metric(document,"協力店",data.summary.partner));
+    metrics.appendChild(metric(document,"全体",data.summary.total));
+   }else{
+    metrics.appendChild(metric(document,
+     audience==="own"?"自社":"協力店",board.total));
+   }
    page.appendChild(metrics);
    const companies=el(document,"section","nico-dual-companies");
    add(companies,document,"h3","nico-dual-title","会社別内訳");
-   for(const row of data.companyBreakdown){
+   for(const row of board.companies){
     const line=el(document,"div","nico-dual-company-row");
     add(line,document,"span","nico-dual-company-name",row.name+"（"+row.kind+"）");
-    add(line,document,"strong","nico-dual-company-count",row.count+"件");
+    add(line,document,"strong","nico-dual-company-count",
+     row.hasVerifiedSubmission?row.count+"件":"未報告");
     companies.appendChild(line);
    }
    page.appendChild(companies);
    const teams=el(document,"section","nico-dual-teams");
    add(teams,document,"h3","nico-dual-title","班別内訳");
-   for(const row of data.teamBreakdown){
+   for(const row of board.teams){
     const line=el(document,"div","nico-dual-company-row");
     add(line,document,"span","nico-dual-company-name",row.companyName+"・"+row.name);
     add(line,document,"strong","nico-dual-company-count",row.count+"件");
@@ -206,25 +286,30 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
    }
    page.appendChild(teams);
    page.appendChild(ranked(document,"会社ランキング",
-    competitionFromBreakdown(data.companyBreakdown,x=>({
+    competitionFromBreakdown(board.companies.filter(x=>x.hasVerifiedSubmission),x=>({
      name:x.name,count:x.count
     })),"company"));
    page.appendChild(ranked(document,"班ランキング",
-    competitionFromBreakdown(data.teamBreakdown,x=>({
+    competitionFromBreakdown(board.teams,x=>({
      name:x.name,company:x.companyName,count:x.count
     })),"team"));
-   page.appendChild(ranked(document,"個人ランキング",data.memberRanking,"person"));
-   page.appendChild(ranked(document,"商材ランキング",data.productRanking,"product"));
+   page.appendChild(ranked(document,"個人ランキング",board.people,"person"));
+   page.appendChild(ranked(document,"商材ランキング",board.products,"product"));
    if(data.summary.unidentified>0)
     add(page,document,"p","nico-dual-unidentified",
      "担当者未特定 "+data.summary.unidentified+"件（個人順位には加算しません）");
   }else{
+   add(page,document,"p","nico-dual-audience",
+    "ランキング表示："+({joint:"合同",own:"自社のみ",partner:"協力店のみ"}[audience]));
+   add(page,document,"p","nico-dual-period",
+    "「自社のみ」はNICO本社の公開件数、「協力店のみ」は公開承認済み協力店の件数です。本人の会社の成績は会社名付きの内訳に表示します。");
    metrics.appendChild(metric(document,data.own.company,data.own.count));
    page.appendChild(metrics);
-   page.appendChild(ranked(document,"自分たちの成果・前期比",data.own.people
-    .map((p,i)=>({...p,rank:p.rank||i+1})),"person"));
-   page.appendChild(ranked(document,"自社の商材別件数",data.own.products
-    .map((p,i)=>({...p,rank:p.rank||i+1})),"product"));
+   // Keep the same four leaderboard positions and order as the hub Owner.
+   // Partner public rows contain only server-approved names and count totals;
+   // never derive cross-company ranks from unapproved own staff records.
+   add(page,document,"h3","nico-dual-title",
+    ({joint:"合同",own:"自社のみ",partner:"協力店のみ"}[audience])+"ランキング（公開承認済み・件数のみ）");
    page.appendChild(ranked(document,"公開承認済み・会社ランキング",
     data.publicRanking.companies,"company"));
    page.appendChild(ranked(document,"公開承認済み・班ランキング",
@@ -233,6 +318,11 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
     data.publicRanking.members,"person"));
    page.appendChild(ranked(document,"公開承認済み・商材ランキング",
     data.publicRanking.products,"product"));
+   add(page,document,"h3","nico-dual-title","自分の会社の件数内訳");
+   page.appendChild(ranked(document,"自分たちの成果・前期比",
+    rerankReportedPeople(data.own.people),"person"));
+   page.appendChild(ranked(document,"自社の商材別件数",
+    competitionFromBreakdown(data.own.products,p=>({...p})),"product"));
    if(data.own.unidentifiedCount>0)
     add(page,document,"p","nico-dual-unidentified",
      "担当者未特定 "+data.own.unidentifiedCount+"件");
@@ -258,17 +348,32 @@ export function createVerifiedDualCountController({
     typeof allowFilters!=="boolean")halt();
  const permitted=new Set(availablePeriods);
  let generation=0,closed=false;
- const current={period:availablePeriods[0],day:asOf,filters:{}};
+ const current={period:availablePeriods[0],day:asOf,filters:{},audience:"joint"};
  const clear=()=>root.replaceChildren();
  const thisSafePeriod=(kind,day=current.day)=>{
   if(!permitted.has(kind)||!validDate(day)||day>asOf)halt();
   current.period=kind;current.day=day;
   return refresh();
  };
+ const thisSafeAudience=(value)=>{
+  if(!["joint","own","partner"].includes(value))halt();
+  current.audience=value;
+  current.filters={};
+  return refresh(); // Recheck identity and verified server scope.
+ };
  const thisSafeFilter=(key,value)=>{
   if(!allowFilters||!["companyId","teamId","uid","productId"].includes(key)||
      typeof value!=="string"||value.length>(key==="productId"?300:200)||
      (value!==""&&!new RegExp("^[A-Za-z0-9_:-]{1,"+(key==="productId"?300:200)+"}$").test(value)))halt();
+  // The same teamId / uid may exist in two approved companies. A scoped
+  // selection must always carry its company in the server request.
+  if((key==="teamId"||key==="uid")&&value!==""&&!current.filters.companyId)halt();
+  if(key==="companyId"&&value!==current.filters.companyId){
+   delete current.filters.teamId;
+   delete current.filters.uid;
+  }
+  if(key==="teamId"&&value!==current.filters.teamId)
+   delete current.filters.uid;
   if(value==="")delete current.filters[key];
   else current.filters[key]=value;
   return refresh();
@@ -284,30 +389,35 @@ export function createVerifiedDualCountController({
    if(identity!==auth.currentUser||token!==generation||closed)halt();
    const result=await load({
     period:{kind:current.period,day:current.day,asOf},
-    filters:{...current.filters}
+    filters:{...current.filters},scope:current.audience
    });
    if(identity!==auth.currentUser||token!==generation||closed)halt();
    const data=validate(result);
-   renderVerifiedDualCountDashboard({document,root,payload:data});
+   renderVerifiedDualCountDashboard({document,root,payload:data,audience:current.audience});
    const toolbar=el(document,"section","nico-dual-controls");
-   function option(select,value,title){
+   function option(select,value,title,disabled=false){
     const o=el(document,"option","",title);o.value=value;select.appendChild(o);
+    o.disabled=disabled;
    }
    function selectControl(title,currentValue,options,handler){
     const wrap=el(document,"label","nico-dual-control");
     add(wrap,document,"span","",title);
     const select=el(document,"select","");
-    for(const [value,name] of options)option(select,value,name);
+    for(const [value,name,disabled] of options)option(select,value,name,disabled);
     select.value=currentValue??"";
     select.addEventListener("change",()=>{
       if(token!==generation||identity!==auth.currentUser||closed)return;
-      void handler(select.value);
+      return handler(select.value);
     });
     wrap.appendChild(select);toolbar.appendChild(wrap);
    }
    selectControl("集計期間",current.period,[
     ["day","日"],["week","週"],["month","月"]
    ].filter(([value])=>permitted.has(value)),value=>thisSafePeriod(value));
+   const scopesVerified=data.role==="hub_owner"||data.scope!==undefined;
+   selectControl("ランキング範囲",current.audience,[
+     ["joint","合同"],["own","自社のみ",!scopesVerified],["partner","協力店のみ",!scopesVerified]
+    ],value=>thisSafeAudience(value));
    const dayWrap=el(document,"label","nico-dual-control");
    const monthOnly=permitted.size===1&&permitted.has("month");
    add(dayWrap,document,"span","",monthOnly?"対象月":"基準日");
@@ -326,12 +436,20 @@ export function createVerifiedDualCountController({
      ["","全社"],...companyRows
     ],v=>thisSafeFilter("companyId",v));
     const teamIds=new Map(),staffIds=new Map(),products=new Map();
+    // Never de-duplicate teams/staff across companies by local IDs.
+    // A company must be selected before a local team/staff selector is
+    // enabled; company switches above clear any stale subordinate filters.
+    const selectedCompany=current.filters.companyId??"";
     for(const row of data.teamBreakdown){
-     const name=String(row.id).slice(String(row.companyId).length+1);
+     if(!selectedCompany||row.companyId!==selectedCompany||
+        !String(row.id).startsWith(selectedCompany+":"))continue;
+     const name=String(row.id).slice(selectedCompany.length+1);
      if(ID.test(name))teamIds.set(name,row.name);
     }
     for(const row of data.memberRanking){
-     const uid=String(row.id).slice(String(row.companyId).length+1);
+     if(!selectedCompany||row.companyId!==selectedCompany||
+        !String(row.id).startsWith(selectedCompany+":"))continue;
+     const uid=String(row.id).slice(selectedCompany.length+1);
      if(ID.test(uid))staffIds.set(uid,row.name+"（"+row.companyName+"）");
     }
     for(const row of data.productRanking){
@@ -339,10 +457,12 @@ export function createVerifiedDualCountController({
       products.set(row.id,row.name);
     }
     selectControl("班",current.filters.teamId??"",[
-     ["","全班"],...[...teamIds].map(([id,name])=>[id,name])
+     ["",selectedCompany?"全班":"会社を選択"],
+     ...[...teamIds].map(([id,name])=>[id,name])
     ],v=>thisSafeFilter("teamId",v));
     selectControl("担当者",current.filters.uid??"",[
-     ["","全員"],...[...staffIds].map(([id,name])=>[id,name])
+     ["",selectedCompany?"全員":"会社を選択"],
+     ...[...staffIds].map(([id,name])=>[id,name])
     ],v=>thisSafeFilter("uid",v));
     selectControl("商材",current.filters.productId??"",[
      ["","全商材"],...[...products].map(([id,name])=>[id,name])
@@ -368,7 +488,11 @@ export function createVerifiedDualCountController({
    if(closed)halt();
    return thisSafeFilter(key,value??"");
   },
-  onAuthChange(){generation++;clear();},
+  setAudience(value){
+   if(closed)halt();
+   return thisSafeAudience(value);
+  },
+  onAuthChange(){generation++;clear();current.audience="joint";current.filters={};},
   destroy(){closed=true;generation++;clear();}
  });
 }

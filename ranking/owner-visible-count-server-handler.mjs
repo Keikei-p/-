@@ -26,6 +26,8 @@ const PATH="/v1/owner-visible-counts";
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DAY=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TOKEN=/^Bearer ([A-Za-z0-9._-]{20,12000})$/;
+const FILTER_KEYS=["companyId","teamId","uid","productId"];
+const FILTER_ID=/^[A-Za-z0-9_:-]+$/;
 class Block extends Error{
  constructor(status=503){super("request_blocked");this.status=status;}
 }
@@ -42,6 +44,61 @@ function validDay(day){
  const t=new Date(0);t.setUTCHours(0,0,0,0);t.setUTCFullYear(y,m-1,d);
  return t.getUTCFullYear()===y&&t.getUTCMonth()+1===m&&t.getUTCDate()===d;
 }
+
+// A week spanning two months requires BOTH complete monthly originals
+// reconciled under one atomic Firestore read-only transaction.
+function requestedPeriod(params){
+ const keys=[...params.keys()];
+ const periods=keys.filter(k=>["month","day","week"].includes(k));
+ if(periods.length!==1||keys.length>6||
+    new Set(keys).size!==keys.length||
+    keys.some(k=>![...FILTER_KEYS,"month","day","week","scope"].includes(k)))
+  throw new Block(400);
+ const kind=periods[0],value=params.get(kind);
+ if(kind==="month"){
+  if(!MONTH.test(value??""))throw new Block(400);
+  return {kind,month:value,day:value+"-01"};
+ }
+ if(!validDay(value))throw new Block(400);
+ const month=value.slice(0,7);
+ if(kind==="week"){
+  const monday=new Date(value+"T12:00:00Z");
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  const sunday=new Date(monday);
+  sunday.setUTCDate(sunday.getUTCDate()+6);
+  const startMonth=monday.toISOString().slice(0,7);
+  const endMonth=sunday.toISOString().slice(0,7);
+  // One week can intersect at most two months. The secondary month is
+  // authenticated and loaded in the same snapshot; never accept client IDs.
+  if(startMonth!==endMonth)
+   return {kind,month,day:value,
+    secondMonth:startMonth===month?endMonth:startMonth};
+ }
+ return {kind,month,day:value};
+}
+
+// Filter selections are never an authorization grant. Every ID must be
+// checked against the fresh server-approved relationship before reading any
+// count source. Partner owners only receive the unfiltered public joint view.
+function requestedFilters(params,context){
+ const filters={};
+ for(const key of FILTER_KEYS){
+  if(!params.has(key))continue;
+  const value=params.get(key);
+  if(context.role!=="hub_owner")throw new Block(403);
+  if(typeof value!=="string"||!value||
+     value.length>(key==="productId"?300:200)||!FILTER_ID.test(value))
+   throw new Block(400);
+  filters[key]=value;
+ }
+ if(filters.companyId&&
+    !context.approvedCompanyIds.includes(filters.companyId))
+  throw new Block(403);
+ if((filters.teamId||filters.uid)&&!filters.companyId)
+  throw new Block(400);
+ return filters;
+}
+
 function sameSet(a,b){
  return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&
   new Set(a).size===a.length&&a.every(x=>b.includes(x));
@@ -73,22 +130,22 @@ export function createStagedOwnerVisibleCountHandler({
    if(origin&&origin!==ORIGIN)throw new Block(403);
    const url=new URL(request.url);
    if(url.pathname!==PATH||url.origin!==ORIGIN)throw new Block(404);
-   const keys=[...url.searchParams.keys()];
-   if(keys.length!==1||keys[0]!=="month"||
-      !MONTH.test(url.searchParams.get("month")??""))
-    throw new Block(400);
-   const month=url.searchParams.get("month");
+   const {kind,month,day,secondMonth}=requestedPeriod(url.searchParams);
+   const scope=url.searchParams.get("scope")??"joint";
+   if(!["joint","own","partner"].includes(scope))throw new Block(400);
    const token=request.headers.get("Authorization")?.match(TOKEN)?.[1];
    if(!token)throw new Block(401);
    let principal;
    try{principal=await verify(token);}catch{throw new Block(401);}
    const context=await contextReader(principal);
+   const filters=requestedFilters(url.searchParams,context);
    // The optional atomic path requires a single read-only transaction
    // spanning canonical counts and owner publication. The legacy staged
    // loader remains for offline tests, but is NOT production-release ready.
    let input,publication;
+   if(secondMonth&&!atomic)throw new Block(400);
    if(atomic){
-    const pair=await loadAtomicVerifiedCountSnapshot({month,context});
+    const pair=await loadAtomicVerifiedCountSnapshot({month,context,secondMonth});
     input=pair?.input;publication=pair?.publication;
     if(typeof input?.snapshotReadTime!=="string"||
        publication?.snapshotReadTime!==input.snapshotReadTime||
@@ -103,19 +160,30 @@ export function createStagedOwnerVisibleCountHandler({
       !input.period||input.period.kind!=="month"||
       input.period.day!==month+"-01"||
       !validDay(input.period.asOf)||
-      input.period.asOf.slice(0,7)!==month||
+      (secondMonth?
+       ![month,secondMonth].includes(input.period.asOf.slice(0,7)):
+       input.period.asOf.slice(0,7)!==month)||
+      (secondMonth&&(!Array.isArray(input.verifiedMonths)||
+       input.verifiedMonths.length!==2||
+       input.verifiedMonths[0]!==month||
+       input.verifiedMonths[1]!==secondMonth||
+       input.sources.some(s=>s.completeWindows?.previous!==true)))||
       !Array.isArray(input.sources)||!Array.isArray(input.productGroups)||
       input.sources.length!==context.approvedCompanyIds.length||
       input.mappingsReviewed!==true)
     throw new Block();
+   // A month-scoped transactional snapshot may be safely narrowed, but
+   // never broadened into another month or after its trusted server asOf.
+   if(day>input.period.asOf)throw new Block(400);
    // Ignore any context supplied by the loader. Only the fresh Auth-derived
-   // server context is authorized to determine the audience and company set.
+   // server context is authorized to determine audience and company set.
    const {mappingsReviewed:_proof,context:_ignored,...countInput}=input;
+   const period={kind,day,asOf:input.period.asOf};
    if(!atomic)publication=await publicationReader.readForRanking({
     context,mappingsReviewed:true
    });
    const result=buildOwnerVisibleCountRanking({
-    input:{...countInput,context},publication
+    input:{...countInput,period,context,filters,scope},publication
    });
    auditNoFinancialKeys(result);
    const json=JSON.stringify(result);

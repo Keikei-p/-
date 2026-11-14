@@ -12,6 +12,11 @@ test("new scoped diagnostic never writes, shares existing user session or leaks 
  assert.match(html,/initializeAuth\(app,\{persistence:browserSessionPersistence\}\)/);
  assert.match(html,/mask\.fieldPaths/);
  assert.match(html,/select:\{fields:\[\{fieldPath:"companyId"\}\]\}/);
+ for(const coll of ["products","records","recordCorrections","revenueGoals"]){
+  assert.match(html,new RegExp('id="'+coll+'"'),"must show "+coll+" result");
+  assert(html.includes('"'+coll+'"'),"four-collection masked read must include "+coll);
+ }
+ assert.match(html,/const FINANCE_COLLECTIONS=Object.freeze\(/);
  assert.doesNotMatch(html,/setDoc\(|updateDoc\(|deleteDoc\(|writeBatch\(|localStorage|sessionStorage|console\.log\(/);
  assert.doesNotMatch(html,/totalRevenue|cashbackOptions|revenuePerUnit|submitPartnerWorkspaceCounts/);
 });
@@ -83,7 +88,8 @@ test("fresh partner owner with company GET denied can prove same-hub finance GET
  assert.equal(calls[0].caller,owner.uid);
  assert.equal(calls[0].input.date.length,10);
  const first=rawFinance.slice();
- assert.equal(first.length,4);
+ assert.equal(first.length,8);
+ assert.equal(new Set(first.filter(x=>x.method==="POST").map(x=>x.name)).size,4);
  assert(first.every(x=>x.token==="hub-token"));
  auth.currentUser=verifiedPartner;
  cb[0](verifiedPartner);
@@ -91,13 +97,15 @@ test("fresh partner owner with company GET denied can prove same-hub finance GET
  assert.match(el("identity").textContent,/協力店所属をFunctionsで照合済み/);
  assert.match(el("products").textContent,/LIST・GETともに拒否/);
  assert.match(el("records").textContent,/LIST・GETともに拒否/);
+ assert.match(el("recordCorrections").textContent,/LIST・GETともに拒否/);
+ assert.match(el("revenueGoals").textContent,/LIST・GETともに拒否/);
  assert.match(el("counts").textContent,/協力店件数の読取成功/);
  assert.equal(calls.length,2);
  assert.equal(calls[1].caller,verifiedPartner.uid);
- assert.equal(rawFinance.length,8);
- assert(rawFinance.slice(4).every(x=>x.token==="partner-token"));
- assert.equal(rawFinance.slice(4).filter(x=>x.method==="GET").length,2);
- assert(rawFinance.slice(4).every(x=>x.url.includes(
+ assert.equal(rawFinance.length,16);
+ assert(rawFinance.slice(8).every(x=>x.token==="partner-token"));
+ assert.equal(rawFinance.slice(8).filter(x=>x.method==="GET").length,4);
+ assert(rawFinance.slice(8).every(x=>x.url.includes(
   "firestore.googleapis.com/v1/projects/sales-management-cc116")));
  assert.equal(el("status").textContent.includes("本番承認"),true);
 });
