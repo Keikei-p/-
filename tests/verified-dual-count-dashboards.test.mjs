@@ -386,3 +386,29 @@ test('colon-containing company/team IDs cannot alias another company team',async
  assert.equal(model.companies[0].teams[0].key,JSON.stringify(['a:b','team']));
  assert.equal(model.companies[0].teams[0].people[0].count,3);
 });
+
+test("bare finance-coded names cannot leave the authenticated count API",()=>{
+ const modifications=[
+  d=>{d.sources[1].companyLabel="協力店 cashback";},
+  d=>{d.sources[1].teams[0].name="営業班 cash_back";},
+  d=>{d.sources[1].roster[0].name="担当者 ＣＢ";},
+  d=>{d.sources[1].products[0].name="NURO unitPrice";},
+  d=>{d.productGroups[0].groupName="商材 revenue";},
+  d=>{d.sources[1].companyLabel="担当"+String.fromCharCode(10)+"改行";}
+ ];
+ for(const make of [buildVerifiedCountDashboard,buildVendorDashboard]){
+  for(const role of ["hub_owner","partner_owner"]){
+   for(const modify of modifications){
+    const candidate=fixture(2);
+    candidate.context=auth(role);
+    modify(candidate);
+    assert.throws(()=>make(candidate),/INCOMPLETE_OR_UNAUTHORIZED/,
+     "server must reject finance labels before returning any ranking for "+role);
+   }
+  }
+ }
+ const ordinary=fixture(2);
+ ordinary.sources[1].companyLabel="協力店Ａ";
+ assert.equal(buildVerifiedCountDashboard(ordinary).companyBreakdown[1].name,"協力店Ａ");
+ assert.deepEqual(buildVerifiedCountDashboard(ordinary),buildVendorDashboard(ordinary));
+});
