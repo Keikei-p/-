@@ -125,6 +125,31 @@ jobs:
             tests/partner-published-count-browser-contract.test.cjs \
             tests/partner-one-login-same-app.test.cjs
           echo 'ONE_LEDGER_ON_OFF_OWNER_CORRECTION_FOUR_RANKINGS_STAGING_PASS'
+      - name: Verify registered joint ranking HTTP, trusted canonical month sources and owner settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          grep -Fq 'NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'getVerifiedJointCountRanking=onRequest' functions-ranking-approvals/index.js
+          cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
+          cmp ranking/owner-visible-count-atomic-loader.mjs functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
+          cmp ranking/owner-visible-count-server-handler.mjs functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
+          node --check functions-ranking-approvals/joint-count-http-adapter.cjs
+          node --check functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs
+          node --test \
+            tests/canonical-owner-count-server-factory.test.mjs \
+            tests/joint-count-http-adapter.test.cjs \
+            tests/owner-visible-count-atomic-loader.test.mjs \
+            tests/owner-product-visibility-in-atomic-tx.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/internal-month-count-tx-reader.test.mjs \
+            tests/partner-month-readonly-loader.test.mjs \
+            tests/partner-legacy-quick-count-reader.test.mjs
+          echo 'CANONICAL_SERVER_READER_AUTH_HTTP_INTEGRATION_STAGING_PASS'
       - name: No deployment, no release approval inferred from synthetic tests
         shell: bash
         run: |
