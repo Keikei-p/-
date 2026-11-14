@@ -31,14 +31,20 @@ function normal(row){
     (row.company==null?null:name(row.company)):name(row.companyName),
   count:count(row.count),rank:count(row.rank)};
 }
-function verifyRanked(rows){
- let previous=null,rank=0;
+function verifyRanked(rows,{allowRedactedGaps=false}={}){
+ let previous=null,previousRank=0,rank=0;
  return rows.map((row,i)=>{
   const item=normal(row);
   if(item.rank<1||(previous!==null&&item.count>previous))FAIL();
-  if(i===0||item.count!==previous)rank=i+1;
-  if(item.rank!==rank)FAIL();
+  if(allowRedactedGaps){
+   if(previous!==null&&
+      (item.count===previous?item.rank!==previousRank:item.rank<=previousRank))FAIL();
+  }else{
+   if(i===0||item.count!==previous)rank=i+1;
+   if(item.rank!==rank)FAIL();
+  }
   previous=item.count;
+  previousRank=item.rank;
   return item;
  });
 }
@@ -58,10 +64,10 @@ export function projectVerifiedInlineJointCards(payload,{expectedRole,period,sta
   people:verifyRanked(data.memberRanking.filter(x=>x.rank!==null)),
   products:verifyRanked(data.productRanking)
  }:{
-  companies:verifyRanked(data.publicRanking.companies),
-  teams:verifyRanked(data.publicRanking.teams),
-  people:verifyRanked(data.publicRanking.members),
-  products:verifyRanked(data.publicRanking.products)
+  companies:verifyRanked(data.publicRanking.companies,{allowRedactedGaps:true}),
+  teams:verifyRanked(data.publicRanking.teams,{allowRedactedGaps:true}),
+  people:verifyRanked(data.publicRanking.members,{allowRedactedGaps:true}),
+  products:verifyRanked(data.publicRanking.products,{allowRedactedGaps:true})
  };
  return Object.freeze({schema:"nico-inline-verified-joint-count-v1",
   role:data.role,period,start,end,
