@@ -990,10 +990,11 @@ test('Existing reported counts can be corrected at their immutable saved unit ra
     e:{...correction.e},
     newlyAdded:{productId:'e',cashback:2000,count:1,revenuePerUnit:2000}
   },old,[electric]),/単価/);
+  const freshProduct={id:'new',pricingOptions:[{cashback:0,revenuePerUnit:7000}]};
   assert.equal(c.verifyChangedRecordPricing({
     e:{...correction.e},
-    fresh:{productId:'e',cashback:0,count:1,revenuePerUnit:10000}
-  },old,[electric]),'');
+    fresh:{productId:'new',cashback:0,count:1,revenuePerUnit:7000}
+  },old,[electric,freshProduct]),'');
   // A deleted product's historical line can still be corrected with its
   // exact old unit rate. This must never recreate the product catalog.
   assert.equal(c.verifyChangedRecordPricing(correction,old,[]),'');
