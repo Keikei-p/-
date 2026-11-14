@@ -144,6 +144,7 @@ test("owner ranking source rejects ledger drift and unknown or double-counted co
   d=>{d.companyBreakdown.push(structuredClone(d.companyBreakdown[0]));},
   d=>{d.teamBreakdown[0].companyId="unknown-company";},
   d=>{d.teamBreakdown.push(structuredClone(d.teamBreakdown[0]));},
+  d=>{const extra=structuredClone(d.teamBreakdown[0]);extra.id+="_extra";d.teamBreakdown.push(extra);},
   d=>{d.teamBreakdown[0].detail.reportStatus="未報告";},
   d=>{d.companyBreakdown[0].unidentifiedCount=d.companyBreakdown[0].count+1;}
  ];
@@ -162,4 +163,26 @@ test("owner ranking source rejects ledger drift and unknown or double-counted co
   payload:invalid,...opts("hub_owner")}));
  assert(Object.values(rootElements).every(x=>x.children.length===0),
   "do not leave previous company's ranking visible after a failed verification");
+});
+
+test("finance-coded labels without amounts never reach owner or partner ranking cards",()=>{
+ const invalidNames=[
+  "NURO cashback tier","NURO cash_back","NURO unitPrice","協力店 ＣＢ",
+  "契約 revenue rank","会社 salary tier","表示\\n改行","name@example.com"
+ ];
+ for(const role of ["hub_owner","partner_owner"]){
+  for(const label of invalidNames){
+   const invalid=payload(role);
+   if(role==="hub_owner")invalid.companyBreakdown[0].name=label;
+   else invalid.publicRanking.companies[0].name=label;
+   const elements=roots();
+   const valid=payload(role);
+   renderVerifiedInlineJointCards({document,roots:elements,payload:valid,...opts(role)});
+   assert.throws(()=>renderVerifiedInlineJointCards({
+    document,roots:elements,payload:invalid,...opts(role)
+   }),undefined,"must refuse "+role+" name "+JSON.stringify(label));
+   assert(Object.values(elements).every(x=>x.children.length===0),
+    "old private ranking must not survive rejected finance label");
+  }
+ }
 });
