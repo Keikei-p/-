@@ -1041,7 +1041,7 @@ test('2班 leader: saving an extra count persists the original unit rate and ato
     products:[{id:'legacy',name:'既存商材',revenue:10000}],
     teams:[{id:'team2',name:'2班',active:true}],records:[{id:recordId,...structuredClone(initial)}],
     dashboardMonth:{value:'2026-11'},recordsSubscribedMonth:'2026-11',
-    recordSaveStatus:{style:{},textContent:''},recordSaveButton:{textContent:'実績を更新'},
+    recordSaveStatus:{style:{},textContent:''},saveRecordButton:{textContent:'実績を更新'},
     recordDate:{value:date},recordMember:{value:uid},recordLocation:{value:'現場A'},
     recordCorrectionTeam:{value:'team2'},editingRecordId:recordId,
     recordSaveInProgress:false,editingRecordRevision:null,zeroResultRequested:false,
