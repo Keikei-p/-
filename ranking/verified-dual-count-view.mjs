@@ -5,7 +5,8 @@
  * No innerHTML, browser storage, unknown fields or financial values.
  */
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
-const MONEY=/(?:売上|単価|キャッシュバック|報酬|利益|[¥￥$€]|(?:CB|cashback|revenue|unitPrice|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
+// Count-only views must reject finance-coded labels even without a numeric amount.
+const MONEY=/(?:売上|単価|収益|原価|価格|キャッシュバック|報酬|利益|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const FORBIDDEN=/^(?:totalRevenue|revenue|revenuePerUnit|unitPrice|price|pricingOptions|cashback|cashbackOptions|amount|beforeRevenue|afterRevenue|bankAccount|phone|email|recordCorrections|audit|correctionHistory|privateCounts|privateTotalCount|privateProducts|totalSales|salary)$/i;
 const halt=()=>{throw Error("合同件数の権限・結果を確認できません。ログインし直してください。");};
 function inspect(value,depth=0){
@@ -120,7 +121,7 @@ function shape(value){
      partnerTotal!==value.summary.partner||
      unidentifiedTotal!==value.summary.unidentified)halt();
   if(!Array.isArray(value.teamBreakdown)||value.teamBreakdown.length>5000)halt();
-  const teamKeys=new Set();
+  const teamKeys=new Set(),companyTeamTotals=new Map();
   for(const team of value.teamBreakdown){
    const company=companies.get(team.companyId);
    const teamKey=JSON.stringify([team.companyId,team.id]);
@@ -128,6 +129,9 @@ function shape(value){
       teamKeys.has(teamKey)||!Number.isSafeInteger(team.count)||
       team.count<0||team.count>company.count)halt();
    teamKeys.add(teamKey);
+   const companyTeamTotal=(companyTeamTotals.get(team.companyId)??0)+team.count;
+   if(!Number.isSafeInteger(companyTeamTotal)||companyTeamTotal>company.count)halt();
+   companyTeamTotals.set(team.companyId,companyTeamTotal);
    if(company.reportStatus==="未報告"&&
       (team.count!==0||team.detail!==undefined&&
        team.detail.reportStatus!=="未報告"))halt();
