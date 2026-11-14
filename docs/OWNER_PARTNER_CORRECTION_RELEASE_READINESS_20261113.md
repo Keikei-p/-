@@ -47,7 +47,7 @@
 
 ### 2026-11-14 金額遮断の再現テスト（安全なオフライン検証）
 
-`tests/secondary-finance-read-fence-emulator.test.mjs` に、**自社の旧所属を残したまま協力店へ二重所属した架空UID**を同一条件で比較する試験を追加。現行の`firestore.rules`が金額原票の読取を許すことと、既存の**未デプロイ**候補`security/secondary-finance-read-fence.mjs`ではGET/LISTを拒否することを対照確認する。CI合格は現在確認中。候補を本番に反映したとは扱わない。
+`tests/secondary-finance-read-fence-emulator.test.mjs` に、**自社の旧所属を残したまま協力店へ二重所属した架空UID**を同一条件で比較する試験を追加。現行の`firestore.rules`が金額原票の読取を許すことと、既存の**未デプロイ**候補`security/secondary-finance-read-fence.mjs`ではGET/LISTを拒否することを対照確認する。[エミュレータ実行 #43556172475](https://github.com/Keikei-p/-/actions/runs/43556172475)の比較テストを含む5件が**全件PASS**。元の自社機能48件も**全件PASS**。既存金額経路の単体回帰67件もPASS。統合4ランキングテスト [#43556172474](https://github.com/Keikei-p/-/actions/runs/43556172474) と[Sales App Validation #43556172434](https://github.com/Keikei-p/-/actions/runs/43556172434)もSUCCESS。候補を本番に反映したとは扱わない。
 
 ## 必須のGo/No-Go（未完了）
 
