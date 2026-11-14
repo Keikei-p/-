@@ -190,6 +190,29 @@ test("malformed methods, query, origin and auth cannot reach data loader",async(
  assert.equal(calls,0);
 });
 
+test("day/week/month use the same verified originals and never modify saved counts",async()=>{
+ const f=fake(),before=copy([...f.state]),run=handler(f);
+ const requests=[
+  ["month=2026-11","month"],
+  ["day=2026-11-08","day"],
+  ["week=2026-11-08","week"]
+ ];
+ for(const [query,kind] of requests){
+  const result=await run(request("hub",query));
+  assert.equal(result.status,200,query);
+  const body=await result.json();
+  assert.equal(body.period,kind);
+  assert.deepEqual(body.summary,{own:2,partner:5,total:7,unidentified:0});
+ }
+ for(const query of ["day=2026-11-31","week=2026-11-32",
+   "week=2026-11-01","week=2026-11-30","month=2026-11&day=2026-11-08"]){
+  const result=await run(request("hub",query));
+  assert.notEqual(result.status,200,query);
+ }
+ assert.deepEqual([...f.state],before,"period changes must not mutate sales or count records");
+ assert(f.ops.every(x=>x.kind!=="transaction"||x.options?.readOnly===true));
+ assert(!f.ops.some(x=>/write|delete|update|create/.test(x.kind)));
+});
 test("opt-in atomic snapshot path serves count-only ranking without legacy publication reads",async()=>{
  const f=fake(),ctx={...countInput({}).context};
  const publication={serverVerified:true,ownerSettingsRead:true,

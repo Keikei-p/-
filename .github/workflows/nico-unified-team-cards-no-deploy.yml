@@ -1,0 +1,92 @@
+name: NICO unified partner team cards (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'partner-workspace.html'
+      - 'ranking/unified-partner-team-cards.mjs'
+      - 'ranking/verified-dual-count-view.mjs'
+      - 'tests/verified-dual-count-view.test.mjs'
+      - 'ranking/verified-dual-count-dashboards.mjs'
+      - 'ranking/verified-two-month-count-input.mjs'
+      - 'ranking/owner-product-visibility-rankings.mjs'
+      - 'functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs'
+      - 'tests/owner-product-visibility-rankings.test.mjs'
+      - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs'
+      - 'ranking/owner-visible-count-atomic-loader.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs'
+      - 'tests/owner-visible-count-server-handler.test.mjs'
+      - 'tests/owner-visible-count-atomic-loader.test.mjs'
+      - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
+      - 'functions-ranking-approvals/ranking/verified-two-month-count-input.mjs'
+      - 'tests/verified-two-month-count-input.test.mjs'
+      - 'functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs'
+      - 'tests/verified-dual-count-dashboards.test.mjs'
+      - 'tests/unified-partner-team-cards.test.mjs'
+      - 'tests/unified-partner-team-mount.test.mjs'
+      - 'tests/owner-partner-team-production-integration.test.mjs'
+      - 'tests/helpers/strip-owner-monthly-team-integration.mjs'
+      - 'tests/owner-partner-product-tab.test.mjs'
+      - '.github/workflows/nico-login-restore.yml'
+      - 'tests/partner-original-team-card-parity.test.mjs'
+      - '.github/workflows/nico-unified-team-cards-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate partner verified-count-only module and original dashboard script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node --check ranking/unified-partner-team-cards.mjs
+          node --check ranking/verified-joint-ranking-panel.mjs
+          node --check ranking/verified-dual-count-dashboards.mjs
+          node --check ranking/verified-two-month-count-input.mjs
+          node --check ranking/owner-product-visibility-rankings.mjs
+          node --check functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
+          node --check ranking/owner-visible-count-server-handler.mjs
+          node --check functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
+          node --check ranking/owner-visible-count-atomic-loader.mjs
+          node --check functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
+          node --check ranking/canonical-joint-count-sku-reader.mjs
+          node --check functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
+          node --check functions-ranking-approvals/ranking/verified-two-month-count-input.mjs
+          node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const content=fs.readFileSync('index.html','utf8');
+          const match=content.match(/<script\s+type="module">([\s\S]*?)<\/script>/);
+          if(!match)throw Error('MISSING_SELF_APP_MODULE');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/nico-index-verified-partner-team-module.mjs',match[1]);
+          NODE
+          node --check "$RUNNER_TEMP/nico-index-verified-partner-team-module.mjs"
+      - name: Verify security, original team cards and count-only company grouping
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-partner-team-production-integration.test.mjs tests/owner-partner-product-tab.test.mjs
+          node --test tests/unified-partner-team-cards.test.mjs tests/unified-partner-team-mount.test.mjs tests/partner-original-team-card-parity.test.mjs
+          node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-count-dashboard.test.cjs
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs tests/verified-dual-count-view.test.mjs
+          node --test tests/verified-two-month-count-input.test.mjs tests/canonical-joint-count-sku-reader.test.mjs
+          node --test tests/owner-visible-count-server-handler.test.mjs tests/owner-visible-count-atomic-loader.test.mjs
+          node --test tests/owner-product-visibility-rankings.test.mjs
+          echo 'NO_DEPLOY: no Firebase or production changes'

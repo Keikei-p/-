@@ -14,7 +14,8 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,now=()=>Date.now()}={}){
+ submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
+ ownerCorrectionWriteEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
@@ -622,16 +623,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // The separate direct-company ranking is intentionally NOT guessed here.
  async function loadSharedPartnerRankings(s,date,period){
   if(sharedRankingEnabled()!==true)fail("unavailable");
-  if(!["day","month"].includes(period))fail("invalid-argument");
+  if(!["day","week","month"].includes(period))fail("invalid-argument");
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
   const today=jstToday(),month=date.slice(0,7);
-  const start=period==="month"?month+"-01":date;
-  const end=period==="month"?
-   (month===today.slice(0,7)?today:
-    new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)):
-   date;
-  if(end<start||end>today)fail("invalid-argument");
+  // Same Monday-Sunday week as the canonical verified HTTP ranking API.
+  // Use UTC calendar dates only; local browser time cannot change grouping.
+  const moveDay=(day,offset)=>{
+   const d=new Date(day+"T12:00:00Z");
+   d.setUTCDate(d.getUTCDate()+offset);
+   return d.toISOString().slice(0,10);
+  };
+  const start=period==="month"?month+"-01":
+   period==="week"?moveDay(date,-((new Date(date+"T12:00:00Z").getUTCDay()+6)%7)):date;
+  const endBoundary=period==="month"?
+   new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10):
+   period==="week"?moveDay(start,6):date;
+  const end=endBoundary<today?endBoundary:today;
+  if(date>today||end<start)fail("invalid-argument");
   const days=[];
   for(let cursor=new Date(start+"T00:00:00Z");cursor<=new Date(end+"T00:00:00Z");
       cursor.setUTCDate(cursor.getUTCDate()+1))
@@ -759,7 +768,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(d.sharedCountRankings!==undefined){
    if(d.sharedCountRankings!==true||
       (d.rankingPeriod!==undefined&&
-       !["day","month"].includes(d.rankingPeriod))||
+       !["day","week","month"].includes(d.rankingPeriod))||
       d.partnerCompanyId!==undefined||d.includeTeamStatus!==undefined)
     fail("invalid-argument");
    return loadSharedPartnerRankings(s,date,d.rankingPeriod||"day");
@@ -971,14 +980,187 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateCounts=validatePrivateCounts(x.privateCounts||{});
    if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
       (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
+   const workLocation=x.workLocation??"";
+   if(typeof workLocation!=="string"||workLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(workLocation)||money.test(workLocation))
+    fail("data-loss");
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
-     teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
+     teamIdSnapshot,workLocation,
+     privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
+  // Keep the saved OFF category values untouched, but do not send them to
+  // the partner browser when publication is enabled. Read the EXACT policy
+  // from the same trusted server guard as the transactional submit path.
+  let enabledCategories;
+  if(submissionPublicationEnabled()===true){
+   const blank=Object.fromEntries(KEYS.map(k=>[k,0]));
+   try{
+    const policy=await verifySubmissionPublication({
+     tx:{get:ref=>ref.get()},
+     scope:{verifiedByServer:true,kind:s.kind,uid:a.uid,cid:s.cid,hubId:s.hubId},
+     previousCounts:blank,nextCounts:blank
+    });
+    enabledCategories=policy.enabledCategories;
+   }catch{fail("failed-precondition");}
+  }
+  const safeRecords=enabledCategories===undefined?rows:rows.map(row=>{
+   const on=new Set(enabledCategories);
+   const visible=Object.fromEntries(KEYS.map(k=>[k,on.has(k)?row.counts[k]:0]));
+   return {...row,counts:visible,
+    totalCount:KEYS.reduce((n,k)=>n+visible[k],0)};
+  });
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
-    teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    teams:visibleTeams,staff:[...allowed.values()],records:safeRecords,categories:KEYS,
+    ...(enabledCategories===undefined?{}:{enabledCategories}),
     privateProducts:productList};
+ }
+
+ // Owner correction v3, READ and WRITE are separately hard-OFF by default.
+ // The authenticated hub Owner owns the session. Neither a partner account,
+ // a selected workspaceCompanyId nor any browser role/finance flag grants access.
+ const ownerCorrectionShape=d=>d&&typeof d==="object"&&!Array.isArray(d)&&
+  Object.keys(d).sort().join("|")==="date|partnerCompanyId";
+ const unknownSb=n=>({"SB光":0,"SB AIR":0,"旧未分類":n});
+ const validOwnerReason=x=>typeof x==="string"&&x.trim()===x&&
+  x.length>=6&&x.length<=120&&!/[\\r\\n\\x00-\\x1f\\x7f]/.test(x)&&
+  !money.test(x.normalize("NFKC"));
+ const guardOwnerScope=async(uid,tx,companyId)=>{
+  const s=await scope(uid,tx);
+  if(s.kind!=="hub"||s.role!=="owner"||s.cid===companyId)fail();
+  const rel=await hubPartner(tx,s.cid,companyId);
+  if(!rel.active)fail("failed-precondition");
+  return s;
+ };
+ async function listHubPartnerCounts(request){
+  if(ownerCorrectionReadEnabled()!==true)fail("unavailable");
+  const a=await actor(request),d=request?.data||{};
+  if(!ownerCorrectionShape(d)||!ID.test(d.partnerCompanyId||""))
+   fail("invalid-argument");
+  const date=validDate(d.date);
+  return db.runTransaction(async tx=>{
+   const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
+   const query=collection(d.partnerCompanyId,"partnerWorkEntries")
+    .where("date","==",date).limit(201);
+   const entries=await tx.get(query);
+   if(entries.size>200)fail("resource-exhausted");
+   const rows=[];
+   for(const snap of entries.docs){
+    const x=snap.data()||{};
+    if(snap.id!==date+"__"+x.staffId||
+       x.companyId!==d.partnerCompanyId||x.hubCompanyId!==hub.cid||
+       x.date!==date||!ID.test(x.staffId||"")||
+       !Number.isSafeInteger(x.version)||x.version<1||x.version>999)
+     fail("data-loss");
+    const {counts,total}=validateCounts(x.counts);
+    if(total!==x.totalCount)fail("data-loss");
+    const staffName=x.staffNameSnapshot??"登録者（名称未確認）";
+    if(!validName(staffName))fail("data-loss");
+    const teamIdSnapshot=x.teamIdSnapshot??null;
+    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
+    // Keep old SB光・AIR together and mark its breakdown unclassified.
+    // Never infer a split into SB光 and SB AIR from a combined legacy total.
+    rows.push({staffId:x.staffId,staffName,teamIdSnapshot,
+     counts,totalCount:total,version:x.version,
+     sbBreakdown:unknownSb(counts["SB光・AIR"])});
+   }
+   rows.sort((x,y)=>x.staffId.localeCompare(y.staffId));
+   return {role:"hub",scope:"existing-partner-counts-only",
+    date,partnerCompanyId:d.partnerCompanyId,entries:rows,
+    sbBreakdownSchema:"sb-separated-v1",containsFinance:false};
+  });
+ }
+ async function correctHubPartnerCounts(request){
+  if(ownerCorrectionReadEnabled()!==true||
+     ownerCorrectionWriteEnabled()!==true)fail("unavailable");
+  const a=await actor(request),d=request?.data||{};
+  if(!d||typeof d!=="object"||Array.isArray(d)||
+     Object.keys(d).sort().join("|")!==
+      "correctionReason|counts|date|expectedVersion|partnerCompanyId|sbBreakdown|staffId"||
+     !ID.test(d.partnerCompanyId||"")||!ID.test(d.staffId||"")||
+     !Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<1||
+     d.expectedVersion>=999||!validOwnerReason(d.correctionReason))
+   fail("invalid-argument");
+  const date=validDate(d.date),{counts,total}=validateCounts(d.counts);
+  //光/AIR separation is explicitly out of scope for this release.
+  // An Owner may change the combined COUNT but cannot fabricate a breakdown.
+  const sb=d.sbBreakdown;
+  if(!sb||typeof sb!=="object"||Array.isArray(sb)||
+     Object.keys(sb).sort().join("|")!=="SB AIR|SB光|旧未分類"||
+     sb["SB光"]!==0||sb["SB AIR"]!==0||
+     sb["旧未分類"]!==counts["SB光・AIR"])
+   fail("failed-precondition");
+  return db.runTransaction(async tx=>{
+   const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
+   const er=entryRef(d.partnerCompanyId,date,d.staffId);
+   const summary=summaryRef(hub.cid,date,d.partnerCompanyId);
+   const [oldSnap,totalSnap,staffSnap]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(staffRef(d.partnerCompanyId,d.staffId))
+   ]);
+   const old=oldSnap.data()||{},daily=totalSnap.data()||{},staff=staffSnap.data()||{};
+   if(!oldSnap.exists||!totalSnap.exists||!staffSnap.exists||
+      old.companyId!==d.partnerCompanyId||old.hubCompanyId!==hub.cid||
+      old.date!==date||old.staffId!==d.staffId||
+      staff.companyId!==d.partnerCompanyId||
+      !ID.test(old.teamIdSnapshot||"")&&old.teamIdSnapshot!==null&&
+        old.teamIdSnapshot!==undefined)
+    fail("failed-precondition");
+   if(old.version!==d.expectedVersion)fail("aborted");
+   if(daily.source!=="staff-entries-v1"||daily.hubCompanyId!==hub.cid||
+      daily.partnerCompanyId!==d.partnerCompanyId||daily.date!==date||
+      !validCompanyName(daily.partnerName))fail("failed-precondition");
+   const {counts:prior,total:previousTotal}=validateCounts(old.counts);
+   const {counts:companyCounts,total:companyTotal}=validateCounts(daily.counts);
+   if(old.totalCount!==previousTotal||daily.totalCount!==companyTotal)
+    fail("data-loss");
+   const combined=old.sbBreakdown;
+   if(combined!==undefined&&
+      (typeof combined!=="object"||combined===null||
+       combined["SB光"]!==0||combined["SB AIR"]!==0||
+       combined["旧未分類"]!==prior["SB光・AIR"]))
+    fail("failed-precondition");
+   const updatedCounts={};let updatedTotal=0;
+   for(const key of KEYS){
+    const n=companyCounts[key]+counts[key]-prior[key];
+    if(!Number.isSafeInteger(n)||n<0||n>2000000)fail("data-loss");
+    updatedCounts[key]=n;updatedTotal+=n;
+   }
+   if(updatedTotal!==companyTotal+total-previousTotal||
+      !Number.isSafeInteger(updatedTotal))fail("data-loss");
+   if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
+   const nextVersion=d.expectedVersion+1,stamp=FieldValue.serverTimestamp();
+   const rowChanges={counts,totalCount:total,version:nextVersion,
+    updatedByUid:a.uid,updatedAt:stamp};
+   tx.update(er,rowChanges);
+   tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp});
+   const audit=collection(d.partnerCompanyId,"partnerWorkAudits")
+    .doc(date+"__"+d.staffId+"__v"+nextVersion);
+   // Never spread an arbitrary saved entry into a new audit document.
+   // Only known count-ledger fields may leave this restricted correction.
+   // Protect private counts as unchanged signed snapshots, not as edits.
+   const savedPrivate=validatePrivateCounts(old.privateCounts||{});
+   if((old.privateTotalCount??0)!==savedPrivate.total)fail("data-loss");
+   const recordedName=old.staffNameSnapshot??null;
+   if(recordedName!==null&&!validName(recordedName))fail("data-loss");
+   const recordedLocation=old.workLocation??"";
+   if(typeof recordedLocation!=="string"||recordedLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(recordedLocation)||
+      money.test(recordedLocation))fail("data-loss");
+   tx.create(audit,{companyId:d.partnerCompanyId,hubCompanyId:hub.cid,
+    staffId:d.staffId,date,staffNameSnapshot:recordedName,
+    teamIdSnapshot:old.teamIdSnapshot??null,
+    workLocation:recordedLocation,
+    counts,totalCount:total,version:nextVersion,
+    privateCounts:savedPrivate.counts,privateTotalCount:savedPrivate.total,
+    updatedByUid:a.uid,updatedAt:stamp,
+    previousCounts:prior,previousPrivateCounts:savedPrivate.counts,
+    correctionReason:d.correctionReason,correctedByOwnerUid:a.uid,
+    correctionKind:"hub_owner_existing_count_v3",createdAt:stamp});
+   return {saved:true,scope:"hub-owner-existing-only",
+    partnerCompanyId:d.partnerCompanyId,staffId:d.staffId,date,
+    version:nextVersion,totalCount:total,containsFinance:false};
+  });
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
@@ -986,6 +1168,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const {counts,total}=validateCounts(d.counts);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
+  // A count-only API must never silently accept and discard CB-tier entries.
+  // These are not verified count data and may reveal financial classification.
+  if(submissionPublicationEnabled()===true&&
+     Object.prototype.hasOwnProperty.call(d,"cbCounts"))fail("failed-precondition");
+  const requestedLocation=d.workLocation;
+  if(requestedLocation!==undefined&&
+     (typeof requestedLocation!=="string"||requestedLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(requestedLocation)||money.test(requestedLocation)))
+   fail("invalid-argument");
+  const requestedTeamId=d.workTeamId;
+  if(requestedTeamId!==undefined&&(!ID.test(requestedTeamId)||
+     requestedTeamId!==clean(requestedTeamId)))fail("invalid-argument");
   const s=await scope(a.uid,null,d.workspaceCompanyId);
   if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
@@ -1020,38 +1214,65 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
-   // STAGING / hard OFF: validate server-owned publication in this SAME
-   // transaction against the original saved staff counts, before any writes.
-   // Never trust browser-provided prior counts or a claimed company/owner.
+   // STAGING / hard OFF. The browser sends zero for disabled SKUs,
+   // while the server restores their immutable saved historical numbers
+   // within this SAME authenticated count transaction. This permits ON-only
+   // edits without deleting OFF history or altering the old company sum.
+   let effectiveCounts=counts,effectiveTotal=total;
    if(submissionPublicationEnabled()===true){
     try{
-     await verifySubmissionPublication({tx,
+     const policy=await verifySubmissionPublication({tx,
       scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
-      previousCounts:prior,nextCounts:counts});
+      previousCounts:prior,nextCounts:prior});
+     if(policy.enabledCategories.length===0)fail("failed-precondition");
+     const on=new Set(policy.enabledCategories);
+     effectiveCounts={...counts};
+     for(const key of KEYS)if(!on.has(key)){
+      if(counts[key]!==0)fail("failed-precondition");
+      effectiveCounts[key]=prior[key];
+     }
+     effectiveTotal=KEYS.reduce((sum,key)=>sum+effectiveCounts[key],0);
     }catch{fail("failed-precondition");}
    }
    const aggregate={};let aggregateTotal=0;
    for(const key of KEYS){
-    const n=previous[key]+counts[key]-prior[key];
+    const n=previous[key]+effectiveCounts[key]-prior[key];
     if(!Number.isSafeInteger(n)||n<0)fail("data-loss");
     aggregate[key]=n;aggregateTotal+=n;
    }
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
-   // An edit cannot reassign a previously saved day to the current team.
-   // Missing historical attribution remains unverified rather than inferred.
-   const teamIdSnapshot=oldSnap.exists?
+   // An existing report's team attribution is immutable. On the FIRST save
+   // only, a selected working team must be an existing active team in this
+   // verified partner company. Members cannot choose another person's team.
+   if(oldSnap.exists&&requestedTeamId!==undefined)fail("failed-precondition");
+   let teamIdSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"teamIdSnapshot")?old.teamIdSnapshot:null):
      person.teamId;
+   if(!oldSnap.exists&&requestedTeamId!==undefined){
+    if(fresh.role==="member"&&requestedTeamId!==person.teamId)fail();
+    const chosen=await tx.get(teamRef(s.cid,requestedTeamId));
+    const team=chosen.data()||{};
+    if(!chosen.exists||team.companyId!==s.cid||team.active!==true||
+       !validName(team.name))fail("failed-precondition");
+    teamIdSnapshot=requestedTeamId;
+   }
+   const oldLocation=old.workLocation??"";
+   if(typeof oldLocation!=="string"||oldLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(oldLocation)||money.test(oldLocation))
+    fail("data-loss");
+   const workLocation=requestedLocation===undefined?oldLocation:
+     requestedLocation.trim();
    const staffNameSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"staffNameSnapshot")?old.staffNameSnapshot:null):
      person.name;
    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
-   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
+   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
+     counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
-     version:nextVersion,staffNameSnapshot,teamIdSnapshot,
+     version:nextVersion,staffNameSnapshot,teamIdSnapshot,workLocation,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
@@ -1066,6 +1287,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,view,submit,listHubPartnerCounts,correctHubPartnerCounts});
 }
 module.exports={makeWorkspace,KEYS};

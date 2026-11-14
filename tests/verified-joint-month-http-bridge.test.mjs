@@ -53,8 +53,7 @@ test("unknown periods, filters, future dates and invalid days are rejected befor
   featureEnabled:true,auth,fetcher:async()=>{fetches++;return makeResponse()}
  });
  for(const args of [
-  {period:{...period,kind:"day"},filters:{}},
-  {period:{...period,kind:"week"},filters:{}},
+  {period:{...period,kind:"quarter"},filters:{}},
   {period,filters:{companyId:"another"}},
   {period:{...period,day:"2026-11-32"},filters:{}},
   {period:{...period,day:"2026-12-01"},filters:{}},
@@ -62,6 +61,67 @@ test("unknown periods, filters, future dates and invalid days are rejected befor
   {period,filters:[]}
  ])await assert.rejects(bridge.load(args),/BRIDGE_BLOCKED/);
  assert.equal(fetches,0);
+});
+test("day/week/month use the same verified GET and exact server dates",async()=>{
+ const scenarios=[
+  {kind:"day",day:"2026-11-08",asOf:"2026-11-10",
+   start:"2026-11-08",end:"2026-11-08",query:"day=2026-11-08"},
+  {kind:"week",day:"2026-11-10",asOf:"2026-11-10",
+   start:"2026-11-09",end:"2026-11-10",query:"week=2026-11-10"},
+  {kind:"week",day:"2026-11-01",asOf:"2026-11-10",
+   start:"2026-10-26",end:"2026-11-01",query:"week=2026-11-01"},
+  {kind:"month",day:"2026-10-10",asOf:"2026-11-10",
+   start:"2026-10-01",end:"2026-10-31",query:"month=2026-10"}
+ ];
+ for(const {kind,day,asOf,start,end,query} of scenarios){
+  const calls=[];
+  const bridge=createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,expectedRole:"partner_owner",
+   fetcher:async(...args)=>{
+    calls.push(args);
+    return makeResponse({period:kind,range:{start,end}});
+   }
+  });
+  const got=await bridge.load({period:{kind,day,asOf},filters:{}});
+  assert.equal(got.role,"partner_owner");
+  assert.equal(got.range.start,start);
+  assert.equal(got.range.end,end);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0][0],"https://nico-factory.web.app/v1/owner-visible-counts?"+query);
+  assert.equal(calls[0][1].method,"GET");
+ }
+});
+test("cross-month week must be server approved, never merged by client or truncated",async()=>{
+ let count=0;
+ const date={kind:"week",day:"2026-11-01",asOf:"2026-11-10"};
+ for(const range of [
+  {start:"2026-11-01",end:"2026-11-01"},
+  {start:"2026-10-26",end:"2026-11-02"},
+  {start:"2026-10-25",end:"2026-11-01"},
+  {start:"2026-10-26",end:"2026-10-31"}
+ ]){
+  const bridge=createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,fetcher:async()=>{
+    count++;return makeResponse({period:"week",range});
+   }
+  });
+  await assert.rejects(bridge.load({period:date,filters:{}}),/BRIDGE_BLOCKED/);
+ }
+ assert.equal(count,4,"only one complete server GET per request");
+});
+test("partner screen blocks a hub Owner response, and hub view blocks partner response",async()=>{
+ for(const expectedRole of ["partner_owner","hub_owner"]){
+  const wrong=expectedRole==="hub_owner"?"partner_owner":"hub_owner";
+  const bridge=createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,expectedRole,
+   fetcher:async()=>makeResponse({role:wrong})
+  });
+  await assert.rejects(bridge.load({period,filters:{}}),/BRIDGE_BLOCKED/);
+ }
+ assert.throws(()=>createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:"owner",
+  fetcher:async()=>makeResponse()
+ }),/BRIDGE_BLOCKED/);
 });
 test("identity switch/revocation in flight never returns older company's names",async()=>{
  let finish;

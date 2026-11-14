@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {buildOwnerVisibleCountRanking,planOwnerProductToggle}
  from "../ranking/owner-product-visibility-rankings.mjs";
+import {buildOwnerVisibleCountRanking as bundledOwnerRanking}
+ from "../functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs";
 
 const clock="2026-11-08T12:00:00.000Z",day="2026-11-08";
 const products=(cid)=>[
@@ -105,6 +107,67 @@ test("partner audience only receives published count-only public ranking",()=>{
  assert(!JSON.stringify(r).includes("SoftBank Air"));
 });
 
+test("even with every SKU OFF, old submitted partner names cannot be published as tied zero ranks",()=>{
+ const hub=fixture(),partner={...fixture(),context:{...fixture().context,
+  role:"partner_owner",viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ const before=structuredClone(partner);
+ for(const fn of [buildOwnerVisibleCountRanking,bundledOwnerRanking]){
+  const off=fn({input:partner,publication:publication([])});
+  assert.deepEqual(off.publicRanking,{members:[],products:[],companies:[],teams:[]});
+  assert.equal(off.own.count,0);
+  const person=off.own.people.find(x=>x.companyId==="partner");
+  assert.equal(person.reportStatus,"未報告");
+  assert.equal(person.rank,null);
+  const internal=fn({input:hub,publication:publication([])});
+  assert.equal(internal.memberRanking.find(x=>x.companyId==="partner").rank,null);
+ }
+ assert.deepEqual(partner,before,"public toggle cannot modify stored historic counts");
+});
+test("OFF-only historic counts are not disguised as a submitted 0 of another ON product",()=>{
+ const input=fixture(0);
+ const partner={...input,context:{...input.context,role:"partner_owner",
+  viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ const original=structuredClone(partner);
+ for(const fn of [buildOwnerVisibleCountRanking,bundledOwnerRanking]){
+  const nuro=fn({input:partner,publication:publication(["nuro"])});
+  assert.equal(nuro.own.count,0);
+  assert(!nuro.publicRanking.members.some(x=>x.company==="協力店A"));
+  assert(!nuro.publicRanking.companies.some(x=>x.name==="協力店A"));
+  assert.equal(nuro.publicRanking.products[0].count,2);
+  const back=fn({input:partner,publication:publication(["air"])});
+  assert(back.publicRanking.members.some(x=>x.company==="協力店A"&&x.count===4));
+ }
+ assert.deepEqual(partner,original,"OFF then ON must not change history");
+});
+test("explicit saved 0 still receives a rank; an absent report never receives rank",()=>{
+ const input=fixture(0);
+ input.sources[1].lines[1].count=0;
+ input.sources[1].records[0].totalCount=0;
+ const before=structuredClone(input);
+ const partner={...input,context:{...input.context,role:"partner_owner",
+  viewerUid:"partner-owner",viewerCompanyId:"partner"}};
+ for(const fn of [buildOwnerVisibleCountRanking,bundledOwnerRanking]){
+  const result=fn({input:partner,publication:publication(["nuro"])});
+  assert(result.publicRanking.members.some(x=>x.company==="協力店A"&&x.count===0));
+  assert(result.publicRanking.companies.some(x=>x.name==="協力店A"&&x.count===0));
+  const owner=fn({input,publication:publication(["nuro"])});
+  assert.equal(owner.memberRanking.find(x=>x.companyId==="partner").reportStatus,"確定0件");
+ }
+ assert.deepEqual(input,before);
+});
+test("unreconciled source cannot be published even when its SKU is switched OFF",()=>{
+ for(const fn of [buildOwnerVisibleCountRanking,bundledOwnerRanking]){
+  for(const enabled of [[],["nuro"],["nuro","air"]]){
+   const input=fixture();
+   input.sources[0].lines.push({...input.sources[0].lines[1],
+    sourceId:"unreconciled-original",count:1});
+   const before=structuredClone(input);
+   assert.throws(()=>fn({input,publication:publication(enabled)}),
+     /VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED/);
+   assert.deepEqual(input,before);
+  }
+ }
+});
 test("wrong owner, forged settings, disabled SKU, unknown IDs and missing SKU mapping reject",()=>{
  const x=fixture(),orig=publication(["nuro"]);
  const bad=[

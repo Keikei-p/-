@@ -23,8 +23,8 @@ const make=(role="hub_owner")=>({
   ],
   productRanking:[{id:"nuro",rank:1,name:"NURO光",count:8}],
   companyBreakdown:[
-   {id:"hub",name:"自社",kind:"自社",count:3,unidentifiedCount:0},
-   {id:"partner",name:"協力店",kind:"協力店",count:5,unidentifiedCount:0}],
+   {id:"hub",name:"自社",kind:"自社",count:3,unidentifiedCount:0,reportStatus:"報告済"},
+   {id:"partner",name:"協力店",kind:"協力店",count:5,unidentifiedCount:0,reportStatus:"報告済"}],
   teamBreakdown:[
    {id:"hub:team",companyId:"hub",companyName:"自社",name:"営業班",count:3},
    {id:"partner:team",companyId:"partner",companyName:"協力店",name:"営業班",count:5}]
@@ -45,6 +45,54 @@ test("same ON-only joint numbers render for owner without any financial data",()
  assert.equal(view.ownCount,3);
  assert.deepEqual(view.products.map(x=>[x.name,x.count]),[["NURO光",8]]);
  assert.equal(view.people.length,2);
+});
+test("unreported staff retained for Owner audit cannot acquire a public leaderboard rank",()=>{
+ const payload=make();
+ payload.memberRanking.push({id:"partner:missing",rank:null,name:"未報告の担当者",
+  companyName:"協力店",count:0,reportStatus:"未報告"});
+ const view=verifiedJointCountView(payload,{month:"2026-11",role:"hub_owner"});
+ assert.equal(view.people.length,2);
+ assert(!view.people.some(row=>row.name==="未報告の担当者"));
+ for(const edit of [
+  r=>r.memberRanking.at(-1).rank=3,
+  r=>r.memberRanking.at(-1).reportStatus="報告済",
+  r=>r.memberRanking.at(-1).count=1
+ ]){
+  const invalid=structuredClone(payload);edit(invalid);
+  assert.throws(()=>verifiedJointCountView(invalid,{month:"2026-11",role:"hub_owner"}),
+   /JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
+});
+test("Owner ranking never gives an unreported company/team a zero-case rank",()=>{
+ const data=make("hub_owner");
+ data.companyBreakdown.push(
+  {id:"silent",name:"未報告会社",kind:"協力店",count:0,
+   unidentifiedCount:0,reportStatus:"未報告"},
+  {id:"zero",name:"確定0会社",kind:"協力店",count:0,
+   unidentifiedCount:0,reportStatus:"確定0件"});
+ data.teamBreakdown.push(
+  {id:"silent:t1",companyId:"silent",companyName:"未報告会社",
+   name:"未報告班",count:0,detail:{reportStatus:"未報告"}},
+  {id:"zero:t1",companyId:"zero",companyName:"確定0会社",
+   name:"報告済み班",count:0,detail:{reportStatus:"確定0件"}});
+ const view=verifiedJointCountView(data,{month:"2026-11",role:"hub_owner"});
+ assert.equal(view.companies.length,3);
+ assert.equal(view.teams.length,3);
+ assert(!view.companies.some(x=>x.name==="未報告会社"));
+ assert(!view.teams.some(x=>x.name==="未報告班"));
+ assert.equal(view.companies.find(x=>x.name==="確定0会社").rank,3);
+ assert.equal(view.teams.find(x=>x.name==="報告済み班").rank,3);
+ for(const invalid of [
+  x=>{x.companyBreakdown.at(-1).reportStatus="未報告";},
+  x=>{x.companyBreakdown[1].reportStatus="未報告";},
+  x=>{x.companyBreakdown[1].reportStatus="確定0件";},
+  x=>{delete x.companyBreakdown[0].reportStatus;}
+ ]){
+  const forged=structuredClone(data);invalid(forged);
+  assert.throws(()=>verifiedJointCountView(forged,{
+   month:"2026-11",role:"hub_owner"
+  }),/JOINT_RANKING_RESPONSE_UNVERIFIED/);
+ }
 });
 test("partner projection safely handles tied rank and repeated names without personal IDs",()=>{
  const view=verifiedJointCountView(make("partner_owner"),{

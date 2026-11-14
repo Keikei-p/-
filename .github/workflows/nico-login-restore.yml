@@ -53,6 +53,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Keep the reviewed Owner tab under its dedicated publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git hash-object index.html)" = '63f61cbf0badad066ff1c07380e79567c6c67c9e' ]; then
+            echo 'STOP_OWNER_PRODUCT_TAB_REQUIRES_DEDICATED_REVIEWED_RELEASE'
+            exit 1
+          fi
+      - name: Stop integrated dashboard candidate before Hosting credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if rg -q '^const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = ' index.html; then
+            echo 'STOP_INTEGRATED_DASHBOARD_REQUIRES_SEPARATE_SIGNED_RELEASE'
+            exit 1
+          fi
       - name: Hold direct-role bundle until four Functions are published first
         shell: bash
         run: |
