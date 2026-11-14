@@ -43,7 +43,9 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
           test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
-          git fetch --no-tags origin review/owner-product-visibility-core-no-deploy-20261114
+          git fetch --no-tags origin +refs/heads/review/owner-product-visibility-core-no-deploy-20261114:refs/remotes/origin/review/owner-product-visibility-core-no-deploy-20261114
+          echo "REVIEW_BASE=$(git merge-base HEAD origin/review/owner-product-visibility-core-no-deploy-20261114)"
+          echo "INDEX_BLOB=$(git rev-parse HEAD:index.html)"
           test "$(git merge-base HEAD origin/review/owner-product-visibility-core-no-deploy-20261114)" = 37ee243efe87e1b0be83c23dcffca6acd717f6fb
           test "$(git rev-parse HEAD:index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
           while IFS= read -r file; do
