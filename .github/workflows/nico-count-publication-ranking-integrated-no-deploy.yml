@@ -14,6 +14,7 @@ on:
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-dual-count-view.test.mjs'
+      - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'ranking/verified-inline-joint-ranking-cards.mjs'
       - 'tests/verified-inline-joint-ranking-cards.test.mjs'
       - 'partner-workspace.html'
@@ -65,6 +66,9 @@ jobs:
           node --check functions-partner-workspace/submission-publication-guard.cjs
           node --check functions-partner-workspace/shared-count-standings.cjs
           node --check ranking/verified-dual-count-view.mjs
+          node --check ranking/verified-dual-count-dashboards.mjs
+          node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          cmp ranking/verified-dual-count-dashboards.mjs functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           node --check tests/verified-dual-count-view.test.mjs
       - name: One verified count source, owner edits and both dashboard rankings
         shell: bash
@@ -79,6 +83,7 @@ jobs:
             tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
             tests/owner-product-visibility-rankings.test.mjs \
             tests/verified-dual-count-view.test.mjs \
+            tests/verified-dual-count-dashboards.test.mjs \
             tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/partner-inline-joint-staging-wiring.test.mjs \
             tests/verified-joint-ranking-panel.test.mjs \
