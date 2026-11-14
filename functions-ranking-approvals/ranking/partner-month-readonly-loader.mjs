@@ -18,6 +18,19 @@ const MONTH=/^(20\d\d)-(0[1-9]|1[0-2])$/;
 const MAX_ENTRIES=2000,MAX_TEAMS=150,MAX_STAFF=150;
 const FORBIDDEN_NAME=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const halt=()=>{throw Error("PARTNER_RANK_LIVE_MONTH_NOT_APPROVED_OR_INCOMPLETE");};
+const tokyoMonth=clock=>{
+ if(typeof clock!=="function")halt();
+ const now=clock();
+ if(!(now instanceof Date)||!Number.isFinite(now.getTime()))halt();
+ const parts=new Intl.DateTimeFormat("en-US",{
+  timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit"
+ }).formatToParts(now);
+ const y=parts.find(x=>x.type==="year")?.value;
+ const m=parts.find(x=>x.type==="month")?.value;
+ const month=y+"-"+m;
+ if(!MONTH.test(month))halt();
+ return month;
+};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","prototype","constructor"].includes(x);
 function isoTime(snapshot) {
@@ -78,7 +91,7 @@ function approvedServerContext(ctx,hub,partner) {
  * loader; it must never create a nested transaction or accept client proofs.
  * The outer caller must use db.runTransaction(..., {readOnly:true}).
  */
-export function createPartnerMonthTransactionReader({db}={}) {
+export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}) {
  if(!db||typeof db.collection!=="function")throw Error("missing server Firestore");
  return async function readPartnerMonthInTransaction({
   tx,hubCompanyId,partnerCompanyId,month,context
@@ -87,6 +100,9 @@ export function createPartnerMonthTransactionReader({db}={}) {
   if(!id(hubCompanyId)||!id(partnerCompanyId)||
      hubCompanyId===partnerCompanyId)halt();
   const days=monthDays(month);
+  // Current active membership cannot prove membership in a past month.
+  // For past months rely exclusively on immutable saved report snapshots.
+  const includeCurrentRoster=month===tokyoMonth(clock);
   approvedServerContext(context,hubCompanyId,partnerCompanyId);
   const c=id=>db.collection("companies").doc(id);
   const hub=c(hubCompanyId),partner=c(partnerCompanyId);
@@ -136,7 +152,7 @@ export function createPartnerMonthTransactionReader({db}={}) {
        person.companyId!==partnerCompanyId||
        typeof person.active!=="boolean")halt();
     seenStaff.add(snapshot.id);
-    if(person.active!==true)continue;
+    if(person.active!==true||!includeCurrentRoster)continue;
     if(!id(person.teamId)||!verifiedTeams.has(person.teamId)||
        typeof person.name!=="string"||
        person.name.trim().length<1||person.name.length>80||
@@ -183,10 +199,10 @@ export function createPartnerMonthTransactionReader({db}={}) {
  * Preserve the original standalone read-only loader and its existing API.
  * Both paths share exactly the same validation and source projection.
  */
-export function createPartnerMonthReadOnlyLoader({db}={}) {
+export function createPartnerMonthReadOnlyLoader({db,clock=()=>new Date()}={}) {
  if(!db||typeof db.collection!=="function"||
     typeof db.runTransaction!=="function")throw Error("missing server Firestore");
- const read=createPartnerMonthTransactionReader({db});
+ const read=createPartnerMonthTransactionReader({db,clock});
  return async function loadPartnerMonth(args={}) {
   return db.runTransaction(tx=>read({...args,tx}),{readOnly:true});
  };
