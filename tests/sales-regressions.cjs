@@ -932,42 +932,73 @@ test('Unverified CB rate displays as missing rather than falsely showing zero ye
   assert(!text.includes('CB2000 ¥2000'));
 });
 
-test('Existing unchanged prices are not overwritten; invalid new and changed counts stop saving',()=>{
+test('Existing reported counts can be corrected at their immutable saved unit rate',()=>{
   const c=context(['getProductPricingOptions','verifyNewRecordPricing','verifyChangedRecordPricing',
-    'normalizeExistingResultMap','resultVariantKey','validateFinancialRecordForSave','recordConflict'],{
+    'normalizeExistingResultMap','resultVariantKey','validateFinancialRecordForSave',
+    'calculateResultsTotals','recordConflict'],{
     parseLegacyCashbackProductName:()=>({hasCashbackPlan:false}),
     normalizeCashbackOptions:values=>[...new Set([0,...(values||[])])].sort((a,b)=>a-b)
   });
   const electric={id:'e',pricingOptions:[{cashback:0,revenuePerUnit:10000}]};
   const old={e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}};
   const untouched=JSON.stringify(old);
+  // Catalog was repriced AFTER the sales report. Correct counts at that
+  // saved rate, never silently converting all five earlier deals to 10,000.
+  const correction={e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}};
   assert.equal(c.verifyChangedRecordPricing(old,old,[electric]),'');
-  assert.match(c.verifyChangedRecordPricing({
-    e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
-  },old,[electric]),/単価/);
-  // Updating a stale snapshot and its count together would silently overwrite
-  // five historical prices; the owner must audit/correct the old price first.
+  assert.equal(c.verifyChangedRecordPricing(correction,old,[electric]),'');
+  assert.deepEqual(
+    [...Object.entries(correction)].map(([key,value])=>[key,value.revenuePerUnit]),
+    [['e',2000]]
+  );
+  const correctedTotals=c.calculateResultsTotals(correction);
+  assert.equal(correctedTotals.count,6);
+  assert.equal(correctedTotals.revenue,12000);
+  assert.equal(c.validateFinancialRecordForSave({
+    results:correction,totalCount:6,totalRevenue:12000
+  }),true);
+  assert.equal(JSON.stringify(old),untouched,'historical saved row must not be mutated');
+
+  // Historical rate tampering and missing price stay blocked even if the
+  // current product catalog now uses the tampered amount.
   assert.match(c.verifyChangedRecordPricing({
     e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
   },old,[electric]),/金額訂正/);
-  assert.equal(c.verifyChangedRecordPricing({
-    e:{productId:'e',cashback:0,count:6,revenuePerUnit:10000}
-  },{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},[electric]),'');
-  assert.equal(JSON.stringify(old),untouched);
-  assert.equal(c.validateFinancialRecordForSave({
-    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:10000}},
-    totalCount:5,totalRevenue:50000
-  }),true);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:null}
+  },old,[electric]),/金額訂正/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:0}
+  },old,[electric]),/金額訂正/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:6,revenuePerUnit:2000}
+  },{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},[electric]),/金額訂正/);
   assert.throws(()=>c.validateFinancialRecordForSave({
-    results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:2000}},
-    totalCount:5,totalRevenue:50000
+    results:correction,totalCount:6,totalRevenue:60000
   }),/合計/);
   assert.throws(()=>c.validateFinancialRecordForSave({
     results:{e:{productId:'e',cashback:0,count:5,revenuePerUnit:null}},
     totalCount:5,totalRevenue:0
   }),/未設定/);
-});
 
+  // No previously reported positive count: a fresh product row MUST still
+  // use the current approved price, never a stale historical or CB value.
+  assert.match(c.verifyChangedRecordPricing({
+    e:{productId:'e',cashback:0,count:1,revenuePerUnit:2000}
+  },{e:{productId:'e',cashback:0,count:0,revenuePerUnit:2000}},[electric]),/単価/);
+  assert.match(c.verifyChangedRecordPricing({
+    e:{...correction.e},
+    newlyAdded:{productId:'e',cashback:2000,count:1,revenuePerUnit:2000}
+  },old,[electric]),/単価/);
+  assert.equal(c.verifyChangedRecordPricing({
+    e:{...correction.e},
+    fresh:{productId:'e',cashback:0,count:1,revenuePerUnit:10000}
+  },old,[electric]),'');
+  // A deleted product's historical line can still be corrected with its
+  // exact old unit rate. This must never recreate the product catalog.
+  assert.equal(c.verifyChangedRecordPricing(correction,old,[]),'');
+  assert.equal(c.verifyChangedRecordPricing({},old,[electric]),'');
+});
 
 test('Changing current product price recalculates ALL existing deals on screen, without touching Firestore history',()=>{
   const catalog=[
