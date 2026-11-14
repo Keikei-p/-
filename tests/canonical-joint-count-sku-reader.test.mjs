@@ -149,7 +149,54 @@ test("trusted transaction reader denies missing map without inventing SKU mappin
  }));
  assert(f.seen.includes("companies/hub/rankingSkuMappings/shared"));
 });
+test("cross-month reader rejects nonadjacent or forged month BEFORE any Firestore read",async()=>{
+ const f=fakeReader(),read=createCanonicalCountTransactionReader({db:f.db});
+ for(const secondMonth of ["2026-11","2026-09","2026-13","2026-11-01","2027-01",null]){
+  await assert.rejects(read({tx:f.tx,month:"2026-11",secondMonth,context}),
+   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+  assert.deepEqual(f.seen,[],"no storage request may precede month validation");
+ }
+});
 test("trusted Tokyo day prevents future month publication",()=>{
  assert.throws(()=>compose({serverAsOf:"2026-11-32"}),
   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+});
+
+test("verified active partner roster preserves no-report staff and historic count owners",()=>{
+ const input=sources();
+ input.partnerSources[0].roster=[
+  {uid:"p1",name:"現在の担当",teamId:"team2"},
+  {uid:"p2",name:"未報告担当",teamId:"team2"}
+ ];
+ const result=compose({hubSource:input.hubSource,partnerSources:input.partnerSources});
+ assert.deepEqual(result.sources[1].roster,[
+  {uid:"p1",name:"現在の担当",teamId:"team2"},
+  {uid:"p2",name:"未報告担当",teamId:"team2"}
+ ]);
+ assert.equal(result.sources[1].records.length,1,"no synthetic zero record");
+ assert.equal(result.sources[1].records[0].memberNameSnapshot,"協力店員",
+  "original saved historical name remains immutable");
+ const rank=buildOwnerVisibleCountRanking({
+  input:{...result,context},publication:pub(["nuro"])
+ });
+ const reported=rank.memberRanking.find(x=>x.id==="partner:p1");
+ const missing=rank.memberRanking.find(x=>x.id==="partner:p2");
+ assert.equal(reported.count,5);
+ assert.equal(missing.count,0);
+ assert.equal(missing.reportStatus,"未報告");
+ assert.equal(missing.rank,null,"unreported is not tied with submitted zero");
+ assert.equal(rank.summary.partner,5);
+ assert(!rank.productRanking.some(x=>x.name==="未報告担当"));
+ for(const change of [
+  x=>{x.partnerSources[0].roster.push({...x.partnerSources[0].roster[1]});},
+  x=>{x.partnerSources[0].roster[1].teamId="foreign";},
+  x=>{x.partnerSources[0].roster[1].name="CB"},
+  x=>{x.partnerSources[0].roster[1].uid="not/allowed"}
+ ]){
+  const bad=structuredClone(input);
+  change(bad);
+  assert.throws(()=>compose({hubSource:bad.hubSource,
+   partnerSources:bad.partnerSources}),/CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED|FINANCIAL/,
+   "untrusted current staff must not be promoted to ranking");
+ }
 });

@@ -365,3 +365,99 @@ if(NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED){
   });
  }
 }
+
+
+// Existing Owner cards: STAGING ONLY. This is a count-only projection of the
+// same server-verified joint ranking used by the partner dashboard.
+// Keep the finance rankings, their controls, and all historical sales intact.
+// Never make a separate dashboard, browser-side aggregate or finance request.
+// Activation requires a separately reviewed production security cutover.
+const NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false;
+if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
+ const monthInput=$("dashboardMonth");
+ const slots={
+  people:{panel:"individualRankingContent",label:"合同・個人件数ランキング"},
+  products:{panel:"productRankingContent",label:"合同・商材件数ランキング"},
+  teams:{panel:"teamRankingContent",label:"合同・班件数ランキング"},
+  companies:{panel:"teamRankingContent",label:"合同・会社件数ランキング"}
+ };
+ if(monthInput&&Object.values(slots).every(s=>$(s.panel))){
+  const roots={},cards={};
+  for(const [key,slot] of Object.entries(slots)){
+   const card=document.createElement("section");
+   card.className="nico-owner-inline-joint-count";
+   card.hidden=true;
+   card.setAttribute("aria-label",slot.label);
+   const heading=document.createElement("h3");
+   heading.textContent=slot.label;
+   const list=document.createElement("div");
+   list.className="nico-owner-inline-joint-list";
+   card.append(heading,list);
+   $(slot.panel).append(card);
+   roots[key]=list;cards[key]=card;
+  }
+  let generation=0,oldCardStyle=null;
+  const clear=()=>{
+   for(const key of Object.keys(slots)){
+    cards[key].hidden=true;
+    roots[key].replaceChildren();
+   }
+  };
+  const japanDay=()=>{
+   const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+   }).formatToParts(new Date());
+   const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+   return p.year+"-"+p.month+"-"+p.day;
+  };
+  async function refresh(user){
+   const epoch=++generation;
+   clear();
+   if(!user?.emailVerified||auth.currentUser!==user||
+      window.location.origin!=="https://nico-factory.web.app")return;
+   const month=monthInput.value,asOf=japanDay();
+   if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||
+      month+"-01">asOf)return;
+   try{
+    const verified=await companyForOwner(user);
+    if(epoch!==generation||auth.currentUser!==user||!verified)return;
+    const [{createVerifiedJointMonthHttpBridge},
+      {renderVerifiedInlineJointCards}]=await Promise.all([
+      import("./ranking/verified-joint-month-http-bridge.mjs"),
+      import("./ranking/verified-inline-joint-ranking-cards.mjs")
+     ]);
+    if(epoch!==generation||auth.currentUser!==user)return;
+    const bridge=createVerifiedJointMonthHttpBridge({
+     featureEnabled:true,auth,fetcher:window.fetch.bind(window),
+     endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+     expectedRole:"hub_owner"
+    });
+    const payload=await bridge.load({
+     period:{kind:"month",day:month+"-01",asOf},filters:{}
+    });
+    if(epoch!==generation||auth.currentUser!==user||
+       monthInput.value!==month)return;
+    const endOfMonth=new Date(Date.UTC(Number(month.slice(0,4)),
+      Number(month.slice(5)),0)).toISOString().slice(0,10);
+    const end=endOfMonth<asOf?endOfMonth:asOf;
+    // No original finance ranking nodes are ever passed as render targets.
+    renderVerifiedInlineJointCards({
+     document,roots,payload,expectedRole:"hub_owner",
+     period:"month",start:month+"-01",end
+    });
+    if(epoch!==generation||auth.currentUser!==user)return;
+    for(const card of Object.values(cards))card.hidden=false;
+    if(!oldCardStyle){
+     // Obsolete extra date/refresh boards are replaced in the same cards.
+     oldCardStyle=document.createElement("style");
+     oldCardStyle.textContent="#ownerSharedCardIndividual,#ownerSharedCardProduct,#ownerSharedCardTeam{display:none!important}";
+     document.head.append(oldCardStyle);
+    }
+   }catch{
+    if(epoch===generation)clear(); // Never show partial or stale joint ranks.
+   }
+  }
+  monthInput.addEventListener("change",()=>{void refresh(auth.currentUser);});
+  onAuthStateChanged(auth,user=>{void refresh(user);});
+ }
+}

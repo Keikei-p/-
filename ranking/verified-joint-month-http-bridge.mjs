@@ -20,17 +20,38 @@ const goodDay=d=>{
  const x=new Date(0);x.setUTCHours(0,0,0,0);x.setUTCFullYear(y,m-1,day);
  return x.getUTCFullYear()===y&&x.getUTCMonth()+1===m&&x.getUTCDate()===day;
 };
+const shifted=(day,offset)=>{
+ if(!goodDay(day))stop();
+ const d=new Date(day+"T12:00:00Z");
+ d.setUTCDate(d.getUTCDate()+offset);
+ return d.toISOString().slice(0,10);
+};
+const expectedWindow=period=>{
+ if(!period||Object.keys(period).sort().join("|")!=="asOf|day|kind"||
+    !["month","day","week"].includes(period.kind)||
+    !goodDay(period.day)||!goodDay(period.asOf)||
+    period.day>period.asOf)stop();
+ const day=period.day,month=day.slice(0,7);
+ const start=period.kind==="month"?month+"-01":
+  period.kind==="week"?shifted(day,-((new Date(day+"T12:00:00Z").getUTCDay()+6)%7)):day;
+ const last=period.kind==="month"?shifted(
+  shifted(month+"-01",32).slice(0,7)+"-01",-1):
+  period.kind==="week"?shifted(start,6):day;
+ const end=last<period.asOf?last:period.asOf;
+ if(end<start)stop();
+ return {start,end};
+};
 export function createVerifiedJointMonthHttpBridge({
- featureEnabled=false,auth,fetcher,endpoint=ORIGIN+"/v1/owner-visible-counts"
+ featureEnabled=false,auth,fetcher,endpoint=ORIGIN+"/v1/owner-visible-counts",
+ expectedRole=null
 }={}){
  if(featureEnabled!==true||!auth||typeof fetcher!=="function"||
-    !ENDPOINTS.has(endpoint))stop();
+    !ENDPOINTS.has(endpoint)||
+    (expectedRole!==null&&!["hub_owner","partner_owner"].includes(expectedRole)))stop();
  let generation=0;
  async function load({period,filters}={}){
-  if(!period||Object.keys(period).sort().join("|")!=="asOf|day|kind"||
-     period.kind!=="month"||!goodDay(period.day)||!goodDay(period.asOf)||
-     period.day>period.asOf||!MONTH.test(period.day.slice(0,7))||
-     !filters||typeof filters!=="object"||Array.isArray(filters)||
+  const window=expectedWindow(period);
+  if(!filters||typeof filters!=="object"||Array.isArray(filters)||
      Object.keys(filters).length!==0)stop();
   const month=period.day.slice(0,7),seq=++generation;
   const identity=auth.currentUser;
@@ -42,7 +63,9 @@ export function createVerifiedJointMonthHttpBridge({
    token=await identity.getIdToken();
    if(typeof token!=="string"||!/^[-A-Za-z0-9._]{20,12000}$/.test(token)||
       seq!==generation||identity!==auth.currentUser)stop();
-   const url=endpoint+"?month="+month;
+   const query=period.kind==="month"?"month="+month:
+    period.kind+"="+period.day;
+   const url=endpoint+"?"+query;
    response=await fetcher(url,{
     method:"GET",headers:{Authorization:"Bearer "+token,Accept:"application/json"},
     cache:"no-store",redirect:"error",credentials:"omit",referrerPolicy:"no-referrer"
@@ -58,10 +81,10 @@ export function createVerifiedJointMonthHttpBridge({
    if(seq!==generation||identity!==auth.currentUser||
       !value||value.schema!=="nico-verified-dual-count-v1"||
       !["hub_owner","partner_owner"].includes(value.role)||
-      value.period!=="month"||value.unit!=="件"||
-      !goodDay(value.range?.start)||value.range.start.slice(0,7)!==month||
-      !goodDay(value.range?.end)||value.range.end.slice(0,7)!==month||
-      value.range.end>period.asOf)stop();
+      value.period!==period.kind||value.unit!=="件"||
+      (expectedRole!==null&&value.role!==expectedRole)||
+      !goodDay(value.range?.start)||value.range.start!==window.start||
+      !goodDay(value.range?.end)||value.range.end!==window.end)stop();
    return value; // existing DOM renderer strictly rejects all finance keys
   }catch{stop()}
  }
@@ -69,19 +92,23 @@ export function createVerifiedJointMonthHttpBridge({
 }
 /**
  * Optional shared mount into either owner dashboard. NO initial mount when OFF.
- * Only the real server GET can populate it. This intentionally omits filters,
- * daily and weekly modes until the server supports them.
+ * Only the real server GET can populate it. All day/week/month periods are
+ * resolved by the same backend, including cross-month weeks that require TWO
+ * same-snapshot monthly inventory reads. No browser-side count computation.
  */
 export function mountVerifiedJointMonthCountDashboard({
  featureEnabled=false,document,root,auth,fetcher,endpoint,asOf,
- onAuthStateChanged
+ onAuthStateChanged,expectedRole=null
 }={}){
  if(featureEnabled!==true||!document?.createElement||
     !root?.replaceChildren||!goodDay(asOf)||
     typeof onAuthStateChanged!=="function")stop();
- const bridge=createVerifiedJointMonthHttpBridge({featureEnabled,auth,fetcher,endpoint});
+ const bridge=createVerifiedJointMonthHttpBridge({
+  featureEnabled,auth,fetcher,endpoint,expectedRole
+ });
  const controller=createVerifiedDualCountController({
-  document,root,auth,load:bridge.load,asOf,availablePeriods:["month"],allowFilters:false
+  document,root,auth,load:bridge.load,asOf,
+  availablePeriods:["day","week","month"],allowFilters:false
  });
  let closed=false,off=()=>{};
  try{

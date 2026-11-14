@@ -111,6 +111,19 @@ font:inherit;font-size:13px;line-height:1.6}
 .dashboard-app-meta{font-size:10px;text-wrap:balance}
 .partner-count-trend-row{grid-template-columns:minmax(68px,90px) 1fr auto}
 }
+/* Mirror the original 1–4 team cards, with no finance fields. */
+#partnerPanel-teamDetail .partner-company-team-heading{font-size:16px;font-weight:800;margin:8px 0 10px}
+#partnerPanel-teamDetail .team-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+#partnerPanel-teamDetail .team-overview-card{min-width:0;min-height:112px;padding:14px 12px;border:1px solid var(--border);border-radius:13px;background:#fff;color:var(--text);text-align:left;cursor:pointer;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+#partnerPanel-teamDetail .team-overview-card[aria-pressed="true"]{border-color:#60a5fa;background:#eff6ff;box-shadow:0 4px 12px rgba(37,99,235,.10)}
+#partnerPanel-teamDetail .team-overview-card-name{font-size:15px;font-weight:800;overflow-wrap:anywhere}
+#partnerPanel-teamDetail .team-overview-card-members{margin-top:5px;color:var(--sub);font-size:11px}
+#partnerPanel-teamDetail .team-overview-card-result{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:14px;font-weight:800}
+#partnerPanel-teamDetail .team-overview-card-goal{margin-top:7px;padding-top:7px;border-top:1px solid var(--border);color:var(--sub);font-size:11px;font-weight:800}
+#partnerPanel-teamDetail .team-detail-panel{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);margin-top:10px}
+#partnerPanel-teamDetail .team-detail-panel[hidden]{display:none}
+#partnerPanel-teamDetail .team-detail-panel h3{font-size:14px;margin:16px 0 8px}
+#partnerPanel-teamDetail .team-overview-card:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
 </style></head><body>
 <header><div class="header-inner">
 <h1 id="workspaceTitle">営業実績管理</h1>
@@ -248,6 +261,10 @@ font:inherit;font-size:13px;line-height:1.6}
  <h3 class="partner-panel-title">📊 件数分析</h3>
  <p class="partner-panel-note">選択した期間の件数を会社・担当者・商材の順で確認できます。</p>
  <div id="countAnalysisSummary" class="scroll"></div>
+ <section id="countInlineJointCompanies" hidden>
+  <h4>🏢 会社ランキング</h4>
+  <div id="countCompanyRank" class="scroll" aria-live="polite"></div>
+ </section>
 </div>
 <div id="partnerPanel-individual" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">🏆 個人ランキング</h3>
@@ -272,10 +289,16 @@ font:inherit;font-size:13px;line-height:1.6}
 </div>
 <div id="partnerPanel-teamDetail" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📋 班別詳細</h3>
- <label for="countTeamSelect">班を選択</label><select id="countTeamSelect"></select>
- <p class="partner-panel-note">保存時点の所属班を確認できない実績は「所属班未確認」に分類します。</p>
- <h3>商材の実績</h3><div id="countTeamProducts" class="scroll"></div>
- <h3>個人の実績</h3><div id="countTeamPeople" class="scroll"></div>
+ <div id="partnerTeamCompanyHeading" class="partner-company-team-heading"></div>
+ <div id="partnerTeamCardGrid" class="team-overview-grid" aria-label="班別件数カード"></div>
+ <details><summary class="partner-panel-note">班を一覧から選ぶ</summary>
+  <label for="countTeamSelect">班を選択</label><select id="countTeamSelect"></select>
+ </details>
+ <p class="partner-panel-note">保存時点の班で集計します。所属班が確認できない過去の件数は推測しません。</p>
+ <div id="partnerTeamCountDetail" class="team-detail-panel" hidden>
+  <h3>担当者別の件数</h3><div id="countTeamPeople" class="scroll"></div>
+  <h3>商材別の件数</h3><div id="countTeamProducts" class="scroll"></div>
+ </div>
 </div>
 <div id="partnerPanel-productSummary" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📦 商材別</h3>
@@ -443,6 +466,9 @@ const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;
 // Shared count-only monthly view: disabled until real partner finance GET/LIST
 // denial, verified backup restore and live count save/correction are confirmed.
 const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;
+// Prefer the ORIGINAL ranking cards over the older separate joint board.
+// Never enable before verified server finance rules and full ledger sign-off.
+const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;
 let verifiedJointMonthMount=null,verifiedJointMonthEpoch=0,jointMonthStyles=null;
 function resetVerifiedJointMonth(){
  ++verifiedJointMonthEpoch;
@@ -452,7 +478,8 @@ function resetVerifiedJointMonth(){
  root.hidden=true;root.replaceChildren();
 }
 async function mountVerifiedJointMonthForPartner(){
- if(!NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||
+ if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||
+    !NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||
     verifiedJointMonthMount||activeCodeSession||data?.role!=="owner"||
     !auth.currentUser?.emailVerified||
     window.location.origin!=="https://nico-factory.web.app")return;
@@ -478,7 +505,7 @@ async function mountVerifiedJointMonthForPartner(){
    fetcher:window.fetch.bind(window),
    endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
    asOf:today.year+"-"+today.month+"-"+today.day,
-   onAuthStateChanged
+   onAuthStateChanged,expectedRole:"partner_owner"
   });
   root.hidden=false;
  }catch{
@@ -712,6 +739,9 @@ const lab=document.createElement("label");lab.textContent=k;const inp=document.c
 inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
 inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
 function values(){const o={};for(const x of grid.querySelectorAll("input")){
+ // OFF values are redacted from the partner API. The server alone can
+ // restore their immutable originals inside the authenticated write.
+ if(x.disabled){o[x.dataset.key]=0;continue;}
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
  o[x.dataset.key]=Number(x.value)}return o}
 function privateValues(){const o=Object.create(null);for(const x of $("privateCountGrid").querySelectorAll("input")){
@@ -721,7 +751,7 @@ function privateValues(){const o=Object.create(null);for(const x of $("privateCo
  if(x.disabled)continue;
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid private count");
  o[x.dataset.privateId]=Number(x.value)}return o}
-function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){if(x.disabled)continue;const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
 
 function periodDatesForCounts(selected,period,today){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(selected)||!/^\d{4}-\d{2}-\d{2}$/.test(today))
@@ -862,6 +892,10 @@ function competitionRanks(rows,countOf,render,qualifies=()=>true){
 }
 function renderTeamCountDetail(){
  if(!countExportRows)return;
+ const chosenId=$("countTeamSelect").value;
+ for(const card of $("partnerTeamCardGrid").querySelectorAll("[data-team-key]"))
+  card.setAttribute("aria-pressed",String(card.dataset.teamKey===chosenId));
+ $("partnerTeamCountDetail").hidden=!countExportRows.summary.groups.some(g=>g.id===chosenId);
  const summary=countExportRows.summary,id=$("countTeamSelect").value;
  const products=summary.teamProducts.find(x=>x.id===id)?.products;
  const people=summary.teamPeople.find(x=>x.id===id)?.people||[];
@@ -958,10 +992,45 @@ function renderCountOnlyDashboard(summary,days){
  for(const team of summary.groups){const option=document.createElement("option");option.value=team.id;
   option.textContent=team.name+"（"+team.count+"件）";teamSelect.append(option)}
  if(summary.groups.some(t=>t.id===previous))teamSelect.value=previous;
+ // Keep the validated selected-month source and original 11-card panel.
+ // The same original-style team card is used for each partner company team.
+ const grid=$("partnerTeamCardGrid");grid.replaceChildren();
+ $("partnerTeamCompanyHeading").textContent=String(data?.companyName||"協力店")+" → 班別の月間件数";
+ for(const group of summary.groups){
+  const button=document.createElement("button");button.type="button";
+  button.className="team-overview-card";button.dataset.teamKey=group.id;
+  button.setAttribute("aria-pressed",String(teamSelect.value===group.id));
+  const heading=document.createElement("div");
+  heading.className="team-overview-card-name";heading.textContent=group.name;
+  const people=summary.teamPeople.find(t=>t.id===group.id)?.people||[];
+  const member=document.createElement("div");
+  member.className="team-overview-card-members";
+  // Owners/leaders have the company roster; members may only see their
+  // permitted scope, so never label a partial roster as company-wide staff.
+  const fullRoster=["owner","leader"].includes(data?.role)&&Array.isArray(data?.staff);
+  const activeMembers=fullRoster?data.staff.filter(p=>
+   p.active!==false&&p.teamId===group.id).length:null;
+  member.textContent=group.id==="__unverified__"?"所属班未確認":
+   activeMembers!==null?activeMembers+"人":
+   "実績登録 "+people.filter(p=>p.count>0).length+"人";
+  const result=document.createElement("div");
+  result.className="team-overview-card-result";result.textContent=group.count+"件";
+  const goal=document.createElement("div");
+  goal.className="team-overview-card-goal";goal.textContent=
+   group.id==="__unverified__"?"集計上の所属は未確認":"目標未設定（件数目標の連携待ち）";
+  button.append(heading,member,result,goal);
+  button.onclick=()=>{teamSelect.value=group.id;renderTeamCountDetail()};
+  grid.appendChild(button);
+ }
  renderProductRankMode();renderCountGoal();
 }
 function clearCountOnlyDashboard(){
- countExportRows=null;$("countGoalBox").hidden=true;
+ countExportRows=null;
+ $("countInlineJointCompanies").hidden=true;
+ $("countCompanyRank").replaceChildren();$("countGoalBox").hidden=true;
+ $("partnerTeamCardGrid").replaceChildren();
+ $("partnerTeamCompanyHeading").textContent="";
+ $("partnerTeamCountDetail").hidden=true;
  $("countGoalUnavailable").hidden=false;$("countReportCopy").disabled=true;
  $("countReportBody").value="";
  for(const id of ["countKpis","countTeamRank","countStaffRank","countAnalysisSummary",
@@ -969,6 +1038,62 @@ function clearCountOnlyDashboard(){
   "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
 function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
+// The server-verified count contract is the ONLY authority for a public
+// combined rank. Old local-only ranks are erased before this network read.
+// Neither a financial collection nor a browser-supplied role is consulted.
+async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
+ if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||
+    data?.role!=="owner"||activeCodeSession)return;
+ const identity=auth.currentUser;
+ const roots={companies:$("countCompanyRank"),teams:$("countTeamRank"),
+  people:$("countStaffRank"),products:$("countProductRank")};
+ const clear=()=>{
+  for(const target of Object.values(roots))target.replaceChildren();
+  $("countInlineJointCompanies").hidden=true;
+ };
+ const valid=()=>gen===countLoadId&&currentCountIdentity()===uid&&
+  identity===auth.currentUser&&identity?.emailVerified===true&&
+  data?.role==="owner"&&!activeCodeSession&&!$("dashboardBox").hidden&&
+  window.location.origin==="https://nico-factory.web.app";
+ clear();
+ if(!valid()){
+  $("countDashboardStatus").textContent="合同ランキングの認証を確認できません。";
+  return;
+ }
+ $("countProductMode").disabled=true;
+ $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
+  "｜自社・協力店の合同順位を照合中…";
+ try{
+  const [{createVerifiedJointMonthHttpBridge},{renderVerifiedInlineJointCards}]=
+   await Promise.all([
+    import("./ranking/verified-joint-month-http-bridge.mjs"),
+    import("./ranking/verified-inline-joint-ranking-cards.mjs")
+   ]);
+  if(!valid())return;
+  const bridge=createVerifiedJointMonthHttpBridge({
+   featureEnabled:true,auth,fetcher:window.fetch.bind(window),
+   endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+   expectedRole:"partner_owner"
+  });
+  const payload=await bridge.load({
+   period:{kind:countPeriod,day,asOf:today},filters:{}
+  });
+  if(!valid())return;
+  renderVerifiedInlineJointCards({
+   document,roots,payload,expectedRole:"partner_owner",
+   period:countPeriod,start:dates[0],end:dates.at(-1)
+  });
+  $("countInlineJointCompanies").hidden=false;
+  $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
+   "｜自社・協力店の合同件数・順位を照合済み";
+ }catch(error){
+  if(!valid())return;
+  clear();
+  $("countDashboardStatus").textContent=
+   "合同ランキングが未照合のため順位を非表示にしました。件数の保存内容は変更していません。";
+  console.error("joint_inline_count_unverified",error?.code||"unverified");
+ }
+}
 async function loadCountDashboard(){
  if(!data||data.role==="hub"||$("dashboardBox").hidden)return;
  const gen=++countLoadId;
@@ -1006,6 +1131,8 @@ async function loadCountDashboard(){
   $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
     " の集計完了（"+dates.length+"日分・件数のみ）";
   $("countCsv").disabled=false;
+  if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)
+   await refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates});
  }catch(error){
   if(gen!==countLoadId)return;
   clearCountOnlyDashboard();
@@ -1013,7 +1140,9 @@ async function loadCountDashboard(){
   console.error("count-only dashboard verification failed",error?.code||"incomplete");
  }
 }
-$("countProductMode").onchange=renderProductRankMode;
+$("countProductMode").onchange=()=>{
+ if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)renderProductRankMode();
+};
 $("countTeamSelect").onchange=renderTeamCountDetail;
 $("countGoalSave").onclick=()=>{
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
@@ -1312,9 +1441,15 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
    inp.disabled=p.active===false;inp.value=String(rec?.privateCounts?.[p.id]??0);
    inp.addEventListener("input",updateTotal);box.append(lab,inp);custom.append(box);
  }
- for(const x of grid.querySelectorAll("input"))x.value=String(rec?.counts?.[x.dataset.key]??0);
+ const published=data.enabledCategories??KEYS;
+ for(const x of grid.querySelectorAll("input")){
+  const allowed=published.includes(x.dataset.key);
+  x.value=String(allowed?(rec?.counts?.[x.dataset.key]??0):0);
+  x.disabled=!allowed;
+  x.parentElement.hidden=!allowed;
+ }
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
- $("save").disabled=!$("staffSelect").value;updateTotal()}
+ $("save").disabled=!$("staffSelect").value||published.length===0;updateTotal()}
 $("hubTeamCompanySelect").onchange=()=>{$("hubTeamCountStatus").textContent="会社が変更されました。班別件数を再取得してください。";$("hubTeamCountRows").replaceChildren()};
 $("hubTeamCountLoad").onclick=async()=>{
  if(!data||data.role!=="hub")return;
@@ -1370,6 +1505,10 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
  const current=++nonce;loading=true;$("save").disabled=true;try{
  const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
+ if(res.enabledCategories!==undefined&&
+    (!Array.isArray(res.enabledCategories)||
+     new Set(res.enabledCategories).size!==res.enabledCategories.length||
+     res.enabledCategories.some(key=>!KEYS.includes(key))))throw Error("publication_schema");
  data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
  void mountVerifiedJointMonthForPartner();
  }catch(e){

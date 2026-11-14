@@ -9,7 +9,8 @@ import {assertPublicSchema,auditNoFinancialKeys} from "../security/public-projec
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const DATE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
-const MONEY=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|cashback|revenue|unitPrice|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
+// Fail before emitting any company, member, team or product label in a count API.
+const MONEY=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const stop=()=>{throw Error("VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","prototype","constructor"].includes(x);
@@ -76,6 +77,8 @@ function checkSources(sources,companyIds,hub){
  if(!Array.isArray(sources)||sources.length!==companyIds.length)stop();
  const seen=new Set(),recordKeys=new Set(),lineKeys=new Set();
  let readTime=null;
+ const teamMetadata=new Map();
+ const teamKey=(companyId,teamId)=>JSON.stringify([companyId,teamId]);
  const rows=[],sku=new Map(),names=new Map(),roster=new Map();
  const coverage=new Map();
  for(const s of sources){
@@ -107,6 +110,9 @@ function checkSources(sources,companyIds,hub){
    if(!t||!id(t.id)||teamNames.has(t.id)||
       (t.goalCount!=null&&count(t.goalCount)<0))stop();
    teamNames.set(t.id,label(t.name));
+   teamMetadata.set(teamKey(s.companyId,t.id),{id:s.companyId+":"+t.id,sourceTeamId:t.id,
+    companyId:s.companyId,companyName:company,name:label(t.name),
+    goalCount:t.goalCount==null?null:count(t.goalCount),memberCount:0});
   }
   for(const p of s.products){
    if(p.companyId!==s.companyId||!id(p.sourceId))stop();
@@ -119,6 +125,7 @@ function checkSources(sources,companyIds,hub){
    if(!p||!id(p.uid)||!id(p.teamId)||!teamNames.has(p.teamId))stop();
    const key=s.companyId+":"+p.uid;
    if(roster.has(key))stop();
+   teamMetadata.get(teamKey(s.companyId,p.teamId)).memberCount++;
    roster.set(key,{id:key,companyId:s.companyId,companyName:company,
     uid:p.uid,teamId:p.teamId,teamName:teamNames.get(p.teamId),
     name:label(p.name)});
@@ -153,7 +160,7 @@ function checkSources(sources,companyIds,hub){
     uid:h.uid,teamId:h.teamId,teamName:teamNames.get(h.teamId),
     name:roster.get(s.companyId+":"+h.uid).name,
     date:date(line.date),productKey:s.companyId+":"+line.productId,count:n,
-    unidentified:false});
+    unidentified:false,reported:true,reportStatus:h.reportStatus});
   }
   for(const h of headers.values()){
    if(totals.get(h.sourceId)!==h.totalCount)stop();
@@ -165,7 +172,7 @@ function checkSources(sources,companyIds,hub){
     reported:true,reportStatus:h.reportStatus});
   }
  }
- return {rows,sku,names,roster,coverage,readTime};
+ return {rows,sku,names,roster,coverage,readTime,teamMetadata};
 }
 function mappings(groups,sku) {
  if(!Array.isArray(groups)||groups.length>5000)stop();
@@ -280,7 +287,16 @@ export function buildVerifiedCountDashboard({
    oldScores.set(key,add(oldScores.get(key)||0,r.count));
   }
  }
- const statuses=new Map();
+ const statuses=new Map(),teamDetails=new Map();
+ // Registered teams remain visible even before their first report. Metadata
+ // is current membership; historical counts below keep saved team attribution.
+ for(const team of parsed.teamMetadata.values()){
+  if(filters.companyId&&filters.companyId!==team.companyId)continue;
+  if(filters.teamId&&filters.teamId!==team.id.slice(team.companyId.length+1))continue;
+  teams.set(JSON.stringify([team.companyId,team.sourceTeamId]),{id:team.id,companyId:team.companyId,
+   companyName:team.companyName,name:team.name,count:0});
+  teamDetails.set(JSON.stringify([team.companyId,team.sourceTeamId]),{people:new Map(),products:new Map()});
+ }
  for(const r of current){
   const cid=r.companyId;
   put(allCompany,cid,()=>({id:cid,name:parsed.names.get(cid),
@@ -297,9 +313,29 @@ export function buildVerifiedCountDashboard({
     statuses.get(p.id).add(r.reportStatus);
    }
   }
-  if(r.teamId!==null)put(teams,r.companyId+":"+r.teamId,
+  if(r.teamId!==null)put(teams,JSON.stringify([r.companyId,r.teamId]),
    ()=>({id:r.companyId+":"+r.teamId,companyId:cid,
     companyName:r.companyName,name:r.teamName,count:0}),r.count);
+  // Attribute details to the saved record team, never the current roster.
+  // Reuse the same authorized, mapped, filtered rows as every total above.
+  if(r.teamId!==null){
+   const key=JSON.stringify([r.companyId,r.teamId]);
+   if(!teamDetails.has(key))teamDetails.set(key,{people:new Map(),products:new Map()});
+   const detail=teamDetails.get(key);
+   if(r.uid!==null){
+    const personKey=r.companyId+":"+r.uid;
+    if(!detail.people.has(personKey))detail.people.set(personKey,
+     {id:personKey,name:r.name,count:0,days:new Set()});
+    const person=detail.people.get(personKey);
+    person.count=add(person.count,r.count);
+    if(r.reported)person.days.add(r.date);
+   }
+   if(r.productKey!==null){
+    const productId=productKey(r.productKey);
+    put(detail.products,productId,()=>({id:productId,
+     name:productName(r.productKey),count:0}),r.count);
+   }
+  }
   if(r.productKey!==null){
    const key=productKey(r.productKey);
    put(products,key,()=>({id:key,name:productName(r.productKey),
@@ -350,7 +386,15 @@ export function buildVerifiedCountDashboard({
       p.count>best.get(p.id)?"自己ベスト更新":"過去記録以下":"比較不可"
   };
  });
- const rankedPeople=ordered(personRows,p=>p.count);
+ // A roster member with NO submitted day is not a 0-case performer.
+ // Preserve them for Owner missing-report views, but NEVER grant a rank.
+ // Filter before ranking so a reported zero keeps the correct tie position.
+ const rankedPeople=[
+  ...ordered(personRows.filter(p=>p.reportStatus!=="未報告"),p=>p.count),
+  ...personRows.filter(p=>p.reportStatus==="未報告")
+   .sort((a,b)=>a.name.localeCompare(b.name,"ja")||a.id.localeCompare(b.id))
+   .map(p=>({...p,rank:null}))
+ ];
  const rankedProducts=ordered([...products.values()].map(p=>({
   id:p.id,name:p.name,count:p.count,ownCount:p.ownCount,
   partnerCount:p.partnerCount,
@@ -358,7 +402,16 @@ export function buildVerifiedCountDashboard({
    companyId:cid,companyName:parsed.names.get(cid),count:n
   }))
  })),p=>p.count);
- const companyRows=[...allCompany.values()].sort((a,b)=>a.kind==="自社"?-1:
+ // A registered but unreported company has no numerical ranking.
+ // A genuine submitted zero (including legacy company-only Quick 0) remains
+ // eligible. This proof is server-derived from verified ON-only source rows.
+ const reportedCompanies=new Set(current.filter(r=>
+  r.reported===true||r.unidentified===true).map(r=>r.companyId));
+ const companyRows=[...allCompany.values()].map(company=>({
+  ...company,
+  reportStatus:!reportedCompanies.has(company.id)?"未報告":
+   company.count===0?"確定0件":"報告済"
+ })).sort((a,b)=>a.kind==="自社"?-1:
    b.kind==="自社"?1:a.name.localeCompare(b.name,"ja"));
  const self=companyRows.find(x=>x.id===hubCompanyId)?.count??0;
  const total=companyRows.reduce((a,b)=>add(a,b.count),0);
@@ -371,7 +424,21 @@ export function buildVerifiedCountDashboard({
   productRanking:rankedProducts};
  if(context.role==="hub_owner"){
   const data={...common,role:"hub_owner",
-   companyBreakdown:companyRows,teamBreakdown:[...teams.values()],
+   companyBreakdown:companyRows,teamBreakdown:[...teams.values()].map(team=>{
+    const identity=JSON.stringify([team.companyId,team.id.slice(team.companyId.length+1)]);
+    const detail=teamDetails.get(identity);
+    const members=[...detail.people.values()].map(p=>({id:p.id,name:p.name,
+     count:p.count,reportStatus:p.days.size===0?"未報告":p.count===0?"確定0件":
+      p.days.size<range.days?"一部未報告":"報告済"}));
+    const teamProducts=[...detail.products.values()];
+    if(members.reduce((sum,p)=>add(sum,p.count),0)!==team.count||
+       teamProducts.reduce((sum,p)=>add(sum,p.count),0)!==team.count)stop();
+    const metadata=parsed.teamMetadata.get(identity);
+    const reported=members.some(p=>p.reportStatus!=="未報告");
+    return {...team,detail:{schema:"nico-team-count-detail-v1",members,products:teamProducts,
+     goalCount:metadata.goalCount,memberCount:metadata.memberCount,
+     reportStatus:!reported?"未報告":team.count===0?"確定0件":"報告済"}};
+   }),
    filters:{...filters}};
   auditNoFinancialKeys(data);
   return data;
@@ -380,7 +447,9 @@ export function buildVerifiedCountDashboard({
  const ownPeople=common.memberRanking.filter(x=>x.companyId===ownCompany);
  const ownProducts=rankedProducts.filter(x=>x.companies.some(c=>c.companyId===ownCompany))
   .map(p=>({id:p.id,name:p.name,count:p.companies.find(c=>c.companyId===ownCompany).count}));
- const publicMembers=rankedPeople.map(x=>({
+ // Public member standings exclude unreported people entirely.
+ // Own people remain countable but are explicitly rank-null until reported.
+ const publicMembers=rankedPeople.filter(x=>x.rank!==null).map(x=>({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
  const publicProducts=rankedProducts.map(x=>({
@@ -389,10 +458,13 @@ export function buildVerifiedCountDashboard({
  // Publish ranked, aggregate-only organization comparisons. This is the
  // same already-verified set of ON-only source lines as member/SKU ranks.
  // No team ID, UID, salary, unit price or source report can leave this API.
- const publicCompanies=ordered(companyRows.map(x=>({
+ // A partner company with no verified report must not appear as a
+ // tied 0-case company in public rankings. Confirmed zero reports are included.
+ const publicCompanies=ordered(companyRows.filter(x=>x.reportStatus!=="未報告").map(x=>({
   id:x.id,name:x.name,count:x.count
  })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
- const publicTeams=ordered([...teams.values()].map(x=>({
+ const publicTeams=ordered([...teams.values()].filter(x=>
+  [...teamDetails.get(JSON.stringify([x.companyId,x.id.slice(x.companyId.length+1)])).people.values()].some(p=>p.days.size>0)).map(x=>({
   id:x.id,name:x.name,company:x.companyName,count:x.count
  })),x=>x.count).map(x=>({
   rank:x.rank,name:x.name,company:x.company,count:x.count
