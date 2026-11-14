@@ -194,7 +194,7 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
  if(typeof clock!=="function")STOP();
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
- const loadPartner=createPartnerMonthTransactionReader({db});
+ const loadPartner=createPartnerMonthTransactionReader({db,clock});
  const loadLegacyQuick=createPartnerLegacyQuickMonthReader({db});
  return async function readCounts({tx,month,context,secondMonth}={}){
   if(!tx||typeof tx.get!=="function"||!context||
