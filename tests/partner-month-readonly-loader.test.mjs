@@ -252,3 +252,41 @@ test("standalone loader never trusts an injected transaction from request",async
  assert.equal(result.companyId,"partner");
  assert.equal(f.events.filter(e=>e.kind==="transaction").length,1);
 });
+
+test("active registered staff without saved reports remain explicitly unreported in the source",async()=>{
+ const f=fake();
+ const base="companies/partner/partnerWorkStaff/";
+ f.documents.set(base+"newStaff",{
+  companyId:"partner",active:true,teamId:"team1",
+  name:"登録済み未報告",kind:"managed"
+ });
+ f.documents.set(base+"retired",{
+  companyId:"partner",active:false,teamId:"team1",
+  name:"退職者",kind:"managed"
+ });
+ const original=clone([...f.documents]);
+ const result=await createPartnerMonthReadOnlyLoader({db:f.db})(request());
+ assert.deepEqual(result.roster,[{
+  uid:"newStaff",name:"登録済み未報告",teamId:"team1"
+ }]);
+ assert.equal(result.records.length,2);
+ assert.equal(result.lines.reduce((sum,x)=>sum+x.count,0),4);
+ assert(!result.records.some(x=>x.uid==="newStaff"),
+  "registered unreported staff must not be given a synthetic zero report");
+ assert(f.events.some(e=>e.kind==="get"&&
+  e.path==="companies/partner/partnerWorkStaff"));
+ assert.deepEqual([...f.documents],original,"strictly read-only");
+ for(const modify of [
+  p=>{p.companyId="other-company";},
+  p=>{p.teamId="unknown-team";},
+  p=>{p.name="staff cashback";},
+  p=>{p.active="true";}
+ ]){
+  const bad=fake();
+  const row={...f.documents.get(base+"newStaff")};
+  modify(row);
+  bad.documents.set(base+"newStaff",row);
+  await assert.rejects(createPartnerMonthReadOnlyLoader({db:bad.db})(request()),
+   /INCOMPLETE/,"invalid roster must fail before publication");
+ }
+});
