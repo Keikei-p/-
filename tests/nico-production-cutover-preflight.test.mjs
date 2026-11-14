@@ -22,6 +22,7 @@ test("current main is correctly blocked: finance originals still open and direct
  assert(x.blocked.includes("DIRECT_BROWSER_FINANCE_COLLECTION_products"));
  assert(x.blocked.includes("LEGACY_RECORDS_DIRECT_QUERY"));
  assert(x.blocked.includes("LEGACY_RECORDS_DIRECT_WRITE"));
+ assert(x.blocked.includes("LEGACY_SECONDARY_OWN_COMPANY_FINANCE_ROUTE"));
 });
 test("valid staged finance Rules and exclusively gateway-based browser pass only source gate",()=>{
  const x=inspectProductionCutover({rules:candidate,index:secureHtml});
@@ -48,6 +49,17 @@ test("unknown project and raw collection helper are denied even with staged rule
  assert.equal(x.sourceCheckPassed,false);
  assert(x.blocked.includes("CANONICAL_APP_NOT_VERIFIED"));
  assert(x.blocked.includes("DIRECT_BROWSER_FINANCE_COLLECTION_recordCorrections"));
+});
+test("the old 'own company' preference cannot silently skip the partner-money release review",()=>{
+ const oldLoginRoute=secureHtml+String.raw`
+const ownCompanyPreferred=partnerMainOwnCompanyPreferred(user.uid);
+if(!partnerWorkspaceId&&!ownCompanyPreferred){ readPartnerWorkDay(); }
+await enterApplication(user);
+`;
+ const verdict=inspectProductionCutover({rules:candidate,index:oldLoginRoute});
+ assert.equal(verdict.sourceCheckPassed,false);
+ assert.deepEqual(verdict.blocked,["LEGACY_SECONDARY_OWN_COMPANY_FINANCE_ROUTE"]);
+ assert.equal(verdict.productionApprovalGranted,false);
 });
 test("predeploy script is a pure read-only source check without bypass flags or Firebase SDK",()=>{
  const s=read("scripts/nico-production-cutover-preflight.mjs");
