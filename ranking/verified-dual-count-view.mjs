@@ -99,15 +99,26 @@ function shape(value){
   // Owner ranking totals must reconcile with the exact validated company
   // ledger. Duplicate/foreign companies must never become ranked twice.
   const companies=new Map();
-  let companyTotal=0;
+  let companyTotal=0,internalTotal=0,partnerTotal=0,unidentifiedTotal=0;
   for(const company of value.companyBreakdown){
    if(typeof company.id!=="string"||!company.id||
-      companies.has(company.id)||company.unidentifiedCount>company.count)halt();
+      companies.has(company.id)||
+      !["自社","協力店"].includes(company.kind)||
+      !Number.isSafeInteger(company.unidentifiedCount)||
+      company.unidentifiedCount<0||
+      company.unidentifiedCount>company.count)halt();
    companyTotal+=company.count;
-   if(!Number.isSafeInteger(companyTotal))halt();
+   unidentifiedTotal+=company.unidentifiedCount;
+   if(company.kind==="自社")internalTotal+=company.count;
+   else partnerTotal+=company.count;
+   if(![companyTotal,internalTotal,partnerTotal,unidentifiedTotal]
+      .every(Number.isSafeInteger))halt();
    companies.set(company.id,company);
   }
-  if(companyTotal!==value.summary.total)halt();
+  if(companyTotal!==value.summary.total||
+     internalTotal!==value.summary.own||
+     partnerTotal!==value.summary.partner||
+     unidentifiedTotal!==value.summary.unidentified)halt();
   if(!Array.isArray(value.teamBreakdown)||value.teamBreakdown.length>5000)halt();
   const teamKeys=new Set();
   for(const team of value.teamBreakdown){
@@ -149,8 +160,13 @@ function shape(value){
   checkedPersonRanking(value.memberRanking);
   list(value.productRanking,PRODUCT);
   checkedCompetition(value.productRanking);
-  for(const product of value.productRanking)
+  let productTotal=0;
+  for(const product of value.productRanking){
+   productTotal+=product.count;
+   if(!Number.isSafeInteger(productTotal))halt();
    list(product.companies,["companyId","companyName","count"]);
+  }
+  if(productTotal!==value.summary.total)halt();
   if(!value.filters||typeof value.filters!=="object"||
      Object.keys(value.filters).some(k=>!["companyId","teamId","uid","productId"].includes(k)))halt();
  }else{
