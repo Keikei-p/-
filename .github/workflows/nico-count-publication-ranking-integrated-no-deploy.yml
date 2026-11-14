@@ -15,6 +15,8 @@ on:
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/verified-dual-count-view.test.mjs'
       - 'tests/verified-dual-count-dashboards.test.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
+      - 'tests/partner-month-readonly-loader.test.mjs'
       - 'ranking/verified-inline-joint-ranking-cards.mjs'
       - 'tests/verified-inline-joint-ranking-cards.test.mjs'
       - 'partner-workspace.html'
@@ -69,6 +71,10 @@ jobs:
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           cmp ranking/verified-dual-count-dashboards.mjs functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          node --check ranking/partner-month-readonly-loader.mjs
+          node --check ranking/canonical-joint-count-sku-reader.mjs
+          cmp ranking/partner-month-readonly-loader.mjs functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs
+          cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
           node --check tests/verified-dual-count-view.test.mjs
       - name: One verified count source, owner edits and both dashboard rankings
         shell: bash
@@ -84,6 +90,8 @@ jobs:
             tests/owner-product-visibility-rankings.test.mjs \
             tests/verified-dual-count-view.test.mjs \
             tests/verified-dual-count-dashboards.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/partner-month-readonly-loader.test.mjs \
             tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/partner-inline-joint-staging-wiring.test.mjs \
             tests/verified-joint-ranking-panel.test.mjs \
