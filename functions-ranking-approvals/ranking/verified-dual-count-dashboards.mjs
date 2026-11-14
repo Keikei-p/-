@@ -9,7 +9,8 @@ import {assertPublicSchema,auditNoFinancialKeys} from "../security/public-projec
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const DATE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
-const MONEY=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|cashback|revenue|unitPrice|commission)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
+// Fail before emitting any company, member, team or product label in a count API.
+const MONEY=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const stop=()=>{throw Error("VERIFIED_COUNT_DASHBOARD_INCOMPLETE_OR_UNAUTHORIZED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","prototype","constructor"].includes(x);
