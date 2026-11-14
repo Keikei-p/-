@@ -1,0 +1,54 @@
+name: NICO Owner product visibility core isolated (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ranking/owner-product-visibility-rankings.mjs
+      - functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
+      - tests/owner-product-visibility-rankings.test.mjs
+      - .github/workflows/nico-owner-visibility-isolated-no-deploy.yml
+permissions:
+  contents: read
+jobs:
+  owner-visibility-scope:
+    name: verify-product-onoff-count-projection-no-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prove isolated files only and no credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          git fetch --no-tags origin main
+          while IFS= read -r path; do
+            case "$path" in
+              ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
+              *) echo "STOP_UNREVIEWED_SCOPE: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only origin/main...HEAD)
+          cmp ranking/owner-product-visibility-rankings.mjs functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
+          node --check ranking/owner-product-visibility-rankings.mjs
+          node --check functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
+          node --check tests/owner-product-visibility-rankings.test.mjs
+      - name: Verify Owner ON OFF applies only verified IDs and preserves counts
+        run: |
+          node --test tests/owner-product-visibility-rankings.test.mjs
+          echo 'OWNER_VISIBILITY_PURE_COUNT_PROJECTION_PASS_NO_DEPLOY'
+      - name: Never deploy or infer production signoff
+        run: |
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'RULES_FUNCTIONS_HOSTING_DEPLOYED=NO'
