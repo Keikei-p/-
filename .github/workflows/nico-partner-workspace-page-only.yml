@@ -27,7 +27,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nico-surgical-index-release
+  # PR #704 only validates offline. Keep the production lock for every other event.
+  group: nico-surgical-index-release${{ github.event_name == 'pull_request' && github.head_ref == 'integration/nico-sales-count-publication-rank-ready-20261113' && format('-offline-{0}', github.workflow) || '' }}
   cancel-in-progress: false
 jobs:
   validate:
