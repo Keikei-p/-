@@ -45,7 +45,7 @@ test("exact current source pins include finance, old Functions, original Hosting
  assert(!entry.includes("enabled:()=>true"));
  const service=candidate.bundle["functions-hub-owner-correction/service.cjs"];
  assert(service.includes('require("./sb-category-v2.cjs")'));
- assert(service.includes('SB_SPLIT_'));
+ assert(candidate.bundle["functions-hub-owner-correction/sb-category-v2.cjs"].includes("SB_SPLIT_"));
  assert(service.includes('candidateParts["SB光"]!==previousParts["SB光"]'));
  assert(service.includes('MONEY.test(reason.normalize("NFKC"))'));
  for(const content of Object.values(candidate.bundle))
