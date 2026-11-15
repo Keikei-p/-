@@ -12860,6 +12860,102 @@ function mountPartnerCanonicalNavigation(){
   userBar.after(pInline("partnerInlineWorkspace"));
  return true;
 }
+// Count-only counterpart of the self dashboard's analysis scope/actions.
+// Only the authenticated getPartnerWorkspace snapshot is read; no writes.
+function renderPartnerCountAnalysisDrilldown(snap){
+ const root=pInline("pPartnerAnalysis");root.replaceChildren();
+ if(!snap||!Array.isArray(snap.records)||!Array.isArray(snap.teams)||
+    !Array.isArray(snap.categories)||!Array.isArray(snap.staff))return;
+ const records=snap.records,visible=snap.enabledCategories??snap.categories;
+ if(!Array.isArray(visible)||visible.some(k=>!snap.categories.includes(k))||
+    records.some(r=>!Number.isSafeInteger(r.totalCount)||r.totalCount<0||!r.counts)){
+  partnerMainAppendRow(root,"件数を検証できません","再取得してください");return;
+ }
+ const teams=new Map(snap.teams.map(t=>[t.id,t]));
+ const staff=new Map(snap.staff.map(p=>[p.id,p]));
+ const privateNames=new Map((snap.privateProducts||[]).map(p=>[p.id,p.name]));
+ const unverified=records.filter(r=>!teams.has(r.teamIdSnapshot));
+ const scopes=[{id:"all",name:snap.companyName||"協力店",icon:"🏢",records}];
+ for(const team of snap.teams)scopes.push({id:team.id,
+  name:team.name+(team.active===false?"（過去の班）":""),icon:"👥",
+  records:records.filter(r=>r.teamIdSnapshot===team.id)});
+ if(unverified.length)scopes.push({id:"unknown",name:"当時の班未確認",icon:"📋",records:unverified});
+ const path=document.createElement("div");path.className="analysis-current-path";
+ const choices=document.createElement("div");choices.className="analysis-scope-grid";
+ const actions=document.createElement("div");actions.className="analysis-action-grid";
+ const result=document.createElement("div");result.className="analysis-card-grid";
+ root.append(path,choices,actions,result);
+ function card(cls,icon,title,sub){
+  const button=document.createElement("button");button.type="button";
+  button.className=cls;button.setAttribute("aria-pressed","false");
+  for(const [name,value] of [["analysis-nav-icon",icon],["analysis-nav-title",title],["analysis-nav-count",sub]]){
+   const span=document.createElement("span");span.className=name;span.textContent=value;button.append(span);
+  }
+  return button;
+ }
+ function productRows(items){
+  result.replaceChildren();
+  const counts=new Map(visible.map(k=>[k,0]));
+  for(const r of items){
+   for(const key of visible){
+    const n=r.counts?.[key]??0;
+    if(!Number.isSafeInteger(n)||n<0)throw Error("invalid saved product counts");
+    counts.set(key,counts.get(key)+n);
+   }
+   for(const [id,n] of Object.entries(r.privateCounts||{})){
+    if(!Number.isSafeInteger(n)||n<0)throw Error("invalid partner product counts");
+    const name=(privateNames.get(id)||"協力店専用商材")+"（社内のみ）";
+    counts.set(name,(counts.get(name)||0)+n);
+   }
+  }
+  for(const [name,n] of [...counts].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"))){
+   const item=document.createElement("div");item.className="analysis-product-card";
+   const label=document.createElement("span");label.className="analysis-nav-title";label.textContent=name;
+   const value=document.createElement("strong");value.className="analysis-nav-count";value.textContent=n+"件";
+   item.append(label,value);result.append(item);
+  }
+ }
+ function memberRows(scope){
+  result.replaceChildren();
+  const people=new Map();
+  for(const r of scope.records){
+   const person=people.get(r.staffId)||{id:r.staffId,name:staff.get(r.staffId)?.name||"当時の担当者未確認",count:0,records:[]};
+   person.count+=r.totalCount;person.records.push(r);people.set(r.staffId,person);
+  }
+  // Never infer a report from today's roster; preserve "未報告" vs 0.
+  if(["owner","leader"].includes(snap.role))for(const person of snap.staff){
+   if(person.active!==true||people.has(person.id)||
+      (scope.id!=="all"&&person.teamId!==scope.id))continue;
+   people.set(person.id,{id:person.id,name:person.name,reported:false,count:0,records:[]});
+  }
+  for(const person of [...people.values()].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"))){
+   const button=card("analysis-member-card","👤",person.name,
+    person.reported===false?"未報告":person.count+"件");
+   if(person.reported===false)button.disabled=true;
+   else button.onclick=()=>{path.textContent=scope.name+" → "+person.name+" → 商材別";productRows(person.records);};
+   result.append(button);
+  }
+  if(!result.children.length)partnerMainAppendRow(result,"報告はありません","未報告は0件ではありません");
+ }
+ const scopeButtons=[];
+ for(const scope of scopes){
+  const count=scope.records.reduce((n,r)=>n+r.totalCount,0);
+  const button=card("analysis-scope-card",scope.icon,scope.name,
+   scope.records.length?count+"件":"未報告");
+  button.onclick=()=>{
+   for(const b of scopeButtons)b.setAttribute("aria-pressed",String(b===button));
+   path.textContent=scope.name+" → 商材別または担当者別を選択";
+   actions.replaceChildren();result.replaceChildren();
+   const prod=card("analysis-action-button","📦","商材別","件数内訳");
+   const people=card("analysis-action-button","👤","担当者別","個人件数");
+   prod.onclick=()=>{path.textContent=scope.name+" → 商材別";productRows(scope.records);};
+   people.onclick=()=>{path.textContent=scope.name+" → 担当者別";memberRows(scope);};
+   actions.append(prod,people);
+  };
+  scopeButtons.push(button);choices.append(button);
+ }
+ if(scopeButtons.length)scopeButtons[0].onclick();
+}
 function renderPartnerCountOnlyExtras(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
@@ -12875,10 +12971,7 @@ function renderPartnerCountOnlyExtras(){
   const id=r.teamIdSnapshot||"unverified";
   byTeam.set(id,(byTeam.get(id)||0)+r.totalCount);
  }
- const analysis=pInline("pPartnerAnalysis");analysis.replaceChildren();
- partnerMainAppendRow(analysis,snap.companyName+"｜"+snap.date,count+"件");
- for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(analysis,teamById.get(id)?.name||"当時の班未確認",n+"件");
+ renderPartnerCountAnalysisDrilldown(snap);
  const chart=pInline("pPartnerChart");chart.replaceChildren();
  const max=Math.max(1,...byTeam.values());
  for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1])){
