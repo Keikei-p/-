@@ -13400,9 +13400,8 @@ async function loadSharedDailyStandings(where,force=false){
      " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
    "未報告・未照合の実績があります。表示は途中経過で、正式順位は確定していません。";
   if(detail){
-   // Same company -> team -> person -> product hierarchy in both apps.
-   // The server has already authenticated and limited this count-only data.
-   renderSharedCountTeamDetails(content,response);
+   if(partner)renderPartnerFlatTeamDetails(content,response);
+   else renderSharedCountTeamDetails(content,response);
    return;
   }
   // Partners and HQ use the very same approved counts, people and products.
@@ -13844,12 +13843,6 @@ function partnerInlineRender(){
  renderPartnerRankingOnlyPanel();
  const details=pInline("pInlineTeamDetails");details.replaceChildren();
  details.className="p-inline-list partner-count-team-grid";
- // Mirror the self dashboard's company heading and team-card grouping.
- const companySection=document.createElement("section");
- companySection.className="p-inline-company-teams partner-count-team-grid";
- const companyHeading=document.createElement("h4");
- companyHeading.textContent="🤝 "+snap.companyName+"｜班別件数";
- companySection.append(companyHeading);details.append(companySection);
  for(const team of allTeams){
   // Always attribute past entries to the immutable saved team ID, never the
   // member's current team. Deactivated members' saved counts are retained.
@@ -13879,7 +13872,7 @@ function partnerInlineRender(){
   const card=renderPartnerCountTeamCard(
    team.name+(team.active?"":"（過去の班）")+(hasReports?"":"｜未報告"),
    total,productTotals,{NURO:cb},memberRows,visibleKeys,{verified:true});
-  companySection.append(card);
+  details.append(card);
  }
  const unknown=snap.records.filter(e=>!allTeams.some(t=>t.id===e.teamIdSnapshot));
  if(unknown.length){
@@ -13887,7 +13880,7 @@ function partnerInlineRender(){
   partnerMainAppendRow(details,"過去の班が未確認",total+"件（"+unknown.length+"人の報告）");
  }
  if(!allTeams.length)partnerMainAppendRow(details,"班がまだありません","班を追加してください");
- partnerCompactWireTeamSelection(companySection);
+ partnerCompactWireTeamSelection(details);
  const daily=pInline("pInlineDailySummary");daily.replaceChildren();
  partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
   snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
