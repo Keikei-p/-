@@ -9,6 +9,9 @@ on:
       - tests/verified-dual-count-view.test.mjs
       - tests/verified-inline-joint-ranking-cards.test.mjs
       - tests/verified-joint-month-http-bridge.test.mjs
+      - tests/verified-joint-count-host-wiring.test.mjs
+      - .github/workflows/nico-dual-ranking-mobile-view-no-deploy.yml
+      - .github/workflows/nico-joint-count-host-wiring-no-deploy.yml
       - .github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml
 permissions:
   contents: read
@@ -40,7 +43,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              ranking/verified-dual-count-view.mjs|ranking/verified-inline-joint-ranking-cards.mjs|ranking/verified-joint-month-http-bridge.mjs|tests/verified-dual-count-view.test.mjs|tests/verified-inline-joint-ranking-cards.test.mjs|tests/verified-joint-month-http-bridge.test.mjs|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
+              ranking/verified-dual-count-view.mjs|ranking/verified-inline-joint-ranking-cards.mjs|ranking/verified-joint-month-http-bridge.mjs|tests/verified-dual-count-view.test.mjs|tests/verified-inline-joint-ranking-cards.test.mjs|tests/verified-joint-month-http-bridge.test.mjs|tests/verified-joint-count-host-wiring.test.mjs|.github/workflows/nico-dual-ranking-mobile-view-no-deploy.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_UI_OR_FINANCE_CHANGE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
@@ -54,7 +57,7 @@ jobs:
           done
       - name: Verify safe four-rank cards, month/day/week and finance labels
         run: |
-          node --test tests/verified-dual-count-view.test.mjs tests/verified-inline-joint-ranking-cards.test.mjs tests/verified-joint-month-http-bridge.test.mjs tests/verified-joint-ranking-panel.test.mjs tests/unified-partner-team-cards.test.mjs tests/owner-visible-count-server-handler.test.mjs
+          node --test tests/verified-dual-count-view.test.mjs tests/verified-inline-joint-ranking-cards.test.mjs tests/verified-joint-month-http-bridge.test.mjs tests/verified-joint-ranking-panel.test.mjs tests/unified-partner-team-cards.test.mjs tests/verified-joint-count-host-wiring.test.mjs tests/owner-visible-count-server-handler.test.mjs
           echo 'UNIFIED_FOUR_RANKING_UI_PASS_NO_DEPLOY'
       - name: Release remains blocked until live real-account safety approval
         run: |
