@@ -6,6 +6,7 @@ on:
       - 'sales-archive.js'
       - 'tests/owner-inline-joint-staging-wiring.test.mjs'
       - '.github/workflows/nico-joint-count-host-wiring-no-deploy.yml'
+      - '.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml'
       - '.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml'
 permissions:
   contents: read
@@ -34,7 +35,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              sales-archive.js|tests/owner-inline-joint-staging-wiring.test.mjs|.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml) ;;
+              sales-archive.js|tests/owner-inline-joint-staging-wiring.test.mjs|.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_OWNER_HOST_CHANGE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
