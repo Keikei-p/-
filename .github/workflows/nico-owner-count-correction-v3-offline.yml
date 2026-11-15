@@ -60,9 +60,39 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Confirm NO DEPLOY and frozen original money/count sources
+        id: source_scope
         shell: bash
         run: |
           set -euo pipefail
+          # Exact reviewed candidate: exercise new read-only UI and prove
+          # the historical signed package remains impossible to prepare.
+          # All other sources still pass through the unchanged legacy gate.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/owner-partner-correction-ui-safety-no-deploy-20261115" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = b4f4f24c2da289d9bf64e22c2e64e8f1ce142f07 ]; }; then
+            test "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = b4f4f24c2da289d9bf64e22c2e64e8f1ce142f07
+            test "$(git hash-object staging/partner-owner-correction-v3/owner-client.mjs)" = 83eb3268eb7d1593bc891b286b113c7360061750
+            test "$(git hash-object staging/partner-owner-correction-v3/mobile-bootstrap.mjs)" = c35b58367db290aec3f8a86e9bdf73986c5d3f3d
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            node --check staging/partner-owner-correction-v3/owner-ui.mjs
+            node --check staging/partner-owner-correction-v3/owner-client.mjs
+            node --check staging/partner-owner-correction-v3/mobile-bootstrap.mjs
+            node --test tests/partner-owner-correction-v3-client.test.mjs tests/partner-owner-correction-v3-ui.test.mjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+            if node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare > "$RUNNER_TEMP/owner-frozen-package-result.txt" 2>&1; then
+              echo 'STOP_UNREVIEWED_OWNER_PACKAGE_UNEXPECTEDLY_SUCCEEDED'; exit 1
+            fi
+            grep -Fxq 'STOP_OWNER_V3_PACKAGE_SOURCE_CHANGED' "$RUNNER_TEMP/owner-frozen-package-result.txt"
+            test ! -e "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+            echo 'package_allowed=false' >> "$GITHUB_OUTPUT"
+            echo 'REVIEWED_STAGED_OWNER_UI_ONLY_FROZEN_RELEASE_STAYS_BLOCKED'
+            exit 0
+          fi
+          echo 'package_allowed=true' >> "$GITHUB_OUTPUT"
           node --check staging/partner-owner-correction-v3/trusted-auth.cjs
           node --check tests/partner-owner-correction-v3-auth.test.cjs
           node --test tests/partner-owner-correction-v3-auth.test.cjs
@@ -105,6 +135,7 @@ jobs:
             throw Error('OWNER_CORRECTION_SAFETY_CONTRACT_MISSING');
           NODE
       - name: Prepare reviewed owner correction package in disposable runner (NEVER deploy)
+        if: ${{ steps.source_scope.outputs.package_allowed == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
