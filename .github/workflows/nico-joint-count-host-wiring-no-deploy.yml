@@ -42,6 +42,20 @@ jobs:
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          # PR #717 current partner existing four-rank host: strict source
+          # hashes checked by a separately pinned read-only reviewer. Keep
+          # all historical release and workflow_dispatch gates unchanged.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/partner-inline-four-rank-original-screen-off-20261115" ]; }
+             || { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object partner-workspace.html)" = 1ea7e1a26702681294ec999c7b36a8f10b880aa2 ]; }; then
+            test "$(git hash-object scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs)" = 5655eb5b332574909077bef1acdd04af9cf54822
+            node scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs
+            node --test tests/partner-inline-joint-staging-wiring.test.mjs tests/partner-inline-joint-original-preservation.test.mjs
+            echo 'PARTNER_EXISTING_FOUR_RANK_CANDIDATE_VERIFIED_NO_DEPLOY'
+            exit 0
+          fi
           # Exact append-only Owner four-rank host candidate. Keep the
           # historical source gate below; never treat this as deployment.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
