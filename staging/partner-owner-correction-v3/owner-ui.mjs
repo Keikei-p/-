@@ -31,6 +31,20 @@ export function normalizedSplit(combined,raw){
  return parts;
 }
 
+/**
+ * Preserve explicitly recorded 光/AIR history during ANY Owner count correction.
+ * A changed combined total affects only legacy-unclassified counts; it must
+ * never silently erase or rewrite already verified 光/AIR allocations.
+ */
+export function preservedCombinedSplit(previousCombined,previousBreakdown,nextCombined){
+ const old=normalizedSplit(previousCombined,previousBreakdown);
+ const total=verifiedCount(nextCombined);
+ const known=old["SB光"]+old["SB AIR"];
+ if(total<known)throw Error("SB_SPLIT_MANUAL_REVIEW_REQUIRED");
+ return {"SB光":old["SB光"],"SB AIR":old["SB AIR"],
+  "旧未分類":total-known};
+}
+
 export function correctionPayload({
  date,partnerCompanyId,previous,draftCounts,draftSb,correctionReason
 }){
@@ -222,8 +236,9 @@ export function mountOwnerCorrection({
    req=correctionPayload({
     date:day,partnerCompanyId:id,previous:selected,
     draftCounts:Object.fromEntries(COUNT_KEYS.map(k=>[k,gridInputs[k].value])),
-    draftSb:{"SB光":"0","SB AIR":"0",
-     "旧未分類":gridInputs["SB光・AIR"].value},
+    draftSb:preservedCombinedSplit(
+     selected.counts["SB光・AIR"],selected.sbBreakdown,
+     gridInputs["SB光・AIR"].value),
     correctionReason:reason.value
    });
   }catch(err){

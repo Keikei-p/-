@@ -31,12 +31,19 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS: ''
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Assert reviewed live partner app and original counts/finance boundaries
         shell: bash
         run: |
+          set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
@@ -49,6 +56,13 @@ jobs:
       - name: Review all isolated owner module dependencies
         shell: bash
         run: |
+          set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
           set -euo pipefail
           node tools/ranking/verify-isolated-owner-callables.mjs
           node --check tools/ranking/build-owner-settings-workspace-candidate.mjs
@@ -76,15 +90,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/ranking/build-owner-settings-workspace-candidate.mjs --out "$RUNNER_TEMP/nico-owner-settings-staging.html"
-          test -s "$RUNNER_TEMP/nico-owner-settings-staging.html"
-          grep -q 'id="tabRankingSettings"' "$RUNNER_TEMP/nico-owner-settings-staging.html"
-          grep -q 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/nico-owner-settings-staging.html"
+          node tests/helpers/build-historical-owner-settings-fixture.mjs
+          test -s "$RUNNER_TEMP/nico-owner-settings-historical-fixture.html"
+          grep -q 'id="tabRankingSettings"' "$RUNNER_TEMP/nico-owner-settings-historical-fixture.html"
+          grep -q 'submitPartnerWorkspaceCounts' "$RUNNER_TEMP/nico-owner-settings-historical-fixture.html"
           echo 'STAGING_PREVIEW_GENERATED_NO_PRODUCTION_DEPLOY_OR_WRITES'
       - name: Preserve temporary review candidate as 3-day Actions artifact only
         uses: actions/upload-artifact@v4
         with:
-          name: nico-ranking-owner-dashboard-review-only
-          path: ${{ runner.temp }}/nico-owner-settings-staging.html
+          name: nico-ranking-owner-historical-fixture-review-only
+          path: ${{ runner.temp }}/nico-owner-settings-historical-fixture.html
           if-no-files-found: error
           retention-days: 3

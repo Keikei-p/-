@@ -40,7 +40,8 @@ jobs:
           test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
           grep -Fq 'ownerCorrectionReadEnabled=()=>false' functions-partner-workspace/service.cjs
           grep -Fq 'ownerCorrectionWriteEnabled=()=>false' functions-partner-workspace/service.cjs
-          grep -Fq 'NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled"' functions-partner-workspace/index.js
+          grep -Fq 'HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"' staging/partner-owner-correction-v3/entry.cjs
+          node --test tests/canonical-hub-owner-package.test.mjs
           node --check functions-partner-workspace/service.cjs
           node --check functions-partner-workspace/index.js
           node --check tests/partner-workspace.test.cjs

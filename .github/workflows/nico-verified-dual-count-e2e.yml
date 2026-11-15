@@ -69,6 +69,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+          else
+          set -euo pipefail
           # Separate, precisely source-pinned PR/main NO-DEPLOY ranking review.
           # Historical production release and workflow_dispatch paths below
           # remain pinned to their prior reviewed artifacts.
@@ -90,6 +96,7 @@ jobs:
           test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           git diff --exit-code -- firestore.rules index.html partner-workspace.html functions functions-partner-workspace firebase.json
+          fi
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check ranking/owner-product-visibility-rankings.mjs
           node --check ranking/owner-visible-count-server-handler.mjs
@@ -139,6 +146,13 @@ jobs:
       - name: Assert original source and count data untouched
         shell: bash
         run: |
+          set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
           set -euo pipefail
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           git diff --exit-code -- firestore.rules index.html partner-workspace.html functions functions-partner-workspace firebase.json

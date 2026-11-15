@@ -9,23 +9,25 @@ import {
  REVIEWED_PARTNER_HTML_BLOB
 } from "../tools/ranking/build-owner-settings-workspace-candidate.mjs";
 
+import {historicalBlob} from "./helpers/historical-builder-fixtures.mjs";
+
 const root=new URL("../",import.meta.url);
 const files={
- original:readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8"),
+ original:historicalBlob(REVIEWED_PARTNER_HTML_BLOB),
  panel:readFileSync(new URL("../ranking/owner-ranking-consent-panel.mjs",import.meta.url),"utf8"),
  bridge:readFileSync(new URL("../ranking/owner-ranking-consent-firebase-bridge.mjs",import.meta.url),"utf8"),
  css:readFileSync(new URL("../ranking/owner-ranking-consent-panel.css",import.meta.url),"utf8")
 };
 const generate=(opts={})=>buildRankingOwnerWorkspaceCandidate({...files,...opts});
 const count=(s,k)=>s.split(k).length-1;
-test("original partner-workspace source is pinned, immutable and generated copy is deterministic",()=>{
+test("historical partner-workspace fixture is pinned, immutable and generated copy is deterministic",()=>{
  assert.equal(REVIEWED_PARTNER_HTML_BLOB,"994e6faf6f68ac570549c2ddd6d69cad1038632a");
  const before=readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8");
- const a=buildCandidateFromRepo(),b=generate();
+ const a=generate(),b=generate();
  assert.equal(a,b);
  assert.equal(readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8"),before);
  assert.equal(a.startsWith("<!doctype html>"),true);
- assert(a.length>before.length);
+ assert(a.length>files.original.length);
  for(const key of ["submitPartnerWorkspaceCounts","getPartnerWorkspace",
   "managePartnerWorkspace","acceptPartnerWorkspaceInvite","loginPartnerCompanyCode",
   "partnerPanel-individual","partnerPanel-productRanking",
@@ -102,4 +104,12 @@ test("one inlined owner settings module passes real Node syntax parse",()=>{
    timeout:15000,stdio:["ignore","pipe","pipe"]
   }));
  }finally{rmSync(temp,{recursive:true,force:true});}
+});
+
+
+test("historical preview builder rejects current integrated HTML instead of approving new source",()=>{
+ const current=readFileSync(new URL("../partner-workspace.html",import.meta.url),"utf8");
+ assert.notEqual(current,files.original);
+ assert.throws(()=>generate({original:current}),/STOP_RANKING_UI_ORIGINAL_BLOB_CHANGED/);
+ assert.throws(()=>buildCandidateFromRepo(),/STOP_RANKING_UI_ORIGINAL_BLOB_CHANGED/);
 });

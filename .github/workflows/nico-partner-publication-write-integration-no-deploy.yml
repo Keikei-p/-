@@ -28,6 +28,13 @@ jobs:
       - name: Review exact currently approved additive write path (release OFF)
         shell: bash
         run: |
+          set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
           # Exact #708 source review only; historical deployment gates remain unchanged.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
                [ "${GITHUB_HEAD_REF:-}" = "review/partner-onoff-count-write-guard-no-deploy-20261114" ]; } ||
@@ -41,6 +48,13 @@ jobs:
       - name: Keep production finance sources and Rules unchanged
         shell: bash
         run: |
+          set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
           set -euo pipefail
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f

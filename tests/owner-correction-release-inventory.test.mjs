@@ -17,15 +17,18 @@ const mk=()=>{
   functions:{source:"functions-partner-workspace",codebase:"partner-workspace"}}));
  put("firebase.ranking-approvals.json",JSON.stringify({
   functions:{source:"functions-ranking-approvals",codebase:"ranking-owner-approvals"}}));
+ put("staging/partner-owner-correction-v3/firebase.owner-correction.json",JSON.stringify({
+  functions:{source:"functions-hub-owner-correction",codebase:"hub-owner-correction-v3"}}));
  put("functions-partner-workspace/index.js",[
   'exports.getPartnerWorkspace = null;',
   'exports.managePartnerWorkspace = null;',
   'exports.acceptPartnerWorkspaceInvite = null;',
-  'exports.submitPartnerWorkspaceCounts = null;',
+  'exports.submitPartnerWorkspaceCounts = null;'
+ ].join("\n"));
+ put("staging/partner-owner-correction-v3/entry.cjs",[
   'exports.listHubPartnerCounts = null;',
   'exports.correctHubPartnerCounts = null;',
-  'const a=NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED==="enabled";',
-  'const b=NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled";'
+  'const enabled=()=>process.env.HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled";'
  ].join("\n"));
  put("functions-ranking-approvals/index.js",
   'exports.getVerifiedJointCountRanking = null;');
@@ -54,6 +57,8 @@ test("actual PR branch has unique owner endpoints, separate default OFF gates, a
   "new codebase exports must never collide or widen reviewed 4 function release");
  assert.equal(result.productionReleaseApproved,false);
  assert.equal(result.ownerEndpoints.defaultEnabled,false);
+ assert.equal(result.ownerEndpoints.codebase,"hub-owner-correction-v3",
+  "preserve the actual live codebase rather than move existing callable names");
  assert.equal(result.historicManualRelease.ownerEndpointsCovered,false);
  assert(result.functionsCodebases.some(x=>x.codebase==="partner-workspace"));
  assert(result.ownerEndpoints.names.includes("correctHubPartnerCounts"));
@@ -85,6 +90,16 @@ test("duplicate function names across isolated codebases fail closed",()=>{
   assert.equal(x.sourceInventoryPassed,false);
   assert(x.violations.some(s=>s.includes("DUPLICATE_FUNCTION_NAME_correctHubPartnerCounts")));
   assert(x.violations.some(s=>s.includes("OWNER_ENDPOINT_COLLISION_correctHubPartnerCounts")));
+ }finally{f.close()}
+});
+
+test("existing Owner callable names cannot be silently moved into the workspace",()=>{
+ const f=mk();try{
+  const p="functions-partner-workspace/index.js";
+  f.put(p,readFileSync(join(f.root,p),"utf8")+"\nexports.correctHubPartnerCounts=null;");
+  const x=inspectOwnerCorrectionRelease(f.root);
+  assert.equal(x.sourceInventoryPassed,false);
+  assert(x.violations.includes("OWNER_ENDPOINT_COLLISION_correctHubPartnerCounts"));
  }finally{f.close()}
 });
 test("unapproved widening of old manual deploy is denied rather than relabeled reviewed",()=>{

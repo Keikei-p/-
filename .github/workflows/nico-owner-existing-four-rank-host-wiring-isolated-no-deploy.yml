@@ -1,0 +1,85 @@
+name: NICO Owner existing 4 count ranking cards (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sales-archive.js'
+      - 'tests/owner-inline-joint-staging-wiring.test.mjs'
+      - '.github/workflows/nico-joint-count-host-wiring-no-deploy.yml'
+      - '.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml'
+      - '.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  review-exact-owner-host-wiring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact original finance page plus strictly appended disabled code
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            set -euo pipefail
+            test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+            test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+            test -z "$FIREBASE_TOKEN"
+            test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+            git fetch --no-tags origin main
+            # PR-only review for the exact, disabled partner four-rank host.
+            # Production, historical Owner and manual release conditions stay
+            # under their original strict checks below.
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/partner-inline-four-rank-original-screen-off-20261115" ]; then
+              test "$(git hash-object scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs)" = 5655eb5b332574909077bef1acdd04af9cf54822
+              node scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs
+              node --test tests/partner-inline-joint-staging-wiring.test.mjs tests/partner-inline-joint-original-preservation.test.mjs tests/verified-joint-count-host-wiring.test.mjs
+              echo 'EXACT_PARTNER_EXISTING_RANK_CARDS_WITH_UNMODIFIED_FINANCE_COUNT_SOURCE_NO_DEPLOY'
+              exit 0
+            fi
+            while IFS= read -r path; do
+              case "$path" in
+                sales-archive.js|tests/owner-inline-joint-staging-wiring.test.mjs|.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_HOST_CHANGE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+            test "$(git hash-object sales-archive.js)" = 480640ebea66a7cc2aa820cbc1fa9b982d835875
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
+            node --input-type=module -e '
+              import {readFileSync} from "node:fs";
+              import {execFileSync} from "node:child_process";
+              const original=execFileSync("git",["show","origin/main:sales-archive.js"],{maxBuffer:5e6});
+              const candidate=readFileSync("sales-archive.js");
+              if(!candidate.subarray(0,original.length).equals(original))
+                throw Error("STOP_ORIGINAL_SALES_ARCHIVE_CHANGED");
+              if(!candidate.toString().includes("const NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false;"))
+                throw Error("STOP_OWNER_RANKING_NOT_OFF");
+              if(!candidate.toString().includes("if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){"))
+                throw Error("STOP_OWNER_FLAG_BYPASS");
+            '
+            node --check sales-archive.js
+          fi
+      - name: Run original count ranking, finance and strict OFF host tests
+        run: |
+          node --test tests/owner-inline-joint-staging-wiring.test.mjs tests/verified-inline-joint-ranking-cards.test.mjs tests/verified-joint-month-http-bridge.test.mjs tests/verified-dual-count-view.test.mjs
+          echo 'OWNER_EXISTING_FOUR_RANK_HOST_WIRING_PASS_NO_DEPLOY'
+      - name: Preserve production credentials and data
+        run: |
+          echo 'FIRESTORE_WRITES=0 FUNCTIONS_DEPLOYED=NO RULES_DEPLOYED=NO HOSTING_DEPLOYED=NO'
+          echo 'NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=FALSE'
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'

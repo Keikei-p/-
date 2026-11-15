@@ -74,16 +74,43 @@ function setup(sharedRankingOn=false,publicationWriteOn=false,ownerReadOn=false,
   serverTimestamp:()=>({seconds:NOW/1000}),
   delete:()=>({__deleteField:true})
  };
- const api=makeWorkspace({db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
+ const dependencies={db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
   enabled:()=>true,sharedRankingEnabled:()=>sharedRankingOn,
   submissionPublicationEnabled:()=>publicationWriteOn,
   ownerCorrectionReadEnabled:()=>ownerReadOn,
-  ownerCorrectionWriteEnabled:()=>ownerWriteOn,now:()=>NOW});
+  ownerCorrectionWriteEnabled:()=>ownerWriteOn,now:()=>NOW};
+ const api=makeWorkspace(dependencies);
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
  const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
- return {db,api,req,zero};
+ return {db,api,req,zero,dependencies};
 }
+
+test("existing Owner codebase delegates to the same authenticated ledger and keeps disabled writes closed",async()=>{
+ const {makeAuthenticatedOwnerCorrectionV3:makeCanonicalOwnerRuntime}=require("../staging/partner-owner-correction-v3/trusted-auth.cjs");
+ const {db,api,req,zero,dependencies}=setup(false,false,true,true);
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,counts:{...zero(),NURO:1}}));
+ const payload={date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...zero(),NURO:2},sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":0},
+  correctionReason:"reason corrected"};
+ const before=clone([...db.store]);
+ const disabled=makeCanonicalOwnerRuntime({...dependencies,enabled:()=>false});
+ await assert.rejects(disabled.correct(req("h",payload)),{code:"unavailable"});
+ assert.deepEqual([...db.store],before);
+ const live=makeCanonicalOwnerRuntime({...dependencies,enabled:()=>true});
+ assert.equal((await live.list(req("h",{date,partnerCompanyId:"partner"}))).entries[0].counts.NURO,1);
+ await assert.rejects(live.correct(req("p",payload)),{code:"permission-denied"});
+ await live.correct(req("h",payload));
+ const saved=await live.list(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(saved.entries[0].counts.NURO,2);assert.equal(saved.entries[0].version,2);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner").counts.NURO,2);
+ assert(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2"));
+ for(const key of ["records/old","products/money"])
+  assert.deepEqual(db.store.get(key),before.find(([id])=>id===key)[1]);
+});
 
 test("existing hub Owner without legacy optional member.companyId can list and invite",async()=>{
  const {db,api,req}=setup();

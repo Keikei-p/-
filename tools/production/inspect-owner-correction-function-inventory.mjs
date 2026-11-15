@@ -49,11 +49,18 @@ export function inspectOwnerCorrectionRelease(root=repoRoot){
    else existing.configs.push(configFile);
   }
  }
+ const ownerSource="staging/partner-owner-correction-v3";
+ const ownerConfig=ownerSource+"/firebase.owner-correction.json";
+ const preparedConfig=JSON.parse(file(root,ownerConfig));
+ if(preparedConfig.functions?.codebase!=="hub-owner-correction-v3"||
+    preparedConfig.functions?.source!=="functions-hub-owner-correction")fail("OWNER_PACKAGE_SCOPE");
+ scopes.set("hub-owner-correction-v3|"+ownerSource,{codebase:"hub-owner-correction-v3",
+  source:ownerSource,configs:[ownerConfig],exports:exportedNames(file(root,ownerSource+"/entry.cjs"))});
  const workspace=[...scopes.values()].filter(x=>
   x.codebase==="partner-workspace"&&x.source==="functions-partner-workspace");
  if(workspace.length!==1)violations.push("MISSING_PARTNER_WORKSPACE_CODEBASE");
  const scoped=workspace[0]?.exports||[];
- for(const name of [...LEGACY,...OWNERS]){
+ for(const name of LEGACY){
   if(!scoped.includes(name))violations.push("WORKSPACE_EXPORT_MISSING_"+name);
  }
  const seen=new Map();
@@ -67,14 +74,14 @@ export function inspectOwnerCorrectionRelease(root=repoRoot){
  }
  for(const name of OWNERS){
   const sources=[...scopes.values()].filter(x=>x.exports.includes(name));
-  if(sources.length!==1||sources[0].source!=="functions-partner-workspace")
+  if(sources.length!==1||sources[0].codebase!=="hub-owner-correction-v3"||
+     sources[0].source!==ownerSource)
    violations.push("OWNER_ENDPOINT_COLLISION_"+name);
  }
- const api=file(root,"functions-partner-workspace/index.js");
+ const api=file(root,ownerSource+"/entry.cjs");
  const service=file(root,"functions-partner-workspace/service.cjs");
  const ownerPage=file(root,"index.html");
- if(!api.includes('NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED==="enabled"')||
-    !api.includes('NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled"')||
+ if(!api.includes('HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"')||
     !service.includes('ownerCorrectionReadEnabled=()=>false')||
     !service.includes('ownerCorrectionWriteEnabled=()=>false')||
     !ownerPage.includes('NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED=false'))
@@ -109,7 +116,7 @@ export function inspectOwnerCorrectionRelease(root=repoRoot){
    codebase:x.codebase,source:x.source,
    exports:x.exports.slice().sort(),configs:x.configs.slice().sort()
   })).sort((a,b)=>a.codebase.localeCompare(b.codebase)),
-  ownerEndpoints:{codebase:"partner-workspace",names:[...OWNERS],
+  ownerEndpoints:{codebase:"hub-owner-correction-v3",names:[...OWNERS],
    defaultEnabled:false},
   historicManualRelease:{scope:"four-legacy-only",modified:false,
    ownerEndpointsCovered:false},

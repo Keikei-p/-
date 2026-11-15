@@ -66,20 +66,22 @@ test("legacy private release is frozen to previously reviewed code and refuses n
 test("historical company-code release stays frozen to reviewed page and retains cost, finance and history gates",()=>{
  const filePath=".github/workflows/nico-partner-company-code-release.yml";
  const newRelease=file(filePath),cwd=fileURLToPath(new URL("../",import.meta.url));
- for(const path of [
-  "functions-partner-workspace/service.cjs",
-  "functions-partner-workspace/index.js",
-  "functions-partner-workspace/company-code-auth.cjs",
-  "partner-workspace.html","functions/index.js","firebase.partner-workspace.json"
- ]){
-  // The historical company-code release remains pinned to the previously
-  // reviewed page; a new visual candidate must NOT silently unlock it.
-  const digest=path==="partner-workspace.html"?
-   "0930abb188165afea19ef427308ea22fddf636e7":
-   execFileSync("git",["hash-object",path],{cwd,encoding:"utf8"}).trim();
+ const pinned={
+  "functions-partner-workspace/service.cjs":"300b69d9f9b99ad33925abdcc67f8d81068084eb",
+  "functions-partner-workspace/index.js":"38da7e9174ffea7c406c92292dccfc651b565eb0",
+  "functions-partner-workspace/company-code-auth.cjs":"f7e5899cdb9e36da610846d787955b13c1e16e4b",
+  "partner-workspace.html":"0930abb188165afea19ef427308ea22fddf636e7",
+  "functions/index.js":"dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
+  "firebase.partner-workspace.json":"a6ceedec5fab4e22e0a8efe19c685716a2db9750"
+ };
+ for(const [path,digest] of Object.entries(pinned)){
   assert.ok(newRelease.includes('test "$(git hash-object '+path+')" = '+String.fromCharCode(39)+digest+String.fromCharCode(39)),
-    "New release must pin exact reviewed "+path);
+    "Historical release must retain its reviewed source pin "+path);
  }
+ const currentService=execFileSync("git",["hash-object","functions-partner-workspace/service.cjs"],
+  {cwd,encoding:"utf8"}).trim();
+ assert.notEqual(currentService,pinned["functions-partner-workspace/service.cjs"],
+  "current integration cannot silently satisfy the frozen historical publisher");
  for(const name of ["OWNER_REVENUE_PRICES_LOGIN_VERIFIED","FIRESTORE_BACKUP_RESTORE_VERIFIED",
   "EXISTING_FUNCTIONS_COST_APPROVED","CONFIRM_COMPANY_CODE_PARTNER_COUNT_ONLY",
   "node scripts/check-finance-read-boundary-before-deploy.mjs",

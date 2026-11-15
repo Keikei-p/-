@@ -1,0 +1,91 @@
+name: NICO current Owner correction API packaging (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'tests/partner-owner-correction-v3.test.cjs'
+      - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
+      - 'tests/current-owner-correction-package.test.mjs'
+      - '.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml'
+      - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
+      - '.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  validate-current-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      HUB_OWNER_COUNT_CORRECTION_V3_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact limited source review and existing Hosting, finance, login invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            set -euo pipefail
+            test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+            test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+            test -z "$FIREBASE_TOKEN"
+            test -z "$HUB_OWNER_COUNT_CORRECTION_V3_ENABLED"
+            git fetch --no-tags origin main
+            while IFS= read -r path; do
+              case "$path" in
+                staging/partner-owner-correction-v3/service.cjs|tests/partner-owner-correction-v3.test.cjs|tools/production/prepare-hub-owner-correction-v3-package.mjs|tests/current-owner-correction-package.test.mjs|.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_API_CHANGE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+            test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
+            grep -Fq 'HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"' staging/partner-owner-correction-v3/entry.cjs
+            node --check staging/partner-owner-correction-v3/service.cjs
+            node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
+            node --check tests/current-owner-correction-package.test.mjs
+          fi
+      - name: Auth, previous records, audit, version conflict and source freeze
+        run: |
+          node --test tests/partner-owner-correction-v3.test.cjs tests/partner-owner-correction-v3-auth.test.cjs tests/current-owner-correction-package.test.mjs
+          echo 'OWNER_SERVER_AND_PACKAGE_TESTS_PASS_NO_DEPLOY'
+      - name: Create only a disposable candidate on GitHub runner; cleanup always
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+            node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          else
+            node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare-candidate
+          fi
+          dir="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          trap 'rm -rf -- "$dir"' EXIT
+          test -d "$dir/functions-hub-owner-correction"
+          test "$(find "$dir" -type f | wc -l)" -eq 6
+          test "$(node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync(process.argv[1]));process.stdout.write(j.functions.codebase)" "$dir/firebase.owner-correction.json")" = hub-owner-correction-v3
+          node --check "$dir/functions-hub-owner-correction/index.js"
+          node --check "$dir/functions-hub-owner-correction/service.cjs"
+          node --check "$dir/functions-hub-owner-correction/trusted-auth.cjs"
+          node --check "$dir/functions-hub-owner-correction/sb-category-v2.cjs"
+          echo 'EXACT_OWNER_API_CANDIDATE_COMPILES_NOT_DEPLOYED'
+      - name: Explicit release denial until signed data and finance checks
+        run: |
+          echo 'OWNER_PERSONAL_SIGNOFF=NOT_VERIFIED'
+          echo 'FINANCE_REAL_UID_GET_LIST=NOT_VERIFIED'
+          echo 'FULL_BACKUP_RESTORE=NOT_VERIFIED'
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'FIRESTORE_WRITES=0 FUNCTIONS_DEPLOYED=NO RULES_DEPLOYED=NO HOSTING_DEPLOYED=NO'

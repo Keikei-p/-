@@ -25,6 +25,7 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  const {initializeApp,deleteApp}=requireAdmin("firebase-admin/app");
  const {getFirestore,FieldValue,Timestamp}=requireAdmin("firebase-admin/firestore");
  const {makeWorkspace,KEYS}=requireService("../functions-partner-workspace/service.cjs");
+ const {makeAuthenticatedOwnerCorrectionV3}=requireService("../staging/partner-owner-correction-v3/trusted-auth.cjs");
  const {initializeTestEnvironment,assertFails,assertSucceeds}=
   await import("@firebase/rules-unit-testing");
  const {collection,doc,getDoc,query,where,getDocsFromServer}=
@@ -77,6 +78,8 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
  const service=makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,
   enabled:()=>true,ownerCorrectionReadEnabled:()=>true,
   ownerCorrectionWriteEnabled:()=>true,now:()=>now});
+ const existingOwner=makeAuthenticatedOwnerCorrectionV3({db,getAuth,FieldValue,HttpsError,
+  enabled:()=>true,now:()=>now});
  const browser=uid=>env.authenticatedContext(uid,{
   email:uid+"@example.test",email_verified:true
  }).firestore();
@@ -200,7 +203,7 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   assert.equal(history.data().previousCounts.NURO,2);
   // Real emulator-backed Owner v3 correction, not just a fake-DB unit test.
   // This and the partner count submit share the exact same staff/day ledger.
-  const list=await service.listHubPartnerCounts(request(owner,{
+  const list=await existingOwner.list(request(owner,{
    date,partnerCompanyId:partner
   }));
   assert.equal(list.containsFinance,false);
@@ -210,7 +213,7 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   assert.equal(list.entries[0].counts["SB光・AIR"],1);
   assert.deepEqual(list.entries[0].sbBreakdown,
    {"SB光":0,"SB AIR":0,"旧未分類":1});
-  const receipt=await service.correctHubPartnerCounts(request(owner,{
+  const receipt=await existingOwner.correct(request(owner,{
    date,partnerCompanyId:partner,staffId:worker,expectedVersion:2,
    counts:{...empty,NURO:5,"SB光・AIR":1},
    sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":1},
@@ -229,25 +232,25 @@ test("isolated REAL Firestore emulator: secondary user preserves count save/corr
   const historyV3=await db.doc("companies/"+partner+
    "/partnerWorkAudits/"+date+"__"+worker+"__v3").get();
   assert.equal(historyV3.exists,true);
-  assert.equal(historyV3.data().correctionKind,"hub_owner_existing_count_v3");
-  assert.equal(historyV3.data().correctedByOwnerUid,owner);
+  assert.equal(historyV3.data().kind,"hub_owner_count_correction_v1");
+  assert.equal(historyV3.data().changedByUid,owner);
   assert.equal(historyV3.data().previousCounts.NURO,3);
   assert.equal(historyV3.data().counts.NURO,5);
-  await assert.rejects(service.correctHubPartnerCounts(request(owner,{
+  await assert.rejects(existingOwner.correct(request(owner,{
    date,partnerCompanyId:partner,staffId:worker,expectedVersion:2,
    counts:{...empty,NURO:10,"SB光・AIR":1},
    sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":1},
    correctionReason:"過去版を使った不正な訂正依頼"
   })),err=>err.code==="aborted");
-  await assert.rejects(service.listHubPartnerCounts(request(worker,{
+  await assert.rejects(existingOwner.list(request(worker,{
    date,partnerCompanyId:partner
   })),err=>err.code==="permission-denied",
    "valid read form from a partner principal must be denied by the Owner role");
-  await assert.rejects(service.listHubPartnerCounts(request(worker,{
+  await assert.rejects(existingOwner.list(request(worker,{
    date,partnerCompanyId:partner,workspaceCompanyId:partner
   })),err=>err.code==="invalid-argument",
    "an injected workspaceCompanyId must fail schema validation");
-  await assert.rejects(service.correctHubPartnerCounts(request(worker,{
+  await assert.rejects(existingOwner.correct(request(worker,{
    date,partnerCompanyId:partner,staffId:worker,expectedVersion:3,
    counts:{...empty,NURO:7,"SB光・AIR":1},
    sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":1},

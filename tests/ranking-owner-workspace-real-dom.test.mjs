@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import {createRequire} from "node:module";
-import {buildCandidateFromRepo}
+import {buildRankingOwnerWorkspaceCandidate,REVIEWED_PARTNER_HTML_BLOB}
  from "../tools/ranking/build-owner-settings-workspace-candidate.mjs";
+import {historicalOwnerWorkspaceInputs} from "./helpers/historical-builder-fixtures.mjs";
 const require=createRequire(import.meta.url);
 const {JSDOM}=require("jsdom");
 
@@ -20,7 +21,8 @@ function setup({
   }]},
  deferStatus=false
 }={}){
- const html=buildCandidateFromRepo();
+ const html=buildRankingOwnerWorkspaceCandidate(
+  historicalOwnerWorkspaceInputs(REVIEWED_PARTNER_HTML_BLOB));
  const dom=new JSDOM(html,{url:"https://nico-factory.web.app/partner-workspace.html",
   runScripts:"outside-only",pretendToBeVisual:true});
  const {window}=dom,ctx=dom.getInternalVMContext();

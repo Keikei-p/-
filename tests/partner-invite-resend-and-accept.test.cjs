@@ -15,13 +15,12 @@ test("existing sales and internal invitation UI remain present",()=>{
  }
 });
 
-test("partner email composer and resend are visible but never claim automatic delivery",()=>{
+test("existing Firebase email resend is visible and confirms delivery only after the awaited SDK result",()=>{
  for(const id of ["partnerInviteSendEmailButton","partnerInviteResendEmailButton","partnerInviteEmailStatus"])
   assert.ok(html.includes('id="'+id+'"'),"Missing email control: "+id);
- assert.match(html,/window\.location\.href=partnerInviteMailUrl\(latest\)/);
- assert.match(html,/mailto:/);
- assert.match(html,/自動送信はされません/);
- assert.match(html,/宛先を確認して「送信」を押してください/);
+ assert.match(html,/await sendSignInLinkToEmail\(auth,latest\.email,partnerInviteAuthSettings\(latest\)\)/);
+ assert.match(html,/Firebaseから認証メールを送信しました/);
+ assert.match(html,/メールは送信されていません/);
  assert.match(html,/if\(Date\.now\(\)>=invite\.expiresAt\)/);
  assert.match(html,/partnerInlineManage\(\{action:"hubCreateInvite"/);
  assert.match(html,/partnerCompanyId:invite\.partnerCompanyId,teamId:invite\.teamId/);

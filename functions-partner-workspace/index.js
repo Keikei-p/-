@@ -24,8 +24,6 @@ exports.getPartnerWorkspace=onCall(opts,service.view);
 exports.managePartnerWorkspace=onCall(opts,service.manage);
 exports.acceptPartnerWorkspaceInvite=onCall(opts,service.accept);
 exports.submitPartnerWorkspaceCounts=onCall(opts,service.submit);
-exports.listHubPartnerCounts=onCall(opts,service.listHubPartnerCounts);
-exports.correctHubPartnerCounts=onCall(opts,service.correctHubPartnerCounts);
 const codeAuth=makeCompanyCodeAuth({
  db:getFirestore(),getAuth,FieldValue,Timestamp,HttpsError,
  enabled:()=>process.env.PARTNER_COMPANY_CODE_AUTH_ENABLED==="enabled"

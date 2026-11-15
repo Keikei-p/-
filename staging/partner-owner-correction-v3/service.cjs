@@ -13,7 +13,7 @@ const KEYS=Object.freeze([
 ]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
-const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const empty=()=>Object.fromEntries(KEYS.map(key=>[key,0]));
 function makeHubCountCorrections({
  db,FieldValue,HttpsError,verifyHubOwner,now=()=>Date.now(),enabled=()=>false
@@ -72,7 +72,7 @@ function makeHubCountCorrections({
     c.hubCompanyId!==hubId||r.partnerCompanyId!==partnerId||
     r.hubCompanyId!==hubId||r.active!==true||
     r.countSharingApproved!==true||typeof c.name!=="string"||
-    !c.name.trim()||c.name.length>80||MONEY.test(c.name))
+    !c.name.trim()||c.name.length>80||MONEY.test(c.name.normalize("NFKC")))
    fail();
   return c.name.trim();
  };
@@ -115,7 +115,7 @@ function makeHubCountCorrections({
    if(!ID.test(staffId)||sn.id!==date+"__"+staffId)fail("data-loss");
    const v=validateExisting({exists:true,data:()=>row},partnerId,hub.hubId,date,staffId);
    entries.push({staffId,staffName:typeof row.staffNameSnapshot==="string"&&
-    row.staffNameSnapshot.length<=60&&!MONEY.test(row.staffNameSnapshot)?
+    row.staffNameSnapshot.length<=60&&!MONEY.test(row.staffNameSnapshot.normalize("NFKC"))?
     row.staffNameSnapshot:"（氏名未確認）",
     teamIdSnapshot:ID.test(row.teamIdSnapshot||"")?row.teamIdSnapshot:null,
     counts:v.counts,totalCount:v.total,version:row.version,
@@ -135,7 +135,7 @@ function makeHubCountCorrections({
   if(!ID.test(staffId)||!ID.test(partnerId)||!Number.isSafeInteger(d.expectedVersion)||
    d.expectedVersion<1||d.expectedVersion>=999)fail("invalid-argument");
   const reason=norm(d.correctionReason);
-  if(reason.length<6||reason.length>120||/[\r\n]/.test(reason)||MONEY.test(reason))
+  if(reason.length<6||reason.length>120||/[\x00-\x1f\x7f]/.test(reason)||MONEY.test(reason.normalize("NFKC")))
    fail("invalid-argument");
   const {counts,total}=validateCounts(d.counts);
   const hasSplit=Object.prototype.hasOwnProperty.call(d,"sbBreakdown");
@@ -172,6 +172,15 @@ function makeHubCountCorrections({
      nextLegacy:counts[LEGACY],
      requestedRaw:hasSplit?d.sbBreakdown:undefined
     });
+    // An Owner count update must never silently reclassify already
+    // verified 光/AIR historical counts. The independent UI preserves these
+    // known values, but this check is mandatory for direct API requests too.
+    const previousParts=breakdown(existing.counts[LEGACY],existing.raw.sbBreakdown);
+    const candidateParts=breakdown(counts[LEGACY],nextSb);
+    if((previousParts["SB光"]>0||previousParts["SB AIR"]>0)&&
+       (candidateParts["SB光"]!==previousParts["SB光"]||
+        candidateParts["SB AIR"]!==previousParts["SB AIR"]))
+      fail("failed-precondition");
     if(nextSb!==null||aggregate.raw.sbBreakdown!=null||
        existing.raw.sbBreakdown!=null)
      aggregateSb=aggregateBreakdown({

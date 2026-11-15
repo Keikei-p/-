@@ -361,9 +361,9 @@ test("Owner correction UI locks old 光/AIR split even after writer permission, 
  }]);
  panel.destroy();
 });
-test("original owner company cards use verified v3 read/write names with release OFF and independent server gates",()=>{
+test("original owner cards use existing v3 callable names with frontend OFF and the existing per-function server flag",()=>{
  const page=readFileSync(new URL("../index.html",import.meta.url),"utf8");
- const exports=readFileSync(new URL("../functions-partner-workspace/index.js",import.meta.url),"utf8");
+ const exports=readFileSync(new URL("../staging/partner-owner-correction-v3/entry.cjs",import.meta.url),"utf8");
  const service=readFileSync(new URL("../functions-partner-workspace/service.cjs",import.meta.url),"utf8");
  assert.match(page,/const NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED=false/);
  assert.match(page,/openOwnerPartnerCountEditor\(target,company\)/);
@@ -374,8 +374,7 @@ test("original owner company cards use verified v3 read/write names with release
  assert.match(page,/ownerPartnerCorrectionDispose\(\)/);
  assert.match(page,/partnerRankingDailyCache\.clear\(\)/);
  assert.match(page,/partnerRankingRequestGeneration\+\+/);
- assert.match(exports,/ownerCorrectionReadEnabled:\(\)=>process\.env\.NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED==="enabled"/);
- assert.match(exports,/ownerCorrectionWriteEnabled:\(\)=>process\.env\.NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled"/);
+ assert.match(exports,/HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"/);
  assert.match(service,/ownerCorrectionReadEnabled=\(\)=>false/);
  assert.match(service,/ownerCorrectionWriteEnabled=\(\)=>false/);
  assert.doesNotMatch(page.slice(page.indexOf("// Hub Owner-only partner count correction."),

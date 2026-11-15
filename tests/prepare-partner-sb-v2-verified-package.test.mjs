@@ -7,13 +7,12 @@ import {REVIEWED_BLOBS,gitBlob,verifySource,makePackage,writeDisposablePackage}
  from "../tools/production/prepare-partner-sb-v2-verified-package.mjs";
 import {TARGETS,ensureExactOnly}
  from "../tools/production/partner-four-function-release-scope.mjs";
+import {historicalSources} from './helpers/historical-builder-fixtures.mjs';
 
 const root=path.resolve(import.meta.dirname,"..");
-const sources=Object.fromEntries(Object.keys(REVIEWED_BLOBS).map(k=>[
- k,readFileSync(path.join(root,k),"utf8")
-]));
+const sources=historicalSources(REVIEWED_BLOBS);
 const staged=()=>makePackage(sources);
-test("every 12 reviewer-approved original and staged blob exactly matches main",()=>{
+test("historical 12 reviewed source blobs remain immutable without approving the current integrated source",()=>{
  assert.equal(Object.keys(REVIEWED_BLOBS).length,12);
  for(const [p,sha] of Object.entries(REVIEWED_BLOBS))
   assert.equal(gitBlob(sources[p]),sha,p);
@@ -23,6 +22,11 @@ test("every 12 reviewer-approved original and staged blob exactly matches main",
  assert.equal(report.deployApproved,false);
  assert.equal(report.liveCountWriteVerified,false);
  assert.equal(report.financeBoundaryVerified,false);
+});
+
+test("the frozen SB split publisher refuses current integrated source rather than changing today's collection rules",()=>{
+ const current=Object.fromEntries(Object.keys(REVIEWED_BLOBS).map(k=>[k,readFileSync(path.join(root,k),'utf8')]));
+ assert.throws(()=>makePackage(current),/STOP_SB_V2_RELEASE_REVIEWED_SOURCE_CHANGED/);
 });
 test("temporary package uses split-aware backend but keeps the original 8 callable index/flags/company-code code",()=>{
  const {bundle,report}=staged();
