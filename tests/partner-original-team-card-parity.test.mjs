@@ -155,3 +155,35 @@ test("partner team detail shows the same member product cards and unreported dis
  summary.teamPersonProducts[0].people[0].products.NURO=2;
  assert.throws(()=>fn(),/count does not match/);
 });
+
+test("verified shared rankings reuse the self count-only row look, ties, and incomplete rank suppression",()=>{
+ const start=sourceIndex.indexOf("function appendVerifiedCountRankRow(");
+ const end=sourceIndex.indexOf("// Same company -> team -> person -> product tree",start);
+ assert.ok(start>0&&end>start);
+ const code=sourceIndex.slice(start,end);
+ const ctx={document:{createElement:tag=>new El(tag)},
+  partnerMainAppendRow:(parent,label,value)=>parent.append(Object.assign(new El(),{textContent:label+" "+value}))};
+ const {appendSharedRankingRows}=vm.runInNewContext(code+
+  "\\n({appendSharedRankingRows});",ctx);
+ const root=new El();
+ const input=[{name:"協力店B",count:2},{name:"自社",count:4},{name:"協力店A",count:4}];
+ appendSharedRankingRows(root,"個人ランキング",input,true);
+ assert.deepEqual(input.map(x=>x.count),[2,4,4],"source must not be sorted in place");
+ const grid=root.children[0].children[1];
+ assert.equal(grid.className,"ranking-grid");
+ assert.deepEqual(Array.from(grid.children,c=>[
+  c.className,c.children[0].children[0].textContent,
+  c.children[0].children[1].textContent,c.children[1].children[0].textContent
+ ]),[
+  ["ranking-row","1","協力店A","4件"],
+  ["ranking-row","1","自社","4件"],
+  ["ranking-row","3","協力店B","2件"]
+ ]);
+ const incomplete=new El();
+ appendSharedRankingRows(incomplete,"班ランキング",input,false);
+ assert.ok(incomplete.children[0].children[1].children.every(c=>
+  c.children[0].children[0].textContent==="—"));
+ assert.doesNotMatch(code,/formatYen|revenuePerUnit|totalRevenue|unitPrice|cashback|getFirestore\(/);
+ assert.throws(()=>appendSharedRankingRows(new El(),"異常",[{name:"A",count:-1}],true),
+  /shared_ranking_entry_invalid/);
+});
