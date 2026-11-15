@@ -1,0 +1,66 @@
+name: NICO atomic joint ranking period integration (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/owner-visible-count-atomic-loader.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs'
+      - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs'
+      - 'tests/owner-visible-count-server-handler.test.mjs'
+      - '.github/workflows/nico-atomic-joint-period-isolated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-review:
+    name: verify-readonly-month-day-week-joint-counts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify isolated scope and unchanged production sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          git fetch --no-tags origin main
+          while IFS= read -r path; do
+            case "$path" in
+              ranking/owner-visible-count-atomic-loader.mjs|functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs|ranking/owner-visible-count-server-handler.mjs|functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs|tests/owner-visible-count-server-handler.test.mjs|.github/workflows/nico-atomic-joint-period-isolated-no-deploy.yml) ;;
+              *) echo "STOP_UNREVIEWED_JOINT_PERIOD_SOURCE: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only origin/main...HEAD)
+          test "$(git rev-parse HEAD:index.html)" = '5edde6d5e5459ba283d12d157c021d4eee03d587'
+          for path in firestore.rules functions-ranking-approvals/index.js functions-partner-workspace/service.cjs partner-workspace.html sales-archive.js; do
+            test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "origin/main:$path")"
+          done
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+          cmp ranking/owner-visible-count-atomic-loader.mjs functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
+          cmp ranking/owner-visible-count-server-handler.mjs functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
+          node --check ranking/owner-visible-count-atomic-loader.mjs
+          node --check ranking/owner-visible-count-server-handler.mjs
+          node --check tests/owner-visible-count-server-handler.test.mjs
+      - name: Test existing immutable count sources, atomic GET and all periods
+        run: |
+          node --test tests/owner-visible-count-atomic-loader.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/canonical-owner-count-server-factory.test.mjs tests/verified-two-month-count-input.test.mjs
+          echo 'ATOMIC_JOINT_PERIOD_REVIEW_PASS_NO_DEPLOY'
+      - name: Keep Firestore and Firebase production unchanged
+        run: |
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'FIRESTORE_WRITES=0 RULES_DEPLOYED=NO FUNCTIONS_DEPLOYED=NO HOSTING_DEPLOYED=NO'
