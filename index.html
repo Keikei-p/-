@@ -12956,6 +12956,42 @@ function renderPartnerCountAnalysisDrilldown(snap){
  }
  if(scopeButtons.length)scopeButtons[0].onclick();
 }
+// Selected-day count-only chart with the original dashboard's display controls.
+let partnerCountChartMode="team";
+function renderPartnerCountChart(byTeam,byProduct,teamById,date){
+ const chart=pInline("pPartnerChart");chart.replaceChildren();
+ const toolbar=document.createElement("div");toolbar.className="revenue-chart-toolbar";
+ toolbar.setAttribute("aria-label","件数グラフの表示切替");
+ const body=document.createElement("div");body.className="partner-count-chart-body";
+ for(const [value,label] of [["team","班別件数"],["product","商材別件数"]]){
+  const button=document.createElement("button");button.type="button";
+  button.className="revenue-chart-mode";button.textContent=label;
+  button.setAttribute("aria-pressed",String(partnerCountChartMode===value));
+  button.onclick=()=>{partnerCountChartMode=value;
+   renderPartnerCountChart(byTeam,byProduct,teamById,date);};
+  toolbar.append(button);
+ }
+ const caption=document.createElement("p");caption.className="p-inline-muted";
+ caption.textContent="選択日 "+date+"｜保存済み件数だけを表示";
+ chart.append(toolbar,caption,body);
+ const data=partnerCountChartMode==="team"?
+  [...byTeam].map(([id,count])=>({name:teamById.get(id)?.name||"当時の班未確認",count})):
+  [...byProduct].map(([name,count])=>({name,count}));
+ if(data.some(x=>!Number.isSafeInteger(x.count)||x.count<0))throw Error("invalid_chart_count");
+ data.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ const max=Math.max(1,...data.map(x=>x.count));
+ for(const item of data){
+  const row=document.createElement("div");row.className="p-inline-row";
+  const label=document.createElement("strong");label.textContent=item.name+"｜"+item.count+"件";
+  const rail=document.createElement("div");rail.className="partner-count-chart-rail";
+  rail.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
+  const bar=document.createElement("div");bar.className="partner-count-chart-bar";
+  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+
+   Math.max(0,item.count/max*100)+"%";
+  rail.append(bar);row.append(label,rail);body.append(row);
+ }
+ if(!data.length)partnerMainAppendRow(body,"この日の報告はありません","未報告を0件と判定しません");
+}
 function renderPartnerCountOnlyExtras(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
@@ -12972,22 +13008,10 @@ function renderPartnerCountOnlyExtras(){
   byTeam.set(id,(byTeam.get(id)||0)+r.totalCount);
  }
  renderPartnerCountAnalysisDrilldown(snap);
- const chart=pInline("pPartnerChart");chart.replaceChildren();
- const max=Math.max(1,...byTeam.values());
- for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1])){
-  const wrapper=document.createElement("div");wrapper.className="p-inline-row";
-  const name=document.createElement("strong");
-  name.textContent=(teamById.get(id)?.name||"当時の班未確認")+"｜"+n+"件";
-  const track=document.createElement("div");
-  track.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
-  const bar=document.createElement("div");
-  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+(n/max*100)+"%";
-  track.append(bar);wrapper.append(name,track);chart.append(wrapper);
- }
- if(!byTeam.size)partnerMainAppendRow(chart,"まだ実績がありません","選択日を確認してください");
  const byProduct=new Map(categories.map(key=>[key,0]));
  for(const item of items)for(const key of categories)
   byProduct.set(key,byProduct.get(key)+(item.counts?.[key]||0));
+ renderPartnerCountChart(byTeam,byProduct,teamById,snap.date);
  const products=pInline("pPartnerProductSummary");products.replaceChildren();
  for(const [key,n] of [...byProduct].sort((a,b)=>b[1]-a[1]))
   partnerMainAppendRow(products,key,n+"件");
