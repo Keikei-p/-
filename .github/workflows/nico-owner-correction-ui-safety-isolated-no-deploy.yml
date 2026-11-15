@@ -7,6 +7,7 @@ on:
       - 'staging/partner-owner-correction-v3/owner-ui.mjs'
       - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'tests/partner-owner-correction-v3-ui.test.mjs'
       - '.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml'
       - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
 permissions:
@@ -41,7 +42,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
+              staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|tests/partner-owner-correction-v3-ui.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
               *) echo "STOP_OWNER_UI_OUT_OF_SCOPE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
@@ -55,7 +56,7 @@ jobs:
           node --check tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
       - name: Test approved company ownership, read-only mode, count preservation
         run: |
-          node --test tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs tests/partner-money-free-workspace.test.cjs
+          node --test tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs tests/partner-owner-correction-v3-ui.test.mjs tests/partner-money-free-workspace.test.cjs
           echo 'OWNER_STAGED_UI_SAFE_NO_DEPLOY'
       - name: Keep owner API and production disabled
         run: |
