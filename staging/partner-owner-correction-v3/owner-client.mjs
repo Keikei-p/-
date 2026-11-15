@@ -11,7 +11,7 @@ import {COUNT_KEYS,SB_PARTS,verifiedCount,normalizedSplit} from "./owner-ui.mjs"
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
-const MONEY=/(?:単価|売上|収益|利益|報酬|[¥￥$€]|\d[\d,]*円)/;
+const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const object=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const keys=(value,allowed)=>object(value)&&
  Object.keys(value).sort().join("|")===allowed.slice().sort().join("|");
@@ -34,7 +34,7 @@ function safeRow(row){
   "staffId","staffName","teamIdSnapshot","counts","totalCount",
   "version","sbBreakdown"
  ])||!safeId(row.staffId)||typeof row.staffName!=="string"||
-    row.staffName.length>60||MONEY.test(row.staffName)||
+    row.staffName.length>60||MONEY.test(row.staffName.normalize("NFKC"))||
     !(row.teamIdSnapshot===null||safeId(row.teamIdSnapshot))||
     !Number.isSafeInteger(row.version)||row.version<1||row.version>999)
   fail("ROW_UNVERIFIED");
@@ -71,7 +71,7 @@ function safeWriteRequest(raw){
     raw.expectedVersion<1||raw.expectedVersion>=999||
     typeof raw.correctionReason!=="string"||
     raw.correctionReason.length<6||raw.correctionReason.length>120||
-    /[\r\n]/.test(raw.correctionReason)||MONEY.test(raw.correctionReason))
+    /[\r\n]/.test(raw.correctionReason)||MONEY.test(raw.correctionReason.normalize("NFKC")))
   fail("REQUEST_UNVERIFIED");
  const counts=safeCounts(raw.counts),split=safeSplit(counts,raw.sbBreakdown);
  return {date:raw.date,partnerCompanyId:raw.partnerCompanyId,
