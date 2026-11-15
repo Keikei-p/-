@@ -384,6 +384,7 @@ font:inherit;font-size:13px;line-height:1.6}
 <div id="partnerPanel-history" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📝 登録履歴</h3>
  <p class="partner-panel-note">既存の登録履歴画面に移動します。保存・訂正の処理やデータは変更しません。</p>
+ <div id="countHistoryPreview" aria-label="選択日の保存済み件数" aria-live="polite"></div>
  <button id="countHistoryOpen" type="button">登録履歴を開く</button>
 </div>
  </div>
@@ -1581,6 +1582,60 @@ function activeTab(name){
 }
 for(const x of ["Dashboard","Records","People","View","Missing"])$("tab"+x).onclick=()=>activeTab(x);
 function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
+// Read-only latest saved day preview in the dashboard history tab.
+// Immutable audit/revision editing stays in the EXISTING history screen.
+function renderPartnerHistoryCountPreview(){
+ const container=$("countHistoryPreview");container.replaceChildren();
+ if(!data||data.role==="hub"||!Array.isArray(data.records))return;
+ const people=new Map((data.staff||[]).map(p=>[p.id,p.name]));
+ const privateNames=new Map((data.privateProducts||[]).map(p=>[p.id,p.name]));
+ const rows=data.records;
+ if(rows.some(r=>!Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+    !Number.isSafeInteger(r.version)||r.version<1||!r.counts||typeof r.counts!=="object")){
+  const note=document.createElement("p");note.textContent="保存済み件数を検証できません。履歴画面から再確認してください。";
+  container.append(note);return;
+ }
+ if(!rows.length){
+  const note=document.createElement("p");note.textContent="この日の報告はありません。未報告は0件ではありません。";
+  container.append(note);return;
+ }
+ for(const record of rows){
+  const card=document.createElement("details");card.className="partner-count-team-card";
+  const heading=document.createElement("summary");
+  const name=people.get(record.staffId)||"当時の担当者未確認";
+  heading.textContent=name+"｜"+record.totalCount+"件｜第"+record.version+"版";
+  const details=document.createElement("div");details.className="partner-count-team-body";
+  let countRows=0;
+  for(const category of data.categories||[]){
+   const n=record.counts[category]??0;
+   if(!Number.isSafeInteger(n)||n<0){container.replaceChildren();
+    const warning=document.createElement("p");warning.textContent="件数の照合ができません。履歴画面から確認してください。";
+    container.append(warning);return;}
+   if(n>0){const row=document.createElement("div");row.className="partner-count-team-product-row";
+    const label=document.createElement("span");label.textContent=category;
+    const value=document.createElement("strong");value.textContent=n+"件";
+    row.append(label,value);details.append(row);countRows++;}
+  }
+  for(const [id,n] of Object.entries(record.privateCounts||{})){
+   if(!Number.isSafeInteger(n)||n<0){container.replaceChildren();
+    const warning=document.createElement("p");warning.textContent="協力店専用の件数を検証できません。";
+    container.append(warning);return;}
+   if(n>0){const row=document.createElement("div");row.className="partner-count-team-product-row";
+    const label=document.createElement("span");
+    label.textContent=(privateNames.get(id)||"協力店専用商材")+"（協力店内）";
+    const value=document.createElement("strong");value.textContent=n+"件";
+    row.append(label,value);details.append(row);countRows++;}
+  }
+  if(record.totalCount===0){
+   const note=document.createElement("p");note.textContent="0件で報告済み";
+   details.append(note);
+  }else if(!countRows){
+   const note=document.createElement("p");note.textContent="商材内訳は履歴画面で確認してください。";
+   details.append(note);
+  }
+  card.append(heading,details);container.append(card);
+ }
+}
 function draw(){
  const hub=data?.role==="hub";
  resetApprovedRanking();
@@ -1672,6 +1727,7 @@ function draw(){
  for(const p of staff){const entry=byId.get(p.id);const r=document.createElement("tr");
  cell(r,p.name);cell(r,entry?entry.totalCount+" 件":"未登録");cell(r,entry?"第"+entry.version+"版":"—");entries.append(r)}
  $("recordsList").replaceChildren(entries);
+ renderPartnerHistoryCountPreview();
  renderSelected();
  const needsSetup=staff.length===0&&(data.role==="owner"||data.role==="leader");
  $("setupHelp").hidden=!needsSetup;
