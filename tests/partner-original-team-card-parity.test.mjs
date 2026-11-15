@@ -82,3 +82,76 @@ test("company-month change clears the view without touching unsaved count inputs
  assert.match(saver,/expectedVersion:/);
  assert.match(saver,/submitPartnerWorkspaceCounts|await save\(/);
 });
+
+test("same company-team hierarchy in the embedded partner dashboard as the self app",()=>{
+ const from=sourceIndex.indexOf("  if(detail){",sourceIndex.indexOf("async function loadSharedDailyStandings("));
+ const to=sourceIndex.indexOf("  // Partners and HQ",from);
+ assert.ok(from>0&&to>from);
+ const detail=sourceIndex.slice(from,to);
+ assert.match(detail,/renderSharedCountTeamDetails\(content,response\)/);
+ assert.doesNotMatch(detail,/if\(partner\)renderPartnerFlatTeamDetails/);
+ const start=sourceIndex.indexOf('const details=pInline("pInlineTeamDetails");details.replaceChildren();');
+ const end=sourceIndex.indexOf('const daily=pInline("pInlineDailySummary")',start);
+ assert.ok(start>0&&end>start);
+ const local=sourceIndex.slice(start,end);
+ assert.match(local,/companySection\.className="p-inline-company-teams partner-count-team-grid"/);
+ assert.match(local,/companyHeading\.textContent="🤝 "\+snap\.companyName/);
+ assert.match(local,/companySection\.append\(card\)/);
+ assert.match(local,/partnerCompactWireTeamSelection\(companySection\)/);
+ assert.doesNotMatch(local,/getFirestore\(|getDocs\(|\bformatYen\(/);
+});
+
+test("saved partner counts produce verified person-product totals without touching financial records",()=>{
+ const begin=source.indexOf("function summarizeCountOnlyResponses(");
+ const end=source.indexOf("\nfunction countTable(",begin);
+ assert.ok(begin>0&&end>begin);
+ const fn=vm.runInNewContext(source.slice(begin,end)+"\nsummarizeCountOnlyResponses;");
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const counts=Object.fromEntries(keys.map(k=>[k,k==="NURO"?3:0]));
+ const response={date:"2026-11-15",categories:keys,staff:[{id:"s1",name:"田中"}],
+  privateProducts:[],records:[{staffId:"s1",teamIdSnapshot:"t1",
+   totalCount:3,counts,privateCounts:{},privateTotalCount:0}]};
+ const original=JSON.stringify(response);
+ const summary=fn([response],[{id:"t1",name:"1班"}],keys);
+ const byMember=summary.teamPersonProducts.find(x=>x.id==="t1").people[0];
+ assert.equal(byMember.id,"s1");
+ assert.equal(byMember.products.NURO,3);
+ assert.equal(Object.values(byMember.products).reduce((a,b)=>a+b,0),3);
+ assert.equal(summary.groups[0].count,3);
+ assert.equal(JSON.stringify(response),original);
+ assert.doesNotMatch(JSON.stringify(byMember),/totalRevenue|unitPrice|cashback|pricingOptions/);
+});
+
+test("partner team detail shows the same member product cards and unreported distinction",()=>{
+ const begin=source.indexOf("function renderTeamCountDetail(){");
+ const end=source.indexOf("\nfunction renderProductRankMode(){",begin);
+ assert.ok(begin>0&&end>begin);
+ const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new El());return nodes.get(id)};
+ const summary={groups:[{id:"t1",name:"1班",count:3}],
+  teamProducts:[{id:"t1",products:{NURO:3}}],
+  teamPeople:[{id:"t1",people:[{id:"s1",name:"田中",count:3}]}],
+  teamPersonProducts:[{id:"t1",people:[{id:"s1",products:{NURO:3}}]}]};
+ get("countTeamSelect").value="t1";get("countProductMode").value="single";
+ const ctx={document:{createElement:tag=>new El(tag)},$:get,
+  countExportRows:{summary},data:{companyName:"協力店A",role:"owner",
+    staff:[{id:"s2",name:"佐藤",teamId:"t1",active:true}]},
+  groupedProductCounts:x=>Object.entries(x),
+  countTable:(headers,rows)=>({headers,rows}),
+  competitionRanks:(rows,countOf,render)=>rows.map((r,i)=>render(r,i+1))};
+ const fn=vm.runInNewContext(source.slice(begin,end)+"\nrenderTeamCountDetail;",ctx);
+ fn();
+ assert.equal(get("partnerTeamCountDetail").hidden,false);
+ const header=get("partnerTeamDetailHeader");
+ assert.match(header.children[0].children[1].textContent,/協力店A → 1班/);
+ const cards=get("partnerTeamMemberGrid").children;
+ assert.equal(cards.length,2);
+ assert.equal(cards[0].children[0].textContent,"田中");
+ assert.equal(cards[0].children[1].textContent,"3件");
+ assert.equal(cards[0].children[2].children[0].children[0].textContent,"NURO");
+ assert.equal(cards[0].children[2].children[0].children[1].textContent,"3件");
+ assert.equal(cards[1].children[1].textContent,"この班では未報告");
+ assert.doesNotMatch(JSON.stringify(cards.map(c=>c.children.map(x=>x.textContent))),/売上|単価|revenue|cashback/);
+ summary.teamPersonProducts[0].people[0].products.NURO=2;
+ assert.throws(()=>fn(),/count does not match/);
+});
