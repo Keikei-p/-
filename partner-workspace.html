@@ -135,6 +135,12 @@ font:inherit;font-size:13px;line-height:1.6}
 .partner-ranking-grid .ranking-value{text-align:right;white-space:nowrap}
 .partner-ranking-grid .ranking-count{font-size:16px;font-weight:800}
 /* Same original self analysis scope/actions/member card hierarchy; no finance. */
+#partnerPanel-goal .daily-goal-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:10px 0}
+#partnerPanel-goal .daily-goal-control{display:flex;flex-direction:column;gap:7px;font-weight:700}
+#partnerPanel-goal .daily-goal-control input{width:100%;min-height:44px;box-sizing:border-box}
+#partnerPanel-daily #countDailyCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;margin:12px 0}
+#partnerPanel-daily #countDailyCards .summary-card{text-align:left;min-width:0}
+#partnerPanel-daily #countDailyCards .summary-value{font-size:19px}
 #partnerPanel-analysis .analysis-current-path{margin:10px 0;padding:10px 12px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:12px;font-weight:800}
 #partnerPanel-analysis .analysis-scope-grid,
 #partnerPanel-analysis .analysis-action-grid,
@@ -360,12 +366,20 @@ font:inherit;font-size:13px;line-height:1.6}
    <button id="countGoalClear" type="button" class="secondary">解除</button>
   </div>
   <p id="countGoalStatus" role="status" aria-live="polite"></p>
+  <div class="daily-goal-controls"><label class="daily-goal-control" for="countGoalDays">残り稼働日数
+   <input id="countGoalDays" type="number" inputmode="numeric" min="1" max="366" step="1" placeholder="例：10">
+  </label></div>
+  <p id="countGoalDailyEstimate" class="partner-panel-note" role="status" aria-live="polite"></p>
  </div>
  <p id="countGoalUnavailable" class="partner-panel-note" hidden>目標を表示するには、月別と個人メールアカウントを選んでください。</p>
 </div>
 <div id="partnerPanel-daily" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📅 日別</h3>
- <div id="countDailyRows" class="scroll"></div>
+ <p class="partner-panel-note">日付ごとの件数です。0件と未報告の区別は登録履歴から確認できます。</p>
+ <div id="countDailyCards" class="dashboard-summary" aria-label="日別件数カード"></div>
+ <details><summary class="partner-panel-note">全日付を一覧表で確認</summary>
+  <div id="countDailyRows" class="scroll"></div>
+ </details>
 </div>
 <div id="partnerPanel-history" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📝 登録履歴</h3>
@@ -1043,7 +1057,24 @@ function countGoalKey(){
  return "nico-partner-month-goal-v1:"+auth.currentUser.uid+":"+
  encodeURIComponent(data.companyName||"")+":"+$("dashboardPartnerMonth").value;
 }
+// An optional estimate from the existing personal monthly target. Never
+// writes user counts, target records, or the unsaved goal field.
+function renderCountGoalDailyEstimate(){
+ const target=$("countGoalDailyEstimate");target.textContent="";
+ if(countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid)return;
+ const daysRaw=$("countGoalDays").value.trim();
+ let saved;
+ try{saved=localStorage.getItem(countGoalKey())}
+ catch{target.textContent="端末の目標を読み込めませんでした。";return}
+ if(!/^[1-9][0-9]{0,5}$/.test(saved||""))return;
+ if(!/^[1-9][0-9]{0,2}$/.test(daysRaw)||Number(daysRaw)>366){
+  target.textContent="残り稼働日数は1〜366日の整数で入力してください。";return;
+ }
+ const remaining=Math.max(0,Number(saved)-countExportRows.summary.total);
+ target.textContent="残り必要件数 "+remaining+"件｜1日あたり "+Math.ceil(remaining/Number(daysRaw))+"件";
+}
 function renderCountGoal(){
+ $("countGoalDailyEstimate").textContent="";
  $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid;
  $("countGoalUnavailable").hidden=!$("countGoalBox").hidden;
  if($("countGoalBox").hidden)return;
@@ -1056,6 +1087,7 @@ function renderCountGoal(){
  const count=countExportRows.summary.total;
  $("countGoalStatus").textContent="現在 "+count+"/"+goal+"件｜達成率 "+
   Math.round(count/goal*1000)/10+"%｜残り "+Math.max(0,goal-count)+"件";
+ renderCountGoalDailyEstimate();
 }
 // The original self dashboard's two-step analysis UI, using verified
 // count-only day/week/month summary already loaded for this partner scope.
@@ -1191,6 +1223,17 @@ function renderCountOnlyDashboard(summary,days){
  $("countProductRank").replaceChildren(countRankingCards(
   competitionRanks(Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja")),
     row=>row[1],([name,n],rank)=>({rank,name,count:n}))));
+ const dayCards=$("countDailyCards");dayCards.replaceChildren();
+ for(const day of summary.days){
+  if(!Number.isSafeInteger(day.count)||day.count<0||
+     !Number.isSafeInteger(day.people)||day.people<0)throw Error("invalid daily count card");
+  const card=document.createElement("div");card.className="summary-card";
+  const label=document.createElement("div");label.className="summary-label";label.textContent=day.date;
+  const value=document.createElement("div");value.className="summary-value";value.textContent=day.count+"件";
+  const meta=document.createElement("div");meta.className="partner-panel-note";
+  meta.textContent="実績登録 "+day.people+"人";
+  card.append(label,value,meta);dayCards.append(card);
+ }
  $("countDailyRows").replaceChildren(countTable(["日付","合計件数","実績あり"],
   summary.days.map(d=>[d.date,d.count+"件",d.people+"人"])));
  countExportRows={summary,days};
@@ -1352,6 +1395,7 @@ $("countProductMode").onchange=()=>{
  if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)renderProductRankMode();
 };
 $("countTeamSelect").onchange=renderTeamCountDetail;
+$("countGoalDays").addEventListener("input",renderCountGoalDailyEstimate);
 $("countGoalSave").onclick=()=>{
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
  const raw=$("countGoal").value.trim();
