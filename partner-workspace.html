@@ -123,6 +123,17 @@ font:inherit;font-size:13px;line-height:1.6}
 #partnerPanel-teamDetail .team-detail-panel{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);margin-top:10px}
 #partnerPanel-teamDetail .team-detail-panel[hidden]{display:none}
 #partnerPanel-teamDetail .team-detail-panel h3{font-size:14px;margin:16px 0 8px}
+/* Shared self dashboard rank badges; never show monetary metadata. */
+.partner-ranking-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.partner-ranking-grid .ranking-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:12px;border:1px solid var(--border);border-radius:12px;background:#fff}
+.partner-ranking-grid .ranking-left{display:flex;align-items:center;gap:10px;min-width:0}
+.partner-ranking-grid .ranking-number{flex:0 0 29px;width:29px;height:29px;display:grid;place-items:center;border-radius:50%;background:#f1f5f9;font-size:12px;font-weight:800}
+.partner-ranking-grid .ranking-number.top1{background:#fef3c7;color:#92400e}
+.partner-ranking-grid .ranking-number.top2{background:#e5e7eb;color:#374151}
+.partner-ranking-grid .ranking-number.top3{background:#fed7aa;color:#9a3412}
+.partner-ranking-grid .ranking-name{font-size:13px;font-weight:800;overflow-wrap:anywhere}
+.partner-ranking-grid .ranking-value{text-align:right;white-space:nowrap}
+.partner-ranking-grid .ranking-count{font-size:16px;font-weight:800}
 #partnerPanel-teamDetail .team-detail-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
 #partnerPanel-teamDetail .team-detail-title{font-size:17px;font-weight:800}
 #partnerPanel-teamDetail .team-detail-meta{margin-top:4px;color:var(--sub);font-size:11px}
@@ -890,6 +901,34 @@ function countTable(headers,rows){
   table.append(tr)}
  return table;
 }
+// Reuse the self dashboard's ranking-row hierarchy, without importing any
+// finance/price code. Rank is null for a saved but unverified historical team.
+function countRankingCards(rows){
+ const container=document.createElement("div");
+ container.className="partner-ranking-grid";container.dataset.columns="1";
+ for(const entry of rows){
+  if(!entry||typeof entry.name!=="string"||!entry.name.trim()||
+     !Number.isSafeInteger(entry.count)||entry.count<0||
+     (entry.rank!==null&&(!Number.isSafeInteger(entry.rank)||entry.rank<1)))
+   throw Error("invalid count ranking card");
+  const row=document.createElement("div");row.className="ranking-row";
+  const left=document.createElement("div");left.className="ranking-left";
+  const num=document.createElement("span");
+  num.className="ranking-number"+(entry.rank!==null&&entry.rank<=3?" top"+entry.rank:"");
+  num.textContent=entry.rank===null?"—":String(entry.rank);
+  const name=document.createElement("span");name.className="ranking-name";
+  name.textContent=entry.name;left.append(num,name);
+  const right=document.createElement("div");right.className="ranking-value";
+  const count=document.createElement("strong");count.className="ranking-count";
+  count.textContent=entry.count+"件";right.append(count);
+  row.append(left,right);container.append(row);
+ }
+ if(!rows.length){
+  const note=document.createElement("p");note.className="partner-panel-note";
+  note.textContent="この期間の報告はありません";container.append(note);
+ }
+ return container;
+}
 function groupedProductCounts(products,mode){
  const entries=Object.entries(products);
  if(mode!=="group")return entries.sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
@@ -980,9 +1019,9 @@ function renderTeamCountDetail(){
 }
 function renderProductRankMode(){
  if(!countExportRows)return;
- $("countProductRank").replaceChildren(countTable(["順位","商材","合計件数"],
- competitionRanks(groupedProductCounts(countExportRows.summary.products,$("countProductMode").value),
-  row=>row[1],([name,n],rank)=>[rank===1?"👑 1位":rank,name,n+"件"])));
+ $("countProductRank").replaceChildren(countRankingCards(
+  competitionRanks(groupedProductCounts(countExportRows.summary.products,$("countProductMode").value),
+   row=>row[1],([name,n],rank)=>({rank,name,count:n}))));
  renderTeamCountDetail();
 }
 function countGoalKey(){
@@ -1051,14 +1090,14 @@ function renderCountOnlyDashboard(summary,days){
  $("countTeamHint").textContent=summary.hasUnverifiedTeams?
   "過去の班所属を推測しないため、保存時点の班情報をAPIから取得できない実績は「所属班未確認」として表示します。":
   "保存時の所属班で集計しています。";
- $("countTeamRank").replaceChildren(countTable(["順位","班","合計件数"],
-  competitionRanks(summary.groups,g=>g.count,(g,rank)=>[rank===null?"—":rank,g.name,g.count+"件"],
+ $("countTeamRank").replaceChildren(countRankingCards(
+  competitionRanks(summary.groups,g=>g.count,(g,rank)=>({rank,name:g.name,count:g.count}),
     g=>g.id!=="__unverified__")));
- $("countStaffRank").replaceChildren(countTable(["順位","担当者","合計件数"],
-  competitionRanks(summary.people,p=>p.count,(p,rank)=>[rank,p.name,p.count+"件"])));
- $("countProductRank").replaceChildren(countTable(["順位","商材","合計件数"],
+ $("countStaffRank").replaceChildren(countRankingCards(
+  competitionRanks(summary.people,p=>p.count,(p,rank)=>({rank,name:p.name,count:p.count}))));
+ $("countProductRank").replaceChildren(countRankingCards(
   competitionRanks(Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja")),
-    row=>row[1],([name,n],rank)=>[rank,name,n+"件"])));
+    row=>row[1],([name,n],rank)=>({rank,name,count:n}))));
  $("countDailyRows").replaceChildren(countTable(["日付","合計件数","実績あり"],
   summary.days.map(d=>[d.date,d.count+"件",d.people+"人"])));
  countExportRows={summary,days};
