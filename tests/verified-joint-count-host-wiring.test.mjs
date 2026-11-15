@@ -14,7 +14,7 @@ test("both original apps mount the exact same backend-verified count view, defau
  assert(owner.includes(ownerFlag));
  assert(partner.includes(partnerFlag));
  assert(owner.includes("if(NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED){"));
- assert(partner.includes("if(!NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||"));
+ assert(partner.includes("if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||\n    !NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||"));
  for(const source of [owner,partner]){
   assert(source.includes("mountVerifiedJointMonthCountDashboard"));
   assert(source.includes(moduleUrl));

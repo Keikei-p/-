@@ -42,6 +42,17 @@ jobs:
           test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
           test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
           git fetch --no-tags origin main
+          # PR-only review for the exact, disabled partner four-rank host.
+          # Production, historical Owner and manual release conditions stay
+          # under their original strict checks below.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "review/partner-inline-four-rank-original-screen-off-20261115" ]; then
+            test "$(git hash-object scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs)" = 5655eb5b332574909077bef1acdd04af9cf54822
+            node scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs
+            node --test tests/partner-inline-joint-staging-wiring.test.mjs tests/partner-inline-joint-original-preservation.test.mjs tests/verified-joint-count-host-wiring.test.mjs
+            echo 'EXACT_PARTNER_EXISTING_RANK_CARDS_WITH_UNMODIFIED_FINANCE_COUNT_SOURCE_NO_DEPLOY'
+            exit 0
+          fi
           # Independent Owner host append-only candidate: leave the older
           # shared module-only review gate below unchanged for other PRs.
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
