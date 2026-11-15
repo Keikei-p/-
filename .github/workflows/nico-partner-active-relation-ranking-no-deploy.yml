@@ -30,3 +30,16 @@ jobs:
           node --check ranking/owner-partner-setup-mount.mjs
           node --test tests/partner-workspace.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/partner-money-free-workspace.test.cjs tests/owner-partner-setup-mount.test.mjs
           echo PARTNER_EXISTING_LEDGER_AND_RELATION_RANKING_PASS
+      - name: Preserve production count save hotfix, login and financial ACL
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/count-pricing-update-hotfix.test.cjs \
+            tests/count-pricing-live-package.test.mjs \
+            tests/count-pricing-release.test.mjs \
+            tests/sales-regressions.cjs \
+            tests/legacy-finance-entry-guard.test.mjs \
+            tests/partner-one-login-same-app.test.cjs
+          echo EXISTING_SALES_COUNT_SAVE_AND_FINANCE_REGRESSION_PASS
+
