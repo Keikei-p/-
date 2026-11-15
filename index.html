@@ -13132,21 +13132,41 @@ function verifiedDirectDayCounts(date){
   peopleVerified:unverifiedPeople===0,unverifiedPersonRecords:unverifiedPeople,
   products:[...productTotals].map(([name,count])=>({name,count}))};
 }
+// Use the self dashboard's existing ranking row classes, never its finance
+// handlers or raw records. A count-only row cannot carry a money field.
+function appendVerifiedCountRankRow(container,{name,count,rank}){
+ if(typeof name!=="string"||!name.trim()||
+    !Number.isSafeInteger(count)||count<0||
+    (rank!==null&&(!Number.isSafeInteger(rank)||rank<1)))
+  throw Error("verified_count_rank_invalid");
+ const row=document.createElement("div");row.className="ranking-row";
+ const left=document.createElement("div");left.className="ranking-left";
+ const number=document.createElement("span");
+ number.className="ranking-number"+(rank!==null&&rank<=3?" top"+rank:"");
+ number.textContent=rank===null?"—":String(rank);
+ const label=document.createElement("span");label.className="ranking-name";
+ label.textContent=name;left.append(number,label);
+ const value=document.createElement("div");value.className="ranking-value";
+ const quantity=document.createElement("strong");quantity.className="ranking-count";
+ quantity.textContent=count+"件";value.append(quantity);
+ row.append(left,value);container.append(row);
+}
 function appendSharedRankingRows(container,heading,entries,complete){
  const section=document.createElement("section");section.className="p-inline-card";
  const h=document.createElement("h4");h.textContent=heading;section.append(h);
+ const grid=document.createElement("div");grid.className="ranking-grid";
+ grid.dataset.columns="1";
  const sorted=[...entries].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
- if(!sorted.length)partnerMainAppendRow(section,"表示できる実績がありません","未報告を0件とは扱いません");
+ if(!sorted.length)partnerMainAppendRow(grid,"表示できる実績がありません","未報告を0件とは扱いません");
  let previous=null,rank=0;
  for(const [i,row] of sorted.entries()){
   if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
    throw Error("shared_ranking_entry_invalid");
   if(previous!==row.count)rank=i+1;
-  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"";
-  partnerMainAppendRow(section,prefix+row.name,row.count+"件");
+  appendVerifiedCountRankRow(grid,{name:row.name,count:row.count,rank:complete?rank:null});
   previous=row.count;
  }
- container.append(section);
+ section.append(grid);container.append(section);
 }
 // Same company -> team -> person -> product tree for BOTH authenticated roles.
 // Common count-only presentation for both partner and HQ partner-company
@@ -13484,10 +13504,11 @@ function renderPartnerRankingOnlyPanel(){
   return;
  }
  rows.sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name,"ja"));
+ rankings.classList.add("ranking-grid");rankings.dataset.columns="1";
  let rank=0,previous=null;
  for(const [i,row] of rows.entries()){
   if(previous!==row.n)rank=i+1;
-  partnerMainAppendRow(rankings,rank+"位 "+row.name,row.n+"件");
+  appendVerifiedCountRankRow(rankings,{name:row.name,count:row.n,rank});
   previous=row.n;
  }
  if(!rows.length)partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
