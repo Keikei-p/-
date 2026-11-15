@@ -9,6 +9,7 @@ on:
       - 'tests/current-owner-correction-package.test.mjs'
       - '.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml'
       - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
+      - '.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml'
 permissions:
   contents: read
 jobs:
@@ -36,7 +37,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              staging/partner-owner-correction-v3/service.cjs|tests/partner-owner-correction-v3.test.cjs|tools/production/prepare-hub-owner-correction-v3-package.mjs|tests/current-owner-correction-package.test.mjs|.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
+              staging/partner-owner-correction-v3/service.cjs|tests/partner-owner-correction-v3.test.cjs|tools/production/prepare-hub-owner-correction-v3-package.mjs|tests/current-owner-correction-package.test.mjs|.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_OWNER_API_CHANGE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
