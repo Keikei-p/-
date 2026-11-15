@@ -76,6 +76,8 @@ test("company-month change clears the view without touching unsaved count inputs
   source.indexOf("function currentCountIdentity()",source.indexOf("function clearCountOnlyDashboard()")));
  assert.match(clean,/countExportRows=null/);
  assert.match(clean,/\$\("partnerTeamCardGrid"\)\.replaceChildren\(\)/);
+ assert.match(clean,/"countDailyCards"/);
+ assert.match(clean,/\$\("countGoalDailyEstimate"\)\.textContent=""/);
  assert.match(clean,/\$\("partnerTeamCountDetail"\)\.hidden=true/);
  assert.doesNotMatch(clean,/localStorage\.clear\(|setDoc\(|deleteDoc\(|save\(|resetForm\(/);
  const saver=source.slice(source.indexOf('$("save").onclick='),source.indexOf('$("selectCodeLogin").onclick='));
