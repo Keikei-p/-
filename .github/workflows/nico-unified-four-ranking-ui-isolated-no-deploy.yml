@@ -12,6 +12,7 @@ on:
       - tests/verified-joint-count-host-wiring.test.mjs
       - .github/workflows/nico-dual-ranking-mobile-view-no-deploy.yml
       - .github/workflows/nico-joint-count-host-wiring-no-deploy.yml
+      - .github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml
       - .github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml
 permissions:
   contents: read
@@ -41,6 +42,27 @@ jobs:
           test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
           test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
           git fetch --no-tags origin main
+          # Independent Owner host append-only candidate: leave the older
+          # shared module-only review gate below unchanged for other PRs.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "review/owner-existing-cards-four-rank-host-wiring-off-20261115" ]; then
+            test "$(git hash-object sales-archive.js)" = 480640ebea66a7cc2aa820cbc1fa9b982d835875
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
+            grep -Fq 'const NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false;' sales-archive.js
+            grep -Fq 'const NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED=false;' sales-archive.js
+            while IFS= read -r path; do
+              case "$path" in
+                sales-archive.js|tests/owner-inline-joint-staging-wiring.test.mjs|.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_HOST_SCOPE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+            node --check sales-archive.js
+            exit 0
+          fi
           while IFS= read -r path; do
             case "$path" in
               ranking/verified-dual-count-view.mjs|ranking/verified-inline-joint-ranking-cards.mjs|ranking/verified-joint-month-http-bridge.mjs|tests/verified-dual-count-view.test.mjs|tests/verified-inline-joint-ranking-cards.test.mjs|tests/verified-joint-month-http-bridge.test.mjs|tests/verified-joint-count-host-wiring.test.mjs|.github/workflows/nico-dual-ranking-mobile-view-no-deploy.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;

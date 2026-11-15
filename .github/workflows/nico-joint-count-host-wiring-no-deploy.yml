@@ -42,6 +42,23 @@ jobs:
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          # Exact append-only Owner four-rank host candidate. Keep the
+          # historical source gate below; never treat this as deployment.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/owner-existing-cards-four-rank-host-wiring-off-20261115" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object sales-archive.js)" = 480640ebea66a7cc2aa820cbc1fa9b982d835875 ]; }; then
+            test "$(git hash-object sales-archive.js)" = 480640ebea66a7cc2aa820cbc1fa9b982d835875
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
+            grep -Fq 'const NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false;' sales-archive.js
+            grep -Fq 'const NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED=false;' sales-archive.js
+            grep -Fq 'const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;' partner-workspace.html
+          else
           # Additional exact REVIEW-only source for #706 current main and
           # the unified day/week/month UI; the historical release pins are
           # preserved in the else branch, never silently replaced.
@@ -64,6 +81,7 @@ jobs:
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object functions-partner-workspace/index.js)" = ab551981ce12b4d291a20c0b51cbd461be60df54
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 5334aa48d7f4eb64274a6d7a8bbb4e76d4a2fb65
+          fi
           fi
       - name: Check both original UI hosts and canonical month-only count authorization
         shell: bash
