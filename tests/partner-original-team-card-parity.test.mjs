@@ -254,3 +254,38 @@ test("embedded partner analysis matches self company/team product/person drilldo
  drilldown(snap);
  assert.equal(find("pPartnerAnalysis").children[1].children[1].children[2].textContent,"0件");
 });
+
+test("standalone partner analysis reuses original scope cards and isolates moved staff counts",()=>{
+ const begin=source.indexOf("function renderCountAnalysisScopeCards(summary){");
+ const end=source.indexOf("function renderCountOnlyDashboard(",begin);
+ assert.ok(begin>0&&end>begin);
+ const code=source.slice(begin,end);
+ assert.doesNotMatch(code,/getFirestore\(|setDoc\(|deleteDoc\(|updateDoc\(|formatYen\(|revenuePerUnit|unitPrice|totalRevenue/);
+ const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new El());return nodes.get(id)};
+ const fn=vm.runInNewContext(code+"\nrenderCountAnalysisScopeCards;",{
+  document:{createElement:tag=>new El(tag)},$:get,data:{companyName:"協力店A"}});
+ const summary={total:5,products:{NURO:5},
+  groups:[{id:"t1",name:"1班",count:3},{id:"t2",name:"2班",count:2}],
+  people:[{id:"p1",name:"田中",count:5}],
+  teamProducts:[{id:"t1",products:{NURO:3}},{id:"t2",products:{NURO:2}}],
+  teamPeople:[{id:"t1",people:[{id:"p1",name:"田中",count:3}]},
+              {id:"t2",people:[{id:"p1",name:"田中",count:2}]}],
+  teamPersonProducts:[{id:"t1",people:[{id:"p1",products:{NURO:3}}]},
+                      {id:"t2",people:[{id:"p1",products:{NURO:2}}]}]};
+ const original=JSON.stringify(summary);
+ fn(summary);
+ const [path,scopes,actions,view]=get("countAnalysisSummary").children;
+ assert.equal(scopes.className,"analysis-scope-grid");
+ assert.equal(scopes.children.length,3);
+ scopes.children[1].onclick(); // 1班
+ actions.children[1].onclick(); // 担当者
+ assert.equal(view.children[0].children[2].textContent,"3件");
+ view.children[0].onclick(); // 商材
+ assert.equal(view.children[0].children[0].textContent,"NURO");
+ assert.equal(view.children[0].children[1].textContent,"3件");
+ scopes.children[0].onclick(); // 会社
+ actions.children[1].onclick();view.children[0].onclick();
+ assert.equal(view.children[0].children[1].textContent,"5件");
+ assert.match(path.textContent,/田中/);
+ assert.equal(JSON.stringify(summary),original);
+});
