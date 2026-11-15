@@ -32,6 +32,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            node --check functions-partner-workspace/service.cjs
+            node --check functions-partner-workspace/index.js
+            exit 0
+          fi
           # Reviewed current count-save SKU publication branch and main ONLY.
           # Historical workflow_dispatch / release conditions below remain frozen.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&

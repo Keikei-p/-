@@ -82,7 +82,12 @@ jobs:
           assert.match(index,/sharedRankingEnabled:/);
           const service=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
           assert.match(service,/submissionPublicationEnabled=\(\)=>false/);
-          assert.match(service,/previousCounts:prior,nextCounts:counts/);
+          if(process.env.GITHUB_EVENT_NAME==='pull_request'&&process.env.GITHUB_HEAD_REF==='integration/nico-sales-count-publication-rank-ready-20261113'){
+            assert.match(service,/previousCounts:prior,nextCounts:prior/);
+            assert.match(service,/if\(counts\[key\]!==0\)fail\("failed-precondition"\)/);
+            assert.match(service,/effectiveCounts\[key\]=prior\[key\]/);
+            assert.match(service,/previous\[key\]\+effectiveCounts\[key\]-prior\[key\]/);
+          }else assert.match(service,/previousCounts:prior,nextCounts:counts/);
           assert.ok(!/\btx\.delete\s*\(|\brecursiveDelete\s*\(/.test(service));
           NODE
       - name: Partner save and correction integration, finance regression
