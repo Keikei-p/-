@@ -134,6 +134,21 @@ font:inherit;font-size:13px;line-height:1.6}
 .partner-ranking-grid .ranking-name{font-size:13px;font-weight:800;overflow-wrap:anywhere}
 .partner-ranking-grid .ranking-value{text-align:right;white-space:nowrap}
 .partner-ranking-grid .ranking-count{font-size:16px;font-weight:800}
+/* Same original self analysis scope/actions/member card hierarchy; no finance. */
+#partnerPanel-analysis .analysis-current-path{margin:10px 0;padding:10px 12px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:12px;font-weight:800}
+#partnerPanel-analysis .analysis-scope-grid,
+#partnerPanel-analysis .analysis-action-grid,
+#partnerPanel-analysis .analysis-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+#partnerPanel-analysis .analysis-scope-card,
+#partnerPanel-analysis .analysis-action-button,
+#partnerPanel-analysis .analysis-member-card{min-width:0;min-height:86px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:12px 8px;background:#fff;border:1px solid var(--border);border-radius:14px;color:var(--text);font:inherit;text-align:center;cursor:pointer}
+#partnerPanel-analysis .analysis-scope-card[aria-pressed="true"],
+#partnerPanel-analysis .analysis-action-button[aria-pressed="true"]{background:#eff6ff;border-color:#60a5fa;color:#1d4ed8}
+#partnerPanel-analysis .analysis-nav-icon{font-size:23px}
+#partnerPanel-analysis .analysis-nav-title{font-size:12px;font-weight:800;overflow-wrap:anywhere}
+#partnerPanel-analysis .analysis-nav-count{font-size:13px;font-weight:800}
+#partnerPanel-analysis .analysis-product-card{min-width:0;display:grid;gap:6px;padding:12px 9px;border:1px solid var(--border);border-radius:14px;text-align:center;overflow-wrap:anywhere}
+@media(max-width:700px){#partnerPanel-analysis .analysis-scope-grid,#partnerPanel-analysis .analysis-action-grid,#partnerPanel-analysis .analysis-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 #partnerPanel-teamDetail .team-detail-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
 #partnerPanel-teamDetail .team-detail-title{font-size:17px;font-weight:800}
 #partnerPanel-teamDetail .team-detail-meta{margin-top:4px;color:var(--sub);font-size:11px}
@@ -282,7 +297,7 @@ font:inherit;font-size:13px;line-height:1.6}
  
 <div id="partnerPanel-analysis" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📊 件数分析</h3>
- <p class="partner-panel-note">選択した期間の件数を会社・担当者・商材の順で確認できます。</p>
+ <p class="partner-panel-note">会社または班を選び、次に商材別・担当者別の件数を確認できます。</p>
  <div id="countAnalysisSummary" class="scroll"></div>
  <section id="countInlineJointCompanies" hidden>
   <h4>🏢 会社ランキング</h4>
@@ -1042,6 +1057,84 @@ function renderCountGoal(){
  $("countGoalStatus").textContent="現在 "+count+"/"+goal+"件｜達成率 "+
   Math.round(count/goal*1000)/10+"%｜残り "+Math.max(0,goal-count)+"件";
 }
+// The original self dashboard's two-step analysis UI, using verified
+// count-only day/week/month summary already loaded for this partner scope.
+function renderCountAnalysisScopeCards(summary){
+ const root=$("countAnalysisSummary");root.replaceChildren();
+ const path=document.createElement("div");path.className="analysis-current-path";
+ const scopes=document.createElement("div");scopes.className="analysis-scope-grid";
+ const actions=document.createElement("div");actions.className="analysis-action-grid";
+ const output=document.createElement("div");output.className="analysis-card-grid";
+ root.append(path,scopes,actions,output);
+ const items=[{id:"all",name:String(data?.companyName||"協力店"),
+  count:summary.total,icon:"🏢",products:summary.products,people:summary.people}];
+ for(const group of summary.groups)items.push({
+  ...group,icon:group.id==="__unverified__"?"📋":"👥",
+  products:summary.teamProducts.find(t=>t.id===group.id)?.products||{},
+  people:summary.teamPeople.find(t=>t.id===group.id)?.people||[]});
+ const peopleProducts=new Map();
+ for(const team of summary.teamPersonProducts||[]){
+  for(const person of team.people){
+   const counts=peopleProducts.get(person.id)||new Map();
+   for(const [key,n] of Object.entries(person.products||{}))
+    counts.set(key,(counts.get(key)||0)+n);
+   peopleProducts.set(person.id,counts);
+  }
+ }
+ function make(cls,icon,title,count){
+  const button=document.createElement("button");button.type="button";
+  button.className=cls;button.setAttribute("aria-pressed","false");
+  for(const [css,label] of [["analysis-nav-icon",icon],["analysis-nav-title",title],["analysis-nav-count",count]]){
+   const span=document.createElement("span");span.className=css;span.textContent=String(label);button.append(span);
+  }
+  return button;
+ }
+ function products(pairs){
+  output.replaceChildren();
+  const sorted=Object.entries(pairs||{}).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+  for(const [key,n] of sorted){
+   if(!Number.isSafeInteger(n)||n<0)throw Error("invalid analysis count");
+   const card=document.createElement("div");card.className="analysis-product-card";
+   const title=document.createElement("span");title.className="analysis-nav-title";title.textContent=key;
+   const count=document.createElement("strong");count.className="analysis-nav-count";count.textContent=n+"件";
+   card.append(title,count);output.append(card);
+  }
+  if(!sorted.length){const note=document.createElement("p");note.className="partner-panel-note";
+   note.textContent="実績がありません（未報告と0件は別扱い）";output.append(note);}
+ }
+ function people(scope){
+  output.replaceChildren();
+  const list=scope.people||[];
+  for(const person of list){
+   if(!Number.isSafeInteger(person.count)||person.count<0)throw Error("invalid person count");
+   const card=make("analysis-member-card","👤",person.name,person.count+"件");
+   card.onclick=()=>{
+    path.textContent=scope.name+" → "+person.name+" → 商材別";
+    const values=Object.fromEntries(peopleProducts.get(person.id)||new Map());
+    products(values);
+   };
+   output.append(card);
+  }
+  if(!list.length){const note=document.createElement("p");note.className="partner-panel-note";
+   note.textContent="担当者の報告がありません";output.append(note);}
+ }
+ const buttons=[];
+ for(const scope of items){
+  const card=make("analysis-scope-card",scope.icon,scope.name,scope.count+"件");
+  card.onclick=()=>{
+   for(const other of buttons)other.setAttribute("aria-pressed",String(other===card));
+   path.textContent=scope.name+" → 商材別または担当者別を選択";
+   actions.replaceChildren();output.replaceChildren();
+   const product=make("analysis-action-button","📦","商材別","件数内訳");
+   const person=make("analysis-action-button","👤","担当者別","個人件数");
+   product.onclick=()=>{path.textContent=scope.name+" → 商材別";products(scope.products);};
+   person.onclick=()=>{path.textContent=scope.name+" → 担当者別";people(scope);};
+   actions.append(product,person);
+  };
+  buttons.push(card);scopes.append(card);
+ }
+ if(buttons.length)buttons[0].onclick();
+}
 function renderCountOnlyDashboard(summary,days){
  const count=summary.total,positive=summary.days.filter(d=>d.count>0).length;
  const cards=[["合計件数",count+"件"],["稼働日数",positive+"日"],
@@ -1054,13 +1147,7 @@ function renderCountOnlyDashboard(summary,days){
   lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box);
  }
  const topProduct=Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
- $("countAnalysisSummary").replaceChildren(countTable(["分析項目","件数"],[
-   ["合計獲得件数",count+"件"],
-   ["活動日数",positive+"日"],
-   ["活動担当者",summary.people.filter(p=>p.count>0).length+"人"],
-   ["1日平均",Math.round(count/days.length*10)/10+"件"],
-   ...summary.groups.slice(0,5).map(g=>["班："+g.name,g.count+"件"])
- ]));
+ renderCountAnalysisScopeCards(summary);
  $("countProductSummary").replaceChildren(countTable(["商材","件数"],
   topProduct.map(([name,n])=>[name,n+"件"])));
  const chart=$("countTrendChart");chart.replaceChildren();
