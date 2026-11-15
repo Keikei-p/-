@@ -1,0 +1,92 @@
+name: NICO canonical SKU and historic count input isolated (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/verified-two-month-count-input.mjs'
+      - 'functions-ranking-approvals/ranking/verified-two-month-count-input.mjs'
+      - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs'
+      - 'ranking/partner-legacy-quick-count-reader.mjs'
+      - 'functions-ranking-approvals/ranking/partner-legacy-quick-count-reader.mjs'
+      - 'ranking/partner-month-readonly-loader.mjs'
+      - 'functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs'
+      - 'tests/verified-two-month-count-input.test.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
+      - 'tests/partner-legacy-quick-count-reader.test.mjs'
+      - 'tests/partner-month-readonly-loader.test.mjs'
+      - '.github/workflows/nico-canonical-monthly-count-and-mapping-isolated.yml'
+permissions:
+  contents: read
+jobs:
+  canonical-readonly:
+    name: verify-canonical-mapped-ledger-no-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact source scope and live count editor preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          git fetch --no-tags origin main
+          echo "REVIEW_BASE=$(git merge-base HEAD origin/main)"
+          echo "INDEX_BLOB=$(git rev-parse HEAD:index.html)"
+          # #707 is now merged. Keep its reviewed provenance and inspect the
+          # remaining 13-file candidate against the current main dependency.
+          git merge-base --is-ancestor 37ee243efe87e1b0be83c23dcffca6acd717f6fb HEAD
+          test "$(git rev-parse HEAD:index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+          while IFS= read -r file; do
+            case "$file" in
+              ranking/verified-two-month-count-input.mjs|functions-ranking-approvals/ranking/verified-two-month-count-input.mjs|ranking/canonical-joint-count-sku-reader.mjs|functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs|ranking/partner-legacy-quick-count-reader.mjs|functions-ranking-approvals/ranking/partner-legacy-quick-count-reader.mjs|ranking/partner-month-readonly-loader.mjs|functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs|tests/verified-two-month-count-input.test.mjs|tests/canonical-joint-count-sku-reader.test.mjs|tests/partner-legacy-quick-count-reader.test.mjs|tests/partner-month-readonly-loader.test.mjs|.github/workflows/nico-canonical-monthly-count-and-mapping-isolated.yml) ;;
+              *) echo "STOP_UNREVIEWED_CANONICAL_SOURCE: $file"; exit 1 ;;
+            esac
+          done < <(git diff --name-only origin/main...HEAD)
+          # The current main has no new inline-card flag, which is stricter
+          # than staging OFF. Reject either explicit enablement.
+          ! grep -Fq 'NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=true' sales-archive.js
+          ! grep -Fq 'NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=true' partner-workspace.html
+          grep -Fq 'NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED=false' sales-archive.js
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+      - name: Verify equal canonical and backend mirrored read-only modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp "ranking/verified-two-month-count-input.mjs" "functions-ranking-approvals/ranking/verified-two-month-count-input.mjs"
+          node --check "ranking/verified-two-month-count-input.mjs"
+          node --check "functions-ranking-approvals/ranking/verified-two-month-count-input.mjs"
+          cmp "ranking/canonical-joint-count-sku-reader.mjs" "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs"
+          node --check "ranking/canonical-joint-count-sku-reader.mjs"
+          node --check "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs"
+          cmp "ranking/partner-legacy-quick-count-reader.mjs" "functions-ranking-approvals/ranking/partner-legacy-quick-count-reader.mjs"
+          node --check "ranking/partner-legacy-quick-count-reader.mjs"
+          node --check "functions-ranking-approvals/ranking/partner-legacy-quick-count-reader.mjs"
+          cmp "ranking/partner-month-readonly-loader.mjs" "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs"
+          node --check "ranking/partner-month-readonly-loader.mjs"
+          node --check "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs"
+      - name: Test strict mapped historic counts and month boundaries
+        run: |
+          node --test \
+            tests/verified-two-month-count-input.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/partner-legacy-quick-count-reader.test.mjs \
+            tests/partner-month-readonly-loader.test.mjs
+          echo 'CANONICAL_MONTH_SKU_COUNTS_PASS_NO_DEPLOY'
+      - name: No Firebase writes or production approval
+        run: |
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'FIRESTORE_WRITES=0 HOSTING_DEPLOYED=NO RULES_DEPLOYED=NO'
