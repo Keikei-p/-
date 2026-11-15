@@ -289,3 +289,31 @@ test("standalone partner analysis reuses original scope cards and isolates moved
  assert.match(path.textContent,/田中/);
  assert.equal(JSON.stringify(summary),original);
 });
+
+test("partner chart mode reuses self controls and never derives finance",()=>{
+ const begin=sourceIndex.indexOf("let partnerCountChartMode=");
+ const end=sourceIndex.indexOf("function renderPartnerCountOnlyExtras(){",begin);
+ assert.ok(begin>0&&end>begin);
+ const code=sourceIndex.slice(begin,end);
+ const el=()=>Object.assign(new El(),{style:{}});
+ const chart=el(),ctx={document:{createElement:()=>el()},pInline:id=>{
+  assert.equal(id,"pPartnerChart");return chart;
+ },partnerMainAppendRow:()=>{}};
+ const render=vm.runInNewContext(code+"\nrenderPartnerCountChart;",ctx);
+ const byTeam=new Map([["t1",3],["t2",0]]);
+ const byProduct=new Map([["NURO",2],["SBMNP",1]]);
+ const source1=JSON.stringify([...byTeam]),source2=JSON.stringify([...byProduct]);
+ render(byTeam,byProduct,new Map([["t1",{name:"1班"}],["t2",{name:"2班"}]]),"2026-11-15");
+ assert.equal(chart.children[0].className,"revenue-chart-toolbar");
+ assert.equal(chart.children[2].children.length,2);
+ assert.equal(chart.children[2].children[0].children[0].textContent,"1班｜3件");
+ chart.children[0].children[1].onclick();
+ assert.equal(chart.children[0].children[1].attrs["aria-pressed"],"true");
+ assert.equal(chart.children[2].children[0].children[0].textContent,"NURO｜2件");
+ assert.equal(chart.children[2].children[1].children[0].textContent,"SBMNP｜1件");
+ assert.equal(JSON.stringify([...byTeam]),source1);
+ assert.equal(JSON.stringify([...byProduct]),source2);
+ assert.doesNotMatch(code,/getFirestore\(|formatYen\(|unitPrice|revenuePerUnit|totalRevenue|cashback/i);
+ assert.throws(()=>render(new Map([["t1",3]]),new Map([["NURO",-1]]),new Map(),"2026-11-15"),
+ /invalid_chart_count/);
+});
