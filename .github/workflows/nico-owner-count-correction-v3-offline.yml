@@ -64,13 +64,44 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Separate, exact current-main Owner server candidate. This path
+          # does not modify or approve the historically reviewed package.
+          # It only runs offline against the pinned staging source and
+          # verifies that the old release remains blocked.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/owner-correction-server-guard-and-current-package-no-deploy-20261115" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764 ]; }; then
+            test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
+            test "$(git hash-object staging/partner-owner-correction-v3/trusted-auth.cjs)" = a3e1f03f3e7032024e00109d9211bc34384b9a49
+            test "$(git hash-object staging/partner-owner-correction-v3/entry.cjs)" = 309bd57fa808c59ab2cba4e9d7fd10b664f0b626
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
+            test "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c
+            node --check staging/partner-owner-correction-v3/service.cjs
+            node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
+            node --test tests/partner-owner-correction-v3.test.cjs tests/partner-owner-correction-v3-auth.test.cjs tests/current-owner-correction-package.test.mjs
+            if node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare > "$RUNNER_TEMP/owner-frozen-package-result.txt" 2>&1; then
+              echo 'STOP_HISTORIC_OWNER_PACKAGE_UNEXPECTEDLY_PASSED'; exit 1
+            fi
+            grep -Fxq 'STOP_OWNER_V3_PACKAGE_SOURCE_CHANGED' "$RUNNER_TEMP/owner-frozen-package-result.txt"
+            test ! -e "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+            echo 'package_allowed=false' >> "$GITHUB_OUTPUT"
+            echo 'OWNER_CURRENT_CANDIDATE_TESTED_HISTORIC_RELEASE_BLOCKED_NO_DEPLOY'
+            exit 0
+          fi
           # Exact reviewed candidate: exercise new read-only UI and prove
           # the historical signed package remains impossible to prepare.
           # All other sources still pass through the unchanged legacy gate.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
                [ "${GITHUB_HEAD_REF:-}" = "review/owner-partner-correction-ui-safety-no-deploy-20261115" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
-               [ "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c ]; }; then
+               [ "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c ] &&
+               [ "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = a595de15c33c9707342b3721c79e67e2d29a0748 ]; }; then
             test "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c
             test "$(git hash-object staging/partner-owner-correction-v3/owner-client.mjs)" = 83eb3268eb7d1593bc891b286b113c7360061750
             test "$(git hash-object staging/partner-owner-correction-v3/mobile-bootstrap.mjs)" = c35b58367db290aec3f8a86e9bdf73986c5d3f3d
