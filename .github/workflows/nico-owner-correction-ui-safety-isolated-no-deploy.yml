@@ -8,6 +8,7 @@ on:
       - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
       - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
       - '.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml'
+      - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
 permissions:
   contents: read
 jobs:
@@ -40,7 +41,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml) ;;
+              staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
               *) echo "STOP_OWNER_UI_OUT_OF_SCOPE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
