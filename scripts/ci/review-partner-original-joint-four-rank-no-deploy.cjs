@@ -28,7 +28,7 @@ for(const x of [
  "const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;",
  "const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;",
  "const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;",
- "const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||",
+ "if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||",
  "expectedRole:\"partner_owner\"",
  "refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates})",
  "renderVerifiedInlineJointCards({"
