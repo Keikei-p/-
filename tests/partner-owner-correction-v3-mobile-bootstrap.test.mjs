@@ -94,6 +94,26 @@ test("approved hub company discovery returns only active-visible count-only labe
   {partnerCompanyId:"inactive",name:"協力店B",active:false}
  ]);
 });
+test("current workspace readiness hint never grants correction access; disabled writer remains read-only",async()=>{
+ const data={...workspace(),ownerCorrectionAvailable:true};
+ assert.equal(countOnlyRegisteredCompanies(data,date).length,2);
+ assert.throws(()=>countOnlyRegisteredCompanies({...data,ownerCorrectionAvailable:"enabled"},date));
+ for(const name of ["協力店 ＣＢ５０００","会社 ＲＥＶＥＮＵＥ８０００","会社 ２万円"]){
+  assert.throws(()=>countOnlyRegisteredCompanies({...workspace(),
+   registeredCompanies:[{...companies()[0],name}]},date));
+ }
+ const f=fixture({hub:()=>data});f.fn.canCorrect=()=>false;
+ const panel=await mountVerifiedOwnerCorrection(f.fn);
+ panel.selectCompany(cid);await new Promise(resolve=>setImmediate(resolve));
+ await panel.save();
+ assert.equal(f.seen.list.length,1);
+ assert.equal(f.seen.correct.length,0);
+ const editor=f.root.children[0].children[5];
+ assert.equal(editor.children[7].disabled,true);
+ assert.equal(editor.children[6].disabled,true);
+ assert.match(f.root.children[0].children[6].textContent,/訂正機能は停止中/);
+ panel.destroy();
+});
 test("one mobile screen: hub discovery -> company -> staff -> save -> backend version readback",async()=>{
  const f=fixture();
  const panel=await mountVerifiedOwnerCorrection(f.fn);
@@ -315,4 +335,29 @@ test("owner can switch company using one action in the same verified Auth sessio
  f.notifyAuth(null);
  assert.equal(panel.selectCompany(cid),false);
  assert.equal(f.seen.list.length,1,"no stale requests after sign-out");
+});
+
+
+test("Owner correction UI locks old 光/AIR split even after writer permission, and sends unknown combined count",async()=>{
+ const f=fixture();
+ const panel=await mountVerifiedOwnerCorrection(f.fn);
+ f.root.children[0].children[3].value=cid;
+ await panel.load();
+ const editor=f.root.children[0].children[5];
+ const sbInputCells=editor.children[4].children;
+ assert.equal(sbInputCells.length,3);
+ assert(sbInputCells.every(x=>x.children[0].disabled===true),
+  "old SB/光 AIR labels are permanently read-only");
+ const combined=editor.children[2].children.find(x=>x.textContent==="SB光・AIR");
+ combined.children[0].value="7";
+ editor.children[6].value="登録済みの合算件数を正しく訂正";
+ await panel.save();
+ assert.equal(f.seen.correct.length,1);
+ assert.equal(f.seen.correct[0].counts["SB光・AIR"],7);
+ assert.deepEqual(f.seen.correct[0].sbBreakdown,
+  {"SB光":0,"SB AIR":0,"旧未分類":7});
+ assert.deepEqual(f.seen.invalidation,[{
+  date,month:"2026-10",partnerCompanyId:cid,version:3
+ }]);
+ panel.destroy();
 });
