@@ -348,7 +348,8 @@ test("partner submit -> authenticated hub correction -> company/team totals -> r
   extract("readPartnerRankingMonth")
  ].join("\n"),ctx);
  const beforeRank=await ctx.readPartnerRankingMonth("2026-10");
- assert.equal(beforeRank.complete,true);
+ assert.equal(beforeRank.complete,false,"unreported registered days must not become a complete month");
+ assert.match(beforeRank.reason,/未報告/);
  assert.equal(beforeRank.rows.length,1);
  assert.equal(beforeRank.rows[0].totalCount,11,"staff ledger wins over old quick 90");
  assert.equal(beforeRank.rows[0].counts["SB光・AIR"],8);
@@ -416,7 +417,8 @@ test("partner submit -> authenticated hub correction -> company/team totals -> r
  });
  await invalidate({date,month:"2026-10",partnerCompanyId:"partner",version:2});
  assert.deepEqual(resetMonth,["2026-10"]);
- assert.equal(recheck.complete,true);
+ assert.equal(recheck.complete,false,"an audited count correction does not invent reports for other days");
+ assert.match(recheck.reason,/未報告/);
  assert.equal(recheck.rows.length,1);
  assert.equal(recheck.rows[0].totalCount,13);
  assert.equal(recheck.rows[0].counts.NURO,5);

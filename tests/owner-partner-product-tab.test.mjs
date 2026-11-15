@@ -9,7 +9,7 @@ import {createHash} from "node:crypto";
 
 const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
 
-test("removing only the new tab restores the exact existing production HTML",()=>{
+test("removing only the product tab restores the exact count-safe integration candidate",()=>{
  let original=stripOwnerMonthlyTeamIntegration(html).replace(/\r\n/g,"\n");
  const additions=[
   /<link rel="stylesheet" href="\.\/ranking\/owner-product-visibility-panel\.css">\n/,
@@ -31,8 +31,10 @@ test("removing only the new tab restores the exact existing production HTML",()=
  }
  const bytes=Buffer.from(original);
  const blob=createHash("sha1").update(Buffer.from("blob "+bytes.length+"\0")).update(bytes).digest("hex");
- assert.equal(blob,"6478197c52cd3a9fd6570e7214ed744e3ac93576",
-  "the tab may not remove or modify any part of the already deployed application");
+ // Freeze the existing #704 companion ON/OFF and amount-free UI changes.
+ // #706 count-save regressions run separately; this is no production signoff.
+ assert.equal(blob,"c892785947a505e81a2d1a8387ceced01a00aa42",
+  "the tab must preserve every byte of the companion ON/OFF and amount-free integration candidate");
 });
 
 test("協力店商材 is a management tab and reuses the actual Owner panel",()=>{

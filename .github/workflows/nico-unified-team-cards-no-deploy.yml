@@ -82,6 +82,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --test tests/count-pricing-update-hotfix.test.cjs tests/count-pricing-live-package.test.mjs
           node --test tests/owner-partner-team-production-integration.test.mjs tests/owner-partner-product-tab.test.mjs
           node --test tests/unified-partner-team-cards.test.mjs tests/unified-partner-team-mount.test.mjs tests/partner-original-team-card-parity.test.mjs
           node --test tests/partner-dashboard-self-app-count-parity.test.mjs tests/partner-count-dashboard.test.cjs

@@ -6,10 +6,12 @@ import {runInNewContext} from 'node:vm';
 import {stripOwnerMonthlyTeamIntegration} from './helpers/strip-owner-monthly-team-integration.mjs';
 
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-test('reversing only monthly additions restores the exact reviewed production + #698 tab',()=>{
+test('reversing only monthly additions restores the exact count-safe integrated tab candidate',()=>{
  const original=Buffer.from(stripOwnerMonthlyTeamIntegration(html));
  const hash=createHash('sha1').update(Buffer.from('blob '+original.length+'\0')).update(original).digest('hex');
- assert.equal(hash,'63f61cbf0badad066ff1c07380e79567c6c67c9e');
+ // Companion ON/OFF/amount-free UI is part of this frozen #704 candidate.
+ // This source assertion conveys no production approval.
+ assert.equal(hash,'8b94e9c9a4e29516244458e862b253008d9fd12c');
 });
 class Element{
  constructor(){this.children=[];this.hidden=false;this.textContent='';}

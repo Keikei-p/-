@@ -26,7 +26,18 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Review exact currently approved additive write path (release OFF)
-        run: node scripts/ci/review-partner-sku-publication-write.cjs
+        shell: bash
+        run: |
+          # Exact #708 source review only; historical deployment gates remain unchanged.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/partner-onoff-count-write-guard-no-deploy-20261114" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = "a56ae6100ce70602ed90233af038549129941cd9" ]; }; then
+            test "$(git hash-object scripts/ci/review-partner-published-write-isolated.cjs)" = 3e6be2df9bf6734ff651f46dfd5edbb044724a50
+            node scripts/ci/review-partner-published-write-isolated.cjs
+          else
+            node scripts/ci/review-partner-sku-publication-write.cjs
+          fi
       - name: Keep production finance sources and Rules unchanged
         shell: bash
         run: |
@@ -43,10 +54,12 @@ jobs:
         run: |
           node <<'NODE'
           const fs=require('node:fs'),assert=require('node:assert/strict');
-          const canonical=fs.readFileSync('ranking/partner-submission-publication-guard.mjs','utf8')
+          const canonical=fs.readFileSync('ranking/partner-submission-publication-guard.mjs','utf8').replace(/\r\n/g,'\n')
+            .replace('import {allowedPartnerCategories} from "./approved-published-categories.mjs";',
+              'const {allowedPartnerCategories}=require("./approved-published-categories.cjs");')
             .replace('export function createPartnerSubmissionPublicationGuard({db}={}){',
               'function createPartnerSubmissionPublicationGuard({db}={}){').trim();
-          const isolated=fs.readFileSync('functions-partner-workspace/submission-publication-guard.cjs','utf8')
+          const isolated=fs.readFileSync('functions-partner-workspace/submission-publication-guard.cjs','utf8').replace(/\r\n/g,'\n')
             .replace(/^"use strict";\n/,'')
             .replace(/\nmodule\.exports=\{createPartnerSubmissionPublicationGuard\};\s*$/,'').trim();
           assert.equal(isolated,canonical,'CANONICAL_VENDOR_DRIFT');

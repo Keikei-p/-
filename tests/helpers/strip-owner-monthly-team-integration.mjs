@@ -1,6 +1,7 @@
 // Reverse only the additive monthly bridge. The caller verifies the restored
 // bytes against the reviewed production/tab candidate, never a regenerated UI.
 export function stripOwnerMonthlyTeamIntegration(source){
+ source=source.replace(/\r\n/g,"\n");
  const blocks=[
   '\n<style id="nicoVerifiedPartnerTeamControls">\n#ownerPartnerDashboardDetails .owner-partner-filters[hidden],\n#ownerPartnerDashboardDetails .owner-partner-additional[hidden]{display:none!important}\n</style>\n',
   "\n// STAGING ONLY. This does not authorize a new Production API or deploy.\nconst NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;",

@@ -1028,7 +1028,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   Object.keys(d).sort().join("|")==="date|partnerCompanyId";
  const unknownSb=n=>({"SB光":0,"SB AIR":0,"旧未分類":n});
  const validOwnerReason=x=>typeof x==="string"&&x.trim()===x&&
-  x.length>=6&&x.length<=120&&!/[\\r\\n\\x00-\\x1f\\x7f]/.test(x)&&
+  x.length>=6&&x.length<=120&&!/[\r\n\x00-\x1f\x7f]/.test(x)&&
   !money.test(x.normalize("NFKC"));
  const guardOwnerScope=async(uid,tx,companyId)=>{
   const s=await scope(uid,tx);

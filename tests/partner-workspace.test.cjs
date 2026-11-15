@@ -1594,6 +1594,38 @@ test("Hub Owner v3 corrects only existing partner staff, the SAME summary and ap
  await assert.rejects(api.correctHubPartnerCounts(req("h",request)),{code:"aborted"});
  assert.deepEqual([...db.store],after,"stale Owner corrections must not change any ledger");
 });
+test("Owner correction reason accepts normal English and rejects embedded controls before changing counts or audit",async()=>{
+ const {db,api,req,zero}=setup(false,false,true,true);
+ const date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),NURO:1}}));
+ const payload={date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...zero(),NURO:2},
+  sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":0}};
+ const before=clone([...db.store]);
+ for(const control of ["\r","\n","\u0000","\u0001","\u001f","\u007f"]){
+  await assert.rejects(api.correctHubPartnerCounts(req("h",{
+   ...payload,correctionReason:"件数"+control+"入力を訂正"
+  })),{code:"invalid-argument"});
+  assert.deepEqual([...db.store],before,
+   "a rejected reason must preserve the entry, summary and append-only history");
+ }
+ const reason="reason corrected 123";
+ const receipt=await api.correctHubPartnerCounts(req("h",{
+  ...payload,correctionReason:reason
+ }));
+ assert.equal(receipt.version,2);
+ assert.equal(receipt.totalCount,2);
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v2");
+ assert.equal(audit.correctionReason,reason);
+ assert.equal(audit.previousCounts.NURO,1);
+ assert.equal(audit.counts.NURO,2);
+ assert.deepEqual(db.store.get("records/old"),before.find(([key])=>key==="records/old")[1]);
+ assert.deepEqual(db.store.get("products/money"),before.find(([key])=>key==="products/money")[1]);
+});
+
 test("Owner correction rejects partner logins, foreign scopes, fake money, and guessed SB split",async()=>{
  const {db,api,req,zero}=setup(false,false,true,true);
  const date="2026-10-31";

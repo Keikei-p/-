@@ -14,16 +14,17 @@ test("both original apps mount the exact same backend-verified count view, defau
  assert(owner.includes(ownerFlag));
  assert(partner.includes(partnerFlag));
  assert(owner.includes("if(NICO_INTERNAL_JOINT_COUNT_MONTH_RELEASED){"));
- assert(partner.includes("if(!NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED||"));
+ assert(partner.includes("const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;"));
+ assert.match(partner,/if\(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED\|\|\s*!NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED\|\|/);
  for(const source of [owner,partner]){
   assert(source.includes("mountVerifiedJointMonthCountDashboard"));
   assert(source.includes(moduleUrl));
   assert(source.includes(backend));
   assert(source.includes("availablePeriods")===false,
-   "entry point must reuse month-only mode in canonical bridge");
+   "entry point must reuse the canonical bridge period controls");
   assert(source.includes("onAuthStateChanged"));
  }
- assert(bridge.includes("availablePeriods:[\"month\"],allowFilters:false"));
+ assert(bridge.includes("availablePeriods:[\"day\",\"week\",\"month\"],allowFilters:false"));
 });
 test("partner cannot display owner rankings from company-code sessions or employee accounts",()=>{
  assert(partner.includes("activeCodeSession||data?.role!==\"owner\""));

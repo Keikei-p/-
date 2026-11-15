@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import {readFileSync,mkdtempSync,rmSync,existsSync,readdirSync} from "node:fs";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import {fileURLToPath} from "node:url";
 import vm from "node:vm";
 import {execFileSync} from "node:child_process";
 import {
  REVIEWED,gitBlob,makeOwnerPackage,writeDisposablePackage
 } from "../tools/production/prepare-hub-owner-correction-v3-package.mjs";
 
-const root=path.resolve(new URL("../",import.meta.url).pathname);
+const root=path.resolve(fileURLToPath(new URL("../",import.meta.url)));
 const sources=()=>Object.fromEntries(Object.keys(REVIEWED).map(name=>
  [name,readFileSync(path.join(root,name),"utf8")]
 ));

@@ -123,6 +123,18 @@ jobs:
           # Main always validates BOTH current source-pinned reviewers.
           # This PR checks the new ranking reviewer without running any release.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/partner-onoff-count-write-guard-no-deploy-20261114" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = a56ae6100ce70602ed90233af038549129941cd9 ]; }; then
+            # #706 and #708 are merged. Preserve exact current sources and
+            # the original financial/catalog checks before the demo emulator.
+            test "$(git hash-object scripts/ci/review-partner-published-write-isolated.cjs)" = 3e6be2df9bf6734ff651f46dfd5edbb044724a50
+            node scripts/ci/review-partner-published-write-isolated.cjs --sources-only
+            for file in ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs; do
+              test "$(git hash-object "$file")" = 3d3924aa52a2655879605c358f26d36953462262
+            done
+            grep -Fq 'const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;' partner-workspace.html
+          elif { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
                [ "${GITHUB_HEAD_REF:-}" = "fix/main-count-ranking-reviewed-ci-20261111" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
