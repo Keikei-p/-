@@ -23,14 +23,34 @@ export const REVIEWED=Object.freeze({
  "index.html":"88ef5636bfe9254e71f2109d452b6d3049f99861",
  "partner-workspace.html":"994e6faf6f68ac570549c2ddd6d69cad1038632a"
 });
+/**
+ * Current-main STAGING candidate only. This is NOT an approval or permission
+ * to deploy. Old historical REVIEWED remains frozen and unchanged.
+ * Every Finance, Auth, original Functions and existing Hosting blob is pinned.
+ */
+export const CURRENT_CANDIDATE=Object.freeze({
+  "staging/partner-owner-correction-v3/entry.cjs": "309bd57fa808c59ab2cba4e9d7fd10b664f0b626",
+  "staging/partner-owner-correction-v3/firebase.owner-correction.json": "2bb289edd33de3a17c2579c2ffbdf1eae0a75417",
+  "staging/partner-owner-correction-v3/service.cjs": "13079c29d6b88167fbaec22361636215fea52764",
+  "staging/partner-owner-correction-v3/trusted-auth.cjs": "a3e1f03f3e7032024e00109d9211bc34384b9a49",
+  "staging/partner-sb-v2/sb-category-v2.cjs": "7f1f7214dd38c6aae3339bab26a8378f1e556f4c",
+  "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
+  "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
+  "functions-partner-workspace/index.js": "90d51246477cf5cfa6966f3e822326ef06cccd0f",
+  "functions-partner-workspace/service.cjs": "614f3216e008642ddf5eda6b93c35cc0469557c3",
+  "firestore.rules": "d9f4df6a2ac0f8b5720534a2461ec66b94379190",
+  "index.html": "5edde6d5e5459ba283d12d157c021d4eee03d587",
+  "partner-workspace.html": "431b200e02934315eda57b6998bdde801252f78f"
+});
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
  const data=Buffer.isBuffer(s)?s:Buffer.from(s,"utf8");
  return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
 }
-export function makeOwnerPackage(files){
+export function makeOwnerPackage(files,sourcePins=REVIEWED){
+ if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE)stop("UNREVIEWED_BASELINE");
  if(!files||typeof files!=="object"||Array.isArray(files))stop("SOURCE_SHAPE");
- for(const [name,digest] of Object.entries(REVIEWED)){
+ for(const [name,digest] of Object.entries(sourcePins)){
   if(typeof files[name]!=="string"||gitBlob(files[name])!==digest)
    stop("SOURCE_CHANGED");
  }
@@ -87,6 +107,9 @@ export function makeOwnerPackage(files){
   })
  });
 }
+export function makeCurrentCandidateOwnerPackage(files){
+ return makeOwnerPackage(files,CURRENT_CANDIDATE);
+}
 export function writeDisposablePackage(prepared,base){
  if(process.env.GITHUB_ACTIONS!=="true"||
     process.env.GITHUB_REPOSITORY!=="Keikei-p/-"||
@@ -117,20 +140,22 @@ export function writeDisposablePackage(prepared,base){
  return Object.freeze([...allowed]);
 }
 async function main(){
- if(process.argv.length!==3||process.argv[2]!=="--prepare")
+ if(process.argv.length!==3||!["--prepare","--prepare-candidate"].includes(process.argv[2]))
   stop("PREPARE_ONLY");
  const base=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
  const files={};
- for(const name of Object.keys(REVIEWED)){
+ const candidate=process.argv[2]==="--prepare-candidate";
+ const sourcePins=candidate?CURRENT_CANDIDATE:REVIEWED;
+ for(const name of Object.keys(sourcePins)){
   const loc=path.resolve(base,name);
   if(!loc.startsWith(base+path.sep))stop("SOURCE_PATH");
   files[name]=readFileSync(loc,"utf8");
  }
- const ready=makeOwnerPackage(files);
+ const ready=makeOwnerPackage(files,sourcePins);
  const dest=path.join(process.env.RUNNER_TEMP||"",
   "nico-reviewed-owner-correction-v3-package");
  writeDisposablePackage(ready,dest);
- console.log("OWNER_V3_PACKAGE_READY_NO_DEPLOY "+JSON.stringify(ready.report));
+ console.log((candidate?"OWNER_V3_CURRENT_CANDIDATE_READY_NO_DEPLOY ":"OWNER_V3_PACKAGE_READY_NO_DEPLOY ")+JSON.stringify(ready.report));
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  main().catch(e=>{
