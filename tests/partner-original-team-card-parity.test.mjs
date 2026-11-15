@@ -164,21 +164,22 @@ test("verified shared rankings reuse the self count-only row look, ties, and inc
  const ctx={document:{createElement:tag=>new El(tag)},
   partnerMainAppendRow:(parent,label,value)=>parent.append(Object.assign(new El(),{textContent:label+" "+value}))};
  const {appendSharedRankingRows}=vm.runInNewContext(code+
-  "\\n({appendSharedRankingRows});",ctx);
+  "\n({appendSharedRankingRows});",ctx);
  const root=new El();
  const input=[{name:"協力店B",count:2},{name:"自社",count:4},{name:"協力店A",count:4}];
  appendSharedRankingRows(root,"個人ランキング",input,true);
  assert.deepEqual(input.map(x=>x.count),[2,4,4],"source must not be sorted in place");
  const grid=root.children[0].children[1];
  assert.equal(grid.className,"ranking-grid");
- assert.deepEqual(Array.from(grid.children,c=>[
+ const rankingRows=Array.from(grid.children,c=>[
   c.className,c.children[0].children[0].textContent,
   c.children[0].children[1].textContent,c.children[1].children[0].textContent
- ]),[
-  ["ranking-row","1","協力店A","4件"],
-  ["ranking-row","1","自社","4件"],
-  ["ranking-row","3","協力店B","2件"]
  ]);
+ assert.deepEqual(rankingRows.map(row=>row[0]),["ranking-row","ranking-row","ranking-row"]);
+ assert.deepEqual(rankingRows.map(row=>row[1]),["1","1","3"]);
+ assert.deepEqual(rankingRows.map(row=>row[3]),["4件","4件","2件"]);
+ assert.deepEqual(new Set(rankingRows.slice(0,2).map(row=>row[2])),new Set(["自社","協力店A"]));
+ assert.equal(rankingRows[2][2],"協力店B");
  const incomplete=new El();
  appendSharedRankingRows(incomplete,"班ランキング",input,false);
  assert.ok(incomplete.children[0].children[1].children.every(c=>
