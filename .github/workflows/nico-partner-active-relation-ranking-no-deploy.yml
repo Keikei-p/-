@@ -1,0 +1,28 @@
+name: NICO active partner relation rankings no extra consent (NO DEPLOY)
+on:
+  pull_request:
+    branches: [integration/nico-sales-count-publication-rank-ready-20261113]
+    paths:
+      - functions-partner-workspace/service.cjs
+      - tests/partner-workspace.test.cjs
+      - .github/workflows/nico-partner-active-relation-ranking-no-deploy.yml
+permissions:
+  contents: read
+jobs:
+  verified-count-rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source and safe count-only existing API behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node --check functions-partner-workspace/service.cjs
+          node --test tests/partner-workspace.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/partner-money-free-workspace.test.cjs
+          echo PARTNER_EXISTING_LEDGER_AND_RELATION_RANKING_PASS
