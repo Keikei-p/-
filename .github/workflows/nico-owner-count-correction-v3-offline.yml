@@ -70,8 +70,8 @@ jobs:
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
                [ "${GITHUB_HEAD_REF:-}" = "review/owner-partner-correction-ui-safety-no-deploy-20261115" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
-               [ "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = b4f4f24c2da289d9bf64e22c2e64e8f1ce142f07 ]; }; then
-            test "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = b4f4f24c2da289d9bf64e22c2e64e8f1ce142f07
+               [ "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c ]; }; then
+            test "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c
             test "$(git hash-object staging/partner-owner-correction-v3/owner-client.mjs)" = 83eb3268eb7d1593bc891b286b113c7360061750
             test "$(git hash-object staging/partner-owner-correction-v3/mobile-bootstrap.mjs)" = c35b58367db290aec3f8a86e9bdf73986c5d3f3d
             test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
