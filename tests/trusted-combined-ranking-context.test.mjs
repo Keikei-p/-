@@ -106,9 +106,13 @@ test("trusted fresh hub and partner owners see the same fully approved linked se
   assert.equal(ctx.viewerCompanyId,uid==="hubOwner"?"hub":"p1");
   assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
   for(const flag of ["serverVerified","userActive","memberActive",
-   "companyActive","reciprocalOwnersApproved","individualNamesApproved",
+   "companyActive","activeCountSharingVerified",
    "completeSnapshotBudgetApproved"])
    assert.equal(ctx[flag],true);
+  assert.deepEqual(ctx.publicNameCompanyIds,["hub","p1"]);
+  assert.equal(Object.hasOwn(ctx,"reciprocalOwnersApproved"),false);
+  assert.equal(Object.hasOwn(ctx,"individualNamesApproved"),false);
+  assert.equal(Object.isFrozen(ctx.publicNameCompanyIds),true);
   assert.equal(Object.isFrozen(ctx),true);
  }
  assert.equal(a.ops.filter(x=>x.kind==="transaction").length,2);
@@ -127,26 +131,61 @@ test("Firebase Auth must have fresh verified matching email, unrevoked token",as
   createVerifiedRankTokenReader({auth:makeAuth()})("short"),refuse);
 });
 
-test("relation booleans alone never count as bilateral consent",async()=>{
- for(const path of [
-  "companies/hub/rankingApprovals/p1",
-  "companies/p1/rankingApprovals/hub"
- ]){
-  const f=fakeDb();f.docs.delete(path);
-  await assert.rejects(load(f)(await verified()),refuse);
+test("existing active count sharing works without any additional ranking or name approval",async()=>{
+ const f=fakeDb(),relation=f.docs.get("partnerRelations/p1");
+ for(const key of ["combinedRankingApprovedByHub","combinedRankingApprovedByPartner",
+  "individualNamesApprovedByHub","individualNamesApprovedByPartner"])delete relation[key];
+ f.docs.delete("companies/hub/rankingApprovals/p1");
+ f.docs.delete("companies/p1/rankingApprovals/hub");
+ const before=clone([...f.docs]);
+ for(const uid of ["hubOwner","partnerOwner"]){
+  const ctx=await load(f)(await verified(uid));
+  assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
+  assert.equal(ctx.activeCountSharingVerified,true);
+  assert.deepEqual(ctx.publicNameCompanyIds,[uid==="hubOwner"?"hub":"p1"]);
  }
- for(const path of ["companies/hub/rankingApprovals/p1",
-  "companies/p1/rankingApprovals/hub"]){
-  for(const [key,value] of [
-   ["active",false],["approvedByUid","otherOwner"],
-   ["combinedRankingApproved",false],["individualNamesApproved",false],
-   ["scope","counts"],["version",0]
+ assert.deepEqual([...f.docs],before);
+ assert(!f.ops.some(x=>x.kind==="get"&&x.path.includes("/rankingApprovals/")),
+  "missing additional approvals never trigger a required consent read");
+});
+
+test("optional existing name approvals are strict display permissions, never count gates",async()=>{
+ for(const path of ["companies/hub/rankingApprovals/p1","companies/p1/rankingApprovals/hub"]){
+  for(const mutate of [
+   f=>f.docs.delete(path),
+   ...[["active",false],["approvedByUid","otherOwner"],["individualNamesApproved",false],
+    ["scope","counts"],["version",0],["companyId","other"],["hubCompanyId","other"],
+    ["partnerCompanyId","other"]].map(([key,value])=>f=>{f.docs.get(path)[key]=value;})
   ]){
-   const f=fakeDb();f.docs.get(path)[key]=value;
-   await assert.rejects(load(f)(await verified()),refuse,path+" "+key);
+   const f=fakeDb();mutate(f);const before=clone([...f.docs]);
+   const ctx=await load(f)(await verified());
+   assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
+   assert.deepEqual(ctx.publicNameCompanyIds,["hub"]);
+   assert.deepEqual([...f.docs],before);
   }
  }
+ const f=fakeDb();
+ for(const side of ["Hub","Partner"])f.docs.get("partnerRelations/p1")["combinedRankingApprovedBy"+side]=false;
+ for(const path of ["companies/hub/rankingApprovals/p1","companies/p1/rankingApprovals/hub"])
+  f.docs.get(path).combinedRankingApproved=false;
+ const ctx=await load(f)(await verified());
+ assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
+ assert.deepEqual(ctx.publicNameCompanyIds,["hub","p1"],
+  "existing individual-name approval is independent of obsolete ranking consent");
 });
+
+test("an unclaimed linked partner remains count-eligible without impersonating its Owner",async()=>{
+ for(const ownerUid of [undefined,null,""]){
+  const f=fakeDb();if(ownerUid===undefined)delete f.docs.get("companies/p1").ownerUid;
+  else f.docs.get("companies/p1").ownerUid=ownerUid;
+  const ctx=await load(f)(await verified("hubOwner"));
+  assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
+  assert.deepEqual(ctx.publicNameCompanyIds,["hub"]);
+  await assert.rejects(load(f)(await verified("partnerOwner")),refuse,
+   "a viewer still needs the company's actual Owner identity");
+ }
+});
+
 test("revoked company, falsified profile, money-capable partner and stale secondary are denied",async()=>{
  const scenarios=[
   d=>{d.get("companies/hub").ownerUid="notHubOwner";},
@@ -169,12 +208,12 @@ test("revoked company, falsified profile, money-capable partner and stale second
  ];
  for(let i=0;i<scenarios.length;i++){
   const f=fakeDb();scenarios[i](f.docs);
-  const uid=i>=13?"partnerOwner":"hubOwner";
+  const uid=i===2||i>=13?"partnerOwner":"hubOwner";
   await assert.rejects(load(f)(await verified(uid)),refuse,"mutation "+i);
  }
 });
 test("unapproved relation is deliberately excluded, but partner viewer never omitted",async()=>{
- const f=fakeDb();f.docs.get("partnerRelations/p1").individualNamesApprovedByPartner=false;
+ const f=fakeDb();f.docs.get("partnerRelations/p1").countSharingApproved=false;
  const hub=await load(f)(await verified("hubOwner"));
  assert.deepEqual(hub.approvedCompanyIds,["hub"]);
  await assert.rejects(load(f)(await verified("partnerOwner")),refuse);
@@ -190,13 +229,21 @@ test("missing or duplicated relation, scan above 100, approval above 29 fail clo
  }
  await assert.rejects(load(many)(await verified()),refuse);
 });
-test("web combined ranking handler uses the verified owner context, not browser consent",async()=>{
+test("legacy rank-only fixture requires the independently verified all-name policy",async()=>{
  const f=fakeDb(),auth=makeAuth();
  const verifiedToken=createVerifiedRankTokenReader({auth});
  const contextReader=load(f);
  const handler=createStagedCombinedRankReadHandler({
   enabled:true,verifyFirebaseToken:verifiedToken,
-  loadFreshApprovedContext:contextReader,
+  // This unregistered legacy fixture requires its old all-name contract.
+  // The current canonical count HTTP path consumes the new context directly.
+  loadFreshApprovedContext:async principal=>{
+   const ctx=await contextReader(principal);
+   if(!ctx.approvedCompanyIds.every(cid=>ctx.publicNameCompanyIds.includes(cid)))
+    throw Error("LEGACY_ALL_NAME_POLICY_UNVERIFIED");
+   return {...ctx,reciprocalOwnersApproved:ctx.activeCountSharingVerified,
+    individualNamesApproved:true};
+  },
   loadCompletePublicCountSources:async({month,context})=>({
    period:month,hubCompanyId:context.hubCompanyId,
    approvedCompanyIds:context.approvedCompanyIds,
@@ -256,4 +303,22 @@ test("fresh Auth-backed owner context directly binds the existing Firestore publ
  const forged={...(await load(f)(await verified("partnerOwner"))),role:"hub_owner"};
  await assert.rejects(store.readForRanking({context:forged,mappingsReviewed:true}),
   /UNAUTHORIZED_OR_INCOMPLETE/);
+});
+
+
+test("a partner without existing audience-name approval sees only its own company names",async()=>{
+ const f=fakeDb();
+ f.docs.set("companies/p2",{name:"協力店B",active:true,companyKind:"partner",hubCompanyId:"hub",ownerUid:"otherOwner"});
+ f.docs.set("partnerRelations/p2",{...f.docs.get("partnerRelations/p1"),partnerCompanyId:"p2"});
+ for(const [cid,owner,other] of [["hub","hubOwner","p2"],["p2","otherOwner","hub"]])
+  f.docs.set("companies/"+cid+"/rankingApprovals/"+other,{
+   companyId:cid,hubCompanyId:"hub",partnerCompanyId:"p2",approvedByUid:owner,
+   active:true,scope:"combined_rank_only",version:1,individualNamesApproved:true
+  });
+ assert.deepEqual((await load(f)(await verified("partnerOwner"))).publicNameCompanyIds,["hub","p1","p2"]);
+ f.docs.get("partnerRelations/p1").individualNamesApprovedByPartner=false;
+ const ctx=await load(f)(await verified("partnerOwner"));
+ assert.deepEqual(ctx.approvedCompanyIds,["hub","p1","p2"]);
+ assert.deepEqual(ctx.publicNameCompanyIds,["p1"],
+  "another company's valid historical approval does not widen an unapproved audience");
 });

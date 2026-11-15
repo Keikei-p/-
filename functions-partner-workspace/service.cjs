@@ -672,37 +672,40 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const rel=relDoc.data()||{},cid=relDoc.id;
    if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
     fail("data-loss");
-   // Cross-company names/individual rankings require BOTH current owners'
-   // explicit consent. Sharing aggregate counts alone is insufficient.
-   if(rel.active!==true||rel.countSharingApproved!==true||
-      rel.combinedRankingApprovedByHub!==true||
-      rel.combinedRankingApprovedByPartner!==true||
-      rel.individualNamesApprovedByHub!==true||
-      rel.individualNamesApprovedByPartner!==true)continue;
-   const [companyDoc,hubConsentSnap,partnerConsentSnap]=await Promise.all([
-    db.collection("companies").doc(cid).get(),
-    collection(hubId,"rankingApprovals").doc(cid).get(),
-    collection(cid,"rankingApprovals").doc(hubId).get()
-   ]);
+   // The active, server-verified hub/partner relationship is the existing
+   // count-sharing authorization. The hub Owner controls published products
+   // separately through the reviewed visibility + SKU mapping above.
+   // No NEW bilateral ranking consent forms or documents are required.
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companyDoc=await db.collection("companies").doc(cid).get();
    const company=companyDoc.data()||{};
    if(!companyDoc.exists||company.companyKind!=="partner"||
       company.hubCompanyId!==hubId||!validCompanyName(company.name)||
-      !ID.test(company.ownerUid||""))fail("data-loss");
+      (company.ownerUid!=null&&company.ownerUid!==""&&
+       !ID.test(company.ownerUid)))fail("data-loss");
+   // Hub-created company workspaces may legitimately have no ownerUid yet.
+   // Never treat that as permission to impersonate an owner; the caller's
+   // identity and company membership were already checked by scope().
    if(company.active!==true)continue;
-   const consentOk=(snap,sourceCompany,expectedOwner)=>{
-    if(!snap.exists)return false;
-    const c=snap.data()||{};
-    return c.companyId===sourceCompany&&
-      c.hubCompanyId===hubId&&c.partnerCompanyId===cid&&
-      c.approvedByUid===expectedOwner&&c.active===true&&
-      c.scope==="combined_rank_only"&&
-      Number.isSafeInteger(c.version)&&c.version>=1&&c.version<=999&&
-      c.combinedRankingApproved===true&&c.individualNamesApproved===true;
-   };
-   if(!consentOk(hubConsentSnap,hubId,ownerUid)||
-      !consentOk(partnerConsentSnap,cid,company.ownerUid))
-    fail("failed-precondition");
-   approved.push({cid,name:company.name});
+   // Old public-name approvals are optional display evidence, never a new
+   // condition for count sharing. Unconfirmed foreign names stay private.
+   let publicNamesVerified=false;
+   if(rel.individualNamesApprovedByHub===true&&rel.individualNamesApprovedByPartner===true&&
+      ID.test(company.ownerUid||"")){
+    const [left,right]=await Promise.all([
+     collection(hubId,"rankingApprovals").doc(cid).get(),
+     collection(cid,"rankingApprovals").doc(hubId).get()
+    ]);
+    const named=(snap,sourceCompany,owner)=>{
+     const value=snap.exists?snap.data():null;
+     return value?.companyId===sourceCompany&&value.hubCompanyId===hubId&&
+      value.partnerCompanyId===cid&&value.approvedByUid===owner&&value.active===true&&
+      value.scope==="combined_rank_only"&&value.individualNamesApproved===true&&
+      Number.isSafeInteger(value.version)&&value.version>=1&&value.version<=999;
+    };
+    publicNamesVerified=named(left,hubId,ownerUid)&&named(right,cid,company.ownerUid);
+   }
+   approved.push({cid,name:company.name,publicNamesVerified});
   }
   // Require that a partner caller remains a currently approved participant.
   if(s.kind==="partner"&&!approved.some(x=>x.cid===s.cid))fail();
@@ -763,6 +766,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let result;
   try{result=buildApprovedPartnerCountStandings({hubId,start,end,sources})}
   catch{fail("data-loss")}
+  const viewerNameProof=s.kind==="hub"||approved.some(row=>row.cid===s.cid&&row.publicNamesVerified);
+  const namedCompanies=new Set(approved.filter(row=>row.cid===s.cid||
+   viewerNameProof&&row.publicNamesVerified).map(row=>crypto.createHash("sha256")
+    .update("company\n"+hubId+"\n"+row.cid).digest("hex")));
+  result={...result,people:result.people.map(person=>namedCompanies.has(person.companyKey)?person:
+   {...person,name:"担当者（名称非公開）"})};
   return {role:s.kind,date,period,...result};
  }
 

@@ -10,7 +10,8 @@
     "functions:partner-workspace:submitPartnerWorkspaceCounts",
     "functions:hub-owner-correction-v3:listHubPartnerCounts",
     "functions:hub-owner-correction-v3:correctHubPartnerCounts",
-    "functions:ranking-owner-approvals:getVerifiedJointCountRanking"
+    "functions:ranking-owner-approvals:getVerifiedJointCountRanking",
+    "functions:ranking-owner-approvals:setOwnerProductVisibility"
   ],
   "requiredDormantSettingsInspection": [
     "getOwnerProductVisibility",
@@ -63,7 +64,7 @@
     },
     {
       "path": "functions-partner-workspace/service.cjs",
-      "sha256": "05bbda26ffa39e0cd98d3094aa352b9cc131764f80cb955670ad8a638806386e"
+      "sha256": "241d944685994b1df0109034f02130751a91468357f13078ac5c87c628f1702c"
     },
     {
       "path": "functions-partner-workspace/shared-count-standings.cjs",
@@ -111,7 +112,7 @@
     },
     {
       "path": "functions-ranking-approvals/ranking/internal-month-count-tx-reader.mjs",
-      "sha256": "a6ae54bbf40a3439696cf87c08489456697f28fb3e007e29161dd8c5d957441d"
+      "sha256": "90f33c23b112266a2c335f507e2e923cdbe9dc13caf35d09af47d17a81405c79"
     },
     {
       "path": "functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs",
@@ -143,23 +144,23 @@
     },
     {
       "path": "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
-      "sha256": "25a1a600f2a4c918b3c579bd1718864117e68740b1fec35bf1a0391836af7fda"
+      "sha256": "1e1265150581c44b92f53749e1bd349c9a55020caf265a071a512d470b75e425"
     },
     {
       "path": "functions-ranking-approvals/ranking/partner-workspace-count-source.mjs",
-      "sha256": "132912cc4956de8e36bdc6a6b4588e95840f48f8c4dcda66a6d01145e2cfc54e"
+      "sha256": "007ebf3ccd58e6befa3a32e99db8ecf2041e301bf96f321ad0d837862579aa58"
     },
     {
       "path": "functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs",
-      "sha256": "f5424296b8b71ad1f2c68ebcacbef8cb3641afb481b0cbdcdf537ffec2246507"
+      "sha256": "6dbf44ef70d396c13676525c7dd6642e15c2595b4f26a023a642b65654b1a345"
     },
     {
       "path": "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
-      "sha256": "b808316ddd0154f2f32f1224cc190120e50fdcbf7fd0596d8f787946c51e26db"
+      "sha256": "2097e6837c13a4a16b55b3ae7e66b811e6d9c602baac1b46d4476b921fc45295"
     },
     {
       "path": "functions-ranking-approvals/ranking/verified-two-month-count-input.mjs",
-      "sha256": "cf5fefb9152a3ae6992d2982d7bbd7bedad2454323b2d62352448c80616a63cb"
+      "sha256": "da81f522b54cb7d0942981d41389b8b58b34912059380a2600777506bb7e3b32"
     },
     {
       "path": "functions-ranking-approvals/security/public-projection.mjs",
@@ -179,7 +180,7 @@
     },
     {
       "path": "functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs",
-      "sha256": "f5424296b8b71ad1f2c68ebcacbef8cb3641afb481b0cbdcdf537ffec2246507"
+      "sha256": "6dbf44ef70d396c13676525c7dd6642e15c2595b4f26a023a642b65654b1a345"
     },
     {
       "path": "functions/index.js",
@@ -187,11 +188,19 @@
     },
     {
       "path": "index.html",
-      "sha256": "524d8fffa3988d5bdac2e55fec0387f2a067f8968681a3ec2ffa637f2ac3e05c"
+      "sha256": "4921fb5186bea148fbc529ed57fcfe6c6a51f3aca4cb80c13c0183887d328502"
+    },
+    {
+      "path": "owner-partner-setup.html",
+      "sha256": "9228445854d65ad02e98b3698fca86d7627d460c54f28fd24028c21b9ddcde2a"
     },
     {
       "path": "partner-workspace.html",
-      "sha256": "ba87ce822f228136bb867602a7d6a60737f8b1a3db04e44f03de094aa997d708"
+      "sha256": "f08e9241ac776f26bddaa1230b1080a84785796417c1d967dbe516f5aea7d260"
+    },
+    {
+      "path": "ranking/owner-partner-setup-mount.mjs",
+      "sha256": "54eeb2acb909058d1f8fe6608f705bca735d7736946c9dd3e36c9389477180a3"
     },
     {
       "path": "ranking/owner-product-visibility-dashboard-mount.mjs",
@@ -208,6 +217,22 @@
     {
       "path": "ranking/owner-product-visibility-panel.mjs",
       "sha256": "2c87509ed5da47add37546eeaa962561ec8cd82f3b226e71299cbb9ae8855ac9"
+    },
+    {
+      "path": "ranking/owner-ranking-consent-panel.css",
+      "sha256": "b3f63f3141a1dab3558284b37f7d850bf244939545b5d7620bbe0f0ed1dcf152"
+    },
+    {
+      "path": "ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs",
+      "sha256": "a6ae5dd6befa7cfb327c4e3392f7ccc592176381449c66cdc9af0e829c801140"
+    },
+    {
+      "path": "ranking/owner-reviewed-sku-mapping-panel.css",
+      "sha256": "8f50af323327934e239604f29b800023a110fe2fd7f9269abcc5026d0685c617"
+    },
+    {
+      "path": "ranking/owner-reviewed-sku-mapping-panel.mjs",
+      "sha256": "30cab88de1da6bc29376f337cd0944b7e945ec334d725abe6ca63eb4e9a522f7"
     },
     {
       "path": "ranking/unified-partner-team-cards.mjs",
@@ -279,7 +304,7 @@
     },
     {
       "path": "tools/production/prepare-hub-owner-correction-v3-package.mjs",
-      "sha256": "90552db835d679562910441bf76730e0eff23edb01423b013fef259894b9fc59"
+      "sha256": "1815664ab077cdcf217f018223e11f4a40f3b0267d3c6799d88684026b5ab7fc"
     }
   ],
   "backendFiles": [
@@ -513,11 +538,17 @@
       "archive-output-policy.mjs",
       "archive-read-budget.mjs",
       "index.html",
+      "owner-partner-setup.html",
       "partner-workspace.html",
+      "ranking/owner-partner-setup-mount.mjs",
       "ranking/owner-product-visibility-dashboard-mount.mjs",
       "ranking/owner-product-visibility-firebase-bridge.mjs",
       "ranking/owner-product-visibility-panel.css",
       "ranking/owner-product-visibility-panel.mjs",
+      "ranking/owner-ranking-consent-panel.css",
+      "ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs",
+      "ranking/owner-reviewed-sku-mapping-panel.css",
+      "ranking/owner-reviewed-sku-mapping-panel.mjs",
       "ranking/unified-partner-team-cards.mjs",
       "ranking/verified-dual-count-view.css",
       "ranking/verified-dual-count-view.mjs",
@@ -530,7 +561,7 @@
       "staging/partner-owner-correction-v3/owner-client.mjs",
       "staging/partner-owner-correction-v3/owner-ui.mjs"
     ],
-    "planSha256": "52193e09a3e39d723a21e96eb5adc723e2e4e2eb17c9ec24ca381a4dea54ab19",
+    "planSha256": "b349c2dc2540634e568bc4cb0627386fc84bfc1b0a1a53c1ab767db5b2824248",
     "authenticatedObservationAt": "2026-11-15T00:33:23.423Z"
   },
   "preparedOwnerPackage": {

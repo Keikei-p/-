@@ -1,9 +1,9 @@
 /**
  * STAGING / NOT DEPLOYED — authenticated, server-owned ranking context.
  *
- * Partner count-sharing by itself never authorizes public leaderboards or
- * individual names. Every linked company must have separately approved
- * company-owned consent docs; partnerRelations alone CANNOT forge consent.
+ * Existing active count-sharing relations authorize linked-company counts.
+ * Existing individual-name approvals are optional display permissions; their
+ * absence never blocks counts and never turns a saved name into a public name.
  *
  * All Firestore reads are in a read-only server Admin transaction.
  * No client-provided company, role, consent or "proof" fields are accepted.
@@ -46,20 +46,38 @@ function assertOwner({uid,companyId,user,member,company,kind}){
 function relationApproved(row,hub,partner) {
  return isObj(row)&&row.hubCompanyId===hub&&
   row.partnerCompanyId===partner&&row.active===true&&
-  row.countSharingApproved===true&&
-  row.combinedRankingApprovedByHub===true&&
-  row.combinedRankingApprovedByPartner===true&&
-  row.individualNamesApprovedByHub===true&&
-  row.individualNamesApprovedByPartner===true;
+  row.countSharingApproved===true;
 }
-function consentOk(row,{companyId,hub,partner,owner}){
+function publicNameApprovalOk(row,{companyId,hub,partner,owner}){
  return isObj(row)&&row.companyId===companyId&&
   row.hubCompanyId===hub&&row.partnerCompanyId===partner&&
   row.approvedByUid===owner&&row.active===true&&
   row.scope==="combined_rank_only"&&
   Number.isSafeInteger(row.version)&&row.version>=1&&row.version<=999&&
-  row.combinedRankingApproved===true&&
   row.individualNamesApproved===true;
+}
+// Reused by the same-snapshot count reader. Missing/stale name approval is a
+// false display permission, not a count-authorization or transaction failure.
+export function existingPublicNameApprovalPairVerified({
+ relation,hubCompany,partnerCompany,hubCompanyId,partnerCompanyId,
+ hubApproval,partnerApproval
+}={}){
+ if(!id(hubCompanyId)||!id(partnerCompanyId)||hubCompanyId===partnerCompanyId||
+    !relationApproved(relation,hubCompanyId,partnerCompanyId)||
+    relation.individualNamesApprovedByHub!==true||
+    relation.individualNamesApprovedByPartner!==true||
+    !isObj(hubCompany)||!isObj(partnerCompany)||
+    !id(hubCompany.ownerUid)||!id(partnerCompany.ownerUid)||
+    hubCompany.active===false||!kindInternal(hubCompany.companyKind)||
+    partnerCompany.active!==true||partnerCompany.companyKind!=="partner"||
+    partnerCompany.hubCompanyId!==hubCompanyId)return false;
+ return publicNameApprovalOk(hubApproval,{
+  companyId:hubCompanyId,hub:hubCompanyId,partner:partnerCompanyId,
+  owner:hubCompany.ownerUid
+ })&&publicNameApprovalOk(partnerApproval,{
+  companyId:partnerCompanyId,hub:hubCompanyId,partner:partnerCompanyId,
+  owner:partnerCompany.ownerUid
+ });
 }
 /**
  * Wrap a real Firebase Admin Auth instance. Each request checks revoked tokens,
@@ -86,7 +104,8 @@ export function createVerifiedRankTokenReader({auth}={}){
  };
 }
 /**
- * Server-only Auth result -> fresh, reciprocal approvals.
+ * Server-only Auth result -> fresh active count-sharing scope and optional
+ * existing public-name permissions, independently verified by the server.
  * Current phase deliberately authorizes OWNER accounts only. This excludes
  * partner-secondary / shared-code principals until their separate secure
  * approval and role scopes can be implemented, NOT a claim that their
@@ -135,7 +154,7 @@ export function createFreshCombinedRankingContext({db}={}){
    );
    if(!Array.isArray(relationSnap?.docs)||
       relationSnap.docs.length>MAX_RELATIONS)blocked();
-   const found=new Set(),eligible=[];
+   const found=new Set(),eligible=[],relations=new Map();
    for(const snap of relationSnap.docs){
     if(!id(snap.id)||found.has(snap.id))blocked();
     found.add(snap.id);
@@ -144,27 +163,45 @@ export function createFreshCombinedRankingContext({db}={}){
     // leak another company's name/count.
     if(!isObj(row)||row.hubCompanyId!==hubId||
        row.partnerCompanyId!==snap.id)blocked();
-    if(relationApproved(row,hubId,snap.id))eligible.push(snap.id);
+    if(relationApproved(row,hubId,snap.id)){
+     eligible.push(snap.id);relations.set(snap.id,row);
+    }
    }
    if(eligible.length>MAX_APPROVED)blocked();
    if(viewerIsPartner&&!eligible.includes(viewerCompanyId))blocked();
-   const verified=[];
+   const verified=[],nameApprovals=new Map();
    for(const partnerId of eligible){
-    const [partnerSnap,hubConsentSnap,partnerConsentSnap]=await Promise.all([
-     tx.get(company(partnerId)),
-     tx.get(company(hubId).collection("rankingApprovals").doc(partnerId)),
-     tx.get(company(partnerId).collection("rankingApprovals").doc(hubId))
-    ]);
+    const partnerSnap=await tx.get(company(partnerId));
     const partner=read(partnerSnap);
     if(!isObj(partner)||partner.companyKind!=="partner"||
        partner.active!==true||partner.hubCompanyId!==hubId||
-       !id(partner.ownerUid))blocked();
-    if(!consentOk(read(hubConsentSnap),{
-      companyId:hubId,hub:hubId,partner:partnerId,owner:hub.ownerUid
-    })||!consentOk(read(partnerConsentSnap),{
-      companyId:partnerId,hub:hubId,partner:partnerId,owner:partner.ownerUid
-    }))blocked();
+       (partner.ownerUid!=null&&partner.ownerUid!==""&&
+        !id(partner.ownerUid)))blocked();
+    let publicNamesVerified=false;
+    const relation=relations.get(partnerId);
+    if(relation.individualNamesApprovedByHub===true&&
+       relation.individualNamesApprovedByPartner===true&&id(partner.ownerUid)){
+     const [hubApprovalSnap,partnerApprovalSnap]=await Promise.all([
+      tx.get(company(hubId).collection("rankingApprovals").doc(partnerId)),
+      tx.get(company(partnerId).collection("rankingApprovals").doc(hubId))
+     ]);
+     publicNamesVerified=existingPublicNameApprovalPairVerified({
+      relation,hubCompany:hub,partnerCompany:partner,
+      hubCompanyId:hubId,partnerCompanyId:partnerId,
+      hubApproval:read(hubApprovalSnap),partnerApproval:read(partnerApprovalSnap)
+     });
+    }
+    nameApprovals.set(partnerId,publicNamesVerified);
     verified.push(partnerId);
+   }
+   const publicNameCompanyIds=new Set([viewerCompanyId]);
+   // A partner audience must itself have the existing network-name permission
+   // before receiving any other company's approved names. Own-company display
+   // continues under the independently authenticated Owner membership.
+   if(!viewerIsPartner||nameApprovals.get(viewerCompanyId)===true){
+    if(viewerIsPartner)publicNameCompanyIds.add(hubId);
+    for(const partnerId of verified)if(nameApprovals.get(partnerId)===true)
+     publicNameCompanyIds.add(partnerId);
    }
    return Object.freeze({
     serverVerified:true,viewerUid:auth.uid,viewerCompanyId,
@@ -172,7 +209,8 @@ export function createFreshCombinedRankingContext({db}={}){
     hubCompanyId:hubId,approvedCompanyIds:Object.freeze(
      [hubId,...verified.sort()]),
     userActive:true,memberActive:true,companyActive:true,
-    reciprocalOwnersApproved:true,individualNamesApproved:true,
+    activeCountSharingVerified:true,
+    publicNameCompanyIds:Object.freeze([...publicNameCompanyIds].sort()),
     completeSnapshotBudgetApproved:true
    });
   },{readOnly:true});

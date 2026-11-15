@@ -8,6 +8,24 @@ import {spawnSync} from "node:child_process";
 import {createHash} from "node:crypto";
 
 const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+const setupGuide='      <p id="partnerProductsSetupGuide" style="font-size:13px;line-height:1.7;color:var(--sub);">\n'+
+ '        商材ON/OFF・SKU対応は、\n'+
+ '        <a href="./owner-partner-setup.html">協力店・ランキング一括管理</a>で設定できます。\n'+
+ '      </p>\n';
+
+test("the setup link is an additive guide inside the existing Owner panel",()=>{
+ const source=html.replace(/\r\n/g,"\n");
+ assert.equal(source.split(setupGuide).length-1,1,"the exact guide occurs once");
+ const panel=source.match(/<section id="partnerProductsWorkspace"[\s\S]*?<\/section>/)?.[0];
+ assert(panel?.includes(setupGuide),"the link inherits the existing Owner-only panel visibility");
+ assert.equal((panel.match(/href="\.\/owner-partner-setup\.html"/g)||[]).length,1);
+ const original=Buffer.from(source.replace(setupGuide,""));
+ const blob=createHash("sha1").update(Buffer.from("blob "+original.length+"\0"))
+  .update(original).digest("hex");
+ // Exact index from #719 HEAD 771b6e55; this is not a production baseline.
+ assert.equal(blob,"87e4260894e6fdc257f9658decb28b0ef92861cf",
+  "removing only the guide restores every byte of the #719 integration candidate");
+});
 
 test("removing only the product tab restores the exact count-safe integration candidate",()=>{
  let original=stripOwnerMonthlyTeamIntegration(html).replace(/\r\n/g,"\n");
@@ -33,7 +51,7 @@ test("removing only the product tab restores the exact count-safe integration ca
  const blob=createHash("sha1").update(Buffer.from("blob "+bytes.length+"\0")).update(bytes).digest("hex");
  // Freeze the existing #704 companion ON/OFF and amount-free UI changes.
  // #706 count-save regressions run separately; this is no production signoff.
- assert.equal(blob,"c892785947a505e81a2d1a8387ceced01a00aa42",
+ assert.equal(blob,"4089b63a3b8bf8c666712c7715dfc35e6f8af205",
   "the tab must preserve every byte of the companion ON/OFF and amount-free integration candidate");
 });
 

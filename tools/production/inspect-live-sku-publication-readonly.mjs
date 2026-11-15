@@ -26,7 +26,8 @@ function financialFields(v,depth=0){
 }
 export function assessSkuPublication({hubId,ownerUid,relations,visibility,mapping,catalog,approvals=[]}={}){
  if(!id(hubId)||!id(ownerUid)||!Array.isArray(relations)||
-    relations.length>100||!Array.isArray(approvals)||approvals.length!==relations.length)
+    relations.length>100||!Array.isArray(approvals)||
+    (approvals.length!==0&&approvals.length!==relations.length))
   fail("BAD_SCOPE");
  if(new Set(relations.map(r=>r.partnerCompanyId)).size!==relations.length||
     relations.some(r=>!obj(r)||!id(r.partnerCompanyId)||r.partnerCompanyId===hubId||
@@ -35,7 +36,7 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
  const mappedPartnerCount=relations.length;
  // Consent is independent from SKU/catalog publication: never label an
  // already approved relationship as unapproved solely because setup is missing.
- const reciprocal=approvals.every(x=>x&&x.hubApproved===true&&
+ const reciprocal=approvals.length===relations.length&&approvals.every(x=>x&&x.hubApproved===true&&
   x.partnerApproved===true&&x.namesApproved===true);
  if(!visibility||!mapping||!catalog)return Object.freeze({
   publishedCatalogReady:false,mappingsReviewed:false,companyScopedOnOffReady:false,
@@ -163,7 +164,7 @@ export async function inspectSkuPublication(db){
   if(result.mappingsReviewed&&result.enabledCategoriesMappedToAllPartners)mapping++;
   else blockers.add("PARTNER_SKU_MAPPING_INCOMPLETE");
   if(result.reciprocalOwnerRankConsentReady)consent++;
-  else blockers.add("RECIPROCAL_RANK_CONSENT_INCOMPLETE");
+  // Optional public-name evidence is reported, never a prerequisite for counts.
  }
  if(count===0)fail("NO_INTERNAL_COMPANY");
  return Object.freeze({project:PROJECT,mode:"LIVE_READ_ONLY_NO_DEPLOY",

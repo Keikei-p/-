@@ -7,11 +7,18 @@ import {stripOwnerMonthlyTeamIntegration} from './helpers/strip-owner-monthly-te
 
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 test('reversing only monthly additions restores the exact count-safe integrated tab candidate',()=>{
- const original=Buffer.from(stripOwnerMonthlyTeamIntegration(html));
+ const setupGuide='      <p id="partnerProductsSetupGuide" style="font-size:13px;line-height:1.7;color:var(--sub);">\n'+
+  '        商材ON/OFF・SKU対応は、\n'+
+  '        <a href="./owner-partner-setup.html">協力店・ランキング一括管理</a>で設定できます。\n'+
+  '      </p>\n';
+ const source=html.replace(/\r\n/g,'\n');
+ assert.equal(source.split(setupGuide).length-1,1,'reverse only the exact additive setup guide');
+ const original=Buffer.from(stripOwnerMonthlyTeamIntegration(source.replace(setupGuide,'')));
  const hash=createHash('sha1').update(Buffer.from('blob '+original.length+'\0')).update(original).digest('hex');
  // Companion ON/OFF/amount-free UI is part of this frozen #704 candidate.
  // This source assertion conveys no production approval.
- assert.equal(hash,'8b94e9c9a4e29516244458e862b253008d9fd12c');
+ // Frozen after integrating #719's dashboard changes; no release approval.
+ assert.equal(hash,'3031309c3f6def0b6ec13342e5b41c6513b09b30');
 });
 class Element{
  constructor(){this.children=[];this.hidden=false;this.textContent='';}

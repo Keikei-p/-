@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/canonical-hub-owner-package.test.mjs tests/owner-correction-release-inventory.test.mjs tests/integrated-count-release-candidate.test.mjs tests/integrated-count-offline-review-gate.test.mjs
+          node --test tests/canonical-hub-owner-package.test.mjs tests/owner-correction-release-inventory.test.mjs tests/integrated-count-release-candidate.test.mjs tests/integrated-count-offline-review-gate.test.mjs tests/integrated-count-release-bundle.test.mjs
       - name: Verify registered joint ranking HTTP, trusted canonical month sources and owner settings
         shell: bash
         run: |

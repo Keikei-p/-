@@ -8,7 +8,7 @@ import {createFreshCombinedRankingContext,createVerifiedRankTokenReader}
 const PROJECT="demo-nico-partner-ranking";
 const LOCAL=/^(?:127[.]0[.]0[.]1|localhost):[0-9]{2,5}$/;
 const requireAdmin=createRequire(new URL("../functions-partner-workspace/package.json",import.meta.url));
-test("REAL isolated Firestore emulator: independent owner consents are Admin-only, revoked access fails",{
+test("REAL isolated Firestore emulator: optional name approvals stay Admin-only while valid linked counts continue",{
  skip:!process.env.FIRESTORE_EMULATOR_HOST,timeout:120000
 },async()=>{
  if(process.env.FIREBASE_PROJECT_ID!==PROJECT||
@@ -79,6 +79,8 @@ test("REAL isolated Firestore emulator: independent owner consents are Admin-onl
    const ctx=await fresh(principal);
    assert.equal(ctx.hubCompanyId,hub);
    assert.deepEqual(ctx.approvedCompanyIds,[hub,partner]);
+   assert.deepEqual(ctx.publicNameCompanyIds,[hub,partner]);
+   assert.equal(ctx.activeCountSharingVerified,true);
    const browser=env.authenticatedContext(uid,{
     email:uid+"@example.test",email_verified:true}).firestore();
    for(const path of [hubConsent,partnerConsent]){
@@ -91,9 +93,13 @@ test("REAL isolated Firestore emulator: independent owner consents are Admin-onl
     "companies",hub,"rankingApprovals")));
   }
   await db.doc(partnerConsent).update({active:false});
+  const namesRevoked=await fresh({uid:partnerOwner,
+   email:(partnerOwner+"@example.test").toLowerCase(),emailVerified:true});
+  assert.deepEqual(namesRevoked.approvedCompanyIds,[hub,partner]);
+  assert.deepEqual(namesRevoked.publicNameCompanyIds,[partner]);
+  await db.doc("partnerRelations/"+partner).update({countSharingApproved:false});
   await assert.rejects(fresh({uid:partnerOwner,
-   email:partnerOwner+"@example.test",emailVerified:true}),
-   /UNVERIFIED/);
+   email:(partnerOwner+"@example.test").toLowerCase(),emailVerified:true}),/UNVERIFIED/);
   assert.equal((await db.doc(hubConsent).get()).data().active,true);
  }finally{
   await env.cleanup();

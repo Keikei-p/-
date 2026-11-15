@@ -5,7 +5,8 @@
  *
  * The existing index.html writes top-level records:
  * {companyId,uid,date,teamId,memberNameSnapshot,teamNameSnapshot,
- *  results:{[productId]:{count,revenuePerUnit,...}},totalCount,reportStatus}.
+ *  results:{[resultVariantKey]:{productId,cashback,count,...}},totalCount,
+ *  reportStatus}. Legacy direct product IDs and arrays remain supported.
  * Counts use exact IDs; an unknown/duplicate/ambiguous row stops publication.
  * Unlike the browser's local ranking groups, SKU mappings must be separately
  * approved server-side; this adapter deliberately cannot infer them.
@@ -64,11 +65,27 @@ function productCounts(record){
   });
  }
  if(obj(record.results)){
-  return Object.entries(record.results).map(([productId,x])=>{
-   if(!id(productId)||!obj(x)||
-      (x.productId!=null&&x.productId!==productId))stop();
-   return {productId,count:count(x.count)};
-  });
+  const totals=new Map();
+  for(const [storedKey,x] of Object.entries(record.results)){
+   if(!obj(x))stop();
+   let productId=storedKey,variant=false;
+   if(!id(storedKey)||(x.productId!=null&&x.productId!==storedKey)){
+    // The existing writer uses resultVariantKey(productId, cashback). Verify
+    // that exact identity; never guess a SKU by stripping a key suffix.
+    if(!id(x.productId)||!Number.isSafeInteger(x.cashback)||
+       x.cashback<0||Object.is(x.cashback,-0)||
+       storedKey!==`${x.productId}__cb_${x.cashback}`)stop();
+    productId=x.productId;variant=true;
+   }
+   const previous=totals.get(productId);
+   // Two distinct canonical variants are separate saved quantities. A mix
+   // of a legacy row and variants has no proven identity and stays blocked.
+   if(previous&&(!variant||!previous.variant))stop();
+   totals.set(productId,{productId,variant,
+    count:count((previous?.count??0)+count(x.count))});
+  }
+  // No CB value or stored key reaches public count lines or their source IDs.
+  return [...totals.values()].map(({productId,count})=>({productId,count}));
  }
  // Legacy single-product record (unchanged by this reader).
  if(record.results==null&&id(record.productId)){

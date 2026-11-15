@@ -1,13 +1,9 @@
 /**
  * NO DEPLOY — combined mobile Owner setup for existing Firebase login.
- * Server-verified consent decides which controls can be mounted.
+ * Existing server-verified company relations determine which Owner SKU controls mount.
  * All writes are explicit user actions through Owner-only callables.
  * No raw Firestore, finance reads, impersonation or local data persistence.
  */
-import {createRankingOwnerFirebaseBridge}
- from "./owner-ranking-consent-firebase-bridge.mjs";
-import {createOwnerRankingConsentPanel}
- from "./owner-ranking-consent-panel.mjs";
 import {createOwnerProductVisibilityFirebaseBridge}
  from "./owner-product-visibility-firebase-bridge.mjs";
 import {createOwnerProductVisibilityPanel}
@@ -44,32 +40,49 @@ export function mountOwnerPartnerSetup({
   root.appendChild(item);
  };
  const render=async(user,token)=>{
-  const consentBridge=createRankingOwnerFirebaseBridge({
-   auth,functions,httpsCallable,sharedCodeSession:()=>false
-  });
+  // Use the EXISTING count-only hub workspace to discover partner companies.
+  // Neither the client nor a bilateral ranking-consent form selects companies.
+  const workspace=httpsCallable(functions,"getPartnerWorkspace");
   let status;
-  try{status=await consentBridge.loadStatus();}
-  catch{
+  try{
+   const date=new Intl.DateTimeFormat("sv-SE",{
+    timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
+   }).format(new Date());
+   const answer=(await workspace({date})).data;
+   if(!answer||!["hub","owner","leader","member"].includes(answer.role))fail();
+   if(answer.role==="hub"){
+    if(!Array.isArray(answer.registeredCompanies)||
+       answer.registeredCompanies.length>100)fail();
+    const seen=new Set(),partners=[];
+    for(const company of answer.registeredCompanies){
+     if(typeof company.partnerCompanyId!=="string"||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(company.partnerCompanyId)||
+        seen.has(company.partnerCompanyId)||
+        typeof company.name!=="string"||company.name.trim().length<1||
+        company.name.length>80||/[\r\n\t]|(?:売上|単価|キャッシュバック|[¥￥$€])/i.test(company.name)||
+        typeof company.active!=="boolean")fail();
+     seen.add(company.partnerCompanyId);
+     if(company.active)partners.push({
+      partnerCompanyId:company.partnerCompanyId,
+      companyName:company.name.trim()
+     });
+    }
+    status={role:"hub_owner",partners};
+   }else status={role:"partner_user",partners:[]};
+  }catch{
    if(!closed&&generation===token&&auth.currentUser===user)
-    message("公開設定を読み込めません。管理者ログインとサーバー公開状態を確認してください。");
+    message("協力店の連携状況を確認できません。自社Ownerでログインしてください。");
    return false;
   }
   if(closed||generation!==token||auth.currentUser!==user)return false;
   const heading=el(document,"h1","協力店・ランキング一括管理");
-  const intro=el(document,"p","自社と協力店の件数を連携するための設定です。売上・単価・キャッシュバックは協力店に公開しません。");
+  const intro=el(document,"p","自社Ownerが公開ONにした商材の件数を協力店と連携します。追加の双方Owner承認は不要。既存の会社連携・ログイン検証は必須です。金額は表示しません。");
   root.appendChild(heading);root.appendChild(intro);
-  const consentBox=el(document,"section");
-  root.appendChild(consentBox);
-  const consentPanel=createOwnerRankingConsentPanel({
-   document,root:consentBox,
-   loadStatus:()=>consentBridge.loadStatus(),
-   saveConsent:input=>consentBridge.saveConsent(input)
-  });
-  views.push(consentPanel);
-  await consentPanel.refresh();
-  if(closed||generation!==token||auth.currentUser!==user)return false;
-  // A partner Owner can approve their own ranking but never sees hub SKU tools.
-  if(status.role!=="hub_owner")return true;
+  // Partner Owners never receive the hub's SKU/publication settings.
+  if(status.role!=="hub_owner"){
+   message("商材ON/OFFと合同件数の設定は自社Ownerが行います。");
+   return true;
+  }
   const visibilityBridge=createOwnerProductVisibilityFirebaseBridge({
    auth,functions,httpsCallable
   });
@@ -93,7 +106,7 @@ export function mountOwnerPartnerSetup({
   const partnerBox=el(document,"section");
   const mapBox=el(document,"section");
   if(!status.partners.length){
-   message("承認済み協力店がありません。既存の協力店管理から招待・承認してください。");
+   message("件数連携が有効な協力店がありません。自社の協力店管理を確認してください。");
    return true;
   }
   for(const partner of status.partners){

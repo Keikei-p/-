@@ -5208,6 +5208,10 @@ body.product-reordering .product-list {
         自社オーナー専用の商材ON/OFF設定です。設定の権限はサーバーが再確認します。
         過去の協力店件数・実績・売上・履歴を削除・変更する画面ではありません。
       </p>
+      <p id="partnerProductsSetupGuide" style="font-size:13px;line-height:1.7;color:var(--sub);">
+        商材ON/OFF・SKU対応は、
+        <a href="./owner-partner-setup.html">協力店・ランキング一括管理</a>で設定できます。
+      </p>
       <p id="partnerProductsStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--sub);"></p>
       <div id="partnerProductsPanelRoot"></div>
     </section>
@@ -12860,6 +12864,138 @@ function mountPartnerCanonicalNavigation(){
   userBar.after(pInline("partnerInlineWorkspace"));
  return true;
 }
+// Count-only counterpart of the self dashboard's analysis scope/actions.
+// Only the authenticated getPartnerWorkspace snapshot is read; no writes.
+function renderPartnerCountAnalysisDrilldown(snap){
+ const root=pInline("pPartnerAnalysis");root.replaceChildren();
+ if(!snap||!Array.isArray(snap.records)||!Array.isArray(snap.teams)||
+    !Array.isArray(snap.categories)||!Array.isArray(snap.staff))return;
+ const records=snap.records,visible=snap.enabledCategories??snap.categories;
+ if(!Array.isArray(visible)||visible.some(k=>!snap.categories.includes(k))||
+    records.some(r=>!Number.isSafeInteger(r.totalCount)||r.totalCount<0||!r.counts)){
+  partnerMainAppendRow(root,"件数を検証できません","再取得してください");return;
+ }
+ const teams=new Map(snap.teams.map(t=>[t.id,t]));
+ const staff=new Map(snap.staff.map(p=>[p.id,p]));
+ const privateNames=new Map((snap.privateProducts||[]).map(p=>[p.id,p.name]));
+ const unverified=records.filter(r=>!teams.has(r.teamIdSnapshot));
+ const scopes=[{id:"all",name:snap.companyName||"協力店",icon:"🏢",records}];
+ for(const team of snap.teams)scopes.push({id:team.id,
+  name:team.name+(team.active===false?"（過去の班）":""),icon:"👥",
+  records:records.filter(r=>r.teamIdSnapshot===team.id)});
+ if(unverified.length)scopes.push({id:"unknown",name:"当時の班未確認",icon:"📋",records:unverified});
+ const path=document.createElement("div");path.className="analysis-current-path";
+ const choices=document.createElement("div");choices.className="analysis-scope-grid";
+ const actions=document.createElement("div");actions.className="analysis-action-grid";
+ const result=document.createElement("div");result.className="analysis-card-grid";
+ root.append(path,choices,actions,result);
+ function card(cls,icon,title,sub){
+  const button=document.createElement("button");button.type="button";
+  button.className=cls;button.setAttribute("aria-pressed","false");
+  for(const [name,value] of [["analysis-nav-icon",icon],["analysis-nav-title",title],["analysis-nav-count",sub]]){
+   const span=document.createElement("span");span.className=name;span.textContent=value;button.append(span);
+  }
+  return button;
+ }
+ function productRows(items){
+  result.replaceChildren();
+  const counts=new Map(visible.map(k=>[k,0]));
+  for(const r of items){
+   for(const key of visible){
+    const n=r.counts?.[key]??0;
+    if(!Number.isSafeInteger(n)||n<0)throw Error("invalid saved product counts");
+    counts.set(key,counts.get(key)+n);
+   }
+   for(const [id,n] of Object.entries(r.privateCounts||{})){
+    if(!Number.isSafeInteger(n)||n<0)throw Error("invalid partner product counts");
+    const name=(privateNames.get(id)||"協力店専用商材")+"（社内のみ）";
+    counts.set(name,(counts.get(name)||0)+n);
+   }
+  }
+  for(const [name,n] of [...counts].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"))){
+   const item=document.createElement("div");item.className="analysis-product-card";
+   const label=document.createElement("span");label.className="analysis-nav-title";label.textContent=name;
+   const value=document.createElement("strong");value.className="analysis-nav-count";value.textContent=n+"件";
+   item.append(label,value);result.append(item);
+  }
+ }
+ function memberRows(scope){
+  result.replaceChildren();
+  const people=new Map();
+  for(const r of scope.records){
+   const person=people.get(r.staffId)||{id:r.staffId,name:staff.get(r.staffId)?.name||"当時の担当者未確認",count:0,records:[]};
+   person.count+=r.totalCount;person.records.push(r);people.set(r.staffId,person);
+  }
+  // Never infer a report from today's roster; preserve "未報告" vs 0.
+  if(["owner","leader"].includes(snap.role))for(const person of snap.staff){
+   if(person.active!==true||people.has(person.id)||
+      (scope.id!=="all"&&person.teamId!==scope.id))continue;
+   people.set(person.id,{id:person.id,name:person.name,reported:false,count:0,records:[]});
+  }
+  for(const person of [...people.values()].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"))){
+   const button=card("analysis-member-card","👤",person.name,
+    person.reported===false?"未報告":person.count+"件");
+   if(person.reported===false)button.disabled=true;
+   else button.onclick=()=>{path.textContent=scope.name+" → "+person.name+" → 商材別";productRows(person.records);};
+   result.append(button);
+  }
+  if(!result.children.length)partnerMainAppendRow(result,"報告はありません","未報告は0件ではありません");
+ }
+ const scopeButtons=[];
+ for(const scope of scopes){
+  const count=scope.records.reduce((n,r)=>n+r.totalCount,0);
+  const button=card("analysis-scope-card",scope.icon,scope.name,
+   scope.records.length?count+"件":"未報告");
+  button.onclick=()=>{
+   for(const b of scopeButtons)b.setAttribute("aria-pressed",String(b===button));
+   path.textContent=scope.name+" → 商材別または担当者別を選択";
+   actions.replaceChildren();result.replaceChildren();
+   const prod=card("analysis-action-button","📦","商材別","件数内訳");
+   const people=card("analysis-action-button","👤","担当者別","個人件数");
+   prod.onclick=()=>{path.textContent=scope.name+" → 商材別";productRows(scope.records);};
+   people.onclick=()=>{path.textContent=scope.name+" → 担当者別";memberRows(scope);};
+   actions.append(prod,people);
+  };
+  scopeButtons.push(button);choices.append(button);
+ }
+ if(scopeButtons.length)scopeButtons[0].onclick();
+}
+// Selected-day count-only chart with the original dashboard's display controls.
+let partnerCountChartMode="team";
+function renderPartnerCountChart(byTeam,byProduct,teamById,date){
+ const chart=pInline("pPartnerChart");chart.replaceChildren();
+ const toolbar=document.createElement("div");toolbar.className="revenue-chart-toolbar";
+ toolbar.setAttribute("aria-label","件数グラフの表示切替");
+ const body=document.createElement("div");body.className="partner-count-chart-body";
+ for(const [value,label] of [["team","班別件数"],["product","商材別件数"]]){
+  const button=document.createElement("button");button.type="button";
+  button.className="revenue-chart-mode";button.textContent=label;
+  button.setAttribute("aria-pressed",String(partnerCountChartMode===value));
+  button.onclick=()=>{partnerCountChartMode=value;
+   renderPartnerCountChart(byTeam,byProduct,teamById,date);};
+  toolbar.append(button);
+ }
+ const caption=document.createElement("p");caption.className="p-inline-muted";
+ caption.textContent="選択日 "+date+"｜保存済み件数だけを表示";
+ chart.append(toolbar,caption,body);
+ const data=partnerCountChartMode==="team"?
+  [...byTeam].map(([id,count])=>({name:teamById.get(id)?.name||"当時の班未確認",count})):
+  [...byProduct].map(([name,count])=>({name,count}));
+ if(data.some(x=>!Number.isSafeInteger(x.count)||x.count<0))throw Error("invalid_chart_count");
+ data.sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ const max=Math.max(1,...data.map(x=>x.count));
+ for(const item of data){
+  const row=document.createElement("div");row.className="p-inline-row";
+  const label=document.createElement("strong");label.textContent=item.name+"｜"+item.count+"件";
+  const rail=document.createElement("div");rail.className="partner-count-chart-rail";
+  rail.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
+  const bar=document.createElement("div");bar.className="partner-count-chart-bar";
+  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+
+   Math.max(0,item.count/max*100)+"%";
+  rail.append(bar);row.append(label,rail);body.append(row);
+ }
+ if(!data.length)partnerMainAppendRow(body,"この日の報告はありません","未報告を0件と判定しません");
+}
 function renderPartnerCountOnlyExtras(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
@@ -12875,26 +13011,11 @@ function renderPartnerCountOnlyExtras(){
   const id=r.teamIdSnapshot||"unverified";
   byTeam.set(id,(byTeam.get(id)||0)+r.totalCount);
  }
- const analysis=pInline("pPartnerAnalysis");analysis.replaceChildren();
- partnerMainAppendRow(analysis,snap.companyName+"｜"+snap.date,count+"件");
- for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1]))
-  partnerMainAppendRow(analysis,teamById.get(id)?.name||"当時の班未確認",n+"件");
- const chart=pInline("pPartnerChart");chart.replaceChildren();
- const max=Math.max(1,...byTeam.values());
- for(const [id,n] of [...byTeam].sort((a,b)=>b[1]-a[1])){
-  const wrapper=document.createElement("div");wrapper.className="p-inline-row";
-  const name=document.createElement("strong");
-  name.textContent=(teamById.get(id)?.name||"当時の班未確認")+"｜"+n+"件";
-  const track=document.createElement("div");
-  track.style.cssText="height:12px;border-radius:8px;background:var(--card-soft);margin-top:8px;overflow:hidden";
-  const bar=document.createElement("div");
-  bar.style.cssText="height:100%;border-radius:8px;background:var(--primary);width:"+(n/max*100)+"%";
-  track.append(bar);wrapper.append(name,track);chart.append(wrapper);
- }
- if(!byTeam.size)partnerMainAppendRow(chart,"まだ実績がありません","選択日を確認してください");
+ renderPartnerCountAnalysisDrilldown(snap);
  const byProduct=new Map(categories.map(key=>[key,0]));
  for(const item of items)for(const key of categories)
   byProduct.set(key,byProduct.get(key)+(item.counts?.[key]||0));
+ renderPartnerCountChart(byTeam,byProduct,teamById,snap.date);
  const products=pInline("pPartnerProductSummary");products.replaceChildren();
  for(const [key,n] of [...byProduct].sort((a,b)=>b[1]-a[1]))
   partnerMainAppendRow(products,key,n+"件");
@@ -13132,21 +13253,41 @@ function verifiedDirectDayCounts(date){
   peopleVerified:unverifiedPeople===0,unverifiedPersonRecords:unverifiedPeople,
   products:[...productTotals].map(([name,count])=>({name,count}))};
 }
+// Use the self dashboard's existing ranking row classes, never its finance
+// handlers or raw records. A count-only row cannot carry a money field.
+function appendVerifiedCountRankRow(container,{name,count,rank}){
+ if(typeof name!=="string"||!name.trim()||
+    !Number.isSafeInteger(count)||count<0||
+    (rank!==null&&(!Number.isSafeInteger(rank)||rank<1)))
+  throw Error("verified_count_rank_invalid");
+ const row=document.createElement("div");row.className="ranking-row";
+ const left=document.createElement("div");left.className="ranking-left";
+ const number=document.createElement("span");
+ number.className="ranking-number"+(rank!==null&&rank<=3?" top"+rank:"");
+ number.textContent=rank===null?"—":String(rank);
+ const label=document.createElement("span");label.className="ranking-name";
+ label.textContent=name;left.append(number,label);
+ const value=document.createElement("div");value.className="ranking-value";
+ const quantity=document.createElement("strong");quantity.className="ranking-count";
+ quantity.textContent=count+"件";value.append(quantity);
+ row.append(left,value);container.append(row);
+}
 function appendSharedRankingRows(container,heading,entries,complete){
  const section=document.createElement("section");section.className="p-inline-card";
  const h=document.createElement("h4");h.textContent=heading;section.append(h);
+ const grid=document.createElement("div");grid.className="ranking-grid";
+ grid.dataset.columns="1";
  const sorted=[...entries].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
- if(!sorted.length)partnerMainAppendRow(section,"表示できる実績がありません","未報告を0件とは扱いません");
+ if(!sorted.length)partnerMainAppendRow(grid,"表示できる実績がありません","未報告を0件とは扱いません");
  let previous=null,rank=0;
  for(const [i,row] of sorted.entries()){
   if(!Number.isSafeInteger(row.count)||row.count<0||typeof row.name!=="string")
    throw Error("shared_ranking_entry_invalid");
   if(previous!==row.count)rank=i+1;
-  const prefix=complete?(rank===1&&row.count>0?"🏆 ":"")+rank+"位 ":"";
-  partnerMainAppendRow(section,prefix+row.name,row.count+"件");
+  appendVerifiedCountRankRow(grid,{name:row.name,count:row.count,rank:complete?rank:null});
   previous=row.count;
  }
- container.append(section);
+ section.append(grid);container.append(section);
 }
 // Same company -> team -> person -> product tree for BOTH authenticated roles.
 // Common count-only presentation for both partner and HQ partner-company
@@ -13400,8 +13541,9 @@ async function loadSharedDailyStandings(where,force=false){
      " "+(partnerSum+(internal?.totalCount||0))+"件｜同率順位は同順位":
    "未報告・未照合の実績があります。表示は途中経過で、正式順位は確定していません。";
   if(detail){
-   if(partner)renderPartnerFlatTeamDetails(content,response);
-   else renderSharedCountTeamDetails(content,response);
+   // Same company -> team -> person -> product hierarchy in both apps.
+   // The server has already authenticated and limited this count-only data.
+   renderSharedCountTeamDetails(content,response);
    return;
   }
   // Partners and HQ use the very same approved counts, people and products.
@@ -13483,10 +13625,11 @@ function renderPartnerRankingOnlyPanel(){
   return;
  }
  rows.sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name,"ja"));
+ rankings.classList.add("ranking-grid");rankings.dataset.columns="1";
  let rank=0,previous=null;
  for(const [i,row] of rows.entries()){
   if(previous!==row.n)rank=i+1;
-  partnerMainAppendRow(rankings,rank+"位 "+row.name,row.n+"件");
+  appendVerifiedCountRankRow(rankings,{name:row.name,count:row.n,rank});
   previous=row.n;
  }
  if(!rows.length)partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
@@ -13843,6 +13986,12 @@ function partnerInlineRender(){
  renderPartnerRankingOnlyPanel();
  const details=pInline("pInlineTeamDetails");details.replaceChildren();
  details.className="p-inline-list partner-count-team-grid";
+ // Mirror the self dashboard's company heading and team-card grouping.
+ const companySection=document.createElement("section");
+ companySection.className="p-inline-company-teams partner-count-team-grid";
+ const companyHeading=document.createElement("h4");
+ companyHeading.textContent="🤝 "+snap.companyName+"｜班別件数";
+ companySection.append(companyHeading);details.append(companySection);
  for(const team of allTeams){
   // Always attribute past entries to the immutable saved team ID, never the
   // member's current team. Deactivated members' saved counts are retained.
@@ -13872,7 +14021,7 @@ function partnerInlineRender(){
   const card=renderPartnerCountTeamCard(
    team.name+(team.active?"":"（過去の班）")+(hasReports?"":"｜未報告"),
    total,productTotals,{NURO:cb},memberRows,visibleKeys,{verified:true});
-  details.append(card);
+  companySection.append(card);
  }
  const unknown=snap.records.filter(e=>!allTeams.some(t=>t.id===e.teamIdSnapshot));
  if(unknown.length){
@@ -13880,7 +14029,7 @@ function partnerInlineRender(){
   partnerMainAppendRow(details,"過去の班が未確認",total+"件（"+unknown.length+"人の報告）");
  }
  if(!allTeams.length)partnerMainAppendRow(details,"班がまだありません","班を追加してください");
- partnerCompactWireTeamSelection(details);
+ partnerCompactWireTeamSelection(companySection);
  const daily=pInline("pInlineDailySummary");daily.replaceChildren();
  partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
   snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");

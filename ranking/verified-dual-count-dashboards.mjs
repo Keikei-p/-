@@ -58,7 +58,7 @@ const ordered=(rows,value)=>[...rows].sort((a,b)=>value(b)-value(a)||
 function ownerContext(ctx,hub,companyIds) {
  if(!ctx||ctx.serverVerified!==true||ctx.userActive!==true||
     ctx.memberActive!==true||ctx.companyActive!==true||
-    ctx.reciprocalOwnersApproved!==true||
+    (ctx.activeCountSharingVerified!==true&&ctx.reciprocalOwnersApproved!==true)||
     ctx.completeSnapshotBudgetApproved!==true||
     !id(ctx.viewerUid)||!id(ctx.viewerCompanyId)||!id(ctx.hubCompanyId)||
     ctx.hubCompanyId!==hub||!["hub_owner","partner_owner"].includes(ctx.role)||
@@ -71,9 +71,11 @@ function ownerContext(ctx,hub,companyIds) {
     new Set(ctx.approvedCompanyIds).size!==companyIds.length||
     companyIds.some(x=>!ctx.approvedCompanyIds.includes(x))||
     !ctx.approvedCompanyIds.includes(ctx.viewerCompanyId)||
-    ctx.individualNamesApproved!==true)stop();
+    (ctx.publicNameCompanyIds!==undefined&&(!Array.isArray(ctx.publicNameCompanyIds)||
+     new Set(ctx.publicNameCompanyIds).size!==ctx.publicNameCompanyIds.length||
+     ctx.publicNameCompanyIds.some(cid=>!id(cid)||!companyIds.includes(cid)))))stop();
 }
-function checkSources(sources,companyIds,hub){
+function checkSources(sources,companyIds,hub,context){
  if(!Array.isArray(sources)||sources.length!==companyIds.length)stop();
  const seen=new Set(),recordKeys=new Set(),lineKeys=new Set();
  let readTime=null;
@@ -94,13 +96,22 @@ function checkSources(sources,companyIds,hub){
      !s.completeWindows||s.completeWindows.current!==true||
      typeof s.completeWindows.previous!=="boolean"||
      !Array.isArray(s.roster)||s.roster.length>10000||
-     Object.keys(s).sort().join("|")!==[
+     (s.publicNamesVerified!==undefined&&typeof s.publicNamesVerified!=="boolean")||
+     Object.keys(s).filter(k=>k!=="publicNamesVerified").sort().join("|")!==[
        "companyId","companyLabel","kind","consentVerified","isComplete",
        "readTime","teams","records","lines","products","completeWindows","roster"
      ].sort().join("|"))stop();
   if(readTime!==null&&readTime!==s.readTime)stop();
   readTime=s.readTime;seen.add(s.companyId);
   const company=label(s.companyLabel);names.set(s.companyId,company);
+  // Count-sharing authorizes totals; a missing public-name approval never
+  // grants permission to reveal another company's personal names.
+  const viewerNamesVerified=context.viewerCompanyId===hub||
+   sources.some(v=>v.companyId===context.viewerCompanyId&&v.publicNamesVerified===true);
+  const namesAllowed=s.companyId===context.viewerCompanyId||context.individualNamesApproved===true||
+   (viewerNamesVerified&&context.publicNameCompanyIds?.includes(s.companyId)&&
+    (s.companyId===hub||s.publicNamesVerified===true));
+  const memberName=raw=>{const checked=label(raw);return namesAllowed?checked:"担当者（名称非公開）";};
   coverage.set(s.companyId,{current:true,previous:s.completeWindows.previous});
   assertPublicSchema("publicRecords",s.records);
   assertPublicSchema("publicRecordLines",s.lines);
@@ -128,7 +139,7 @@ function checkSources(sources,companyIds,hub){
    teamMetadata.get(teamKey(s.companyId,p.teamId)).memberCount++;
    roster.set(key,{id:key,companyId:s.companyId,companyName:company,
     uid:p.uid,teamId:p.teamId,teamName:teamNames.get(p.teamId),
-    name:label(p.name)});
+    name:memberName(p.name)});
   }
   const headers=new Map(),totals=new Map();
   for(const r of s.records){
@@ -142,7 +153,7 @@ function checkSources(sources,companyIds,hub){
    if(!roster.has(memberKey)){
     roster.set(memberKey,{id:memberKey,companyId:s.companyId,companyName:company,
      uid:r.uid,teamId:r.teamId,teamName:teamNames.get(r.teamId),
-     name:label(r.memberNameSnapshot||"担当者")});
+     name:memberName(r.memberNameSnapshot||"担当者")});
    }
    headers.set(r.sourceId,r);totals.set(r.sourceId,0);
   }
@@ -234,7 +245,7 @@ export function buildVerifiedCountDashboard({
  if(!period||Object.keys(period).sort().join("|")!==
     ["kind","day","asOf"].sort().join("|"))stop();
  const range=windowFor(period);
- const parsed=checkSources(sources,approvedCompanyIds,hubCompanyId);
+ const parsed=checkSources(sources,approvedCompanyIds,hubCompanyId,context);
  const rows=[...parsed.rows,...safeUnassigned(unassigned,parsed.sku,parsed.rows)];
  const map=mappings(productGroups,parsed.sku),goals=goalIndex(personGoals,parsed.roster);
  if(!filters||typeof filters!=="object"||Array.isArray(filters)||

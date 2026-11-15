@@ -16,16 +16,17 @@ export const TARGETS=Object.freeze([
  'functions:partner-workspace:submitPartnerWorkspaceCounts',
  'functions:hub-owner-correction-v3:listHubPartnerCounts',
  'functions:hub-owner-correction-v3:correctHubPartnerCounts',
- 'functions:ranking-owner-approvals:getVerifiedJointCountRanking'
+ 'functions:ranking-owner-approvals:getVerifiedJointCountRanking',
+ 'functions:ranking-owner-approvals:setOwnerProductVisibility'
 ]);
 export const DORMANT_SETTINGS=Object.freeze(['getOwnerProductVisibility',
- 'setOwnerProductVisibility','getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping',
+ 'getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping',
  'getRankingOwnerConsentStatus','setRankingOwnerConsent']);
 const HOSTING='https://firebasehosting.googleapis.com/v1beta1/';
 const FUNCTIONS='https://cloudfunctions.googleapis.com/v2/projects/'+PROJECT+
  '/locations/asia-northeast1/functions?pageSize=1000';
 const PUBLIC='https://'+SITE+'.web.app';
-const ROOTS=['index.html','partner-workspace.html'];
+const ROOTS=['index.html','partner-workspace.html','owner-partner-setup.html'];
 const HEX=/^[0-9a-f]{64}$/;
 const stop=code=>{throw Error('STOP_INTEGRATED_COUNT_VERIFY_'+code)};
 export const sha256=x=>createHash('sha256').update(x).digest('hex');
@@ -197,9 +198,9 @@ export async function verifyLiveMetadata(read,manifest){
  const states=names.map(name=>{
   const fn=all.functions.find(x=>x.name.endsWith('/'+name));
   return {name,present:!!fn,active:fn?.state==='ACTIVE',
-   codebaseVerified:fn?.labels?.['firebase-functions-codebase']===(name==='getVerifiedJointCountRanking'||
-    DORMANT_SETTINGS.includes(name)?'ranking-owner-approvals':
-     ['listHubPartnerCounts','correctHubPartnerCounts'].includes(name)?'hub-owner-correction-v3':'partner-workspace')};
+   codebaseVerified:fn?.labels?.['firebase-functions-codebase']===(
+    TARGETS.find(target=>target.split(':')[2]===name)?.split(':')[1]||
+    (DORMANT_SETTINGS.includes(name)?'ranking-owner-approvals':null))};
  });
  return {hostingMetadataVerified:true,existingFunctionIdentities:identities.size,
   functions:states,metadataOnlyNeverUserProof:true};

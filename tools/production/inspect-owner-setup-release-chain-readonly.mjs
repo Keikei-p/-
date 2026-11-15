@@ -9,6 +9,7 @@ import {createRequire} from "node:module";
 import {readFileSync} from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
+import {execFileSync} from "node:child_process";
 import {NEW,EXPECTED_FLAGS,PROJECT,REGION}
  from "./owner-setup-six-release-scope.mjs";
 import {SOURCES,uploadSha,blobSha}
@@ -21,6 +22,22 @@ const ROOT="projects/"+PROJECT+"/locations/"+REGION+"/functions/";
 const HOSTING_VERSION=/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/;
 const isObj=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
 const keys=x=>Object.keys(x);
+export function readPublishedOwnerSetupSources(){
+ const sourceRoot=path.resolve(fileURLToPath(new URL("../..",import.meta.url)));
+ const sources={};
+ for(const [file,sha] of Object.entries(SOURCES)){
+  let data;
+  try{
+   data=execFileSync("git",["cat-file","blob",sha],{
+    cwd:sourceRoot,encoding:"utf8",maxBuffer:2*1024*1024,
+    stdio:["ignore","pipe","pipe"]
+   });
+  }catch{STOP("PUBLISHED_SOURCE_HISTORY_UNAVAILABLE");}
+  if(blobSha(data)!==sha)STOP("PUBLISHED_SOURCE_HISTORY_CHANGED");
+  sources[file]=data;
+ }
+ return Object.freeze(sources);
+}
 export function classifyFunctions(rows){
  if(!Array.isArray(rows)||rows.length>1000)STOP("FUNCTION_INVENTORY_INCOMPLETE");
  const relevant=new Map(),seen=new Set();
@@ -103,6 +120,8 @@ export function classifyHosting(releases,version,files,sources,financeSource=nul
  const financeExact=financeInspected&&financeHash!==undefined&&
   financeHash===uploadSha(financeSource);
  return Object.freeze({
+  ownerSetupSourceBasis:"HISTORICAL_PINNED_PUBLISHED_SOURCES",
+  currentCandidateSourceVerified:false,
   financeBoundaryDiagnosticInspected:financeInspected,
   financeBoundaryDiagnosticPresent:financeHash!==undefined,
   financeBoundaryDiagnosticExactMatch:financeExact,
@@ -132,6 +151,7 @@ export function readinessBoard({functions,hosting,publication}={}){
  }
  for(const b of publication.blockingReasons){
   if(!/^[A-Z0-9_]{3,90}$/.test(b))STOP("BLOCKER_UNTRUSTED");
+  if(b==="RECIPROCAL_RANK_CONSENT_INCOMPLETE")continue;
   blockers.push(b);
  }
  blockers.push("REAL_PARTNER_COUNT_SAVE_NOT_PROVED");
@@ -141,9 +161,8 @@ export function readinessBoard({functions,hosting,publication}={}){
    !hosting.ownerSetupPageReady?
    (hosting.ownerSetupAssetsAllAbsent?"DISPATCH_OWNER_ELEVEN_MANUAL":"STOP_RECONCILE_HOSTING"):
    !publication.ownerPublicationCatalogReady||
-     !publication.allEnabledPartnerSkuMapped||
-     !publication.reciprocalOwnerRankConsentReady?
-     "OWNER_AND_PARTNER_CONFIGURE_EXPLICIT_CONSENT":
+     !publication.allEnabledPartnerSkuMapped?
+     "OWNER_CONFIGURE_PUBLICATION_AND_SKU_BINDINGS":
      "REAL_ACCOUNT_FINANCE_DENY_AND_COUNT_SAVE_TEST";
  return Object.freeze({
   project:PROJECT,mode:"LIVE_READ_ONLY_NO_DEPLOY",
@@ -154,6 +173,8 @@ export function readinessBoard({functions,hosting,publication}={}){
   ownerSetupHostingAssetsPresent:hosting.ownerSetupHostingAssetsPresent,
   ownerSetupHostingAssetsExactMatch:hosting.ownerSetupHostingAssetsExactMatch,
   ownerSetupPageReady:hosting.ownerSetupPageReady,
+  ownerSetupSourceBasis:hosting.ownerSetupSourceBasis,
+  currentCandidateSourceVerified:false,
   financeBoundaryDiagnosticInspected:hosting.financeBoundaryDiagnosticInspected===true,
   financeBoundaryDiagnosticPresent:hosting.financeBoundaryDiagnosticPresent===true,
   financeBoundaryDiagnosticExactMatch:hosting.financeBoundaryDiagnosticExactMatch===true,
@@ -224,8 +245,10 @@ async function main(){
   if(typeof next!=="string"||next.length>3000)STOP("FILE_PAGE_TOKEN");
  }while(next);
  const sourceRoot=path.resolve(fileURLToPath(new URL("../..",import.meta.url)));
- const sources=Object.fromEntries(keys(SOURCES).map(file=>[
-  file,readFileSync(path.join(sourceRoot,file),"utf8")]));
+ // These immutable blobs describe the previously published 11-asset setup,
+ // not the current integration's changed HTML/mount. Candidate source checks
+ // remain the separate reviewed-manifest verifier's responsibility.
+ const sources=readPublishedOwnerSetupSources();
  const h=classifyHosting(release,version,files,sources,
   readFileSync(path.join(sourceRoot,"finance-boundary-check.html"),"utf8"));
  const published=await inspectSkuPublication(getFirestore());

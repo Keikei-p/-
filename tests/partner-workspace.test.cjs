@@ -1221,20 +1221,20 @@ test("new approved day week month ranking API excludes finance and OFF counts, w
   ownerUid:"h",version:1,products:[
    {id:"nuro",companyId:"hub",name:"NURO光",active:true},
    {id:"ym",companyId:"hub",name:"YM純新規",active:true}]});
- Object.assign(db.store.get("partnerRelations/partner"),{
-  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
-  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true
- });
- for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
-  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
-   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
-   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
-   combinedRankingApproved:true,individualNamesApproved:true
-  });
+ // No extra ranking consent documents. Count sharing is authorized by
+ // the existing active relation and hub Owner published-SKU settings.
  const team=(await api.manage(req("p",{action:"addTeam",name:"集計班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId:team}))).staffId;
  await api.submit(req("p",{date,staffId:staff,counts:{...zero(),NURO:3,"YM純新規":7},expectedVersion:0}));
  const before=clone([...db.store]);
+ // Hub-created partner companies are valid count sources before the
+ // partner Owner is claimed; the caller's real role is still server-checked.
+ const partnerCompany=db.store.get("companies/partner");
+ const previousOwner=partnerCompany.ownerUid;
+ delete partnerCompany.ownerUid;
+ const hubWithoutPartnerOwner=await api.view(req("h",{date,sharedCountRankings:true,rankingPeriod:"day"}));
+ assert.equal(hubWithoutPartnerOwner.totalCount,3);
+ partnerCompany.ownerUid=previousOwner;
  const owner=await api.view(req("h",{date,sharedCountRankings:true,rankingPeriod:"month"}));
  const partner=await api.view(req("p",{date,sharedCountRankings:true,rankingPeriod:"day"}));
  const weekly=await api.view(req("p",{date,sharedCountRankings:true,rankingPeriod:"week"}));
@@ -1251,6 +1251,9 @@ test("new approved day week month ranking API excludes finance and OFF counts, w
   assert.doesNotMatch(JSON.stringify(result),/YM純新規|unitPrice|revenue|70000|updatedByUid|privateCounts|cbCounts|memberUid/);
  }
  assert.equal(owner.period,"month");
+ assert.equal(owner.people[0].name,"担当者（名称非公開）",
+  "missing extra consent must keep counts available without exposing foreign names");
+ assert.equal(partner.people[0].name,"検証担当","own-company names keep their existing scope");
  assert.equal(owner.start,"2026-10-01");
  assert.equal(owner.end,date);
  assert.equal(partner.period,"day");
@@ -1313,9 +1316,9 @@ test("new approved day week month ranking API excludes finance and OFF counts, w
  assert.equal(off.companies.length,0,"OFF must not masquerade as saved 0");
  assert.equal(off.products.length,0,"OFF SKUs cannot appear in partner rankings");
  assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff).counts.NURO,3);
- // Revoking either owner's name consent must close the new ranking path,
- // without modifying a single saved report.
- db.store.get("partnerRelations/partner").individualNamesApprovedByPartner=false;
+ // Revoking the actual server-approved count-sharing relation must close
+ // the new ranking without modifying a single saved report.
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
  await assert.rejects(api.view(req("h",{date,sharedCountRankings:true})),{
   code:"failed-precondition"
  });
@@ -1335,16 +1338,8 @@ test("approved weekly ranking crosses Sep/Oct without leaking or attributing com
   ownerUid:"h",version:1,products:[{
    id:"nuro",companyId:"hub",name:"NURO光",active:true
   }]});
- Object.assign(db.store.get("partnerRelations/partner"),{
-  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
-  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true
- });
- for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
-  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
-   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
-   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
-   combinedRankingApproved:true,individualNamesApproved:true
-  });
+ // No extra ranking consent documents. Count sharing is authorized by
+ // the existing active relation and hub Owner published-SKU settings.
  const team=(await api.manage(req("p",{action:"addTeam",name:"週の担当班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"週の担当",
   teamId:team}))).staffId;
@@ -1721,15 +1716,8 @@ test("Owner correction updates exact approved joint rankings in both apps from s
  db.seed("companies/hub/rankingSkuMappings/shared",{
   hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
   bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}]});
- Object.assign(db.store.get("partnerRelations/partner"),{
-  combinedRankingApprovedByHub:true,combinedRankingApprovedByPartner:true,
-  individualNamesApprovedByHub:true,individualNamesApprovedByPartner:true});
- for(const [companyId,otherId,uid] of [["hub","partner","h"],["partner","hub","p"]])
-  db.seed("companies/"+companyId+"/rankingApprovals/"+otherId,{
-   companyId,hubCompanyId:"hub",partnerCompanyId:"partner",
-   approvedByUid:uid,active:true,scope:"combined_rank_only",version:1,
-   combinedRankingApproved:true,individualNamesApproved:true
-  });
+ // No extra ranking consent documents. Count sharing is authorized by
+ // the existing active relation and hub Owner published-SKU settings.
  const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
  const staff=(await api.manage(req("p",{action:"addManaged",name:"実担当",teamId:team}))).staffId;
  await api.submit(req("p",{date,staffId:staff,expectedVersion:0,

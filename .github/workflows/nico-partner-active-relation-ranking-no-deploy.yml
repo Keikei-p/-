@@ -1,0 +1,52 @@
+name: NICO active partner relation rankings no extra consent (NO DEPLOY)
+on:
+  pull_request:
+    branches: [integration/nico-sales-count-publication-rank-ready-20261113]
+    paths:
+      - functions-partner-workspace/service.cjs
+      - tests/partner-workspace.test.cjs
+      - owner-partner-setup.html
+      - ranking/owner-partner-setup-mount.mjs
+      - tests/owner-partner-setup-mount.test.mjs
+      - .github/workflows/nico-partner-active-relation-ranking-no-deploy.yml
+permissions:
+  contents: read
+jobs:
+  verified-count-rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source and safe count-only existing API behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node --check functions-partner-workspace/service.cjs
+          node --check ranking/owner-partner-setup-mount.mjs
+          node --test tests/partner-workspace.test.cjs tests/partner-published-count-browser-contract.test.cjs tests/partner-money-free-workspace.test.cjs tests/owner-partner-setup-mount.test.mjs
+          echo PARTNER_EXISTING_LEDGER_AND_RELATION_RANKING_PASS
+      - name: Fetch exact historical sales-count release fixtures (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin 1f75da8c9fdc7a997089d962b7fa12f974fc70c4 455a5bb852e87ecae39b37d39c981043fdd6845f
+          git cat-file -e "1f75da8c9fdc7a997089d962b7fa12f974fc70c4:index.html"
+          test "$(git cat-file -t 6478197c52cd3a9fd6570e7214ed744e3ac93576)" = blob
+      - name: Preserve production count save hotfix, login and financial ACL
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/count-pricing-update-hotfix.test.cjs \
+            tests/count-pricing-live-package.test.mjs \
+            tests/count-pricing-release.test.mjs \
+            tests/sales-regressions.cjs \
+            tests/legacy-finance-entry-guard.test.mjs \
+            tests/partner-one-login-same-app.test.cjs
+          echo EXISTING_SALES_COUNT_SAVE_AND_FINANCE_REGRESSION_PASS
+

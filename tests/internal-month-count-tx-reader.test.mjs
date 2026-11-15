@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import vm from "node:vm";
 import {buildInternalMonthCountSource,createInternalMonthTransactionReader}
  from "../ranking/internal-month-count-tx-reader.mjs";
 import {buildVerifiedCountDashboard}
@@ -29,6 +31,123 @@ const context={serverVerified:true,viewerUid:"owner",viewerCompanyId:hub,
  userActive:true,memberActive:true,companyActive:true,
  reciprocalOwnersApproved:true,completeSnapshotBudgetApproved:true,
  individualNamesApproved:true};
+
+// Exercise the actual existing form producer, including its CB variant keys.
+function currentFormResults(rows){
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8")
+  .replace(/\r\n/g,"\n");
+ const source=name=>{
+  const start=html.indexOf(`function ${name}(`),end=html.indexOf("\n}",start);
+  assert(start>=0&&end>start,"existing form producer is present");
+  return html.slice(start,end+2);
+ };
+ const inputs=rows.map(([productId,cashback,count])=>({value:String(count),
+  dataset:{productId,cashback:String(cashback),productName:productId,
+   revenuePerUnit:"271828"}}));
+ const ctx=vm.createContext({productInputList:{querySelectorAll:selector=>{
+  assert.equal(selector,'input[data-product-id]');return inputs;
+ }}});
+ const results=vm.runInContext(source("resultVariantKey")+"\n"+
+  source("getCurrentInputResults")+"\ngetCurrentInputResults()",ctx);
+ return JSON.parse(JSON.stringify(results));
+}
+const variantFixture=()=>{
+ const x=base();x.records[0].value.results=currentFormResults([
+  ["nuro",314159,3],["nuro",731903,2],["air",0,2],["air",5000,0]
+ ]);return x;
+};
+const dashboard=source=>buildVerifiedCountDashboard({
+ context,hubCompanyId:hub,approvedCompanyIds:[hub],sources:[source],
+ productGroups:[
+  {companyId:hub,productId:"nuro",groupId:"nuro",groupName:"NURO光"},
+  {companyId:hub,productId:"air",groupId:"air",groupName:"SoftBank Air"}
+ ],period:{kind:"day",day:"2026-11-09",asOf:"2026-11-09"}
+});
+
+test("actual form CB variants join the real product ID once in product and individual rankings",()=>{
+ const original=variantFixture(),before=structuredClone(original);
+ assert.equal(Object.keys(original.records[0].value.results).length,3);
+ const source=buildInternalMonthCountSource(original),view=dashboard(source);
+ assert.deepEqual(source.lines.map(x=>[x.productId,x.count]),[["nuro",5],["air",2]]);
+ assert.equal(source.records[0].totalCount,7);
+ assert.deepEqual(view.summary,{own:7,partner:0,total:7,unidentified:0});
+ assert.equal(view.memberRanking.find(x=>x.id==="hub:uid1").count,7);
+ assert.deepEqual(view.productRanking.map(x=>[x.id,x.count]),[["nuro",5],["air",2]]);
+ assert.deepEqual(original,before,"reading variants never changes stored counts, CB or sales");
+ const json=JSON.stringify({source,view});
+ for(const forbidden of ["__cb_","cashback","revenue","unitPrice","314159","731903","271828"])
+  assert(!json.includes(forbidden),"private variant metadata cannot leave the reader: "+forbidden);
+ assert.deepEqual(source.lines.map(x=>x.sourceId),[
+  "hub_uid1_2026-11-09__0","hub_uid1_2026-11-09__1"]);
+});
+
+test("a form variant correction replaces the same original record rather than adding its old counts",()=>{
+ const x=variantFixture(),first=dashboard(buildInternalMonthCountSource(x));
+ x.records[0].value.results=currentFormResults([
+  ["nuro",314159,4],["nuro",731903,2],["air",0,2]
+ ]);x.records[0].value.totalCount=8;
+ const next=dashboard(buildInternalMonthCountSource(x));
+ assert.equal(first.productRanking.find(x=>x.id==="nuro").count,5);
+ assert.equal(next.productRanking.find(x=>x.id==="nuro").count,6);
+ assert.equal(next.memberRanking.find(x=>x.id==="hub:uid1").count,8);
+ assert.equal(x.records.length,1);
+});
+
+test("noncanonical variant identities, unknown products and ambiguous legacy mixtures remain rejected",()=>{
+ for(const [key,value]of [
+  ["nuro__cb_0314159",{productId:"nuro",cashback:314159,count:7}],
+  ["nuro__cb_3.14159e5",{productId:"nuro",cashback:314159,count:7}],
+  ["nuro__cb_314159",{productId:"air",cashback:314159,count:7}],
+  ["other__cb_314159",{productId:"nuro",cashback:314159,count:7}],
+  ["nuro__cb_314159",{productId:"nuro",cashback:"314159",count:7}],
+  ["nuro__cb_314159",{productId:"nuro",count:7}],
+  ["nuro__cb_0",{cashback:0,count:7}],
+  ["nuro__cb_0",{productId:"nuro",cashback:-0,count:7}],
+  ["nuro__cb_-1",{productId:"nuro",cashback:-1,count:7}],
+  ["nuro__cb_0.5",{productId:"nuro",cashback:.5,count:7}],
+  ["nuro__cb_NaN",{productId:"nuro",cashback:NaN,count:7}],
+  ["nuro__cb_Infinity",{productId:"nuro",cashback:Infinity,count:7}],
+  ["nuro__cb_9007199254740992",{productId:"nuro",cashback:9007199254740992,count:7}],
+  ["unknown__cb_0",{productId:"unknown",cashback:0,count:7}]
+ ]){
+  const x=base();x.records[0].value.results={[key]:value};
+  assert.throws(()=>buildInternalMonthCountSource(x),/INTERNAL_MONTH_COUNT_SOURCE_UNVERIFIED/);
+ }
+ const x=base();x.records[0].value.results={nuro:{count:3},
+  nuro__cb_0:{productId:"nuro",cashback:0,count:4}};
+ assert.throws(()=>buildInternalMonthCountSource(x),/INTERNAL_MONTH_COUNT_SOURCE_UNVERIFIED/);
+ // Arrays still have no canonical variant key proving two rows are distinct.
+ x.records[0].value.results=[{productId:"nuro",count:3},{productId:"nuro",count:4}];
+ assert.throws(()=>buildInternalMonthCountSource(x),/INTERNAL_MONTH_COUNT_SOURCE_UNVERIFIED/);
+});
+
+test("variant aggregation refuses overflow and still requires the saved total to match",()=>{
+ const overflow=variantFixture();overflow.records[0].value.results=currentFormResults([
+  ["nuro",0,Number.MAX_SAFE_INTEGER],["nuro",5000,1]
+ ]);overflow.records[0].value.totalCount=Number.MAX_SAFE_INTEGER;
+ assert.throws(()=>buildInternalMonthCountSource(overflow),/INTERNAL_MONTH_COUNT_SOURCE_UNVERIFIED/);
+ const changed=variantFixture();changed.records[0].value.totalCount=6;
+ assert.throws(()=>buildInternalMonthCountSource(changed),/INTERNAL_MONTH_COUNT_SOURCE_UNVERIFIED/);
+});
+
+test("direct legacy maps, distinct-product arrays and legacy single-product rows stay compatible",()=>{
+ for(const results of [
+  {nuro:{productId:"nuro",count:5},air:{count:2}},
+  [{productId:"nuro",count:5},{productId:"air",count:2}]
+ ]){
+  const x=base();x.records[0].value.results=results;
+  assert.deepEqual(buildInternalMonthCountSource(x).lines.map(v=>[v.productId,v.count]),
+   [["nuro",5],["air",2]]);
+ }
+ const x=base();delete x.records[0].value.results;
+ x.records[0].value.productId="nuro";x.records[0].value.count=7;
+ assert.equal(buildInternalMonthCountSource(x).lines[0].count,7);
+});
+
+test("the deployed ranking package uses the identical variant-aware reader",()=>{
+ assert.equal(readFileSync(new URL("../ranking/internal-month-count-tx-reader.mjs",import.meta.url),"utf8"),
+  readFileSync(new URL("../functions-ranking-approvals/ranking/internal-month-count-tx-reader.mjs",import.meta.url),"utf8"));
+});
 test("one authoritative internal row projects count only with exact SKU split",()=>{
  const original=base(),before=structuredClone(original);
  const source=buildInternalMonthCountSource(original);

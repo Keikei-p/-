@@ -15,15 +15,15 @@ const FN='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc1
 const clone=x=>structuredClone(x);
 const raw=s=>Buffer.from(s);
 
-test('candidate locks actual source and preserves original 31 assets/config while adding only required browser dependencies',()=>{
+test('candidate locks actual source and preserves original 29 assets/config while updating the existing Owner setup',()=>{
  const result=verifyLocal(root,manifest);
  assert.equal(result.localSourceVerified,true);
  assert.equal(result.backendFiles,38);
- assert.equal(result.frontendDependencies,20);
+ assert.equal(result.frontendDependencies,26);
  assert.equal(result.hosting.originalCount,33);
  assert.equal(result.hosting.finalCount,46);
- assert.equal(result.hosting.preserved.length,31);
- assert.deepEqual(result.hosting.replacements,['/index.html','/partner-workspace.html']);
+ assert.equal(result.hosting.preserved.length,29);
+ assert.deepEqual(result.hosting.replacements,['/index.html','/owner-partner-setup.html','/partner-workspace.html','/ranking/owner-partner-setup-mount.mjs']);
  assert.equal(result.hosting.additions.length,13);
  assert.equal(result.hosting.files.find(x=>x.path==='/service-worker.js').action,'preserve');
  assert.ok(result.hosting.files.filter(x=>x.action!=='preserve').every(x=>x.uploadHashPrepared===false));
@@ -67,7 +67,8 @@ function metadata(changes={}){
  const b=manifest.hosting.baseline;
  const functions=[...TARGETS.map(x=>x.split(':').at(-1)),...DORMANT_SETTINGS].map(name=>({
   name:'projects/sales-management-cc116/locations/asia-northeast1/functions/'+name,state:'ACTIVE',
-  labels:{'firebase-functions-codebase':DORMANT_SETTINGS.includes(name)||name==='getVerifiedJointCountRanking'?
+  labels:{'firebase-functions-codebase':DORMANT_SETTINGS.includes(name)||
+   ['getVerifiedJointCountRanking','setOwnerProductVisibility'].includes(name)?
    'ranking-owner-approvals':['listHubPartnerCounts','correctHubPartnerCounts'].includes(name)?
     'hub-owner-correction-v3':'partner-workspace'}}));
  const result={
@@ -95,9 +96,11 @@ test('a Hosting config change, incomplete file list or unrelated asset drift is 
  ]){const data=clone(metadata());mutate(data);await assert.rejects(verifyLiveMetadata(async u=>data[u],manifest),/LIVE_(?:CONFIG_DRIFT|FILES_INCOMPLETE|FILE_DRIFT)/);}
 });
 test('already-deployed Owner API in another codebase is reported as a collision, never mistaken for an approved new addition',async()=>{
- const data=metadata();data[FN].functions.find(x=>x.name.endsWith('/listHubPartnerCounts')).labels['firebase-functions-codebase']='partner-workspace';
- const result=await verifyLiveMetadata(async u=>data[u],manifest);
- assert.equal(result.functions.find(x=>x.name==='listHubPartnerCounts').codebaseVerified,false);
+ for(const name of ['listHubPartnerCounts','setOwnerProductVisibility']){
+  const data=metadata();data[FN].functions.find(x=>x.name.endsWith('/'+name)).labels['firebase-functions-codebase']='partner-workspace';
+  const result=await verifyLiveMetadata(async u=>data[u],manifest);
+  assert.equal(result.functions.find(x=>x.name===name).codebaseVerified,false);
+ }
 });
 test('an unbounded regional inventory cannot provide deployment proof',async()=>{
  const data=metadata();data[FN].nextPageToken='unread';

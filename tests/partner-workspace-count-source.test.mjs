@@ -31,7 +31,7 @@ function make(){
   companyLabel:"協力店A",period:PERIOD,readTime:TIME,
   relation:{hubCompanyId:"own",partnerCompanyId:"partner",
    active:true,countSharingApproved:true},
-  proof:{serverVerified:true,reciprocalOwnersApproved:true,
+  proof:{serverVerified:true,countSharingVerified:true,
    completeMonthEntriesRead:true,completeMonthSummariesRead:true,
    historicalTeamsVerified:true,snapshotConsistent:true},
   teams:[{id:"team1",name:"第1班",goalCount:null}],
@@ -114,7 +114,7 @@ test("missing or stale summary, truncated query proof, revoked relation and wron
   d=>{d.summaries.push(copy(d.summaries[0]));},
   d=>{d.proof.completeMonthEntriesRead=false;},
   d=>{d.proof.completeMonthSummariesRead=false;},
-  d=>{d.proof.reciprocalOwnersApproved=false;},
+  d=>{d.proof.countSharingVerified=false;},
   d=>{d.proof.serverVerified=false;},
   d=>{d.proof.historicalTeamsVerified=false;},
   d=>{d.proof.snapshotConsistent=false;},
@@ -152,4 +152,16 @@ test("same staff on separate dates is valid, zero submission is distinct from ab
  assert.equal(out.lines.length,4,"zero reports never fabricate contract lines");
  const missing=make();missing.entries=[];
  assert.throws(()=>build(missing),"daily summary cannot exist with missing entries");
+});
+
+
+test("count-sharing proof carries counts without fabricating personal-name approval",()=>{
+ const current=make(),before=copy(current),source=build(current);
+ assert.equal(source.records.reduce((n,r)=>n+r.totalCount,0),7);
+ assert.equal(Object.hasOwn(source,"individualNamesApproved"),false);
+ assert.equal(Object.hasOwn(source,"publicNamesVerified"),false);
+ assert.deepEqual(current,before);
+ const legacy=make();delete legacy.proof.countSharingVerified;
+ legacy.proof.reciprocalOwnersApproved=true;
+ assert.deepEqual(build(legacy),source,"old synthetic count proof remains compatible");
 });

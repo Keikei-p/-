@@ -17,11 +17,10 @@ const document={createElement:t=>new Node(t)};
 const walk=n=>[n,...n.children.flatMap(walk)];
 const content=n=>walk(n).map(x=>x.textContent).join(" ");
 const user={uid:"owner",emailVerified:true,getIdToken:async()=>"signed-server-checked-token-abc"};
-function fixture(role="hub_owner"){
+function fixture(role="hub"){
  const calls=[],root=new Node("main"),auth={currentUser:user};
- const status={schema:"nico-ranking-owner-consent-v1",role,partners:[{
-  partnerCompanyId:"partner",companyName:"協力店A",ownApproved:false,
-  otherApproved:false,version:0,canEdit:true
+ const status={role,registeredCompanies:[{
+  partnerCompanyId:"partner",name:"協力店A",active:true
  }]};
  const products={schema:"nico-hub-product-visibility-v1",role:"hub_owner",
   version:1,hubCompanyId:"hub",products:[
@@ -33,35 +32,38 @@ function fixture(role="hub_owner"){
  let observer=()=>{};
  const httpsCallable=(_fn,name)=>async payload=>{
   calls.push({name,payload});
-  if(name==="getRankingOwnerConsentStatus")return {data:status};
+  if(name==="getPartnerWorkspace")return {data:status};
   if(name==="getOwnerProductVisibility")return {data:products};
   if(name==="getOwnerReviewedSkuMapping")return {data:mapping};
   throw Error("Unexpected callable: "+name);
  };
  const mount=()=>mountOwnerPartnerSetup({document,root,auth,functions:{},
   httpsCallable,onAuthStateChanged:(_auth,cb)=>{observer=cb;return()=>{observer=()=>{};}}});
- return {auth,root,calls,mount,onChange:()=>observer()};
+ return {auth,root,calls,status,mount,onChange:()=>observer()};
 }
-test("hub owner sees verified consent, global switches, company overrides and nine mappings",async()=>{
+test("hub owner sees existing active partner, global switches and nine mappings without extra consent",async()=>{
  const f=fixture(),controller=f.mount();
  assert.equal(await controller.refresh(),true);
  const label=content(f.root);
  assert.match(label,/協力店・ランキング一括管理/);
- assert.match(label,/合同ランキングの公開設定/);
+ assert.doesNotMatch(label,/合同ランキングの公開設定|両社未承認|相手の承認待ち/);
  assert.match(label,/選択した協力店の商材ON\/OFF/);
  assert.match(label,/商材対応/);
  const selections=walk(f.root).filter(x=>x.tagName==="select");
  assert(selections.length>=10);
  assert.equal(selections[0].value,"partner");
+ assert(f.calls.some(x=>x.name==="getPartnerWorkspace"));
+ assert(f.calls.every(x=>x.name!=="getRankingOwnerConsentStatus"&&x.name!=="setRankingOwnerConsent"));
  assert(f.calls.some(x=>x.name==="getOwnerProductVisibility"));
  assert(f.calls.some(x=>x.name==="getOwnerReviewedSkuMapping"));
  assert(!f.calls.some(x=>/record|price|revenue|cashback|sales/i.test(x.name)));
  controller.destroy();assert.equal(f.root.children.length,0);
 });
-test("partner owner can consent but cannot mount hub product or SKU-mapping controls",async()=>{
- const f=fixture("partner_owner"),controller=f.mount();
+test("partner owner is informed hub Owner manages ON/OFF and cannot view hub SKU tools",async()=>{
+ const f=fixture("owner"),controller=f.mount();
  assert.equal(await controller.refresh(),true);
- assert.match(content(f.root),/合同ランキングの公開設定/);
+ assert.match(content(f.root),/設定は自社Ownerが行います/);
+ assert(f.calls.every(x=>x.name!=="setRankingOwnerConsent"));
  assert(!f.calls.some(x=>x.name==="getOwnerProductVisibility"||
   x.name==="getOwnerReviewedSkuMapping"));
  controller.destroy();
@@ -86,4 +88,43 @@ test("hosting page uses only Firebase Auth and Owner Functions, no raw finance d
  assert.match(html,/noindex,nofollow/);
  assert.doesNotMatch(html+source,/firebase-firestore|(?:getFirestore|getDocs|setDoc|localStorage|sessionStorage)\s*\(/);
  assert.doesNotMatch(source,/runTransaction|firebase deploy|document\.cookie/);
+});
+
+test("inactive or malformed partner relation never grants Owner SKU settings",async()=>{
+ const inactive=fixture();
+ inactive.status.registeredCompanies.push({
+  partnerCompanyId:"inactive_partner",name:"休止中の協力店",active:false
+ });
+ const first=inactive.mount();
+ assert.equal(await first.refresh(),true);
+ const selected=walk(inactive.root).find(x=>x.tagName==="select");
+ assert.equal(selected?.children?.length,1,"inactive company is not offered for SKU changes");
+ assert.doesNotMatch(content(inactive.root),/休止中の協力店/);
+ first.destroy();
+ for(const mutate of [
+  x=>{x.name="機密売上100万円";},
+  x=>{x.partnerCompanyId="../other";},
+  x=>{x.active="yes";},
+  x=>{x.name="";},
+  x=>{x.partnerCompanyId="__proto__";x.active="yes";}
+ ]){
+  const bad=fixture();
+  mutate(bad.status.registeredCompanies[0]);
+  const ctl=bad.mount();
+  assert.equal(await ctl.refresh(),false);
+  assert(!bad.calls.some(x=>x.name==="getOwnerProductVisibility"||
+   x.name==="getOwnerReviewedSkuMapping"),"never mount hub tools from invalid company data");
+  assert.doesNotMatch(content(bad.root),/機密売上|協力店A|NURO光/);
+  ctl.destroy();
+ }
+});
+test("non-hub workspace roles never mount hub Owner product controls",async()=>{
+ for(const role of ["member","leader","owner"]){
+  const f=fixture(role),ctl=f.mount();
+  assert.equal(await ctl.refresh(),true);
+  assert(f.calls.every(x=>x.name!=="getOwnerProductVisibility"&&
+   x.name!=="getOwnerReviewedSkuMapping"&&x.name!=="setRankingOwnerConsent"));
+  assert.doesNotMatch(content(f.root),/自社の全体商材|選択した協力店の商材ON\/OFF/);
+  ctl.destroy();
+ }
 });

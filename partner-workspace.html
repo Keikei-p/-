@@ -123,6 +123,50 @@ font:inherit;font-size:13px;line-height:1.6}
 #partnerPanel-teamDetail .team-detail-panel{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card-soft);margin-top:10px}
 #partnerPanel-teamDetail .team-detail-panel[hidden]{display:none}
 #partnerPanel-teamDetail .team-detail-panel h3{font-size:14px;margin:16px 0 8px}
+/* Shared self dashboard rank badges; never show monetary metadata. */
+.partner-ranking-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.partner-ranking-grid .ranking-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:12px;border:1px solid var(--border);border-radius:12px;background:#fff}
+.partner-ranking-grid .ranking-left{display:flex;align-items:center;gap:10px;min-width:0}
+.partner-ranking-grid .ranking-number{flex:0 0 29px;width:29px;height:29px;display:grid;place-items:center;border-radius:50%;background:#f1f5f9;font-size:12px;font-weight:800}
+.partner-ranking-grid .ranking-number.top1{background:#fef3c7;color:#92400e}
+.partner-ranking-grid .ranking-number.top2{background:#e5e7eb;color:#374151}
+.partner-ranking-grid .ranking-number.top3{background:#fed7aa;color:#9a3412}
+.partner-ranking-grid .ranking-name{font-size:13px;font-weight:800;overflow-wrap:anywhere}
+.partner-ranking-grid .ranking-value{text-align:right;white-space:nowrap}
+.partner-ranking-grid .ranking-count{font-size:16px;font-weight:800}
+/* Same original self analysis scope/actions/member card hierarchy; no finance. */
+#partnerPanel-goal .daily-goal-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:10px 0}
+#partnerPanel-goal .daily-goal-control{display:flex;flex-direction:column;gap:7px;font-weight:700}
+#partnerPanel-goal .daily-goal-control input{width:100%;min-height:44px;box-sizing:border-box}
+#partnerPanel-daily #countDailyCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;margin:12px 0}
+#partnerPanel-daily #countDailyCards .summary-card{text-align:left;min-width:0}
+#partnerPanel-daily #countDailyCards .summary-value{font-size:19px}
+#partnerPanel-analysis .analysis-current-path{margin:10px 0;padding:10px 12px;border-radius:10px;background:#eff6ff;color:#1e40af;font-size:12px;font-weight:800}
+#partnerPanel-analysis .analysis-scope-grid,
+#partnerPanel-analysis .analysis-action-grid,
+#partnerPanel-analysis .analysis-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+#partnerPanel-analysis .analysis-scope-card,
+#partnerPanel-analysis .analysis-action-button,
+#partnerPanel-analysis .analysis-member-card{min-width:0;min-height:86px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:12px 8px;background:#fff;border:1px solid var(--border);border-radius:14px;color:var(--text);font:inherit;text-align:center;cursor:pointer}
+#partnerPanel-analysis .analysis-scope-card[aria-pressed="true"],
+#partnerPanel-analysis .analysis-action-button[aria-pressed="true"]{background:#eff6ff;border-color:#60a5fa;color:#1d4ed8}
+#partnerPanel-analysis .analysis-nav-icon{font-size:23px}
+#partnerPanel-analysis .analysis-nav-title{font-size:12px;font-weight:800;overflow-wrap:anywhere}
+#partnerPanel-analysis .analysis-nav-count{font-size:13px;font-weight:800}
+#partnerPanel-analysis .analysis-product-card{min-width:0;display:grid;gap:6px;padding:12px 9px;border:1px solid var(--border);border-radius:14px;text-align:center;overflow-wrap:anywhere}
+@media(max-width:700px){#partnerPanel-analysis .analysis-scope-grid,#partnerPanel-analysis .analysis-action-grid,#partnerPanel-analysis .analysis-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#partnerPanel-teamDetail .team-detail-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+#partnerPanel-teamDetail .team-detail-title{font-size:17px;font-weight:800}
+#partnerPanel-teamDetail .team-detail-meta{margin-top:4px;color:var(--sub);font-size:11px}
+#partnerPanel-teamDetail .team-detail-total{flex:0 0 auto;text-align:right;font-size:12px}
+#partnerPanel-teamDetail .team-detail-total strong{display:block;font-size:17px}
+#partnerPanel-teamDetail .team-member-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:10px}
+#partnerPanel-teamDetail .team-member-card{min-width:0;padding:13px;border:1px solid var(--border);border-radius:12px;background:#fff}
+#partnerPanel-teamDetail .team-member-card-name{font-size:14px;font-weight:800;overflow-wrap:anywhere}
+#partnerPanel-teamDetail .team-member-card-total{margin-top:4px;color:#1d4ed8;font-size:11px;font-weight:800}
+#partnerPanel-teamDetail .member-product-list{display:grid;gap:9px;margin-top:11px}
+#partnerPanel-teamDetail .member-simple-product{display:flex;justify-content:space-between;gap:10px;margin-top:5px;font-size:12px}
+#partnerPanel-teamDetail .member-simple-product strong{white-space:nowrap}
 #partnerPanel-teamDetail .team-overview-card:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
 </style></head><body>
 <header><div class="header-inner">
@@ -259,7 +303,7 @@ font:inherit;font-size:13px;line-height:1.6}
  
 <div id="partnerPanel-analysis" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📊 件数分析</h3>
- <p class="partner-panel-note">選択した期間の件数を会社・担当者・商材の順で確認できます。</p>
+ <p class="partner-panel-note">会社または班を選び、次に商材別・担当者別の件数を確認できます。</p>
  <div id="countAnalysisSummary" class="scroll"></div>
  <section id="countInlineJointCompanies" hidden>
   <h4>🏢 会社ランキング</h4>
@@ -296,6 +340,8 @@ font:inherit;font-size:13px;line-height:1.6}
  </details>
  <p class="partner-panel-note">保存時点の班で集計します。所属班が確認できない過去の件数は推測しません。</p>
  <div id="partnerTeamCountDetail" class="team-detail-panel" hidden>
+  <div id="partnerTeamDetailHeader" class="team-detail-header" aria-live="polite"></div>
+  <div id="partnerTeamMemberGrid" class="team-member-grid" aria-label="担当者別の商材件数"></div>
   <h3>担当者別の件数</h3><div id="countTeamPeople" class="scroll"></div>
   <h3>商材別の件数</h3><div id="countTeamProducts" class="scroll"></div>
  </div>
@@ -320,16 +366,25 @@ font:inherit;font-size:13px;line-height:1.6}
    <button id="countGoalClear" type="button" class="secondary">解除</button>
   </div>
   <p id="countGoalStatus" role="status" aria-live="polite"></p>
+  <div class="daily-goal-controls"><label class="daily-goal-control" for="countGoalDays">残り稼働日数
+   <input id="countGoalDays" type="number" inputmode="numeric" min="1" max="366" step="1" placeholder="例：10">
+  </label></div>
+  <p id="countGoalDailyEstimate" class="partner-panel-note" role="status" aria-live="polite"></p>
  </div>
  <p id="countGoalUnavailable" class="partner-panel-note" hidden>目標を表示するには、月別と個人メールアカウントを選んでください。</p>
 </div>
 <div id="partnerPanel-daily" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📅 日別</h3>
- <div id="countDailyRows" class="scroll"></div>
+ <p class="partner-panel-note">日付ごとの件数です。0件と未報告の区別は登録履歴から確認できます。</p>
+ <div id="countDailyCards" class="dashboard-summary" aria-label="日別件数カード"></div>
+ <details><summary class="partner-panel-note">全日付を一覧表で確認</summary>
+  <div id="countDailyRows" class="scroll"></div>
+ </details>
 </div>
 <div id="partnerPanel-history" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📝 登録履歴</h3>
  <p class="partner-panel-note">既存の登録履歴画面に移動します。保存・訂正の処理やデータは変更しません。</p>
+ <div id="countHistoryPreview" aria-label="選択日の保存済み件数" aria-live="polite"></div>
  <button id="countHistoryOpen" type="button">登録履歴を開く</button>
 </div>
  </div>
@@ -775,7 +830,7 @@ function periodDatesForCounts(selected,period,today){
 }
 function summarizeCountOnlyResponses(responses,teamList,keys){
  const group=new Map(),individual=new Map(),days=[],products=Object.fromEntries(keys.map(k=>[k,0]));
- const teamProducts=new Map(),teamPeople=new Map();
+ const teamProducts=new Map(),teamPeople=new Map(),teamPersonProducts=new Map();
  const teams=new Map((teamList||[]).map(t=>[t.id,t.name]));
  let total=0,hasUnverifiedTeams=false;
  const identity=new Map();
@@ -838,6 +893,15 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
     teamProducts.set(groupId,detail);
     const members=teamPeople.get(groupId)||new Map();
     members.set(id,(members.get(id)||0)+count);teamPeople.set(groupId,members);
+    // Count-only person/product summary, tied to the saved team snapshot.
+    const byTeam=teamPersonProducts.get(groupId)||new Map();
+    const byMember=byTeam.get(id)||Object.fromEntries(keys.map(k=>[k,0]));
+    for(const key of keys)byMember[key]+=counts[key];
+    for(const [productId,n] of Object.entries(privateCounts)){
+      const label="独自："+privateProducts.get(productId).name;
+      byMember[label]=(byMember[label]||0)+n;
+    }
+    byTeam.set(id,byMember);teamPersonProducts.set(groupId,byTeam);
   }
   days.push({date:response.date,count:dayCount,people:dayPeople});
  }
@@ -851,6 +915,9 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
   teamPeople:[...teamPeople].map(([id,members])=>({id,people:[...members].map(([sid,count])=>({
     id:sid,name:identity.get(sid)||"担当者",count
   })).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"))})),
+  teamPersonProducts:[...teamPersonProducts].map(([id,members])=>({
+    id,people:[...members].map(([sid,products])=>({id:sid,products}))
+  })),
   hasUnverifiedTeams};
 }
 function countTable(headers,rows){
@@ -863,6 +930,34 @@ function countTable(headers,rows){
   for(const val of cells){const td=document.createElement("td");td.textContent=String(val);tr.append(td)}
   table.append(tr)}
  return table;
+}
+// Reuse the self dashboard's ranking-row hierarchy, without importing any
+// finance/price code. Rank is null for a saved but unverified historical team.
+function countRankingCards(rows){
+ const container=document.createElement("div");
+ container.className="partner-ranking-grid";container.dataset.columns="1";
+ for(const entry of rows){
+  if(!entry||typeof entry.name!=="string"||!entry.name.trim()||
+     !Number.isSafeInteger(entry.count)||entry.count<0||
+     (entry.rank!==null&&(!Number.isSafeInteger(entry.rank)||entry.rank<1)))
+   throw Error("invalid count ranking card");
+  const row=document.createElement("div");row.className="ranking-row";
+  const left=document.createElement("div");left.className="ranking-left";
+  const num=document.createElement("span");
+  num.className="ranking-number"+(entry.rank!==null&&entry.rank<=3?" top"+entry.rank:"");
+  num.textContent=entry.rank===null?"—":String(entry.rank);
+  const name=document.createElement("span");name.className="ranking-name";
+  name.textContent=entry.name;left.append(num,name);
+  const right=document.createElement("div");right.className="ranking-value";
+  const count=document.createElement("strong");count.className="ranking-count";
+  count.textContent=entry.count+"件";right.append(count);
+  row.append(left,right);container.append(row);
+ }
+ if(!rows.length){
+  const note=document.createElement("p");note.className="partner-panel-note";
+  note.textContent="この期間の報告はありません";container.append(note);
+ }
+ return container;
 }
 function groupedProductCounts(products,mode){
  const entries=Object.entries(products);
@@ -892,30 +987,95 @@ function competitionRanks(rows,countOf,render,qualifies=()=>true){
 }
 function renderTeamCountDetail(){
  if(!countExportRows)return;
- const chosenId=$("countTeamSelect").value;
+ const selected=$("countTeamSelect").value;
  for(const card of $("partnerTeamCardGrid").querySelectorAll("[data-team-key]"))
-  card.setAttribute("aria-pressed",String(card.dataset.teamKey===chosenId));
- $("partnerTeamCountDetail").hidden=!countExportRows.summary.groups.some(g=>g.id===chosenId);
- const summary=countExportRows.summary,id=$("countTeamSelect").value;
- const products=summary.teamProducts.find(x=>x.id===id)?.products;
- const people=summary.teamPeople.find(x=>x.id===id)?.people||[];
+  card.setAttribute("aria-pressed",String(card.dataset.teamKey===selected));
+ const summary=countExportRows.summary,group=summary.groups.find(g=>g.id===selected);
+ $("partnerTeamCountDetail").hidden=!group;
+ const header=$("partnerTeamDetailHeader"),cards=$("partnerTeamMemberGrid");
+ header.replaceChildren();cards.replaceChildren();
+ if(!group)return;
+ // The same visual hierarchy as the self dashboard, without financial data.
+ const heading=document.createElement("div"),title=document.createElement("div");
+ const caption=document.createElement("div"),total=document.createElement("div");
+ title.className="team-detail-title";title.textContent=group.name;
+ caption.className="team-detail-meta";
+ caption.textContent=String(data?.companyName||"協力店")+" → "+group.name+"｜件数のみ";
+ heading.append(title,caption);total.className="team-detail-total";
+ const n=document.createElement("strong");n.textContent=group.count+"件";
+ total.appendChild(n);header.append(heading,total);
+ const people=summary.teamPeople.find(t=>t.id===selected)?.people||[];
+ const products=summary.teamProducts.find(t=>t.id===selected)?.products;
+ const byMember=new Map((summary.teamPersonProducts||[])
+  .find(t=>t.id===selected)?.people?.map(p=>[p.id,p.products])||[]);
+ const fullRoster=["owner","leader"].includes(data?.role)&&Array.isArray(data?.staff);
+ const roster=fullRoster?data.staff.filter(p=>p.active!==false&&p.teamId===selected):[];
+ const reported=new Set(people.map(p=>p.id));
+ const display=people.map(p=>({...p,reported:true}));
+ for(const p of roster){
+  if(!reported.has(p.id))display.push({id:p.id,name:String(p.name||"担当者"),reported:false});
+ }
+ for(const p of display){
+  const card=document.createElement("div");card.className="team-member-card";
+  const name=document.createElement("div");name.className="team-member-card-name";
+  name.textContent=p.name;
+  const qty=document.createElement("div");qty.className="team-member-card-total";
+  qty.textContent=p.reported?p.count+"件":"この班では未報告";
+  card.append(name,qty);
+  if(p.reported){
+   const breakdown=byMember.get(p.id),items=Object.entries(breakdown||{})
+    .filter(([,v])=>Number.isSafeInteger(v)&&v>0);
+   if(breakdown&&Object.values(breakdown).reduce((a,v)=>a+v,0)!==p.count)
+    throw Error("team member count does not match saved product totals");
+   const list=document.createElement("div");list.className="member-product-list";
+   if(!breakdown){
+    const warning=document.createElement("p");warning.className="partner-panel-note";
+    warning.textContent="商材内訳を確認できません";list.appendChild(warning);
+   }
+   for(const [product,count] of items){
+    const row=document.createElement("div");row.className="member-simple-product";
+    const label=document.createElement("span"),value=document.createElement("strong");
+    label.textContent=product;value.textContent=count+"件";
+    row.append(label,value);list.appendChild(row);
+   }
+   card.appendChild(list);
+  }
+  cards.appendChild(card);
+ }
  $("countTeamProducts").replaceChildren(countTable(["商材","件数"],
-  products?groupedProductCounts(products,$("countProductMode").value).map(([k,n])=>[k,n+"件"]):[]));
+  products?groupedProductCounts(products,$("countProductMode").value).map(([k,v])=>[k,v+"件"]):[]));
  $("countTeamPeople").replaceChildren(countTable(["順位","担当者","件数"],
   competitionRanks(people,p=>p.count,(p,rank)=>[rank===1?"👑 1位":rank,p.name,p.count+"件"])));
 }
 function renderProductRankMode(){
  if(!countExportRows)return;
- $("countProductRank").replaceChildren(countTable(["順位","商材","合計件数"],
- competitionRanks(groupedProductCounts(countExportRows.summary.products,$("countProductMode").value),
-  row=>row[1],([name,n],rank)=>[rank===1?"👑 1位":rank,name,n+"件"])));
+ $("countProductRank").replaceChildren(countRankingCards(
+  competitionRanks(groupedProductCounts(countExportRows.summary.products,$("countProductMode").value),
+   row=>row[1],([name,n],rank)=>({rank,name,count:n}))));
  renderTeamCountDetail();
 }
 function countGoalKey(){
  return "nico-partner-month-goal-v1:"+auth.currentUser.uid+":"+
  encodeURIComponent(data.companyName||"")+":"+$("dashboardPartnerMonth").value;
 }
+// An optional estimate from the existing personal monthly target. Never
+// writes user counts, target records, or the unsaved goal field.
+function renderCountGoalDailyEstimate(){
+ const target=$("countGoalDailyEstimate");target.textContent="";
+ if(countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid)return;
+ const daysRaw=$("countGoalDays").value.trim();
+ let saved;
+ try{saved=localStorage.getItem(countGoalKey())}
+ catch{target.textContent="端末の目標を読み込めませんでした。";return}
+ if(!/^[1-9][0-9]{0,5}$/.test(saved||""))return;
+ if(!/^[1-9][0-9]{0,2}$/.test(daysRaw)||Number(daysRaw)>366){
+  target.textContent="残り稼働日数は1〜366日の整数で入力してください。";return;
+ }
+ const remaining=Math.max(0,Number(saved)-countExportRows.summary.total);
+ target.textContent="残り必要件数 "+remaining+"件｜1日あたり "+Math.ceil(remaining/Number(daysRaw))+"件";
+}
 function renderCountGoal(){
+ $("countGoalDailyEstimate").textContent="";
  $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid;
  $("countGoalUnavailable").hidden=!$("countGoalBox").hidden;
  if($("countGoalBox").hidden)return;
@@ -928,6 +1088,91 @@ function renderCountGoal(){
  const count=countExportRows.summary.total;
  $("countGoalStatus").textContent="現在 "+count+"/"+goal+"件｜達成率 "+
   Math.round(count/goal*1000)/10+"%｜残り "+Math.max(0,goal-count)+"件";
+ renderCountGoalDailyEstimate();
+}
+// The original self dashboard's two-step analysis UI, using verified
+// count-only day/week/month summary already loaded for this partner scope.
+function renderCountAnalysisScopeCards(summary){
+ const root=$("countAnalysisSummary");root.replaceChildren();
+ const path=document.createElement("div");path.className="analysis-current-path";
+ const scopes=document.createElement("div");scopes.className="analysis-scope-grid";
+ const actions=document.createElement("div");actions.className="analysis-action-grid";
+ const output=document.createElement("div");output.className="analysis-card-grid";
+ root.append(path,scopes,actions,output);
+ const items=[{id:"all",name:String(data?.companyName||"協力店"),
+  count:summary.total,icon:"🏢",products:summary.products,people:summary.people}];
+ for(const group of summary.groups)items.push({
+  ...group,icon:group.id==="__unverified__"?"📋":"👥",
+  products:summary.teamProducts.find(t=>t.id===group.id)?.products||{},
+  people:summary.teamPeople.find(t=>t.id===group.id)?.people||[]});
+ const peopleProducts=new Map();
+ for(const team of summary.teamPersonProducts||[]){
+  for(const person of team.people){
+   const counts=peopleProducts.get(person.id)||new Map();
+   for(const [key,n] of Object.entries(person.products||{}))
+    counts.set(key,(counts.get(key)||0)+n);
+   peopleProducts.set(person.id,counts);
+  }
+ }
+ function make(cls,icon,title,count){
+  const button=document.createElement("button");button.type="button";
+  button.className=cls;button.setAttribute("aria-pressed","false");
+  for(const [css,label] of [["analysis-nav-icon",icon],["analysis-nav-title",title],["analysis-nav-count",count]]){
+   const span=document.createElement("span");span.className=css;span.textContent=String(label);button.append(span);
+  }
+  return button;
+ }
+ function products(pairs){
+  output.replaceChildren();
+  const sorted=Object.entries(pairs||{}).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
+  for(const [key,n] of sorted){
+   if(!Number.isSafeInteger(n)||n<0)throw Error("invalid analysis count");
+   const card=document.createElement("div");card.className="analysis-product-card";
+   const title=document.createElement("span");title.className="analysis-nav-title";title.textContent=key;
+   const count=document.createElement("strong");count.className="analysis-nav-count";count.textContent=n+"件";
+   card.append(title,count);output.append(card);
+  }
+  if(!sorted.length){const note=document.createElement("p");note.className="partner-panel-note";
+   note.textContent="実績がありません（未報告と0件は別扱い）";output.append(note);}
+ }
+ function people(scope){
+  output.replaceChildren();
+  const list=scope.people||[];
+  for(const person of list){
+   if(!Number.isSafeInteger(person.count)||person.count<0)throw Error("invalid person count");
+   const card=make("analysis-member-card","👤",person.name,person.count+"件");
+   card.onclick=()=>{
+    path.textContent=scope.name+" → "+person.name+" → 商材別";
+    // The company total spans saved teams, but a selected team's
+    // historical member must never inherit that person's other team counts.
+    const saved=scope.id==="all"?null:
+      (summary.teamPersonProducts||[]).find(t=>t.id===scope.id)?.people
+       ?.find(p=>p.id===person.id)?.products;
+    const values=scope.id==="all"?
+      Object.fromEntries(peopleProducts.get(person.id)||new Map()):(saved||{});
+    products(values);
+   };
+   output.append(card);
+  }
+  if(!list.length){const note=document.createElement("p");note.className="partner-panel-note";
+   note.textContent="担当者の報告がありません";output.append(note);}
+ }
+ const buttons=[];
+ for(const scope of items){
+  const card=make("analysis-scope-card",scope.icon,scope.name,scope.count+"件");
+  card.onclick=()=>{
+   for(const other of buttons)other.setAttribute("aria-pressed",String(other===card));
+   path.textContent=scope.name+" → 商材別または担当者別を選択";
+   actions.replaceChildren();output.replaceChildren();
+   const product=make("analysis-action-button","📦","商材別","件数内訳");
+   const person=make("analysis-action-button","👤","担当者別","個人件数");
+   product.onclick=()=>{path.textContent=scope.name+" → 商材別";products(scope.products);};
+   person.onclick=()=>{path.textContent=scope.name+" → 担当者別";people(scope);};
+   actions.append(product,person);
+  };
+  buttons.push(card);scopes.append(card);
+ }
+ if(buttons.length)buttons[0].onclick();
 }
 function renderCountOnlyDashboard(summary,days){
  const count=summary.total,positive=summary.days.filter(d=>d.count>0).length;
@@ -941,13 +1186,7 @@ function renderCountOnlyDashboard(summary,days){
   lab.textContent=name;val.textContent=value;box.append(lab,val);kpis.append(box);
  }
  const topProduct=Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
- $("countAnalysisSummary").replaceChildren(countTable(["分析項目","件数"],[
-   ["合計獲得件数",count+"件"],
-   ["活動日数",positive+"日"],
-   ["活動担当者",summary.people.filter(p=>p.count>0).length+"人"],
-   ["1日平均",Math.round(count/days.length*10)/10+"件"],
-   ...summary.groups.slice(0,5).map(g=>["班："+g.name,g.count+"件"])
- ]));
+ renderCountAnalysisScopeCards(summary);
  $("countProductSummary").replaceChildren(countTable(["商材","件数"],
   topProduct.map(([name,n])=>[name,n+"件"])));
  const chart=$("countTrendChart");chart.replaceChildren();
@@ -977,14 +1216,25 @@ function renderCountOnlyDashboard(summary,days){
  $("countTeamHint").textContent=summary.hasUnverifiedTeams?
   "過去の班所属を推測しないため、保存時点の班情報をAPIから取得できない実績は「所属班未確認」として表示します。":
   "保存時の所属班で集計しています。";
- $("countTeamRank").replaceChildren(countTable(["順位","班","合計件数"],
-  competitionRanks(summary.groups,g=>g.count,(g,rank)=>[rank===null?"—":rank,g.name,g.count+"件"],
+ $("countTeamRank").replaceChildren(countRankingCards(
+  competitionRanks(summary.groups,g=>g.count,(g,rank)=>({rank,name:g.name,count:g.count}),
     g=>g.id!=="__unverified__")));
- $("countStaffRank").replaceChildren(countTable(["順位","担当者","合計件数"],
-  competitionRanks(summary.people,p=>p.count,(p,rank)=>[rank,p.name,p.count+"件"])));
- $("countProductRank").replaceChildren(countTable(["順位","商材","合計件数"],
+ $("countStaffRank").replaceChildren(countRankingCards(
+  competitionRanks(summary.people,p=>p.count,(p,rank)=>({rank,name:p.name,count:p.count}))));
+ $("countProductRank").replaceChildren(countRankingCards(
   competitionRanks(Object.entries(summary.products).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja")),
-    row=>row[1],([name,n],rank)=>[rank,name,n+"件"])));
+    row=>row[1],([name,n],rank)=>({rank,name,count:n}))));
+ const dayCards=$("countDailyCards");dayCards.replaceChildren();
+ for(const day of summary.days){
+  if(!Number.isSafeInteger(day.count)||day.count<0||
+     !Number.isSafeInteger(day.people)||day.people<0)throw Error("invalid daily count card");
+  const card=document.createElement("div");card.className="summary-card";
+  const label=document.createElement("div");label.className="summary-label";label.textContent=day.date;
+  const value=document.createElement("div");value.className="summary-value";value.textContent=day.count+"件";
+  const meta=document.createElement("div");meta.className="partner-panel-note";
+  meta.textContent="実績登録 "+day.people+"人";
+  card.append(label,value,meta);dayCards.append(card);
+ }
  $("countDailyRows").replaceChildren(countTable(["日付","合計件数","実績あり"],
   summary.days.map(d=>[d.date,d.count+"件",d.people+"人"])));
  countExportRows={summary,days};
@@ -1029,12 +1279,15 @@ function clearCountOnlyDashboard(){
  $("countInlineJointCompanies").hidden=true;
  $("countCompanyRank").replaceChildren();$("countGoalBox").hidden=true;
  $("partnerTeamCardGrid").replaceChildren();
+ $("partnerTeamDetailHeader").replaceChildren();
+ $("partnerTeamMemberGrid").replaceChildren();
  $("partnerTeamCompanyHeading").textContent="";
  $("partnerTeamCountDetail").hidden=true;
  $("countGoalUnavailable").hidden=false;$("countReportCopy").disabled=true;
+ $("countGoalDailyEstimate").textContent="";
  $("countReportBody").value="";
  for(const id of ["countKpis","countTeamRank","countStaffRank","countAnalysisSummary",
-  "countProductSummary","countTrendChart","countProductRank","countDailyRows",
+  "countProductSummary","countTrendChart","countProductRank","countDailyRows","countDailyCards",
   "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
 function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
@@ -1144,6 +1397,7 @@ $("countProductMode").onchange=()=>{
  if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)renderProductRankMode();
 };
 $("countTeamSelect").onchange=renderTeamCountDetail;
+$("countGoalDays").addEventListener("input",renderCountGoalDailyEstimate);
 $("countGoalSave").onclick=()=>{
  if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
  const raw=$("countGoal").value.trim();
@@ -1329,6 +1583,60 @@ function activeTab(name){
 }
 for(const x of ["Dashboard","Records","People","View","Missing"])$("tab"+x).onclick=()=>activeTab(x);
 function cell(row,value){const td=document.createElement("td");td.textContent=String(value);row.append(td)}
+// Read-only latest saved day preview in the dashboard history tab.
+// Immutable audit/revision editing stays in the EXISTING history screen.
+function renderPartnerHistoryCountPreview(){
+ const container=$("countHistoryPreview");container.replaceChildren();
+ if(!data||data.role==="hub"||!Array.isArray(data.records))return;
+ const people=new Map((data.staff||[]).map(p=>[p.id,p.name]));
+ const privateNames=new Map((data.privateProducts||[]).map(p=>[p.id,p.name]));
+ const rows=data.records;
+ if(rows.some(r=>!Number.isSafeInteger(r.totalCount)||r.totalCount<0||
+    !Number.isSafeInteger(r.version)||r.version<1||!r.counts||typeof r.counts!=="object")){
+  const note=document.createElement("p");note.textContent="保存済み件数を検証できません。履歴画面から再確認してください。";
+  container.append(note);return;
+ }
+ if(!rows.length){
+  const note=document.createElement("p");note.textContent="この日の報告はありません。未報告は0件ではありません。";
+  container.append(note);return;
+ }
+ for(const record of rows){
+  const card=document.createElement("details");card.className="partner-count-team-card";
+  const heading=document.createElement("summary");
+  const name=people.get(record.staffId)||"当時の担当者未確認";
+  heading.textContent=name+"｜"+record.totalCount+"件｜第"+record.version+"版";
+  const details=document.createElement("div");details.className="partner-count-team-body";
+  let countRows=0;
+  for(const category of data.categories||[]){
+   const n=record.counts[category]??0;
+   if(!Number.isSafeInteger(n)||n<0){container.replaceChildren();
+    const warning=document.createElement("p");warning.textContent="件数の照合ができません。履歴画面から確認してください。";
+    container.append(warning);return;}
+   if(n>0){const row=document.createElement("div");row.className="partner-count-team-product-row";
+    const label=document.createElement("span");label.textContent=category;
+    const value=document.createElement("strong");value.textContent=n+"件";
+    row.append(label,value);details.append(row);countRows++;}
+  }
+  for(const [id,n] of Object.entries(record.privateCounts||{})){
+   if(!Number.isSafeInteger(n)||n<0){container.replaceChildren();
+    const warning=document.createElement("p");warning.textContent="協力店専用の件数を検証できません。";
+    container.append(warning);return;}
+   if(n>0){const row=document.createElement("div");row.className="partner-count-team-product-row";
+    const label=document.createElement("span");
+    label.textContent=(privateNames.get(id)||"協力店専用商材")+"（協力店内）";
+    const value=document.createElement("strong");value.textContent=n+"件";
+    row.append(label,value);details.append(row);countRows++;}
+  }
+  if(record.totalCount===0){
+   const note=document.createElement("p");note.textContent="0件で報告済み";
+   details.append(note);
+  }else if(!countRows){
+   const note=document.createElement("p");note.textContent="商材内訳は履歴画面で確認してください。";
+   details.append(note);
+  }
+  card.append(heading,details);container.append(card);
+ }
+}
 function draw(){
  const hub=data?.role==="hub";
  resetApprovedRanking();
@@ -1420,6 +1728,7 @@ function draw(){
  for(const p of staff){const entry=byId.get(p.id);const r=document.createElement("tr");
  cell(r,p.name);cell(r,entry?entry.totalCount+" 件":"未登録");cell(r,entry?"第"+entry.version+"版":"—");entries.append(r)}
  $("recordsList").replaceChildren(entries);
+ renderPartnerHistoryCountPreview();
  renderSelected();
  const needsSetup=staff.length===0&&(data.role==="owner"||data.role==="leader");
  $("setupHelp").hidden=!needsSetup;

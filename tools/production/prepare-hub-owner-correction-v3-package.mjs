@@ -52,10 +52,10 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
   "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
   "functions-partner-workspace/index.js": "42eea81ab01449bedbbedabdc1a8fb6bfba1e284",
-  "functions-partner-workspace/service.cjs": "4e651e5bd1ead83bddc7f613790040914a03210d",
+  "functions-partner-workspace/service.cjs": "79066025dfb6aa8b35830380e7d87510ef3c928a",
   "firestore.rules": "d9f4df6a2ac0f8b5720534a2461ec66b94379190",
-  "index.html": "982d9b2b65e7d2df01c1491ec01f1f4b2250850c",
-  "partner-workspace.html": "3f9825fe50a6e6e52663ebcfa56f26703c435e71"
+  "index.html": "03e213565a2037c73913602701363476ae0db9fd",
+  "partner-workspace.html": "c88b08bdaf2b3007a053bec6aa4717f897b1110d"
 });
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
