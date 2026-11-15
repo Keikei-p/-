@@ -1,0 +1,62 @@
+name: NICO Owner and partner unified four ranking cards (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ranking/verified-dual-count-view.mjs
+      - ranking/verified-inline-joint-ranking-cards.mjs
+      - ranking/verified-joint-month-http-bridge.mjs
+      - tests/verified-dual-count-view.test.mjs
+      - tests/verified-inline-joint-ranking-cards.test.mjs
+      - tests/verified-joint-month-http-bridge.test.mjs
+      - .github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml
+permissions:
+  contents: read
+jobs:
+  count-only-ui:
+    name: verify-owner-partner-same-four-rankings-no-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm code-only UI scope and unchanged live application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          git fetch --no-tags origin main
+          while IFS= read -r path; do
+            case "$path" in
+              ranking/verified-dual-count-view.mjs|ranking/verified-inline-joint-ranking-cards.mjs|ranking/verified-joint-month-http-bridge.mjs|tests/verified-dual-count-view.test.mjs|tests/verified-inline-joint-ranking-cards.test.mjs|tests/verified-joint-month-http-bridge.test.mjs|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
+              *) echo "STOP_UNREVIEWED_UI_OR_FINANCE_CHANGE: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only origin/main...HEAD)
+          test "$(git rev-parse HEAD:index.html)" = '5edde6d5e5459ba283d12d157c021d4eee03d587'
+          for path in firestore.rules functions-ranking-approvals/index.js functions-partner-workspace/service.cjs partner-workspace.html sales-archive.js; do
+            test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "origin/main:$path")"
+          done
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+          for path in ranking/verified-dual-count-view.mjs ranking/verified-inline-joint-ranking-cards.mjs ranking/verified-joint-month-http-bridge.mjs; do
+            node --check "$path"
+          done
+      - name: Verify safe four-rank cards, month/day/week and finance labels
+        run: |
+          node --test tests/verified-dual-count-view.test.mjs tests/verified-inline-joint-ranking-cards.test.mjs tests/verified-joint-month-http-bridge.test.mjs tests/verified-joint-ranking-panel.test.mjs tests/unified-partner-team-cards.test.mjs tests/owner-visible-count-server-handler.test.mjs
+          echo 'UNIFIED_FOUR_RANKING_UI_PASS_NO_DEPLOY'
+      - name: Release remains blocked until live real-account safety approval
+        run: |
+          echo 'NO_FIREBASE_CREDENTIALS_NO_DEPLOY_NO_FLAG_CHANGE'
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
