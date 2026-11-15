@@ -228,3 +228,19 @@ test("standalone owner management is staging-only and reuses Firebase Auth witho
  assert.doesNotMatch(html,/firebase-firestore|getFirestore|setDoc\(|updateDoc\(|deleteDoc\(|collection\("records"\)/);
  assert.doesNotMatch(html,/getPartnerQuickCounts|submitPartnerWorkspaceCounts|setPersistence|switchUser/);
 });
+
+test("preserve historical verified 光/AIR allocations when correcting unrelated or combined counts",async()=>{
+ const {preservedCombinedSplit}=await import("../staging/partner-owner-correction-v3/owner-ui.mjs");
+ const existing={"SB光":2,"SB AIR":1,"旧未分類":2};
+ assert.deepEqual(preservedCombinedSplit(5,existing,5),existing);
+ assert.deepEqual(preservedCombinedSplit(5,existing,7),
+  {"SB光":2,"SB AIR":1,"旧未分類":4});
+ assert.deepEqual(preservedCombinedSplit(5,existing,3),
+  {"SB光":2,"SB AIR":1,"旧未分類":0});
+ assert.throws(()=>preservedCombinedSplit(5,existing,2),
+  /SB_SPLIT_MANUAL_REVIEW_REQUIRED/);
+ assert.deepEqual(preservedCombinedSplit(5,null,7),
+  {"SB光":0,"SB AIR":0,"旧未分類":7});
+ assert.deepEqual(preservedCombinedSplit(5,{"SB光":0,"SB AIR":0,"旧未分類":5},4),
+  {"SB光":0,"SB AIR":0,"旧未分類":4});
+});

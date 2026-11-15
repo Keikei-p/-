@@ -1,0 +1,64 @@
+name: NICO Owner correction staged UI safety (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'staging/partner-owner-correction-v3/owner-client.mjs'
+      - 'staging/partner-owner-correction-v3/owner-ui.mjs'
+      - 'staging/partner-owner-correction-v3/mobile-bootstrap.mjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'tests/partner-owner-correction-v3-ui.test.mjs'
+      - '.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml'
+      - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
+permissions:
+  contents: read
+jobs:
+  read-only-owner-correction-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify review scope and original live app exactly unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
+          git fetch --no-tags origin main
+          while IFS= read -r path; do
+            case "$path" in
+              staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|tests/partner-owner-correction-v3-ui.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
+              *) echo "STOP_OWNER_UI_OUT_OF_SCOPE: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only origin/main...HEAD)
+          test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+          for path in firestore.rules functions-partner-workspace/index.js functions-partner-workspace/service.cjs functions-ranking-approvals/index.js partner-workspace.html sales-archive.js; do
+            test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "origin/main:$path")"
+          done
+          for path in staging/partner-owner-correction-v3/owner-client.mjs staging/partner-owner-correction-v3/owner-ui.mjs staging/partner-owner-correction-v3/mobile-bootstrap.mjs; do
+            node --check "$path"
+          done
+          node --check tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+      - name: Test approved company ownership, read-only mode, count preservation
+        run: |
+          node --test tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs tests/partner-owner-correction-v3-ui.test.mjs tests/partner-money-free-workspace.test.cjs
+          echo 'OWNER_STAGED_UI_SAFE_NO_DEPLOY'
+      - name: Keep owner API and production disabled
+        run: |
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'FIRESTORE_WRITES=0 RULES_DEPLOYED=NO FUNCTIONS_DEPLOYED=NO HOSTING_DEPLOYED=NO'
