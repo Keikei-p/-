@@ -360,3 +360,30 @@ test("personal target day-rate is read-only and preserves unsaved goal input",()
  assert.equal(get("countGoal").value,"250");
  assert.doesNotMatch(code,/setItem\(|removeItem\(|setDoc\(|deleteDoc\(|formatYen\(/);
 });
+
+test("partner history preview is read only and distinguishes saved zero from unreported",()=>{
+ const start=source.indexOf("function renderPartnerHistoryCountPreview(){");
+ const end=source.indexOf("function draw(){",start);
+ assert.ok(start>0&&end>start);
+ const code=source.slice(start,end);
+ assert.doesNotMatch(code,/setDoc\(|deleteDoc\(|updateDoc\(|formatYen\(|getFirestore\(|revenuePerUnit|unitPrice|totalRevenue|cashback/i);
+ const container=new El(),ctx={
+  $:id=>{assert.equal(id,"countHistoryPreview");return container},
+  document:{createElement:tag=>new El(tag)},
+  data:{role:"owner",date:"2026-11-15",categories:["NURO"],
+   staff:[{id:"p",name:"田中"}],privateProducts:[],
+   records:[{staffId:"p",totalCount:2,version:3,counts:{NURO:2},privateCounts:{}}]}
+ };
+ const original=JSON.stringify(ctx.data);
+ const render=vm.runInNewContext(code+"\nrenderPartnerHistoryCountPreview;",ctx);
+ render();
+ assert.equal(container.children[0].children[0].textContent,"田中｜2件｜第3版");
+ assert.equal(container.children[0].children[1].children[0].children[0].textContent,"NURO");
+ assert.equal(container.children[0].children[1].children[0].children[1].textContent,"2件");
+ assert.equal(JSON.stringify(ctx.data),original);
+ ctx.data.records=[{staffId:"p",totalCount:0,version:4,counts:{NURO:0},privateCounts:{}}];
+ render();
+ assert.equal(container.children[0].children[1].children[0].textContent,"0件で報告済み");
+ ctx.data.records=[];render();
+ assert.match(container.children[0].textContent,/未報告は0件ではありません/);
+});
