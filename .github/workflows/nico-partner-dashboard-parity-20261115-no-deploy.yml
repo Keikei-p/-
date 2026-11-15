@@ -30,3 +30,19 @@ jobs:
           test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
           node --test tests/partner-original-team-card-parity.test.mjs tests/partner-money-free-workspace.test.cjs
           echo PARTNER_DASHBOARD_COUNT_ONLY_PARITY_PASS
+      - name: Regress existing live sales UI, partner save path and finance isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          node --test \
+            tests/sales-regressions.cjs \
+            tests/legacy-finance-entry-guard.test.mjs \
+            tests/partner-workspace.test.cjs \
+            tests/partner-one-login-same-app.test.cjs \
+            tests/partner-published-count-browser-contract.test.cjs \
+            tests/partner-existing-ranking.test.cjs \
+            tests/unified-partner-team-mount.test.mjs
+          echo PARTNER_EXISTING_SALES_LOGIN_AND_SAVE_REGRESSION_PASS
+
