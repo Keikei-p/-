@@ -43,7 +43,7 @@ test("all-OFF partner publishes no personal/team ranks while ON zero remains rep
  const originals=JSON.stringify([off,on,submittedZero]);
  const out=build([off,on,submittedZero]);
  assert.equal(out.totalCount,2);
- assert.equal(out.reportCount,3);
+ assert.equal(out.reportCount,2,"all-OFF company reports are private metadata; count only the ON report and actual zero report");
  assert.deepEqual(out.companies.map(x=>x.name),["公開会社","ゼロ会社"]);
  assert.equal(out.people.length,2);
  assert.equal(out.teams.length,2);

@@ -1,0 +1,69 @@
+name: NICO partner published input and historical counts isolated (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - functions-partner-workspace/submission-publication-guard.cjs
+      - functions-partner-workspace/shared-count-standings.cjs
+      - tests/partner-publication-write-ranking-consistency.test.cjs
+      - tests/partner-off-only-zero-rank-protection.test.cjs
+      - .github/workflows/nico-partner-published-write-isolated-no-deploy.yml
+      - tests/approved-partner-count-standings.test.cjs
+      - ranking/approved-published-categories.mjs
+      - ranking/partner-submission-publication-guard.mjs
+      - scripts/ci/review-partner-published-write-isolated.cjs
+      - .github/workflows/nico-partner-company-code-release.yml
+      - .github/workflows/nico-partner-publication-write-integration-no-deploy.yml
+      - .github/workflows/nico-secondary-finance-current-count-gate-no-deploy.yml
+      - .github/workflows/nico-verified-partner-count-standings-no-deploy.yml
+permissions:
+  contents: read
+jobs:
+  partner-published-scope:
+    name: verify-off-deny-and-historical-counts-no-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact source and CI repair scope, no credentials or release flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          git fetch --no-tags origin main
+          while IFS= read -r path; do
+            case "$path" in
+              functions-partner-workspace/submission-publication-guard.cjs|functions-partner-workspace/shared-count-standings.cjs|tests/partner-publication-write-ranking-consistency.test.cjs|tests/partner-off-only-zero-rank-protection.test.cjs|.github/workflows/nico-partner-published-write-isolated-no-deploy.yml|tests/approved-partner-count-standings.test.cjs|ranking/approved-published-categories.mjs|ranking/partner-submission-publication-guard.mjs|scripts/ci/review-partner-published-write-isolated.cjs|.github/workflows/nico-partner-company-code-release.yml|.github/workflows/nico-partner-publication-write-integration-no-deploy.yml|.github/workflows/nico-secondary-finance-current-count-gate-no-deploy.yml|.github/workflows/nico-verified-partner-count-standings-no-deploy.yml) ;;
+              *) echo "STOP_UNREVIEWED_SCOPE: $path"; exit 1 ;;
+            esac
+          done < <(git diff --name-only origin/main...HEAD)
+          node scripts/ci/review-partner-published-write-isolated.cjs --sources-only
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+          # The current main has not registered the V3 Owner correction writer.
+          # Keep the existing workspace and publication paths disabled.
+          grep -Fq 'enabled=()=>false' functions-partner-workspace/service.cjs
+          for file in functions-partner-workspace/submission-publication-guard.cjs functions-partner-workspace/shared-count-standings.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-off-only-zero-rank-protection.test.cjs; do
+            node --check "$file"
+          done
+      - name: Test approved ON OFF and historical ledger preservation
+        run: |
+          node --test tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-off-only-zero-rank-protection.test.cjs
+          echo 'PARTNER_ON_OFF_COUNT_WRITE_GUARD_ISOLATED_PASS_NO_DEPLOY'
+      - name: Keep original partner flows and source records intact
+        run: |
+          node --test tests/partner-existing-ranking.test.cjs
+          echo 'NO_FIREBASE_DATA_WRITES_OR_DEPLOY'
