@@ -12,6 +12,10 @@ on:
       - '.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml'
       - '.github/workflows/nico-partner-company-code-release.yml'
       - '.github/workflows/nico-joint-count-host-wiring-no-deploy.yml'
+      - 'tests/verified-joint-count-host-wiring.test.mjs'
+      - '.github/workflows/nico-partner-published-write-isolated-no-deploy.yml'
+      - '.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml'
+      - '.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml'
 permissions:
   contents: read
 jobs:
@@ -41,7 +45,7 @@ jobs:
           git fetch --no-tags origin main
           while IFS= read -r path; do
             case "$path" in
-              partner-workspace.html|tests/partner-inline-joint-staging-wiring.test.mjs|tests/partner-inline-joint-original-preservation.test.mjs|.github/workflows/nico-partner-inline-joint-four-ranking-original-host-no-deploy.yml|scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs|.github/workflows/nico-verified-partner-count-standings-no-deploy.yml|.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml|.github/workflows/nico-partner-company-code-release.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml) ;;
+              partner-workspace.html|tests/partner-inline-joint-staging-wiring.test.mjs|tests/partner-inline-joint-original-preservation.test.mjs|.github/workflows/nico-partner-inline-joint-four-ranking-original-host-no-deploy.yml|scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs|.github/workflows/nico-verified-partner-count-standings-no-deploy.yml|.github/workflows/nico-partner-dashboard-original-parity-no-deploy.yml|.github/workflows/nico-partner-company-code-release.yml|.github/workflows/nico-joint-count-host-wiring-no-deploy.yml|tests/verified-joint-count-host-wiring.test.mjs|.github/workflows/nico-partner-published-write-isolated-no-deploy.yml|.github/workflows/nico-owner-existing-four-rank-host-wiring-isolated-no-deploy.yml|.github/workflows/nico-unified-four-ranking-ui-isolated-no-deploy.yml) ;;
               *) echo "STOP_UNREVIEWED_PARTNER_PRODUCTION_CHANGE: $path"; exit 1 ;;
             esac
           done < <(git diff --name-only origin/main...HEAD)
@@ -58,7 +62,7 @@ jobs:
           grep -Fq 'const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;' partner-workspace.html
       - name: Retain old sign-in, count editing, history and finance protection
         run: |
-          node --test tests/partner-inline-joint-original-preservation.test.mjs tests/partner-inline-joint-staging-wiring.test.mjs tests/partner-money-free-workspace.test.cjs tests/partner-workspace.test.cjs tests/verified-inline-joint-ranking-cards.test.mjs tests/verified-joint-month-http-bridge.test.mjs
+          node --test tests/partner-inline-joint-original-preservation.test.mjs tests/partner-inline-joint-staging-wiring.test.mjs tests/verified-joint-count-host-wiring.test.mjs tests/partner-money-free-workspace.test.cjs tests/partner-workspace.test.cjs tests/verified-inline-joint-ranking-cards.test.mjs tests/verified-joint-month-http-bridge.test.mjs
           echo 'PARTNER_ORIGINAL_FOUR_RANK_HOST_SAFE_OFF_NO_DEPLOY'
       - name: Explicitly preserve production state
         run: |
