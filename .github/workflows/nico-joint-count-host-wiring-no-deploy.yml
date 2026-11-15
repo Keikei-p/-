@@ -46,8 +46,8 @@ jobs:
           # hashes checked by a separately pinned read-only reviewer. Keep
           # all historical release and workflow_dispatch gates unchanged.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-               [ "${GITHUB_HEAD_REF:-}" = "review/partner-inline-four-rank-original-screen-off-20261115" ]; }
-             || { [ "$GITHUB_EVENT_NAME" = "push" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/partner-inline-four-rank-original-screen-off-20261115" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ] &&
                [ "$(git hash-object partner-workspace.html)" = 1ea7e1a26702681294ec999c7b36a8f10b880aa2 ]; }; then
             test "$(git hash-object scripts/ci/review-partner-original-joint-four-rank-no-deploy.cjs)" = 5655eb5b332574909077bef1acdd04af9cf54822
