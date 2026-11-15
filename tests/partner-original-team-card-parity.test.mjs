@@ -188,3 +188,27 @@ test("verified shared rankings reuse the self count-only row look, ties, and inc
  assert.throws(()=>appendSharedRankingRows(new El(),"異常",[{name:"A",count:-1}],true),
   /shared_ranking_entry_invalid/);
 });
+
+test("separate partner workspace uses self-app ranking cards without prices",()=>{
+ const begin=source.indexOf("function countRankingCards(");
+ const end=source.indexOf("function groupedProductCounts(",begin);
+ assert.ok(begin>0&&end>begin);
+ const countRankingCards=vm.runInNewContext(source.slice(begin,end)+
+  "\ncountRankingCards;",{document:{createElement:tag=>new El(tag)}});
+ const grid=countRankingCards([
+  {name:"NURO",count:6,rank:1},{name:"SBMNP",count:6,rank:1},
+  {name:"所属班未確認",count:3,rank:null}
+ ]);
+ assert.equal(grid.className,"partner-ranking-grid");
+ assert.deepEqual(Array.from(grid.children,card=>[
+  card.className,card.children[0].children[0].textContent,
+  card.children[0].children[1].textContent,card.children[1].children[0].textContent
+ ]),[
+  ["ranking-row","1","NURO","6件"],
+  ["ranking-row","1","SBMNP","6件"],
+  ["ranking-row","—","所属班未確認","3件"]
+ ]);
+ assert.throws(()=>countRankingCards([{name:"悪い件数",count:-1,rank:1}]),
+  /invalid count ranking card/);
+ assert.doesNotMatch(source.slice(begin,end),/getFirestore\(|formatYen\(|revenuePerUnit|unitPrice|totalRevenue|cashback/i);
+});
