@@ -39,7 +39,7 @@ function fixture(role="hub"){
  };
  const mount=()=>mountOwnerPartnerSetup({document,root,auth,functions:{},
   httpsCallable,onAuthStateChanged:(_auth,cb)=>{observer=cb;return()=>{observer=()=>{};}}});
- return {auth,root,calls,mount,onChange:()=>observer()};
+ return {auth,root,calls,status,mount,onChange:()=>observer()};
 }
 test("hub owner sees existing active partner, global switches and nine mappings without extra consent",async()=>{
  const f=fixture(),controller=f.mount();
@@ -88,4 +88,43 @@ test("hosting page uses only Firebase Auth and Owner Functions, no raw finance d
  assert.match(html,/noindex,nofollow/);
  assert.doesNotMatch(html+source,/firebase-firestore|(?:getFirestore|getDocs|setDoc|localStorage|sessionStorage)\s*\(/);
  assert.doesNotMatch(source,/runTransaction|firebase deploy|document\.cookie/);
+});
+
+test("inactive or malformed partner relation never grants Owner SKU settings",async()=>{
+ const inactive=fixture();
+ inactive.status.registeredCompanies.push({
+  partnerCompanyId:"inactive_partner",name:"休止中の協力店",active:false
+ });
+ const first=inactive.mount();
+ assert.equal(await first.refresh(),true);
+ const selected=walk(inactive.root).find(x=>x.tagName==="select");
+ assert.equal(selected?.children?.length,1,"inactive company is not offered for SKU changes");
+ assert.doesNotMatch(content(inactive.root),/休止中の協力店/);
+ first.destroy();
+ for(const mutate of [
+  x=>{x.name="機密売上100万円";},
+  x=>{x.partnerCompanyId="../other";},
+  x=>{x.active="yes";},
+  x=>{x.name="";},
+  x=>{x.partnerCompanyId="__proto__";x.active="yes";}
+ ]){
+  const bad=fixture();
+  mutate(bad.status.registeredCompanies[0]);
+  const ctl=bad.mount();
+  assert.equal(await ctl.refresh(),false);
+  assert(!bad.calls.some(x=>x.name==="getOwnerProductVisibility"||
+   x.name==="getOwnerReviewedSkuMapping"),"never mount hub tools from invalid company data");
+  assert.doesNotMatch(content(bad.root),/機密売上|協力店A|NURO光/);
+  ctl.destroy();
+ }
+});
+test("non-hub workspace roles never mount hub Owner product controls",async()=>{
+ for(const role of ["member","leader","owner"]){
+  const f=fixture(role),ctl=f.mount();
+  assert.equal(await ctl.refresh(),true);
+  assert(f.calls.every(x=>x.name!=="getOwnerProductVisibility"&&
+   x.name!=="getOwnerReviewedSkuMapping"&&x.name!=="setRankingOwnerConsent"));
+  assert.doesNotMatch(content(f.root),/自社の全体商材|選択した協力店の商材ON\/OFF/);
+  ctl.destroy();
+ }
 });
