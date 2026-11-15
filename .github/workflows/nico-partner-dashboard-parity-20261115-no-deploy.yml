@@ -1,7 +1,7 @@
 name: NICO partner dashboard company-team parity (NO DEPLOY)
 on:
   pull_request:
-    branches: [main]
+    branches: [integration/nico-sales-count-publication-rank-ready-20261113]
     paths:
       - index.html
       - partner-workspace.html
