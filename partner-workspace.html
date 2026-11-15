@@ -1110,7 +1110,13 @@ function renderCountAnalysisScopeCards(summary){
    const card=make("analysis-member-card","👤",person.name,person.count+"件");
    card.onclick=()=>{
     path.textContent=scope.name+" → "+person.name+" → 商材別";
-    const values=Object.fromEntries(peopleProducts.get(person.id)||new Map());
+    // The company total spans saved teams, but a selected team's
+    // historical member must never inherit that person's other team counts.
+    const saved=scope.id==="all"?null:
+      (summary.teamPersonProducts||[]).find(t=>t.id===scope.id)?.people
+       ?.find(p=>p.id===person.id)?.products;
+    const values=scope.id==="all"?
+      Object.fromEntries(peopleProducts.get(person.id)||new Map()):(saved||{});
     products(values);
    };
    output.append(card);
