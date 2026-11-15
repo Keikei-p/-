@@ -283,3 +283,69 @@ test("only staging module was added; original immutable published Functions and 
  assert.match(code,/previousVersion/);
  assert.doesNotMatch(code,/firestore\.rules|firebase deploy|collection\("records"\)|collection\("products"\)/);
 });
+
+test("server rejects direct requests that erase verified hikari AIR history; corrections retain known breakdown",async()=>{
+ const {db,service,makeReq,entry,aggregate}=setup();
+ const original={...zero(),NURO:1,"SB光・AIR":5};
+ const known={"SB光":2,"SB AIR":1,"旧未分類":2};
+ entry("s1",original,{sbBreakdown:known});
+ aggregate(original,{sbBreakdown:known});
+ const before=clone([...db.store]);
+ const core={date:day,partnerCompanyId:"partner",staffId:"s1",expectedVersion:1,
+  counts:{...original,NURO:2},correctionReason:"本人確認済みのNURO件数訂正"};
+ for(const changes of [
+  {sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":5}},
+  {sbBreakdown:{"SB光":1,"SB AIR":2,"旧未分類":2}},
+  {counts:{...original,NURO:2,"SB光・AIR":2},
+   sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":2}}
+ ]){
+  await assert.rejects(service.correct(makeReq("owner",{...core,...changes})),
+   e=>e?.code==="failed-precondition"||e?.code==="data-loss");
+  assert.deepEqual([...db.store],before,"no entry, total or audit may be rewritten");
+  assert.equal(db.writes.length,0);
+ }
+ const saved=await service.correct(makeReq("owner",{
+  ...core,sbBreakdown:known
+ }));
+ assert.equal(saved.version,2);
+ assert.deepEqual(db.store.get(prefix+"s1").sbBreakdown,known);
+ assert.deepEqual(db.store.get(totalPath).sbBreakdown,known);
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+day+"__s1__v2");
+ assert.deepEqual(audit.previousSbBreakdown,known);
+ assert.deepEqual(audit.sbBreakdown,known);
+ assert.deepEqual(db.writes.map(x=>x.method),["update","update","create"]);
+});
+
+test("server rejects money and control labels even for Unicode disguised input",async()=>{
+ const {db,service,makeReq,entry,aggregate}=setup();
+ const counts={...zero(),NURO:1};
+ entry("s1",counts);
+ aggregate(counts);
+ const original=clone([...db.store]);
+ const base={date:day,partnerCompanyId:"partner",staffId:"s1",
+  expectedVersion:1,counts:{...counts,NURO:2}};
+ for(const reason of [
+  "修正理由ＣＢ ５０００を含む",
+  "価格２万円を見直したため",
+  "担当者との連絡により変更\u0000制御文字",
+  "本人に確認しました\u001F訂正理由",
+  "unit price 5000 is unchanged"
+ ]){
+  await assert.rejects(service.correct(makeReq("owner",{
+   ...base,correctionReason:reason
+  })));
+  assert.deepEqual([...db.store],original);
+ }
+ db.store.get("companies/partner").name="協力店 ＲＥＶＥＮＵＥ５０００";
+ await assert.rejects(service.list(makeReq("owner",{
+  date:day,partnerCompanyId:"partner"
+ })));
+ db.store.get("companies/partner").name="協力店 A";
+ db.store.get(prefix+"s1").staffNameSnapshot="スタッフ ＣＢ４０００";
+ const response=await service.list(makeReq("owner",{
+  date:day,partnerCompanyId:"partner"
+ }));
+ assert.equal(response.entries[0].staffName,"（氏名未確認）");
+ assert.equal(db.writes.length,0);
+ assert(!JSON.stringify(response).includes("ＣＢ４０００"));
+});

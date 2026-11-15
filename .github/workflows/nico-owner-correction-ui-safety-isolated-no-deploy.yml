@@ -10,6 +10,11 @@ on:
       - 'tests/partner-owner-correction-v3-ui.test.mjs'
       - '.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml'
       - '.github/workflows/nico-owner-count-correction-v3-offline.yml'
+      - 'staging/partner-owner-correction-v3/service.cjs'
+      - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
+      - 'tests/partner-owner-correction-v3.test.cjs'
+      - 'tests/current-owner-correction-package.test.mjs'
+      - '.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml'
 permissions:
   contents: read
 jobs:
@@ -40,12 +45,34 @@ jobs:
           test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
           test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
           git fetch --no-tags origin main
-          while IFS= read -r path; do
-            case "$path" in
-              staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|tests/partner-owner-correction-v3-ui.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
-              *) echo "STOP_OWNER_UI_OUT_OF_SCOPE: $path"; exit 1 ;;
-            esac
-          done < <(git diff --name-only origin/main...HEAD)
+          # Owner API package candidate: separately strict source allowlist.
+          # Preserve original UI-only scope in else, never widen globally.
+          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+               [ "${GITHUB_HEAD_REF:-}" = "review/owner-correction-server-guard-and-current-package-no-deploy-20261115" ]; } ||
+             { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
+               [ "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764 ]; }; then
+            test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
+            test "$(git hash-object tools/production/prepare-hub-owner-correction-v3-package.mjs)" = c507dd1557a8fe06d88f2913062796ab88253f27
+            test "$(git hash-object staging/partner-owner-correction-v3/owner-ui.mjs)" = 1e1712f624251adfc25cdd8f28371d3528c7aa8c
+            test "$(git hash-object staging/partner-owner-correction-v3/owner-client.mjs)" = 83eb3268eb7d1593bc891b286b113c7360061750
+            test "$(git hash-object staging/partner-owner-correction-v3/mobile-bootstrap.mjs)" = c35b58367db290aec3f8a86e9bdf73986c5d3f3d
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            while IFS= read -r path; do
+              case "$path" in
+                staging/partner-owner-correction-v3/service.cjs|tests/partner-owner-correction-v3.test.cjs|tools/production/prepare-hub-owner-correction-v3-package.mjs|tests/current-owner-correction-package.test.mjs|.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_SERVER_CANDIDATE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+          else
+            while IFS= read -r path; do
+              case "$path" in
+                staging/partner-owner-correction-v3/owner-client.mjs|staging/partner-owner-correction-v3/owner-ui.mjs|staging/partner-owner-correction-v3/mobile-bootstrap.mjs|tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs|tests/partner-owner-correction-v3-ui.test.mjs|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml) ;;
+                *) echo "STOP_OWNER_UI_OUT_OF_SCOPE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+          fi
           test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
           for path in firestore.rules functions-partner-workspace/index.js functions-partner-workspace/service.cjs functions-ranking-approvals/index.js partner-workspace.html sales-archive.js; do
             test "$(git rev-parse "HEAD:$path")" = "$(git rev-parse "origin/main:$path")"
