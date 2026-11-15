@@ -1284,9 +1284,10 @@ function clearCountOnlyDashboard(){
  $("partnerTeamCompanyHeading").textContent="";
  $("partnerTeamCountDetail").hidden=true;
  $("countGoalUnavailable").hidden=false;$("countReportCopy").disabled=true;
+ $("countGoalDailyEstimate").textContent="";
  $("countReportBody").value="";
  for(const id of ["countKpis","countTeamRank","countStaffRank","countAnalysisSummary",
-  "countProductSummary","countTrendChart","countProductRank","countDailyRows",
+  "countProductSummary","countTrendChart","countProductRank","countDailyRows","countDailyCards",
   "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
 function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
