@@ -212,3 +212,45 @@ test("separate partner workspace uses self-app ranking cards without prices",()=
   /invalid count ranking card/);
  assert.doesNotMatch(source.slice(begin,end),/getFirestore\(|formatYen\(|revenuePerUnit|unitPrice|totalRevenue|cashback/i);
 });
+
+test("embedded partner analysis matches self company/team product/person drilldown without rewriting counts",()=>{
+ const begin=sourceIndex.indexOf("function renderPartnerCountAnalysisDrilldown(snap){");
+ const end=sourceIndex.indexOf("function renderPartnerCountOnlyExtras(){",begin);
+ assert.ok(begin>0&&end>begin);
+ const code=sourceIndex.slice(begin,end);
+ assert.doesNotMatch(code,/formatYen\(|getFirestore\(|setDoc\(|deleteDoc\(|updateDoc\(|revenuePerUnit|unitPrice|totalRevenue/);
+ const nodes=new Map(),find=id=>{if(!nodes.has(id))nodes.set(id,new El());return nodes.get(id)};
+ const ctx={document:{createElement:tag=>new El(tag)},pInline:find,
+  partnerMainAppendRow:(parent,label,value)=>parent.append(Object.assign(new El(),{textContent:label+"："+value}))};
+ const drilldown=vm.runInNewContext(code+"\nrenderPartnerCountAnalysisDrilldown;",ctx);
+ const snap={role:"owner",companyName:"協力店A",date:"2026-11-15",
+  categories:["NURO"],enabledCategories:["NURO"],privateProducts:[],
+  teams:[{id:"t1",name:"1班",active:true},{id:"t2",name:"2班",active:true}],
+  staff:[{id:"p1",name:"田中",teamId:"t2",active:true},
+         {id:"p2",name:"佐藤",teamId:"t1",active:true}],
+  records:[{staffId:"p1",teamIdSnapshot:"t1",totalCount:3,
+    counts:{NURO:3},privateCounts:{}}]};
+ const untouched=JSON.stringify(snap);
+ drilldown(snap);
+ const root=find("pPartnerAnalysis"),[path,scopes,actions,view]=root.children;
+ assert.equal(scopes.className,"analysis-scope-grid");
+ assert.equal(scopes.children.length,3);
+ assert.equal(scopes.children[1].children[2].textContent,"3件");
+ assert.equal(scopes.children[2].children[2].textContent,"未報告");
+ scopes.children[1].onclick();
+ assert.equal(actions.children.length,2);
+ actions.children[1].onclick(); // 1班 → 担当者別
+ assert.equal(view.children.length,2);
+ assert.equal(view.children[0].children[1].textContent,"田中");
+ assert.equal(view.children[0].children[2].textContent,"3件");
+ assert.equal(view.children[1].children[1].textContent,"佐藤");
+ assert.equal(view.children[1].children[2].textContent,"未報告");
+ view.children[0].onclick(); // 田中 → 商材別
+ assert.match(path.textContent,/田中 → 商材別/);
+ assert.equal(view.children[0].children[0].textContent,"NURO");
+ assert.equal(view.children[0].children[1].textContent,"3件");
+ assert.equal(JSON.stringify(snap),untouched);
+ snap.records[0].totalCount=0;snap.records[0].counts.NURO=0;
+ drilldown(snap);
+ assert.equal(find("pPartnerAnalysis").children[1].children[1].children[2].textContent,"0件");
+});
