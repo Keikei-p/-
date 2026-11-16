@@ -87,6 +87,16 @@ test('latest verified backup has bounded document/byte budget and an unused isol
  assert.throws(()=>selectBackup({databases:[sourceMeta,restoredMeta()]},backups,NOW),/DESTINATION_OCCUPIED/);
 });
 
+test('backup budget failure reasons remain separate and fail closed',()=>{
+ const a=clone(backups);a.backups[0].stats.sizeBytes=String(33*1024*1024);
+ assert.throws(()=>selectBackup(databases,a,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_SIZE_BUDGET/);
+ const b=clone(backups);b.backups[0].stats.documentCount='10001';
+ assert.throws(()=>selectBackup(databases,b,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_DOCUMENT_COUNT_BUDGET/);
+ const c=clone(backups);delete c.backups[0].stats;
+ assert.throws(()=>selectBackup(databases,c,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_STATS_INVALID/);
+ const d=clone(backups);d.backups[0].stats.sizeBytes='NaN';
+ assert.throws(()=>selectBackup(databases,d,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_STATS_INVALID/);
+});
 test('transport rejects production deletes, document writes, foreign backups and destinations',()=>{
  for(const [method,url,body] of [
   ['DELETE',API+SOURCE],['PATCH',API+SOURCE+'/documents/records/r1',{fields:{}}],

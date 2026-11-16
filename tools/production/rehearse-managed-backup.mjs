@@ -67,8 +67,9 @@ export function selectBackup(databases,backups,now){
  const stats=selected.stats;
  const integer=x=>typeof x==='string'&&/^\d+$/.test(x)&&Number.isSafeInteger(Number(x));
  if(!integer(stats?.documentCount)||Number(stats.documentCount)<1||
-    Number(stats.documentCount)>10000||!integer(stats?.sizeBytes)||
-    Number(stats.sizeBytes)<1||Number(stats.sizeBytes)>limit)STOP('BACKUP_SIZE_OR_COUNT_BUDGET');
+    !integer(stats?.sizeBytes)||Number(stats.sizeBytes)<1)STOP('BACKUP_STATS_INVALID');
+ if(Number(stats.documentCount)>10000)STOP('BACKUP_DOCUMENT_COUNT_BUDGET');
+ if(Number(stats.sizeBytes)>limit)STOP('BACKUP_SIZE_BUDGET');
  return {selected,current,report};
 }
 export function validateRestoredDatabase(db,{backup,sourceUid,started,operation,uid}={}){
