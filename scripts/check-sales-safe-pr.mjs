@@ -41,10 +41,36 @@ const bootstrapAllowed=event.pull_request.number===74
   && event.repository?.full_name==="Keikei-p/-"
   && event.pull_request.base?.ref==="main"
   && files.slice().sort().join("\n")===bootstrapFiles.join("\n");
+// #704 release is materially broader than its historical single-file releases.
+// Do not accept a touched signoff file as proof: require a LAST, manually
+// prepared source review commit, tied to the exact code HEAD before signing.
+// This is a structural requirement, not proof of the reviewer's identity;
+// the maintainer label and actual independent human review remain essential.
+function verifySignedIntegratedReview() {
+  if(event.pull_request?.number!==704)return true;
+  if(!files.includes("docs/SALES_RELEASE_SIGNOFF.md"))return false;
+  const currentHead=event.pull_request.head.sha;
+  let prior;
+  try{prior=execFileSync("git",["rev-parse",currentHead+"^"],{encoding:"utf8"}).trim();}
+  catch{return false;}
+  if(!/^[a-f0-9]{40}$/.test(prior)||gitDiff(prior,currentHead).join("\\n")!=="docs/SALES_RELEASE_SIGNOFF.md")return false;
+  const signed=fs.readFileSync("docs/SALES_RELEASE_SIGNOFF.md","utf8");
+  const marker="## SALES_RELEASE_PR_704_SIGNED";
+  const at=signed.lastIndexOf(marker);
+  if(at<0)return false;
+  const body=signed.slice(at+marker.length).split(/\\r?\\n## /,1)[0];
+  return body.split(/\\r?\\n/).some(line=>line==="reviewed_source_sha: "+prior)&&
+    body.split(/\\r?\\n/).some(line=>line==="reviewed_by: Keikei-p")&&
+    body.split(/\\r?\\n/).some(line=>line==="signature: Keikei-p")&&
+    body.split(/\\r?\\n/).some(line=>line==="decision: APPROVE_PR_704_BOUNDED_RELEASE")&&
+    /^review_date: 20\\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$/m.test(body);
+}
 if(protectedChanges.length>0){
   console.error("Sensitive production paths changed:",protectedChanges.join(", "));
   if(!hasApproval && !bootstrapAllowed)fail("Protected files require maintainer-applied label: sales-production-reviewed");
   if(!files.includes("docs/SALES_RELEASE_SIGNOFF.md"))fail("Protected files require a per-release signed review note: docs/SALES_RELEASE_SIGNOFF.md");
+  if(!bootstrapAllowed && !verifySignedIntegratedReview())
+    fail("PR #704 requires the final signer-only review commit and exact prior source SHA; an unsigned note is insufficient");
   if(bootstrapAllowed)console.log("One-time safety-gate bootstrap exemption for PR #74 only; no app/db files may change.");
 }
 if(files.some(f=>f.startsWith(".github/workflows/") && f.endsWith(".yml"))){
