@@ -68,7 +68,7 @@ export function selectBackup(databases,backups,now){
  // A READY backup can lack stats until secondary-storage materialization completes.
  // Only skip unverified stats; never skip a valid but over-budget backup.
  const selected=candidates.find(x=>x.stats!==undefined&&x.stats!==null);
- if(!selected)STOP('BACKUP_STATS_INVALID');
+ if(!selected)STOP('BACKUP_STATS_UNAVAILABLE');
  if(!BACKUP.test(selected.name))STOP('BACKUP_NAME');
  const stats=selected.stats;
  if(!integer(stats?.documentCount)||Number(stats.documentCount)<1||
