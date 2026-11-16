@@ -195,10 +195,10 @@ test("different company SKUs are NEVER merged merely because both names say NURO
  assert(value.productRanking.every(p=>p.id.startsWith("unmapped:")));
  assert.deepEqual(value.productRanking.map(p=>p.count),[3,1]);
 });
-test("canceled consent, wrong role, forged approvals, missing snapshot or company reject before publication",()=>{
+test("inactive authorization, wrong role, forged companies and incomplete source reject before publication",()=>{
  for(const edit of [
   d=>{d.context.reciprocalOwnersApproved=false;},
-  d=>{d.context.individualNamesApproved=false;},
+  d=>{d.context.publicNameCompanyIds=["foreign"];},
   d=>{d.context.serverVerified=false;},
   d=>{d.context.viewerCompanyId="other";},
   d=>{d.context.approvedCompanyIds=["hub"];},
@@ -211,6 +211,44 @@ test("canceled consent, wrong role, forged approvals, missing snapshot or compan
   d=>{d.sources[1].lines[0].count=1;},
   d=>{d.sources[1].lines.push({...d.sources[1].lines[0]});}
  ]){const d=fixture(3);edit(d);assert.throws(()=>build(d),undefined,edit.toString());}
+});
+
+test("active count sharing ranks all four dimensions without extra consent and keeps unapproved foreign names private",()=>{
+ for(const role of ["hub_owner","partner_owner"]){
+  const x=fixture(3);x.context=auth(role);
+  delete x.context.reciprocalOwnersApproved;delete x.context.individualNamesApproved;
+  x.context.activeCountSharingVerified=true;
+  x.context.publicNameCompanyIds=[x.context.viewerCompanyId];
+  const before=structuredClone(x),out=build(x);
+  if(role==="hub_owner"){
+   assert.deepEqual(out.summary,{own:1,partner:3,total:4,unidentified:0});
+   assert.equal(out.companyBreakdown.length,2);assert.equal(out.teamBreakdown.length,2);
+   assert.equal(out.productRanking[0].count,4);
+  }else{
+   assert.equal(out.publicRanking.companies.length,2);assert.equal(out.publicRanking.teams.length,2);
+   assert.equal(out.publicRanking.products[0].count,4);assert.equal(out.own.count,3);
+  }
+  const foreign=role==="hub_owner"?out.memberRanking.filter(p=>p.companyId!==x.context.viewerCompanyId):
+   out.publicRanking.members.filter(p=>p.company!==out.own.company);
+  assert(foreign.length>0&&foreign.every(p=>p.name==="担当者（名称非公開）"));
+  const json=JSON.stringify(out);
+  for(const p of x.sources.filter(s=>s.companyId!==x.context.viewerCompanyId).flatMap(s=>s.roster))
+   assert(!json.includes(p.name),"unapproved foreign name must not appear in nested details");
+  assert.deepEqual(x,before,"name policy cannot rewrite source records");
+  assert.deepEqual(out,buildVendorDashboard(x));
+ }
+});
+
+test("existing verified name approval changes labels, never counts or ranking authorization",()=>{
+ const x=fixture(3);delete x.context.reciprocalOwnersApproved;delete x.context.individualNamesApproved;
+ x.context.activeCountSharingVerified=true;x.context.publicNameCompanyIds=["hub"];
+ const anonymous=build(x);x.context.publicNameCompanyIds.push("partner");
+ x.sources[1].publicNamesVerified=true;
+ const named=build(x);assert.deepEqual(named.summary,anonymous.summary);
+ assert.equal(named.memberRanking.find(p=>p.id==="partner:p1").name,"協力店A担当");
+ x.sources[1].roster[0].name="CB5000";
+ assert.throws(()=>build({...x,context:{...x.context,publicNameCompanyIds:["hub"]}}),
+  /INCOMPLETE_OR_UNAUTHORIZED/,"anonymization cannot hide malformed financial labels");
 });
 test("financial fields and labels cannot enter either hub or partner response",()=>{
  for(const edit of [

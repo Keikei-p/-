@@ -25,7 +25,7 @@ const PUBLIC_FIELDS=new Set([
  "teamId","teamName","uid","productId","count","unidentifiedCount",
  "ownCount","partnerCount","rank","reportStatus","reportedDays",
  "previousCount","change","growth","topProduct","remainingToGoal",
- "personalBestStatus"
+ "personalBestStatus","detail","goalCount","memberCount","scope"
 ]);
 const FINANCE_KEY=/(?:revenue|sales|amount|price|unitprice|cashback|commission|salary|profit|margin|payment|fee|売上|単価|金額|報酬|利益|キャッシュバック)/i;
 const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cash\s*back|revenue|commission|salary|unit\s*price|CB)[\s:_=-]*[0-9０-９])/i;

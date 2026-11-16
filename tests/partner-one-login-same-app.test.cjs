@@ -1,5 +1,6 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
+const vm=require("node:vm");
 const load=name=>fs.readFileSync(path.join(__dirname,"..",name),"utf8");
 const index=load("index.html"),partner=load("partner-workspace.html"),
  legacyCompanyInvite=load("partner-invite.html"),
@@ -48,8 +49,9 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/await partnerInlineManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
  assert.match(index,/action:"createInvite",email,teamId,role/);
  assert.match(index,/partnerInlineSave\(partnerInlinePayload\(\{/);
- assert.match(index,/const verified=\(await readPartnerWorkDay\(partnerInlinePayload/);
- assert.match(index,/snap\.categories\.some\(key=>saved\.counts\?\.\[key\]!==counts\[key\]\)/);
+ assert.match(index,/verified=\(await readPartnerWorkDay\(partnerInlinePayload\(\{date\}\)\)\)\.data/);
+ assert.match(index,/const readback=partnerSavedCountReadbackState\(verified,expected\)/);
+ assert.match(index,/result\.version!==expected\.expectedVersion\+1\|\|readback!=="saved"/);
  assert.match(index,/pInline\("pInlineTitle"\)\.textContent="🤝 "\+snap\.companyName/);
  assert.match(index,/snap\.companyName\+"・"\+t\.name/);
  assert.match(index,/id="pInlineRanking"/);
@@ -57,6 +59,87 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/id="pInlineManagedName"/);
  assert.match(index,/id="pInlineInviteEmail"/);
  assert.doesNotMatch(index.slice(index.indexOf("// NICO partner: same Firebase email sign-in"),index.indexOf("/* =====================================================\n   Auth状態")),/getDocs\(|onSnapshot\(|getFirestore\(|collection\(db,"(?:products|records|recordCorrections|revenueGoals)"/);
+});
+test("same-app save readback requires the exact persisted identity, version, count and snapshots",()=>{
+ const start=index.indexOf("function partnerSavedCountReadbackState(");
+ const end=index.indexOf("function partnerCountSaveFailureMessage(",start);
+ assert(start>0&&end>start);
+ const context=vm.createContext({PARTNER_NURO_CB_TIERS:[0,20000]});
+ vm.runInContext(index.slice(start,end),context);
+ const expected={date:"2026-11-13",companyName:"検証会社",staffId:"worker",
+  expectedVersion:0,categories:["NURO","SBMNP"],counts:{NURO:2,SBMNP:1},
+  privateCounts:{privateOne:2},
+  workLocation:"検証現場",workTeamId:"team"};
+ const verified={date:expected.date,companyName:expected.companyName,records:[{
+  staffId:"worker",version:1,counts:{...expected.counts},
+  privateCounts:{...expected.privateCounts},totalCount:3,
+  workLocation:expected.workLocation,teamIdSnapshot:"team"}]};
+ assert.equal(context.partnerSavedCountReadbackState(verified,expected),"saved");
+ const mutations=[
+  x=>{x.date="2026-11-12";},x=>{x.companyName="別会社";},
+  x=>{x.records[0].staffId="other";},x=>{x.records[0].version=2;},
+  x=>{x.records[0].counts.NURO=1;},x=>{x.records[0].counts.SBMNP=1.5;},
+  x=>{x.records[0].privateCounts.privateOne=1;},x=>{x.records[0].totalCount=4;},
+  x=>{x.records[0].workLocation="別現場";},x=>{x.records[0].teamIdSnapshot="other";}
+ ];
+ for(const mutate of mutations){
+  const changed=structuredClone(verified);mutate(changed);
+  assert.notEqual(context.partnerSavedCountReadbackState(changed,expected),"saved");
+ }
+ const unchanged=structuredClone(verified);unchanged.records[0].version=0;
+ assert.equal(context.partnerSavedCountReadbackState(unchanged,expected),"not_saved");
+ assert.equal(context.partnerSavedCountReadbackState({...verified,records:[]},
+  {...expected,expectedVersion:1}),"unknown","a missing correction is not a saved zero");
+});
+
+test("same-app save verifies by GET once and never retries or reports unverified success",async()=>{
+ const a=index.indexOf("function partnerSavedCountReadbackState(");
+ const b=index.indexOf("function partnerCountSaveFailureMessage(",a);
+ const start=index.indexOf('function partnerInlineCountsUnchanged(');
+ const end=index.indexOf("// Original internal owner sees existing teams PLUS partner-company teams.",start);
+ assert(a>0&&b>a&&start>0&&end>start);
+ for(const scenario of ["saved","mismatch","ack_missing","lost_response_saved","denied_not_saved","identity_changed"]){
+  const date="2026-11-13",calls=[],controls={
+   pInlineSave:{},pInlineStaff:{value:"worker"},pInlineDate:{value:date},
+   pInlineRecordDate:{value:date},pInlineWorkLocation:{value:"現場"},
+   pInlineWorkingTeam:{value:"team"},pInlineCountFields:{querySelectorAll:selector=>
+    selector==="input[data-count-key]"?[{dataset:{countKey:"NURO"},value:"2"}]:[]}
+  };
+  const denial=Object.assign(Error("denied"),{code:"functions/permission-denied"});
+  const context=vm.createContext({
+   pInline:id=>controls[id],PARTNER_NURO_CB_TIERS:[0,20000],
+   auth:{currentUser:{uid:"worker"}},partnerInlineWorkspaceCompany:"partner",
+   partnerInlineData:{date,companyName:"検証会社",role:"member",categories:["NURO"],
+    staff:[{id:"worker",active:true,teamId:"team"}],teams:[{id:"team",active:true}],records:[]},
+   partnerMainValidId:x=>/^[A-Za-z0-9_-]+$/.test(x),
+   partnerInlineSelectedCb:()=>({total:2,result:{0:2}}),
+   partnerInlinePayload:data=>({...data,workspaceCompanyId:"partner"}),
+   partnerInlineRun:(work,options)=>{assert.equal(options.kind,"save");return work();},
+   partnerInlineSave:async input=>{
+    calls.push("save");assert.equal(input.date,date);assert.equal(input.counts.NURO,2);
+    if(scenario==="identity_changed")context.auth.currentUser={uid:"other"};
+    if(scenario==="denied_not_saved")throw denial;
+    if(scenario==="lost_response_saved")throw Object.assign(Error("timeout"),{code:"functions/unavailable"});
+    return {data:{saved:scenario!=="ack_missing",date,staffId:"worker",version:1}};
+   },
+   readPartnerWorkDay:async input=>{
+    calls.push("get");assert.equal(input.date,date);
+    return {data:{date,companyName:"検証会社",records:scenario==="denied_not_saved"?[]:[{
+     staffId:"worker",version:1,counts:{NURO:scenario==="mismatch"?1:2},
+     privateCounts:{},totalCount:2,workLocation:"現場",teamIdSnapshot:"team"}]}};
+   }
+  });
+  vm.runInContext(index.slice(a,b)+index.slice(start,end),context);
+  if(scenario==="saved"||scenario==="lost_response_saved"){
+   assert.match(await controls.pInlineSave.onclick(),/^✅ 実績を登録できました！$/);
+  }else{
+   await assert.rejects(controls.pInlineSave.onclick(),
+    e=>scenario==="denied_not_saved"?e===denial:e.message==="save_verify");
+  }
+  assert.deepEqual(calls,scenario==="identity_changed"?["save"]:["save","get"],
+   "the original draft is reconciled read-only, never resubmitted automatically");
+  assert.equal(controls.pInlineWorkLocation.value,"現場");
+ }
 });
 test("company-team presentation only reads owner-authorized money-free API, not writable internal teams",()=>{
  assert.match(index,/id="ownerPartnerTeamGroups"/);

@@ -57,7 +57,7 @@ function validateSelected(settings,products){
   for(const x of arr)if(!found.has(x))stop();
  }
 }
-export function createOwnerProductVisibilityStore({db,FieldValue}={}){
+export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountViewer}={}){
  if(!db||typeof db.collection!=="function"||
     typeof db.runTransaction!=="function"||
     !FieldValue||typeof FieldValue.serverTimestamp!=="function")stop();
@@ -222,10 +222,13 @@ export function createOwnerProductVisibilityStore({db,FieldValue}={}){
    if(!obj(company)||!id(company.ownerUid)||company.active===false)stop();
    // A claimed serverVerified flag is not sufficient: bind the viewer to
    // the live owner/partner documents before returning publication settings.
-   if(!partner&&context.viewerUid!==company.ownerUid)stop();
+   if(verifyCountViewer!==undefined){
+    if(typeof verifyCountViewer!=="function")stop();
+    await verifyCountViewer({tx,context});
+   }else if(!partner&&context.viewerUid!==company.ownerUid)stop();
    if(partner){
     const viewer=read(viewerCompanySnap),relation=read(relationSnap);
-    if(!obj(viewer)||viewer.ownerUid!==context.viewerUid||
+    if(!obj(viewer)||(!verifyCountViewer&&viewer.ownerUid!==context.viewerUid)||
        viewer.companyKind!=="partner"||viewer.hubCompanyId!==hub||
        viewer.active!==true||!obj(relation)||
        relation.partnerCompanyId!==context.viewerCompanyId||

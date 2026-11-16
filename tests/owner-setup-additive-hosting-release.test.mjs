@@ -5,14 +5,13 @@ import {SOURCES,prepareOwnerSetupAdditive,uploadSha}
  from "../tools/hosting/owner-setup-additive-guard.mjs";
 import {releaseOwnerSetupAdditive}
  from "../tools/hosting/release-owner-setup-additive.mjs";
-const sources=()=>Object.fromEntries(Object.keys(SOURCES).map(name=>[
- name,readFileSync(new URL("../"+name,import.meta.url),"utf8")
-]));
+import {historicalSources} from "./helpers/historical-builder-fixtures.mjs";
+const sources=()=>historicalSources(SOURCES);
 const oldFiles=()=>[
  "/index.html","/partner-workspace.html","/partner-invite.html",
  "/partner-counts.html","/owner-partner-admin.html"
 ].map((path,i)=>({path,hash:String(i+1).repeat(64)}));
-test("all eleven real Owner assets match pinned immutable source, have no finance SDK reads",()=>{
+test("all eleven historical Owner assets match pinned immutable source, have no finance SDK reads",()=>{
  const src=sources(),plan=prepareOwnerSetupAdditive({oldFiles:oldFiles(),sources:src});
  assert.equal(plan.sourceFiles,5);
  assert.equal(plan.additions,11);
@@ -89,6 +88,20 @@ function mock(){
  };
  return {request,log,get uploads(){return uploads},get current(){return current}};
 }
+
+test("the frozen historical publisher rejects current changed setup assets without a remote write",async()=>{
+ const current=Object.fromEntries(Object.keys(SOURCES).map(name=>[
+  name,readFileSync(new URL("../"+name,import.meta.url),"utf8")
+ ]));
+ assert.notEqual(current["owner-partner-setup.html"],sources()["owner-partner-setup.html"]);
+ assert.throws(()=>prepareOwnerSetupAdditive({oldFiles:oldFiles(),sources:current}),
+  /STOP_OWNER_SETUP_HOSTING_SOURCE_REVIEW_PIN_MISMATCH/);
+ const net=mock();
+ await assert.rejects(releaseOwnerSetupAdditive({request:net.request,sources:current,release:true}),
+  /STOP_OWNER_SETUP_HOSTING_SOURCE_REVIEW_PIN_MISMATCH/);
+ assert(net.log.every(x=>x.method==="GET"));
+ assert.equal(net.uploads,0);
+});
 test("dry-run fetches only current published metadata; never creates a version",async()=>{
  const net=mock(),res=await releaseOwnerSetupAdditive({
   request:net.request,sources:sources(),release:false

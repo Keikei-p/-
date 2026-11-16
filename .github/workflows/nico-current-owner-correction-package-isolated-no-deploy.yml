@@ -30,28 +30,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
-          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
-          test -z "$FIREBASE_TOKEN"
-          test -z "$HUB_OWNER_COUNT_CORRECTION_V3_ENABLED"
-          git fetch --no-tags origin main
-          while IFS= read -r path; do
-            case "$path" in
-              staging/partner-owner-correction-v3/service.cjs|tests/partner-owner-correction-v3.test.cjs|tools/production/prepare-hub-owner-correction-v3-package.mjs|tests/current-owner-correction-package.test.mjs|.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml) ;;
-              *) echo "STOP_UNREVIEWED_OWNER_API_CHANGE: $path"; exit 1 ;;
-            esac
-          done < <(git diff --name-only origin/main...HEAD)
-          test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
-          test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
-          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
-          test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
-          grep -Fq 'HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"' staging/partner-owner-correction-v3/entry.cjs
-          node --check staging/partner-owner-correction-v3/service.cjs
-          node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
-          node --check tests/current-owner-correction-package.test.mjs
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            set -euo pipefail
+            test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+            test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+            test -z "$FIREBASE_TOKEN"
+            test -z "$HUB_OWNER_COUNT_CORRECTION_V3_ENABLED"
+            git fetch --no-tags origin main
+            while IFS= read -r path; do
+              case "$path" in
+                staging/partner-owner-correction-v3/service.cjs|tests/partner-owner-correction-v3.test.cjs|tools/production/prepare-hub-owner-correction-v3-package.mjs|tests/current-owner-correction-package.test.mjs|.github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-count-correction-v3-offline.yml|.github/workflows/nico-owner-correction-ui-safety-isolated-no-deploy.yml) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_API_CHANGE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+            test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
+            test "$(git hash-object index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object functions-partner-workspace/index.js)" = 90d51246477cf5cfa6966f3e822326ef06cccd0f
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object partner-workspace.html)" = 431b200e02934315eda57b6998bdde801252f78f
+            grep -Fq 'HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"' staging/partner-owner-correction-v3/entry.cjs
+            node --check staging/partner-owner-correction-v3/service.cjs
+            node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
+            node --check tests/current-owner-correction-package.test.mjs
+          fi
       - name: Auth, previous records, audit, version conflict and source freeze
         run: |
           node --test tests/partner-owner-correction-v3.test.cjs tests/partner-owner-correction-v3-auth.test.cjs tests/current-owner-correction-package.test.mjs
@@ -61,7 +66,12 @@ jobs:
         run: |
           set -euo pipefail
           test ! -e "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
-          node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare-candidate
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+            node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          else
+            node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare-candidate
+          fi
           dir="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
           trap 'rm -rf -- "$dir"' EXIT
           test -d "$dir/functions-hub-owner-correction"

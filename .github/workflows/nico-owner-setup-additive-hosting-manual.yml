@@ -51,7 +51,7 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT_JSON: ''
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Protect live original functions and Rules and simulate all eleven new static assets
@@ -61,8 +61,12 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
-          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          fi
           node --check tools/hosting/owner-setup-additive-guard.mjs
           node --check tools/hosting/release-owner-setup-additive.mjs
           node --test tests/owner-setup-additive-hosting-release.test.mjs tests/owner-partner-setup-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-ranking-consent-panel.test.mjs

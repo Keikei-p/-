@@ -156,3 +156,44 @@ test("bad status, MIME, oversized payload, wrong month and impersonated schema a
   await assert.rejects(bridge.load({period,filters:{}}),/BRIDGE_BLOCKED/);
  }
 });
+test("existing company-code session uses only the authenticated header and never creates Firebase identity",async()=>{
+ const session="S".repeat(43),calls=[];
+ const bridge=createVerifiedJointMonthHttpBridge({featureEnabled:true,
+  auth:{currentUser:null},getCodeSession:()=>session,
+  fetcher:async(...args)=>{calls.push(args);return makeResponse();}
+ });
+ await bridge.load({period,filters:{}});
+ assert.equal(calls.length,1);
+ assert(!calls[0][0].includes(session));
+ assert.equal(calls[0][1].headers.Authorization,"Bearer "+session);
+ assert.equal(calls[0][1].credentials,"omit");
+});
+test("joint, direct and partner selection use the same server GET without browser aggregation",async()=>{
+ for(const scope of ["joint","direct","partner"]){
+  const calls=[];
+  const bridge=createVerifiedJointMonthHttpBridge({featureEnabled:true,auth,
+   fetcher:async(...args)=>{calls.push(args);return makeResponse();}});
+  await bridge.load({period,filters:{scope}});
+  assert.equal(calls.length,1);
+  assert.equal(new URL(calls[0][0]).searchParams.get("scope"),scope==="joint"?null:scope);
+ }
+});
+test("selected secondary workspace is sent as a selector, and any in-flight scope or session change cancels the result",async()=>{
+ for(const mode of ["workspace","code"]){
+  let selected="partnerOne",session="S".repeat(43),finish;
+  const pending=new Promise(resolve=>{finish=resolve;});
+  const calls=[];
+  const bridge=createVerifiedJointMonthHttpBridge({featureEnabled:true,auth,
+   getWorkspaceCompanyId:()=>mode==="workspace"?selected:"",
+   getCodeSession:()=>mode==="code"?session:"",
+   fetcher:async(...args)=>{calls.push(args);return pending;}
+  });
+  const result=bridge.load({period,filters:{}});
+  await Promise.resolve();await Promise.resolve();
+  if(mode==="workspace"){
+   assert(calls[0][0].endsWith("&workspaceCompanyId=partnerOne"));selected="partnerTwo";
+  }else session="T".repeat(43);
+  finish(makeResponse());
+  await assert.rejects(result,/BRIDGE_BLOCKED/);
+ }
+});

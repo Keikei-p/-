@@ -36,9 +36,9 @@ test("real Firebase Admin Firestore emulator: reconciled transactional count rea
  const write=(path,data)=>db.doc(path).set(data);
  try{
   await Promise.all([
-   write("companies/"+hub,{name:"自社",companyKind:"internal",active:true}),
+   write("companies/"+hub,{name:"自社",companyKind:"internal",active:true,ownerUid:"hubOwner"}),
    write("companies/"+partner,{name:"協力店",companyKind:"partner",
-    active:true,hubCompanyId:hub}),
+    active:true,hubCompanyId:hub,ownerUid:"partnerOwner"}),
    write(documentPaths.relation,{
     hubCompanyId:hub,partnerCompanyId:partner,active:true,
     countSharingApproved:true,
@@ -62,10 +62,15 @@ test("real Firebase Admin Firestore emulator: reconciled transactional count rea
     companyId:hub,totalRevenue:120000,unitPrice:30000,cashback:5000
    })
   ]);
+  for(const [cid,owner,other] of [[hub,"hubOwner",partner],[partner,"partnerOwner",hub]])
+   await write("companies/"+cid+"/rankingApprovals/"+other,{
+    companyId:cid,hubCompanyId:hub,partnerCompanyId:partner,approvedByUid:owner,
+    active:true,scope:"combined_rank_only",version:1,individualNamesApproved:true
+   });
   const original=(await db.doc(documentPaths.original).get()).data();
   const ctx={
    serverVerified:true,userActive:true,memberActive:true,companyActive:true,
-   reciprocalOwnersApproved:true,individualNamesApproved:true,
+   activeCountSharingVerified:true,
    completeSnapshotBudgetApproved:true,hubCompanyId:hub,
    approvedCompanyIds:[hub,partner]
   };
@@ -74,16 +79,26 @@ test("real Firebase Admin Firestore emulator: reconciled transactional count rea
   });
   const source=await read();
   assert.equal(source.records.length,1);
+  assert.equal(source.publicNamesVerified,true);
   assert.equal(source.records[0].totalCount,3);
   assert.deepEqual(source.lines.map(x=>x.count),[2,1]);
   assert(!JSON.stringify(source).includes("privateSku"));
   assert(!JSON.stringify(source).includes("totalRevenue"));
   assert.deepEqual((await db.doc(documentPaths.original).get()).data(),original);
-  // Current server-side mutual approval is checked AGAIN, not from a
-  // possibly stale browser or cached context.
+  // Obsolete extra ranking consent never blocks existing linked counts.
+  // Current count sharing is independently rechecked in the same snapshot.
   await db.doc(documentPaths.relation).update({
    combinedRankingApprovedByPartner:false
   });
+  const noExtraApproval=await read();
+  assert.equal(noExtraApproval.records[0].totalCount,3);
+  assert.equal(noExtraApproval.publicNamesVerified,true,
+   "obsolete ranking consent cannot revoke an existing separate name permission");
+  await db.doc(documentPaths.relation).update({individualNamesApprovedByPartner:false});
+  const namesRevoked=await read();
+  assert.equal(namesRevoked.publicNamesVerified,false);
+  assert.equal(namesRevoked.records[0].totalCount,3);
+  await db.doc(documentPaths.relation).update({countSharingApproved:false});
   await assert.rejects(read(),/INCOMPLETE/);
   assert.deepEqual((await db.doc(documentPaths.original).get()).data(),original);
  }finally{await deleteApp(app);}

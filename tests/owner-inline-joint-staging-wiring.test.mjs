@@ -116,7 +116,7 @@ test("enabled staging wiring registers render observer and month/auth hooks with
 
 test("Owner same-card day/week/month are verified server periods, not new financial computations",()=>{
  assert.ok(staging.includes('for(const [value,label] of [["month","月"],["week","週"],["day","日"]])'));
- assert.ok(staging.includes('period:{kind,day,asOf},filters:{}'));
+ assert.ok(staging.includes('period:{kind,day,asOf},filters:countScope==="joint"?{}:{scope:countScope}'));
  assert.ok(staging.includes('period:kind,start:payload.range.start,end:payload.range.end'));
  assert.ok(staging.includes('periodDay.slice(0,7)!==month'));
  assert.ok(staging.includes('periodKind!==kind'));

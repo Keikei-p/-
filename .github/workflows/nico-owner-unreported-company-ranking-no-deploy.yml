@@ -1,0 +1,45 @@
+name: NICO reported-zero vs unreported owner ranking (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/verified-dual-count-dashboards.mjs'
+      - 'functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs'
+      - 'ranking/verified-dual-count-view.mjs'
+      - 'ranking/verified-joint-ranking-panel.mjs'
+      - 'tests/verified-dual-count-dashboards.test.mjs'
+      - 'tests/verified-dual-count-view.test.mjs'
+      - 'tests/verified-joint-ranking-panel.test.mjs'
+      - 'tests/unified-partner-team-cards.test.mjs'
+      - '.github/workflows/nico-owner-unreported-company-ranking-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      GCLOUD_PROJECT: 'demo-nico-no-prod-owner-ranking'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm no production credentials and identical Functions count logic
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          cmp ranking/verified-dual-count-dashboards.mjs functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          node --check ranking/verified-dual-count-dashboards.mjs
+          node --check ranking/verified-dual-count-view.mjs
+          node --check ranking/verified-joint-ranking-panel.mjs
+      - name: Verify old counts, real zero, missing report, equal scores and financial isolation
+        run: |
+          set -euo pipefail
+          node --test tests/verified-dual-count-dashboards.test.mjs tests/verified-dual-count-view.test.mjs tests/verified-joint-ranking-panel.test.mjs tests/unified-partner-team-cards.test.mjs tests/owner-product-visibility-rankings.test.mjs tests/partner-legacy-quick-count-reader.test.mjs
+          echo 'OWNER_AND_PARTNER_UNREPORTED_NO_RANK_CONFIRMED_ZERO_RANKED_NO_DEPLOY'

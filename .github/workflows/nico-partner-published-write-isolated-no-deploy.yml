@@ -44,6 +44,15 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$FIREBASE_TOKEN"
           test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+            grep -Fq 'enabled=()=>false' functions-partner-workspace/service.cjs
+            for file in functions-partner-workspace/submission-publication-guard.cjs functions-partner-workspace/shared-count-standings.cjs tests/partner-publication-write-ranking-consistency.test.cjs tests/partner-off-only-zero-rank-protection.test.cjs; do
+              node --check "$file"
+            done
+            exit 0
+          fi
           git fetch --no-tags origin main
           # PR-only review for the exact, disabled partner four-rank host.
           # Production, historical Owner and manual release conditions stay

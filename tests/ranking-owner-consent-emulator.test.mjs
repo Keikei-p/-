@@ -116,17 +116,22 @@ test("real Firestore Admin demo emulator: two owners sign independently, revoke 
   assert.equal(hubStatus.partners[0].ownApproved,true);
   assert.equal(hubStatus.partners[0].otherApproved,false);
   assert.equal(hubStatus.partners[0].version,1);
-  await assert.rejects(createFreshCombinedRankingContext({db})(approval(partnerOwner)),/UNVERIFIED/);
+  const beforeNameApproval=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
+  assert.deepEqual(beforeNameApproval.approvedCompanyIds,[hub,partner]);
+  assert.deepEqual(beforeNameApproval.publicNameCompanyIds,[partner]);
   const second=await act(partnerOwner,true,0);
   assert.equal(second.version,1);
   const context=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
   assert.deepEqual(context.approvedCompanyIds,[hub,partner]);
+  assert.deepEqual(context.publicNameCompanyIds,[hub,partner]);
   assert.equal((await act(partnerOwner,true,1)).saved,false);
   await assert.rejects(act(partnerOwner,false,0),
    error=>error.code==="permission-denied"&&error.message==="ranking_owner_action_denied");
   const revoked=await act(partnerOwner,false,1);
   assert.equal(revoked.version,2);
-  await assert.rejects(createFreshCombinedRankingContext({db})(approval(partnerOwner)),/UNVERIFIED/);
+  const afterNameRevocation=await createFreshCombinedRankingContext({db})(approval(partnerOwner));
+  assert.deepEqual(afterNameRevocation.approvedCompanyIds,[hub,partner]);
+  assert.deepEqual(afterNameRevocation.publicNameCompanyIds,[partner]);
   const reapproved=await act(partnerOwner,true,2);
   assert.equal(reapproved.version,3);
   const callableStatus=await callable.status(request(partnerOwner));

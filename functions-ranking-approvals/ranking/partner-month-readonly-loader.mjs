@@ -3,15 +3,17 @@
  * Not registered in any Cloud Function, route, Hosting asset or Worker.
  *
  * Reads the EXISTING partner day/person ledger + hub daily reports in one
- * Firestore read-only transaction. Both owners must approve ranking/names
- * explicitly in the server-owned partnerRelations document; the older
- * countSharingApproved flag alone NEVER authorizes public ranking.
+ * Firestore read-only transaction. Existing active count sharing authorizes
+ * counts; optional existing individual-name approval is checked separately
+ * in the same snapshot and never grants permission merely from a saved name.
  *
  * The existing account, sales originals, audit history, Rules and Functions
  * are never written or modified. No client-provided proof or company label.
  */
 import {buildPartnerCountRankingSource} from "./partner-workspace-count-source.mjs";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
+import {existingPublicNameApprovalPairVerified}
+ from "./trusted-combined-ranking-context.mjs";
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const MONTH=/^(20\d\d)-(0[1-9]|1[0-2])$/;
@@ -56,11 +58,7 @@ function monthDays(month) {
 }
 function verifiedRelation(r,hub,partner) {
  if(r.hubCompanyId!==hub||r.partnerCompanyId!==partner||
-    r.active!==true||r.countSharingApproved!==true||
-    r.combinedRankingApprovedByHub!==true||
-    r.combinedRankingApprovedByPartner!==true||
-    r.individualNamesApprovedByHub!==true||
-    r.individualNamesApprovedByPartner!==true)halt();
+    r.active!==true||r.countSharingApproved!==true)halt();
 }
 function requireSameTime(snapshot,key) {
  if(isoTime(snapshot).key!==key)halt();
@@ -68,8 +66,7 @@ function requireSameTime(snapshot,key) {
 function approvedServerContext(ctx,hub,partner) {
  if(!ctx||ctx.serverVerified!==true||ctx.userActive!==true||
     ctx.memberActive!==true||ctx.companyActive!==true||
-    ctx.reciprocalOwnersApproved!==true||
-    ctx.individualNamesApproved!==true||
+    (ctx.activeCountSharingVerified!==true&&ctx.reciprocalOwnersApproved!==true)||
     ctx.completeSnapshotBudgetApproved!==true||
     ctx.hubCompanyId!==hub||!Array.isArray(ctx.approvedCompanyIds)||
     !ctx.approvedCompanyIds.includes(hub)||
@@ -77,9 +74,9 @@ function approvedServerContext(ctx,hub,partner) {
     ctx.approvedCompanyIds.length>30)halt();
 }
 /**
- * Must be called from a trusted server after verifyIdToken + fresh membership
- * and reciprocal company approval. This module independently rechecks the
- * company and owner consents in one transaction to prevent a stale context.
+ * Must be called from a trusted server after verifyIdToken, fresh membership
+ * and active linked count-sharing checks. This module rechecks the company,
+ * relation and optional existing name permissions in one count transaction.
  * Supply only server-validated ctx and a server-selected partner ID.
  *
  * Firestore interfaces: db.collection().doc().collection(), query.where(),
@@ -132,6 +129,25 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
       partnerCompany.active!==true||partnerCompany.companyKind!=="partner"||
       partnerCompany.hubCompanyId!==hubCompanyId)halt();
    verifiedRelation(relation,hubCompanyId,partnerCompanyId);
+   let publicNamesVerified=false;
+   if(relation.individualNamesApprovedByHub===true&&
+      relation.individualNamesApprovedByPartner===true&&
+      id(hubCompany.ownerUid)&&id(partnerCompany.ownerUid)){
+    const [hubApprovalSnap,partnerApprovalSnap]=await Promise.all([
+     tx.get(hub.collection("rankingApprovals").doc(partnerCompanyId)),
+     tx.get(partner.collection("rankingApprovals").doc(hubCompanyId))
+    ]);
+    // Approval expiry or malformed optional evidence suppresses names only.
+    // Count/entry/summary snapshot validation remains mandatory above/below.
+    try{
+     requireSameTime(hubApprovalSnap,key);requireSameTime(partnerApprovalSnap,key);
+     publicNamesVerified=existingPublicNameApprovalPairVerified({
+      relation,hubCompany,partnerCompany,hubCompanyId,partnerCompanyId,
+      hubApproval:hubApprovalSnap.exists?doc(hubApprovalSnap):null,
+      partnerApproval:partnerApprovalSnap.exists?doc(partnerApprovalSnap):null
+     });
+    }catch{publicNamesVerified=false;}
+   }
    if(!Array.isArray(entrySnap?.docs)||!Array.isArray(teamSnap?.docs)||
       !Array.isArray(staffSnap?.docs)||
       entrySnap.docs.length>MAX_ENTRIES||teamSnap.docs.length>MAX_TEAMS||
@@ -183,13 +199,13 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
     hubCompanyId,partnerCompanyId,companyLabel:partnerCompany.name,
     period:month,readTime:iso,
     relation,proof:{
-     serverVerified:true,reciprocalOwnersApproved:true,
+     serverVerified:true,countSharingVerified:true,
      completeMonthEntriesRead:true,completeMonthSummariesRead:true,
      historicalTeamsVerified:true,snapshotConsistent:true
     },teams,entries,summaries
    });
    // No raw staff documents or user-private data may leave this reader.
-   const result={...source,roster:activeRoster};
+   const result={...source,roster:activeRoster,publicNamesVerified};
    auditNoFinancialKeys(result);
    return result;
  };

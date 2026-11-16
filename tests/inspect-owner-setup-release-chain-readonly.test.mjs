@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {NEW,EXPECTED_FLAGS} from "../tools/production/owner-setup-six-release-scope.mjs";
 import {SOURCES,uploadSha} from "../tools/hosting/owner-setup-additive-guard.mjs";
-import {classifyFunctions,classifyHosting,readinessBoard}
+import {classifyFunctions,classifyHosting,readinessBoard,readPublishedOwnerSetupSources}
  from "../tools/production/inspect-owner-setup-release-chain-readonly.mjs";
+import {historicalSources} from "./helpers/historical-builder-fixtures.mjs";
 
 const root="projects/sales-management-cc116/locations/asia-northeast1/functions/";
 const functionMeta=(name)=>({
@@ -13,9 +14,7 @@ const functionMeta=(name)=>({
  serviceConfig:{uri:"https://private.a.run.app",environmentVariables:{...EXPECTED_FLAGS}}
 });
 const funcs=()=>NEW.map(functionMeta);
-const sourced=()=>Object.fromEntries(Object.keys(SOURCES).map(name=>[
- name,readFileSync(new URL("../"+name,import.meta.url),"utf8")
-]));
+const sourced=()=>historicalSources(SOURCES);
 const existing=()=>["/index.html","/partner-workspace.html","/partner-invite.html",
  "/partner-counts.html","/owner-partner-admin.html"].map((path,i)=>({
  path,hash:String(i+1).repeat(64)
@@ -100,12 +99,46 @@ test("published Hosting must exactly match all 11 reviewed SHA256 gzipped files"
  },hosted(),{...sourced(),["ranking/owner-ranking-consent-panel.mjs"]:"tampered"}),
  /STOP_OWNER_SETUP_CHAIN_HOSTING_REVIEWED_SOURCE_CHANGED/);
 });
+
+test("published source inventory uses immutable blobs and never claims the changed candidate matches",()=>{
+ assert.deepEqual(readPublishedOwnerSetupSources(),sourced());
+ const current=Object.fromEntries(Object.keys(SOURCES).map(name=>[
+  name,readFileSync(new URL("../"+name,import.meta.url),"utf8")
+ ]));
+ assert.notEqual(current["owner-partner-setup.html"],sourced()["owner-partner-setup.html"]);
+ assert.throws(()=>classifyHosting(release,{
+  name:version,status:"FINALIZED",fileCount:hosted().length,config:{}
+ },hosted(),current),/STOP_OWNER_SETUP_CHAIN_HOSTING_REVIEWED_SOURCE_CHANGED/);
+ const historical=classifyHosting(release,{
+  name:version,status:"FINALIZED",fileCount:hosted().length,config:{}
+ },hosted(),sourced());
+ assert.equal(historical.ownerSetupSourceBasis,"HISTORICAL_PINNED_PUBLISHED_SOURCES");
+ assert.equal(historical.currentCandidateSourceVerified,false);
+});
+
+test("current count configuration readiness does not require additional bilateral ranking consent",()=>{
+ const hosting=classifyHosting(release,{name:version,status:"FINALIZED",
+  fileCount:hosted().length,config:{}},hosted(),sourced());
+ const board=readinessBoard({functions:classifyFunctions(funcs()),hosting,
+  publication:pub({ownerPublicationCatalogReady:true,allEnabledPartnerSkuMapped:true,
+   mappedPartnerCount:3,reciprocalOwnerRankConsentReady:false,
+   blockingReasons:["RECIPROCAL_RANK_CONSENT_INCOMPLETE"]})});
+ assert.equal(board.ownerPublicCatalogReady,true);
+ assert.equal(board.allEnabledPartnerSkuMapped,true);
+ assert.equal(board.partnerCompaniesWithMappedRankCategories,3);
+ assert.equal(board.reciprocalOwnerRankConsentReady,false);
+ assert(!board.blockingReasons.includes("RECIPROCAL_RANK_CONSENT_INCOMPLETE"));
+ assert.equal(board.nextStep,"REAL_ACCOUNT_FINANCE_DENY_AND_COUNT_SAVE_TEST");
+ assert.equal(board.currentCandidateSourceVerified,false);
+ assert.equal(board.safeToEnableJointRanking,false);
+ assert.equal(board.productionDocumentWrites,0);
+});
 test("account finance proof remains explicitly blocked even when all config setup is ready",()=>{
  const f=classifyFunctions(funcs());
  const h=classifyHosting(release,{name:version,status:"FINALIZED",
   fileCount:hosted().length,config:{}},hosted(),sourced());
  let b=readinessBoard({functions:f,hosting:h,publication:pub()});
- assert.equal(b.nextStep,"OWNER_AND_PARTNER_CONFIGURE_EXPLICIT_CONSENT");
+ assert.equal(b.nextStep,"OWNER_CONFIGURE_PUBLICATION_AND_SKU_BINDINGS");
  b=readinessBoard({functions:f,hosting:h,publication:pub({
   ownerPublicationCatalogReady:true,allEnabledPartnerSkuMapped:true,
   reciprocalOwnerRankConsentReady:true,blockingReasons:[],mappedPartnerCount:3

@@ -1,0 +1,46 @@
+name: NICO one day week month ranking bridge (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/verified-joint-month-http-bridge.mjs'
+      - 'tests/verified-joint-month-http-bridge.test.mjs'
+      - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'index.html'
+      - 'partner-workspace.html'
+      - '.github/workflows/nico-joint-day-week-month-bridge-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verified-window-and-role:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      GCLOUD_PROJECT: demo-nico-joint-day-week-month
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify no production access and strict client syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          node --check ranking/verified-joint-month-http-bridge.mjs
+          node --check ranking/owner-visible-count-server-handler.mjs
+          node --check tests/verified-joint-month-http-bridge.test.mjs
+          grep -Fq 'expectedRole:"partner_owner"' partner-workspace.html
+          grep -Fq 'expectedRole:"hub_owner"' index.html
+          grep -Fq 'NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false' partner-workspace.html
+      - name: Prove server-only day week month windows, token roles and no client money access
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/verified-joint-month-http-bridge.test.mjs tests/owner-visible-count-server-handler.test.mjs
+          echo 'JOINT_DAY_WEEK_MONTH_ROLE_BOUND_NO_DEPLOY_PASS'

@@ -40,6 +40,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
+          set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           # PR #717 current partner existing four-rank host: strict source

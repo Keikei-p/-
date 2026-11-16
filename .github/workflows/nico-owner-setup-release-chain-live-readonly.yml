@@ -27,7 +27,7 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS: ''
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Source pin and standalone read-only board tests without any credentials
@@ -37,8 +37,17 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
-          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          if { [ "$GITHUB_EVENT_NAME" = pull_request ] &&
+               [ "$GITHUB_REPOSITORY" = Keikei-p/- ] &&
+               [ "${GITHUB_HEAD_REF:-}" = integration/nico-sales-count-publication-rank-ready-20261113 ] &&
+               node -e "const e=require(process.env.GITHUB_EVENT_PATH);if(e.pull_request?.number!==704||e.pull_request.head.repo.full_name!=='Keikei-p/-'||e.pull_request.base.repo.full_name!=='Keikei-p/-')process.exit(1)"; } ||
+             { [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_REPOSITORY" = Keikei-p/- ] &&
+               { [ "$GITHUB_EVENT_NAME" = push ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; }; }; then
+            node tools/production/verify-integrated-count-release-candidate.mjs --offline . docs/integrated-count-release-candidate-20261115.json
+          else
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          fi
           node --check tools/production/inspect-owner-setup-release-chain-readonly.mjs
           node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs
           node --test tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-setup-six-release-scope.test.mjs tests/owner-setup-additive-hosting-release.test.mjs
@@ -58,7 +67,7 @@ jobs:
       NICO_PARTNER_AUDIT_MODE: READ_ONLY
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Guard live code against all existing production finance and count edits

@@ -13,9 +13,12 @@ test("hub count reader uses original records and strips financial fields",()=>{
  assert.match(s,/sum>0\?"submitted":null/);
  assert.doesNotMatch(s,/\b(?:tx|db)\.(?:set|update|delete|create)\s*\(/);
 });
-test("partner count reader requires bilateral approvals and full month",()=>{
+test("partner count reader requires an active relation and full month while names are independently protected",()=>{
  const s=read("partner-month-readonly-loader.mjs");
- for(const x of ['combinedRankingApprovedByHub','combinedRankingApprovedByPartner','individualNamesApprovedByHub','individualNamesApprovedByPartner','partnerWorkEntries','partnerWorkCountDays','completeMonthEntriesRead:true','completeMonthSummariesRead:true','{readOnly:true}'])assert.ok(s.includes(x),x);
+ for(const x of ['activeCountSharingVerified','publicNamesVerified','partnerWorkEntries','partnerWorkCountDays','completeMonthEntriesRead:true','completeMonthSummariesRead:true','{readOnly:true}'])assert.ok(s.includes(x),x);
+ const relation=s.match(/function verifiedRelation\([^]*?\n\}/)?.[0];
+ assert(relation&&relation.includes('r.active!==true||r.countSharingApproved!==true'));
+ assert.doesNotMatch(relation,/combinedRankingApproved|individualNamesApproved/);
  assert.match(s,/\.limit\(MAX_ENTRIES\+1\)/);
  assert.doesNotMatch(s,/\b(?:tx|db)\.(?:set|update|delete|create)\s*\(/);
 });

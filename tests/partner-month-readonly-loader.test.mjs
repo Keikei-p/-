@@ -95,7 +95,7 @@ function fake(initial=seeded()){
 }
 const approved={
  serverVerified:true,userActive:true,memberActive:true,companyActive:true,
- reciprocalOwnersApproved:true,individualNamesApproved:true,
+ activeCountSharingVerified:true,
  completeSnapshotBudgetApproved:true,hubCompanyId:"own",
  approvedCompanyIds:["own","partner"]
 };
@@ -121,25 +121,27 @@ test("reads actual workspace collection paths in ONE read-only transaction",asyn
   e.kind==="get"));
  assert(fixture.events.some(e=>e.path==="companies/own/partnerWorkCountDays/2026-11-08/reports/partner"));
 });
-test("both owner consents and name approvals required independently of legacy count sharing",async()=>{
- for(const key of [
-  "active","countSharingApproved","combinedRankingApprovedByHub",
-  "combinedRankingApprovedByPartner","individualNamesApprovedByHub",
-  "individualNamesApprovedByPartner"
- ]){
+test("existing active count sharing needs no additional Owner or individual-name consent",async()=>{
+ for(const key of ["active","countSharingApproved"]){
   const f=fake();f.documents.get("partnerRelations/partner")[key]=false;
-  await assert.rejects(createPartnerMonthReadOnlyLoader({db:f.db})(request()),
-   /INCOMPLETE/,key);
+  await assert.rejects(createPartnerMonthReadOnlyLoader({db:f.db})(request()),/INCOMPLETE/,key);
  }
- for(const key of ["userActive","memberActive","companyActive",
-  "reciprocalOwnersApproved","individualNamesApproved",
+ for(const key of ["combinedRankingApprovedByHub","combinedRankingApprovedByPartner",
+  "individualNamesApprovedByHub","individualNamesApprovedByPartner"]){
+  const f=fake();f.documents.get("partnerRelations/partner")[key]=false;
+  const before=clone([...f.documents]);
+  const out=await createPartnerMonthReadOnlyLoader({db:f.db})(request());
+  assert.equal(out.records.reduce((n,r)=>n+r.totalCount,0),4);
+  assert.equal(out.publicNamesVerified,false);
+  assert.deepEqual([...f.documents],before);
+ }
+ for(const key of ["userActive","memberActive","companyActive","activeCountSharingVerified",
   "completeSnapshotBudgetApproved","serverVerified"]){
-  const f=fake();
-  const ctx={...approved,[key]:false};
-  await assert.rejects(createPartnerMonthReadOnlyLoader({db:f.db})(request(ctx)),
-   /INCOMPLETE/,key);
+  const f=fake(),ctx={...approved,[key]:false};
+  await assert.rejects(createPartnerMonthReadOnlyLoader({db:f.db})(request(ctx)),/INCOMPLETE/,key);
  }
 });
+
 test("incomplete query and summary mismatch stop rather than present false ranking",async()=>{
  const scenarios=[
   d=>d.delete("companies/own/partnerWorkCountDays/2026-11-07/reports/partner"),
@@ -232,9 +234,9 @@ test("shared caller-owned transaction reads canonical partner ledger without nes
  assert(!/privateCounts|secret-private|cashback|unitPrice|revenue/.test(JSON.stringify(out)));
 });
 
-test("shared transaction reader fails closed on revoked consent or partial month",async()=>{
+test("shared transaction reader fails closed on revoked count sharing or partial month",async()=>{
  for(const mutate of [
-  docs=>{docs.get("partnerRelations/partner").combinedRankingApprovedByHub=false;},
+  docs=>{docs.get("partnerRelations/partner").countSharingApproved=false;},
   docs=>{docs.delete("companies/own/partnerWorkCountDays/2026-11-07/reports/partner");},
   docs=>{docs.get("companies/partner/partnerWorkEntries/2026-11-07__member1").counts.NURO=88;}
  ]){
@@ -309,4 +311,51 @@ test("historical month never promotes today's registered staff to an old missing
  })(request());
  assert.deepEqual(now.roster,[{uid:"newStaff",
   name:"来月からの新規担当",teamId:"team1"}]);
+});
+
+
+function existingNameApprovals(f){
+ f.documents.get("companies/own").ownerUid="hubOwner";
+ f.documents.get("companies/partner").ownerUid="partnerOwner";
+ for(const [cid,owner,other] of [["own","hubOwner","partner"],["partner","partnerOwner","own"]])
+  f.documents.set("companies/"+cid+"/rankingApprovals/"+other,{
+   companyId:cid,hubCompanyId:"own",partnerCompanyId:"partner",approvedByUid:owner,
+   active:true,scope:"combined_rank_only",version:1,individualNamesApproved:true
+  });
+ return f;
+}
+test("optional name approval is revalidated inside the same count transaction",async()=>{
+ const f=existingNameApprovals(fake()),before=clone([...f.documents]);
+ let out=await createPartnerMonthReadOnlyLoader({db:f.db})(request());
+ assert.equal(out.publicNamesVerified,true);
+ assert.equal(out.lines.reduce((n,r)=>n+r.count,0),4);
+ assert.equal(f.events.filter(e=>e.kind==="transaction").length,1);
+ assert(f.events.some(e=>e.path==="companies/own/rankingApprovals/partner"));
+ assert.deepEqual([...f.documents],before);
+ for(const [key,value] of [["active",false],["approvedByUid","oldOwner"],
+  ["individualNamesApproved",false],["version",0],["scope","other"],["companyId","other"]]){
+  const changed=existingNameApprovals(fake());
+  changed.documents.get("companies/own/rankingApprovals/partner")[key]=value;
+  const snapshot=clone([...changed.documents]);
+  out=await createPartnerMonthReadOnlyLoader({db:changed.db})(request({
+   ...approved,publicNameCompanyIds:["own","partner"]
+  }));
+  assert.equal(out.publicNamesVerified,false,"stale earlier context cannot authorize names");
+  assert.equal(out.lines.reduce((n,r)=>n+r.count,0),4,"name expiry cannot erase counts");
+  assert.deepEqual([...changed.documents],snapshot);
+ }
+ const missing=existingNameApprovals(fake());missing.documents.delete("companies/partner/rankingApprovals/own");
+ out=await createPartnerMonthReadOnlyLoader({db:missing.db})(request());
+ assert.equal(out.publicNamesVerified,false);
+ assert.equal(out.records.reduce((n,r)=>n+r.totalCount,0),4);
+});
+test("an incoherent optional name snapshot suppresses names without accepting partial count data",async()=>{
+ const f=existingNameApprovals(fake()),run=f.db.runTransaction;
+ f.db.runTransaction=(fn,options)=>run(tx=>fn({get:async ref=>{
+  const snap=await tx.get(ref);
+  return ref.path.includes("/rankingApprovals/")?{...snap,readTime:{...RT,nanoseconds:1}}:snap;
+ }}),options);
+ const out=await createPartnerMonthReadOnlyLoader({db:f.db})(request());
+ assert.equal(out.publicNamesVerified,false);
+ assert.equal(out.lines.reduce((n,r)=>n+r.count,0),4);
 });

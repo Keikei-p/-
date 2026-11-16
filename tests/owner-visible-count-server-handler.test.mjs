@@ -164,17 +164,47 @@ test("global OFF, partner-specific OFF, and re-ON preserve originals",async()=>{
  assert.equal((await (await run(request())).json()).summary.total,7);
  assert.deepEqual(f.state.get("products/nuro"),original);
 });
-test("revoked owner, consent, forged loader scope, missing mapping fail closed",async()=>{
+test("revoked owner, count sharing, forged loader scope, missing mapping fail closed",async()=>{
  const f=fake(),run=handler(f);
- f.state.get("partnerRelations/partner").combinedRankingApprovedByHub=false;
+ f.state.get("partnerRelations/partner").countSharingApproved=false;
  assert.equal((await run(request())).status,503);
- f.state.get("partnerRelations/partner").combinedRankingApprovedByHub=true;
+ f.state.get("partnerRelations/partner").countSharingApproved=true;
  const bad=handler(f,c=>({...countInput(c),approvedCompanyIds:["hub"]}));
  assert.equal((await bad(request())).status,503);
  const mapping=handler(f,c=>({...countInput(c),mappingsReviewed:false}));
  assert.equal((await mapping(request())).status,503);
  f.state.get("companies/hub").ownerUid="attacker";
  assert.equal((await run(request())).status,503);
+});
+
+test("canonical HTTP keeps existing linked counts without additional consent and masks other-company names",async()=>{
+ const f=fake(),relation=f.state.get("partnerRelations/partner");
+ for(const field of ["combinedRankingApprovedByHub","combinedRankingApprovedByPartner",
+  "individualNamesApprovedByHub","individualNamesApprovedByPartner"])delete relation[field];
+ f.state.delete("companies/hub/rankingApprovals/partner");
+ f.state.delete("companies/partner/rankingApprovals/hub");
+ const before=copy([...f.state]);
+ const run=handler(f,context=>{
+  const input=countInput(context);
+  // Even a loader's claimed name proof cannot widen the fresh audience policy.
+  input.sources.forEach(s=>{s.publicNamesVerified=true;});
+  input.context.publicNameCompanyIds=["hub","partner"];
+  return input;
+ });
+ const hubResponse=await run(request());
+ assert.equal(hubResponse.status,200);
+ const hub=await hubResponse.json();
+ assert.equal(hub.summary.total,7);
+ assert.equal(hub.memberRanking.find(p=>p.companyId==="hub").name,"営業担当");
+ assert.notEqual(hub.memberRanking.find(p=>p.companyId==="partner").name,"営業担当");
+ const partnerResponse=await run(request("partner"));
+ assert.equal(partnerResponse.status,200);
+ const partner=await partnerResponse.json();
+ assert.equal(partner.own.count,5);
+ assert.equal(partner.publicRanking.products[0].count,7);
+ assert.equal(partner.own.people[0].name,"営業担当");
+ assert.notEqual(partner.publicRanking.members.find(p=>p.company==="本社").name,"営業担当");
+ assert.deepEqual([...f.state],before,"ranking requests must not create consent or change original records");
 });
 test("malformed methods, query, origin and auth cannot reach data loader",async()=>{
  const f=fake();let calls=0;

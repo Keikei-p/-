@@ -13,7 +13,10 @@ const service=makeWorkspace({
  sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled",
  // Separate hard OFF: existing count save/correction behavior is unchanged
  // until owner SKU publication, finance denial and restore are verified.
- submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"
+ submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled",
+ // Independent gates; neither list nor correction is enabled by the workspace.
+ ownerCorrectionReadEnabled:()=>process.env.NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED==="enabled",
+ ownerCorrectionWriteEnabled:()=>process.env.NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled"
 });
 const opts={region:"asia-northeast1",maxInstances:3,
  cors:["https://nico-factory.web.app"]};

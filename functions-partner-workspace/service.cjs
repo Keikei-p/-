@@ -14,7 +14,8 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,now=()=>Date.now()}={}){
+ submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
+ ownerCorrectionWriteEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
@@ -70,163 +71,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const privateProductRef=(cid,id)=>collection(cid,"partnerPrivateProducts").doc(id);
  const entryRef=(cid,date,id)=>collection(cid,"partnerWorkEntries").doc(date+"__"+id);
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
- async function actor(request){
-  if(enabled()!==true)fail("unavailable");
-  const opaque=clean(request?.data?.codeSessionToken);
-  if(opaque){
-   if(request?.auth?.uid||!/^[A-Za-z0-9_-]{43}$/.test(opaque))fail("unauthenticated");
-   const hash=crypto.createHash("sha256").update(opaque).digest("hex");
-   const ss=await db.collection("partnerCodeSessions").doc(hash).get();
-   const session=ss.data()||{},uid=session.principalUid,cid=session.companyId;
-   if(!ss.exists||session.active!==true||!ID.test(uid||"")||
-      !ID.test(cid||"")||!Number.isSafeInteger(session.version)||
-      session.version<1||typeof session.expiresAt?.toMillis!=="function"||
-      session.expiresAt.toMillis()<=now()||
-      !/^NICO-[A-F0-9]{24}$/.test(session.companyCode||""))fail("unauthenticated");
-   const [credentials,login]=await Promise.all([
-    db.collection("partnerCodeCredentials").doc(cid).get(),
-    db.collection("partnerCodeLogins").doc(session.companyCode).get()
-   ]);
-   const c=credentials.data()||{},l=login.data()||{};
-   if(!credentials.exists||!login.exists||c.active!==true||
-      c.companyId!==cid||c.principalUid!==uid||c.companyCode!==session.companyCode||
-      c.version!==session.version||l.status!=="active"||
-      l.principalUid!==uid||l.partnerCompanyId!==cid||
-      l.version!==session.version)fail("unauthenticated");
-   return {uid,email:"",codeAuth:true,companyId:cid};
-  }
-  const uid=request?.auth?.uid,email=clean(request?.auth?.token?.email).toLowerCase();
-  if(!ID.test(uid||""))fail("unauthenticated");
-  const bearer=request?.rawRequest?.headers?.authorization?.match(/^Bearer ([A-Za-z0-9._-]{20,12000})$/i)?.[1];
-  if(!bearer)fail("unauthenticated");
-  let a,t;
-  try{[a,t]=await Promise.all([getAuth().getUser(uid),getAuth().verifyIdToken(bearer,true)]);}
-  catch{fail("unauthenticated");}
-  if(!a||a.disabled===true||t?.uid!==uid)fail("unauthenticated");
-  if(!EMAIL.test(email)||request.auth?.token?.email_verified!==true||
-     a.emailVerified!==true||clean(a.email).toLowerCase()!==email||
-     t.email_verified!==true||clean(t.email).toLowerCase()!==email)fail("unauthenticated");
-  return {uid,email};
- }
- async function scope(uid,tx=null,workspaceCompanyId=""){
-  const read=ref=>tx?tx.get(ref):ref.get();
-  const us=await read(db.collection("users").doc(uid));
-  const u=us.data()||{},cid=clean(u.companyId);
-  if(!us.exists||!ID.test(cid)||u.uid!==uid||u.active!==true)fail();
-  // An isolated count-only company principal can manage its own staff/counts.
-  // Never promote an old internal user or alter their company / finance flags.
-  if(u.authKind==="partner_code_shared"){
-   if(workspaceCompanyId||u.accessKind!=="partner"||u.memberType!=="cooperator"||
-      u.companyRole!=="owner"||u.canViewRevenue!==false||u.canViewUnitPrice!==false)
-    fail();
-   const companyRef=db.collection("companies").doc(cid);
-   const [cs,ms,rs,credentials]=await Promise.all([
-    read(companyRef),read(collection(cid,"members").doc(uid)),
-    read(db.collection("partnerRelations").doc(cid)),
-    read(db.collection("partnerCodeCredentials").doc(cid))
-   ]);
-   const c=cs.data()||{},m=ms.data()||{},rel=rs.data()||{},cred=credentials.data()||{};
-   if(!cs.exists||!ms.exists||!rs.exists||!credentials.exists||
-      c.active!==true||c.companyKind!=="partner"||
-      c.companyCodePrincipalUid!==uid||!ID.test(c.hubCompanyId||"")||
-      m.uid!==uid||m.companyId!==cid||m.active!==true||
-      m.authKind!=="partner_code_shared"||m.accessKind!=="partner"||
-      m.memberType!=="cooperator"||m.companyRole!=="owner"||
-      m.canViewRevenue!==false||m.canViewUnitPrice!==false||
-      rel.active!==true||rel.countSharingApproved!==true||
-      rel.hubCompanyId!==c.hubCompanyId||rel.partnerCompanyId!==cid||
-      cred.active!==true||cred.principalUid!==uid||cred.companyId!==cid)
-    fail();
-   return {kind:"partner",uid,cid,hubId:c.hubCompanyId,
-     companyName:c.name,role:"owner",teamId:null};
-  }
-  // Existing-email secondary partner role, without touching original primary
-  // company, revenue flags, financial originals, or stored user document.
-  if(workspaceCompanyId){
-   if(!ID.test(workspaceCompanyId)||workspaceCompanyId===cid||
-      (u.accessKind!=null&&u.accessKind!=="internal")||
-      (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType)))fail();
-   const [ctxSnap,partnerSnap,memberSnap,relationSnap,primaryCompanySnap,primaryMemberSnap]=await Promise.all([
-     read(db.collection("partnerWorkspaceContexts").doc(uid)),
-     read(db.collection("companies").doc(workspaceCompanyId)),
-     read(collection(workspaceCompanyId,"members").doc(uid)),
-     read(db.collection("partnerRelations").doc(workspaceCompanyId)),
-     read(db.collection("companies").doc(cid)),
-     read(collection(cid,"members").doc(uid))
-   ]);
-   const ctx=ctxSnap.data()||{},pc=partnerSnap.data()||{},
-     pm=memberSnap.data()||{},rel=relationSnap.data()||{},
-     originalCompany=primaryCompanySnap.data()||{},originalMember=primaryMemberSnap.data()||{};
-   // The original identity must still be current and internally verified.
-   if(!primaryCompanySnap.exists||!primaryMemberSnap.exists||
-      originalCompany.active===false||
-      (originalCompany.companyKind!=null&&!["internal","direct"].includes(originalCompany.companyKind))||
-      originalMember.active===false||
-      (originalMember.uid!=null&&originalMember.uid!==uid)||
-      (originalMember.companyId!=null&&originalMember.companyId!==cid)||
-      (originalMember.accessKind!=null&&originalMember.accessKind!=="internal")||
-      ["partner","cooperator"].includes(originalMember.memberType))fail();
-   const partnerOwner=ctx.role==="owner"&&pc.ownerUid===uid&&pc.masterUid===uid&&
-      pm.companyRole==="owner"&&pm.role==="leader"&&pm.teamId==null;
-   const partnerWorker=["leader","member"].includes(ctx.role)&&
-      pm.companyRole==="member"&&pm.role===ctx.role&&
-      ID.test(ctx.teamId||"")&&pm.teamId===ctx.teamId&&pc.ownerUid!==uid;
-   if(!partnerOwner&&!partnerWorker)fail();
-   if(!ctxSnap.exists||!partnerSnap.exists||!memberSnap.exists||
-      !relationSnap.exists||ctx.active!==true||
-      ctx.kind!=="partner_secondary"||ctx.uid!==uid||
-      ctx.primaryCompanyId!==cid||ctx.partnerCompanyId!==workspaceCompanyId||
-      ctx.hubCompanyId!==pc.hubCompanyId||
-      (u.email&&ctx.emailLower!==clean(u.email).toLowerCase())||
-      pc.active!==true||
-      pc.companyKind!=="partner"||!ID.test(pc.hubCompanyId||"")||
-      pm.active!==true||pm.uid!==uid||
-      pm.companyId!==workspaceCompanyId||
-      pm.accessKind!=="partner"||pm.memberType!=="cooperator"||
-      pm.canViewRevenue!==false||pm.canViewUnitPrice!==false||
-      rel.hubCompanyId!==pc.hubCompanyId||
-      rel.partnerCompanyId!==workspaceCompanyId||
-      rel.active!==true||rel.countSharingApproved!==true)fail();
-   return {kind:"partner",uid,cid:workspaceCompanyId,
-     hubId:pc.hubCompanyId,companyName:pc.name,
-     role:partnerOwner?"owner":ctx.role,teamId:partnerOwner?null:ctx.teamId};
-  }
-  const [cs,ms]=await Promise.all([
-    read(db.collection("companies").doc(cid)),
-    read(collection(cid,"members").doc(uid))
-  ]);
-  const c=cs.data()||{},m=ms.data()||{};
-  // Existing internal memberships can predate the optional companyId field.
-  // The document path and live Owner role still bind authorization; any
-  // present conflicting companyId must remain an explicit denial.
-  if(!cs.exists||!ms.exists||c.active!==true||m.active!==true||
-     m.uid!==uid||(m.companyId!=null&&m.companyId!==cid)||
-     m.companyRole!==u.companyRole)fail();
-  if(c.companyKind==="partner"){
-   if(!ID.test(c.hubCompanyId||"")||c.hubCompanyId===cid||
-      u.accessKind!=="partner"||m.accessKind!=="partner"||
-      u.memberType!=="cooperator"||m.memberType!=="cooperator"||
-      u.canViewRevenue!==false||m.canViewRevenue!==false||
-      u.canViewUnitPrice!==false||m.canViewUnitPrice!==false)fail();
-   const owner=c.ownerUid===uid&&u.companyRole==="owner"&&m.companyRole==="owner";
-   if(!owner&&!(u.companyRole==="member"&&
-      ["leader","member"].includes(u.role)&&m.role===u.role&&
-      ID.test(u.teamId||"")&&u.teamId===m.teamId))fail();
-   const relation=await read(db.collection("partnerRelations").doc(cid));
-   if(!relation.exists||relation.data()?.hubCompanyId!==c.hubCompanyId||
-      relation.data()?.partnerCompanyId!==cid||relation.data()?.active!==true||
-      relation.data()?.countSharingApproved!==true)fail();
-   return {kind:"partner",uid,cid,hubId:c.hubCompanyId,companyName:c.name,
-     role:owner?"owner":u.role,teamId:owner?null:u.teamId};
-  }
-  if(c.companyKind!=null&&!["internal","direct"].includes(c.companyKind))fail();
-  if(c.ownerUid!==uid||u.companyRole!=="owner"||m.companyRole!=="owner"||
-     (u.accessKind!=null&&u.accessKind!=="internal")||
-     (m.accessKind!=null&&m.accessKind!=="internal")||
-     (u.memberType!=null&&!["internal","direct","member","managed"].includes(u.memberType))||
-     (m.memberType!=null&&!["internal","direct","member","managed"].includes(m.memberType)))fail();
-  return {kind:"hub",uid,cid,role:"owner"};
- }
+ const {actor,scope}=require("./workspace-identity.cjs").makeWorkspaceIdentity({
+  db,getAuth,HttpsError,enabled,now
+ });
  const checkTeam=async(tx,s,id)=>{
   if(!ID.test(id||""))fail("invalid-argument");
   const sn=await tx.get(teamRef(s.cid,id));
@@ -622,16 +469,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // The separate direct-company ranking is intentionally NOT guessed here.
  async function loadSharedPartnerRankings(s,date,period){
   if(sharedRankingEnabled()!==true)fail("unavailable");
-  if(!["day","month"].includes(period))fail("invalid-argument");
+  if(!["day","week","month"].includes(period))fail("invalid-argument");
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
   const today=jstToday(),month=date.slice(0,7);
-  const start=period==="month"?month+"-01":date;
-  const end=period==="month"?
-   (month===today.slice(0,7)?today:
-    new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10)):
-   date;
-  if(end<start||end>today)fail("invalid-argument");
+  // Same Monday-Sunday week as the canonical verified HTTP ranking API.
+  // Use UTC calendar dates only; local browser time cannot change grouping.
+  const moveDay=(day,offset)=>{
+   const d=new Date(day+"T12:00:00Z");
+   d.setUTCDate(d.getUTCDate()+offset);
+   return d.toISOString().slice(0,10);
+  };
+  const start=period==="month"?month+"-01":
+   period==="week"?moveDay(date,-((new Date(date+"T12:00:00Z").getUTCDay()+6)%7)):date;
+  const endBoundary=period==="month"?
+   new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10):
+   period==="week"?moveDay(start,6):date;
+  const end=endBoundary<today?endBoundary:today;
+  if(date>today||end<start)fail("invalid-argument");
   const days=[];
   for(let cursor=new Date(start+"T00:00:00Z");cursor<=new Date(end+"T00:00:00Z");
       cursor.setUTCDate(cursor.getUTCDate()+1))
@@ -663,37 +518,40 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const rel=relDoc.data()||{},cid=relDoc.id;
    if(!ID.test(cid)||rel.partnerCompanyId!==cid||rel.hubCompanyId!==hubId)
     fail("data-loss");
-   // Cross-company names/individual rankings require BOTH current owners'
-   // explicit consent. Sharing aggregate counts alone is insufficient.
-   if(rel.active!==true||rel.countSharingApproved!==true||
-      rel.combinedRankingApprovedByHub!==true||
-      rel.combinedRankingApprovedByPartner!==true||
-      rel.individualNamesApprovedByHub!==true||
-      rel.individualNamesApprovedByPartner!==true)continue;
-   const [companyDoc,hubConsentSnap,partnerConsentSnap]=await Promise.all([
-    db.collection("companies").doc(cid).get(),
-    collection(hubId,"rankingApprovals").doc(cid).get(),
-    collection(cid,"rankingApprovals").doc(hubId).get()
-   ]);
+   // The active, server-verified hub/partner relationship is the existing
+   // count-sharing authorization. The hub Owner controls published products
+   // separately through the reviewed visibility + SKU mapping above.
+   // No NEW bilateral ranking consent forms or documents are required.
+   if(rel.active!==true||rel.countSharingApproved!==true)continue;
+   const companyDoc=await db.collection("companies").doc(cid).get();
    const company=companyDoc.data()||{};
    if(!companyDoc.exists||company.companyKind!=="partner"||
       company.hubCompanyId!==hubId||!validCompanyName(company.name)||
-      !ID.test(company.ownerUid||""))fail("data-loss");
+      (company.ownerUid!=null&&company.ownerUid!==""&&
+       !ID.test(company.ownerUid)))fail("data-loss");
+   // Hub-created company workspaces may legitimately have no ownerUid yet.
+   // Never treat that as permission to impersonate an owner; the caller's
+   // identity and company membership were already checked by scope().
    if(company.active!==true)continue;
-   const consentOk=(snap,sourceCompany,expectedOwner)=>{
-    if(!snap.exists)return false;
-    const c=snap.data()||{};
-    return c.companyId===sourceCompany&&
-      c.hubCompanyId===hubId&&c.partnerCompanyId===cid&&
-      c.approvedByUid===expectedOwner&&c.active===true&&
-      c.scope==="combined_rank_only"&&
-      Number.isSafeInteger(c.version)&&c.version>=1&&c.version<=999&&
-      c.combinedRankingApproved===true&&c.individualNamesApproved===true;
-   };
-   if(!consentOk(hubConsentSnap,hubId,ownerUid)||
-      !consentOk(partnerConsentSnap,cid,company.ownerUid))
-    fail("failed-precondition");
-   approved.push({cid,name:company.name});
+   // Old public-name approvals are optional display evidence, never a new
+   // condition for count sharing. Unconfirmed foreign names stay private.
+   let publicNamesVerified=false;
+   if(rel.individualNamesApprovedByHub===true&&rel.individualNamesApprovedByPartner===true&&
+      ID.test(company.ownerUid||"")){
+    const [left,right]=await Promise.all([
+     collection(hubId,"rankingApprovals").doc(cid).get(),
+     collection(cid,"rankingApprovals").doc(hubId).get()
+    ]);
+    const named=(snap,sourceCompany,owner)=>{
+     const value=snap.exists?snap.data():null;
+     return value?.companyId===sourceCompany&&value.hubCompanyId===hubId&&
+      value.partnerCompanyId===cid&&value.approvedByUid===owner&&value.active===true&&
+      value.scope==="combined_rank_only"&&value.individualNamesApproved===true&&
+      Number.isSafeInteger(value.version)&&value.version>=1&&value.version<=999;
+    };
+    publicNamesVerified=named(left,hubId,ownerUid)&&named(right,cid,company.ownerUid);
+   }
+   approved.push({cid,name:company.name,publicNamesVerified});
   }
   // Require that a partner caller remains a currently approved participant.
   if(s.kind==="partner"&&!approved.some(x=>x.cid===s.cid))fail();
@@ -715,6 +573,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
        collection(hubId,"partnerQuickCountDays").doc(day)
         .collection("reports").doc(row.cid).get()
       ]);
+      // Two independently saved sources on the same date have no verified
+      // contract identity. Never silently discard the legacy count or add
+      // it twice. An Owner must reconcile the originals before publishing.
+      if(staff.exists&&legacy.exists)fail("failed-precondition");
       if(staff.exists)return {date:day,data:staff.data()};
       if(!legacy.exists)return {date:day,data:null};
       const raw=legacy.data()||{};
@@ -750,6 +612,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let result;
   try{result=buildApprovedPartnerCountStandings({hubId,start,end,sources})}
   catch{fail("data-loss")}
+  const viewerNameProof=s.kind==="hub"||approved.some(row=>row.cid===s.cid&&row.publicNamesVerified);
+  const namedCompanies=new Set(approved.filter(row=>row.cid===s.cid||
+   viewerNameProof&&row.publicNamesVerified).map(row=>crypto.createHash("sha256")
+    .update("company\n"+hubId+"\n"+row.cid).digest("hex")));
+  result={...result,people:result.people.map(person=>namedCompanies.has(person.companyKey)?person:
+   {...person,name:"担当者（名称非公開）"})};
   return {role:s.kind,date,period,...result};
  }
 
@@ -759,7 +627,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(d.sharedCountRankings!==undefined){
    if(d.sharedCountRankings!==true||
       (d.rankingPeriod!==undefined&&
-       !["day","month"].includes(d.rankingPeriod))||
+       !["day","week","month"].includes(d.rankingPeriod))||
       d.partnerCompanyId!==undefined||d.includeTeamStatus!==undefined)
     fail("invalid-argument");
    return loadSharedPartnerRankings(s,date,d.rankingPeriod||"day");
@@ -971,14 +839,187 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const privateCounts=validatePrivateCounts(x.privateCounts||{});
    if(Object.keys(privateCounts.counts).some(id=>!privateIdSet.has(id))||
       (x.privateTotalCount??0)!==privateCounts.total)fail("data-loss");
+   const workLocation=x.workLocation??"";
+   if(typeof workLocation!=="string"||workLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(workLocation)||money.test(workLocation))
+    fail("data-loss");
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
-     teamIdSnapshot,privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
+     teamIdSnapshot,workLocation,
+     privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
   const visibleTeams=teams.docs.map(sn=>({id:sn.id,name:clean(sn.data().name),active:sn.data().active===true}))
    .filter(team=>["owner","leader"].includes(s.role)||team.id===s.teamId);
+  // Keep the saved OFF category values untouched, but do not send them to
+  // the partner browser when publication is enabled. Read the EXACT policy
+  // from the same trusted server guard as the transactional submit path.
+  let enabledCategories;
+  if(submissionPublicationEnabled()===true){
+   const blank=Object.fromEntries(KEYS.map(k=>[k,0]));
+   try{
+    const policy=await verifySubmissionPublication({
+     tx:{get:ref=>ref.get()},
+     scope:{verifiedByServer:true,kind:s.kind,uid:a.uid,cid:s.cid,hubId:s.hubId},
+     previousCounts:blank,nextCounts:blank
+    });
+    enabledCategories=policy.enabledCategories;
+   }catch{fail("failed-precondition");}
+  }
+  const safeRecords=enabledCategories===undefined?rows:rows.map(row=>{
+   const on=new Set(enabledCategories);
+   const visible=Object.fromEntries(KEYS.map(k=>[k,on.has(k)?row.counts[k]:0]));
+   return {...row,counts:visible,
+    totalCount:KEYS.reduce((n,k)=>n+visible[k],0)};
+  });
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
-    teams:visibleTeams,staff:[...allowed.values()],records:rows,categories:KEYS,
+    teams:visibleTeams,staff:[...allowed.values()],records:safeRecords,categories:KEYS,
+    ...(enabledCategories===undefined?{}:{enabledCategories}),
     privateProducts:productList};
+ }
+
+ // Owner correction v3, READ and WRITE are separately hard-OFF by default.
+ // The authenticated hub Owner owns the session. Neither a partner account,
+ // a selected workspaceCompanyId nor any browser role/finance flag grants access.
+ const ownerCorrectionShape=d=>d&&typeof d==="object"&&!Array.isArray(d)&&
+  Object.keys(d).sort().join("|")==="date|partnerCompanyId";
+ const unknownSb=n=>({"SB光":0,"SB AIR":0,"旧未分類":n});
+ const validOwnerReason=x=>typeof x==="string"&&x.trim()===x&&
+  x.length>=6&&x.length<=120&&!/[\r\n\x00-\x1f\x7f]/.test(x)&&
+  !money.test(x.normalize("NFKC"));
+ const guardOwnerScope=async(uid,tx,companyId)=>{
+  const s=await scope(uid,tx);
+  if(s.kind!=="hub"||s.role!=="owner"||s.cid===companyId)fail();
+  const rel=await hubPartner(tx,s.cid,companyId);
+  if(!rel.active)fail("failed-precondition");
+  return s;
+ };
+ async function listHubPartnerCounts(request){
+  if(ownerCorrectionReadEnabled()!==true)fail("unavailable");
+  const a=await actor(request),d=request?.data||{};
+  if(!ownerCorrectionShape(d)||!ID.test(d.partnerCompanyId||""))
+   fail("invalid-argument");
+  const date=validDate(d.date);
+  return db.runTransaction(async tx=>{
+   const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
+   const query=collection(d.partnerCompanyId,"partnerWorkEntries")
+    .where("date","==",date).limit(201);
+   const entries=await tx.get(query);
+   if(entries.size>200)fail("resource-exhausted");
+   const rows=[];
+   for(const snap of entries.docs){
+    const x=snap.data()||{};
+    if(snap.id!==date+"__"+x.staffId||
+       x.companyId!==d.partnerCompanyId||x.hubCompanyId!==hub.cid||
+       x.date!==date||!ID.test(x.staffId||"")||
+       !Number.isSafeInteger(x.version)||x.version<1||x.version>999)
+     fail("data-loss");
+    const {counts,total}=validateCounts(x.counts);
+    if(total!==x.totalCount)fail("data-loss");
+    const staffName=x.staffNameSnapshot??"登録者（名称未確認）";
+    if(!validName(staffName))fail("data-loss");
+    const teamIdSnapshot=x.teamIdSnapshot??null;
+    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
+    // Keep old SB光・AIR together and mark its breakdown unclassified.
+    // Never infer a split into SB光 and SB AIR from a combined legacy total.
+    rows.push({staffId:x.staffId,staffName,teamIdSnapshot,
+     counts,totalCount:total,version:x.version,
+     sbBreakdown:unknownSb(counts["SB光・AIR"])});
+   }
+   rows.sort((x,y)=>x.staffId.localeCompare(y.staffId));
+   return {role:"hub",scope:"existing-partner-counts-only",
+    date,partnerCompanyId:d.partnerCompanyId,entries:rows,
+    sbBreakdownSchema:"sb-separated-v1",containsFinance:false};
+  });
+ }
+ async function correctHubPartnerCounts(request){
+  if(ownerCorrectionReadEnabled()!==true||
+     ownerCorrectionWriteEnabled()!==true)fail("unavailable");
+  const a=await actor(request),d=request?.data||{};
+  if(!d||typeof d!=="object"||Array.isArray(d)||
+     Object.keys(d).sort().join("|")!==
+      "correctionReason|counts|date|expectedVersion|partnerCompanyId|sbBreakdown|staffId"||
+     !ID.test(d.partnerCompanyId||"")||!ID.test(d.staffId||"")||
+     !Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<1||
+     d.expectedVersion>=999||!validOwnerReason(d.correctionReason))
+   fail("invalid-argument");
+  const date=validDate(d.date),{counts,total}=validateCounts(d.counts);
+  //光/AIR separation is explicitly out of scope for this release.
+  // An Owner may change the combined COUNT but cannot fabricate a breakdown.
+  const sb=d.sbBreakdown;
+  if(!sb||typeof sb!=="object"||Array.isArray(sb)||
+     Object.keys(sb).sort().join("|")!=="SB AIR|SB光|旧未分類"||
+     sb["SB光"]!==0||sb["SB AIR"]!==0||
+     sb["旧未分類"]!==counts["SB光・AIR"])
+   fail("failed-precondition");
+  return db.runTransaction(async tx=>{
+   const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
+   const er=entryRef(d.partnerCompanyId,date,d.staffId);
+   const summary=summaryRef(hub.cid,date,d.partnerCompanyId);
+   const [oldSnap,totalSnap,staffSnap]=await Promise.all([
+    tx.get(er),tx.get(summary),tx.get(staffRef(d.partnerCompanyId,d.staffId))
+   ]);
+   const old=oldSnap.data()||{},daily=totalSnap.data()||{},staff=staffSnap.data()||{};
+   if(!oldSnap.exists||!totalSnap.exists||!staffSnap.exists||
+      old.companyId!==d.partnerCompanyId||old.hubCompanyId!==hub.cid||
+      old.date!==date||old.staffId!==d.staffId||
+      staff.companyId!==d.partnerCompanyId||
+      !ID.test(old.teamIdSnapshot||"")&&old.teamIdSnapshot!==null&&
+        old.teamIdSnapshot!==undefined)
+    fail("failed-precondition");
+   if(old.version!==d.expectedVersion)fail("aborted");
+   if(daily.source!=="staff-entries-v1"||daily.hubCompanyId!==hub.cid||
+      daily.partnerCompanyId!==d.partnerCompanyId||daily.date!==date||
+      !validCompanyName(daily.partnerName))fail("failed-precondition");
+   const {counts:prior,total:previousTotal}=validateCounts(old.counts);
+   const {counts:companyCounts,total:companyTotal}=validateCounts(daily.counts);
+   if(old.totalCount!==previousTotal||daily.totalCount!==companyTotal)
+    fail("data-loss");
+   const combined=old.sbBreakdown;
+   if(combined!==undefined&&
+      (typeof combined!=="object"||combined===null||
+       combined["SB光"]!==0||combined["SB AIR"]!==0||
+       combined["旧未分類"]!==prior["SB光・AIR"]))
+    fail("failed-precondition");
+   const updatedCounts={};let updatedTotal=0;
+   for(const key of KEYS){
+    const n=companyCounts[key]+counts[key]-prior[key];
+    if(!Number.isSafeInteger(n)||n<0||n>2000000)fail("data-loss");
+    updatedCounts[key]=n;updatedTotal+=n;
+   }
+   if(updatedTotal!==companyTotal+total-previousTotal||
+      !Number.isSafeInteger(updatedTotal))fail("data-loss");
+   if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
+   const nextVersion=d.expectedVersion+1,stamp=FieldValue.serverTimestamp();
+   const rowChanges={counts,totalCount:total,version:nextVersion,
+    updatedByUid:a.uid,updatedAt:stamp};
+   tx.update(er,rowChanges);
+   tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp});
+   const audit=collection(d.partnerCompanyId,"partnerWorkAudits")
+    .doc(date+"__"+d.staffId+"__v"+nextVersion);
+   // Never spread an arbitrary saved entry into a new audit document.
+   // Only known count-ledger fields may leave this restricted correction.
+   // Protect private counts as unchanged signed snapshots, not as edits.
+   const savedPrivate=validatePrivateCounts(old.privateCounts||{});
+   if((old.privateTotalCount??0)!==savedPrivate.total)fail("data-loss");
+   const recordedName=old.staffNameSnapshot??null;
+   if(recordedName!==null&&!validName(recordedName))fail("data-loss");
+   const recordedLocation=old.workLocation??"";
+   if(typeof recordedLocation!=="string"||recordedLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(recordedLocation)||
+      money.test(recordedLocation))fail("data-loss");
+   tx.create(audit,{companyId:d.partnerCompanyId,hubCompanyId:hub.cid,
+    staffId:d.staffId,date,staffNameSnapshot:recordedName,
+    teamIdSnapshot:old.teamIdSnapshot??null,
+    workLocation:recordedLocation,
+    counts,totalCount:total,version:nextVersion,
+    privateCounts:savedPrivate.counts,privateTotalCount:savedPrivate.total,
+    updatedByUid:a.uid,updatedAt:stamp,
+    previousCounts:prior,previousPrivateCounts:savedPrivate.counts,
+    correctionReason:d.correctionReason,correctedByOwnerUid:a.uid,
+    correctionKind:"hub_owner_existing_count_v3",createdAt:stamp});
+   return {saved:true,scope:"hub-owner-existing-only",
+    partnerCompanyId:d.partnerCompanyId,staffId:d.staffId,date,
+    version:nextVersion,totalCount:total,containsFinance:false};
+  });
  }
  async function submit(request){
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
@@ -986,6 +1027,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const {counts,total}=validateCounts(d.counts);
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
+  // A count-only API must never silently accept and discard CB-tier entries.
+  // These are not verified count data and may reveal financial classification.
+  if(submissionPublicationEnabled()===true&&
+     Object.prototype.hasOwnProperty.call(d,"cbCounts"))fail("failed-precondition");
+  const requestedLocation=d.workLocation;
+  if(requestedLocation!==undefined&&
+     (typeof requestedLocation!=="string"||requestedLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(requestedLocation)||money.test(requestedLocation)))
+   fail("invalid-argument");
+  const requestedTeamId=d.workTeamId;
+  if(requestedTeamId!==undefined&&(!ID.test(requestedTeamId)||
+     requestedTeamId!==clean(requestedTeamId)))fail("invalid-argument");
   const s=await scope(a.uid,null,d.workspaceCompanyId);
   if(s.kind!=="partner")fail();
   return db.runTransaction(async tx=>{
@@ -1020,38 +1073,65 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      Object.fromEntries(KEYS.map(key=>[key,0]));
    const previous=totalSnap.exists?validateCounts(existing.counts).counts:
      Object.fromEntries(KEYS.map(key=>[key,0]));
-   // STAGING / hard OFF: validate server-owned publication in this SAME
-   // transaction against the original saved staff counts, before any writes.
-   // Never trust browser-provided prior counts or a claimed company/owner.
+   // STAGING / hard OFF. The browser sends zero for disabled SKUs,
+   // while the server restores their immutable saved historical numbers
+   // within this SAME authenticated count transaction. This permits ON-only
+   // edits without deleting OFF history or altering the old company sum.
+   let effectiveCounts=counts,effectiveTotal=total;
    if(submissionPublicationEnabled()===true){
     try{
-     await verifySubmissionPublication({tx,
+     const policy=await verifySubmissionPublication({tx,
       scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
-      previousCounts:prior,nextCounts:counts});
+      previousCounts:prior,nextCounts:prior});
+     if(policy.enabledCategories.length===0)fail("failed-precondition");
+     const on=new Set(policy.enabledCategories);
+     effectiveCounts={...counts};
+     for(const key of KEYS)if(!on.has(key)){
+      if(counts[key]!==0)fail("failed-precondition");
+      effectiveCounts[key]=prior[key];
+     }
+     effectiveTotal=KEYS.reduce((sum,key)=>sum+effectiveCounts[key],0);
     }catch{fail("failed-precondition");}
    }
    const aggregate={};let aggregateTotal=0;
    for(const key of KEYS){
-    const n=previous[key]+counts[key]-prior[key];
+    const n=previous[key]+effectiveCounts[key]-prior[key];
     if(!Number.isSafeInteger(n)||n<0)fail("data-loss");
     aggregate[key]=n;aggregateTotal+=n;
    }
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
-   // An edit cannot reassign a previously saved day to the current team.
-   // Missing historical attribution remains unverified rather than inferred.
-   const teamIdSnapshot=oldSnap.exists?
+   // An existing report's team attribution is immutable. On the FIRST save
+   // only, a selected working team must be an existing active team in this
+   // verified partner company. Members cannot choose another person's team.
+   if(oldSnap.exists&&requestedTeamId!==undefined)fail("failed-precondition");
+   let teamIdSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"teamIdSnapshot")?old.teamIdSnapshot:null):
      person.teamId;
+   if(!oldSnap.exists&&requestedTeamId!==undefined){
+    if(fresh.role==="member"&&requestedTeamId!==person.teamId)fail();
+    const chosen=await tx.get(teamRef(s.cid,requestedTeamId));
+    const team=chosen.data()||{};
+    if(!chosen.exists||team.companyId!==s.cid||team.active!==true||
+       !validName(team.name))fail("failed-precondition");
+    teamIdSnapshot=requestedTeamId;
+   }
+   const oldLocation=old.workLocation??"";
+   if(typeof oldLocation!=="string"||oldLocation.length>100||
+      /[\x00-\x1f\x7f]/.test(oldLocation)||money.test(oldLocation))
+    fail("data-loss");
+   const workLocation=requestedLocation===undefined?oldLocation:
+     requestedLocation.trim();
    const staffNameSnapshot=oldSnap.exists?
      (Object.prototype.hasOwnProperty.call(old,"staffNameSnapshot")?old.staffNameSnapshot:null):
      person.name;
    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
-   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,counts,totalCount:total,
+   const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
+     counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
-     version:nextVersion,staffNameSnapshot,teamIdSnapshot,
+     version:nextVersion,staffNameSnapshot,teamIdSnapshot,workLocation,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
@@ -1066,6 +1146,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      privateTotalCount:privateValidated.total};
   });
  }
- return Object.freeze({manage,accept,view,submit});
+ return Object.freeze({manage,accept,view,submit,listHubPartnerCounts,correctHubPartnerCounts});
 }
 module.exports={makeWorkspace,KEYS};

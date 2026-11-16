@@ -38,6 +38,78 @@ test("the source is never registered as live Firebase Rules or callable",()=>{
  assert.ok(!readFileSync(new URL("../.github/workflows/firebase-production-deploy.yml",
   import.meta.url),"utf8").includes("secondary-finance-read-fence"));
 });
+// Completion-only security regression: do not confuse the current production
+// source with the un-deployed emulator fence. Uses fictional local identities.
+test("original Rules still grant legacy internal money to an active secondary partner; the candidate denies it",{
+ skip:!process.env.FIRESTORE_EMULATOR_HOST,
+ timeout:120000
+},async()=>{
+ const {initializeTestEnvironment,assertSucceeds,assertFails}=
+  await import("@firebase/rules-unit-testing");
+ const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer}=
+  await import("firebase/firestore");
+ const hub="hub",uid="legacyDual",owner="hubOwner",team="t1";
+ const actor=(env,id)=>env.authenticatedContext(id,{
+  email:id+"@example.test",email_verified:true
+ }).firestore();
+ for(const [mode,rules,expectedDenied] of [
+  ["current",current,false],["candidate",candidate,true]
+ ]){
+  // No real Firebase token or credentials. Only localhost emulator.
+  const env=await initializeTestEnvironment({
+   projectId:"demo-nico-secondary-finance-fence",firestore:{rules}
+  });
+  try{
+   await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,"companies",hub),{
+     companyKind:"internal",active:true,ownerUid:owner,masterUid:owner
+    });
+    for(const [id,role] of [[uid,"member"],[owner,"owner"]]){
+     const profile={
+      uid:id,companyId:hub,active:true,accessKind:"internal",
+      memberType:"direct",companyRole:role,
+      role:role==="owner"?"leader":"member",teamId:team,
+      canViewRevenue:true,canViewUnitPrice:true
+     };
+     await setDoc(doc(db,"users",id),profile);
+     await setDoc(doc(db,"companies",hub,"members",id),profile);
+    }
+    await setDoc(doc(db,"partnerWorkspaceContexts",uid),{
+     uid,kind:"partner_secondary",active:true,primaryCompanyId:hub,
+     partnerCompanyId:"partner",hubCompanyId:hub
+    });
+    for(const name of COLLECTIONS){
+     await setDoc(doc(db,name,"frozenMoney"),{
+      companyId:hub,teamId:team,revenue:19000,totalRevenue:31000,
+      unitPrice:19000,cashback:1000,
+      marker:"unchanged-"+name
+     });
+    }
+   });
+   for(const name of COLLECTIONS){
+    const raw=doc(actor(env,uid),name,"frozenMoney");
+    const filters=[where("companyId","==",hub)];
+    if(name==="revenueGoals")filters.push(where("teamId","==",team));
+    const list=query(collection(actor(env,uid),name),...filters);
+    if(expectedDenied){
+     await assertFails(getDoc(raw));
+     await assertFails(getDocsFromServer(list));
+    }else{
+     // This observed legacy source permission is the precise NO-GO reason.
+     const got=await assertSucceeds(getDoc(raw));
+     assert.equal(got.data().unitPrice,19000,mode+" "+name);
+     await assertSucceeds(getDocsFromServer(list));
+    }
+    const preserved=await assertSucceeds(getDoc(doc(
+     actor(env,owner),name,"frozenMoney"
+    )));
+    assert.equal(preserved.data().totalRevenue,31000);
+   }
+  }finally{await env.cleanup();}
+ }
+});
+
 test("real Rules emulator denies active partner-secondary raw GET and LIST but preserves all Originals",{
  skip:!process.env.FIRESTORE_EMULATOR_HOST
 },async()=>{

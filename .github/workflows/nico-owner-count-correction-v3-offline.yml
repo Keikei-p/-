@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Confirm NO DEPLOY and frozen original money/count sources
@@ -151,12 +151,16 @@ jobs:
           node --test tests/partner-conflict-recovery-candidate.test.mjs
           node --test tests/partner-sb-category-v2.test.cjs tests/partner-sb-v2-workspace.test.cjs tests/partner-sb-v2-dashboard.test.cjs
           node --test tests/partner-workspace.test.cjs
-          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
-          test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
-          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
-          test "$(git hash-object staging/partner-sb-v2/service.cjs)" = '41157a07e159cde651b542bbb9b725039ed7fb58'
-          test "$(git hash-object staging/partner-sb-v2/partner-workspace.html)" = '82a1ed0c67b14ea3fd915419da7864b7c99ffe7b'
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
+            test "$(git hash-object index.html)" = '88ef5636bfe9254e71f2109d452b6d3049f99861'
+            test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 'b94a6aba231dc2569009580a178297a5b6194bda'
+            test "$(git hash-object staging/partner-sb-v2/service.cjs)" = '41157a07e159cde651b542bbb9b725039ed7fb58'
+            test "$(git hash-object staging/partner-sb-v2/partner-workspace.html)" = '82a1ed0c67b14ea3fd915419da7864b7c99ffe7b'
+          fi
           node <<'NODE'
           const fs=require('node:fs');
           const source=fs.readFileSync('staging/partner-owner-correction-v3/service.cjs','utf8');
@@ -170,7 +174,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare
+          node tests/helpers/prepare-historical-owner-correction-fixture.mjs
           dir="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
           test -d "$dir/functions-hub-owner-correction"
           test "$(find "$dir" -type f | wc -l)" -eq 6

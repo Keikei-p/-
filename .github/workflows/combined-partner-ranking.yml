@@ -113,6 +113,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Exact PR #704 replaces the historical source reviewer only.
+          # The shared reviewer runs all 14 original legacy regression suites.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            exit 0
+          fi
+          set -euo pipefail
           test "$FIREBASE_PROJECT_ID" = demo-nico-partner-ranking
           test "$GCLOUD_PROJECT" = demo-nico-partner-ranking
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
@@ -170,6 +177,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          firebase emulators:exec --project demo-nico-partner-ranking --only firestore \
-            'node --test tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs tests/ranking-owner-consent-emulator.test.mjs'
+          # Each suite gets a fresh demo database; their fictional hub IDs overlap.
+          for suite in tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs tests/ranking-owner-consent-emulator.test.mjs; do
+            firebase emulators:exec --project demo-nico-partner-ranking --only firestore "node --test $suite"
+          done
           echo 'STAGING_ONLY_PARTNER_MONTH_EMULATOR_PASS_PRODUCTION_WRITES=0'

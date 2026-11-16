@@ -172,7 +172,8 @@ function shape(value){
   }
   if(productTotal!==value.summary.total)halt();
   if(!value.filters||typeof value.filters!=="object"||
-     Object.keys(value.filters).some(k=>!["companyId","teamId","uid","productId"].includes(k)))halt();
+     Object.keys(value.filters).some(k=>!["companyId","teamId","uid","productId","scope"].includes(k))||
+     (value.filters.scope!==undefined&&!["joint","direct","partner"].includes(value.filters.scope)))halt();
  }else{
   strict(value.own,["company","count","unidentifiedCount","people","products"]);
   if(!Number.isSafeInteger(value.own.count)||value.own.count<0||

@@ -3,20 +3,24 @@ import assert from "node:assert/strict";
 import {readFileSync,mkdtempSync,rmSync,existsSync,readdirSync} from "node:fs";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import {fileURLToPath} from "node:url";
 import vm from "node:vm";
 import {execFileSync} from "node:child_process";
 import {
  REVIEWED,gitBlob,makeOwnerPackage,writeDisposablePackage
 } from "../tools/production/prepare-hub-owner-correction-v3-package.mjs";
 
-const root=path.resolve(new URL("../",import.meta.url).pathname);
-const sources=()=>Object.fromEntries(Object.keys(REVIEWED).map(name=>
+import {historicalSources} from "./helpers/historical-builder-fixtures.mjs";
+
+const root=path.resolve(fileURLToPath(new URL("../",import.meta.url)));
+const currentSources=()=>Object.fromEntries(Object.keys(REVIEWED).map(name=>
  [name,readFileSync(path.join(root,name),"utf8")]
 ));
+const sources=()=>historicalSources(REVIEWED);
 const frozen=Object.keys(REVIEWED);
 const approved=()=>makeOwnerPackage(sources());
 
-test("source-freeze preserves financial records, 8 existing exports, old UI, and Rules",()=>{
+test("historical source-freeze preserves financial records, 8 existing exports, old UI, and Rules",()=>{
  const all=sources();
  assert.deepEqual(Object.keys(all).sort(),frozen.slice().sort());
  for(const [name,digest] of Object.entries(REVIEWED))
@@ -151,4 +155,11 @@ test("no runner context, wrong repo or denied package path cannot write files",(
    /STOP_OWNER_V3_PACKAGE_RUNNER_ONLY/);
   assert.equal(existsSync(dest),false);
  }finally{restore();rmSync(temp,{recursive:true,force:true})}
+});
+
+
+test("historical publisher rejects the current integrated source without writing a package",()=>{
+ const current=currentSources();
+ assert.notEqual(gitBlob(current["index.html"]),REVIEWED["index.html"]);
+ assert.throws(()=>makeOwnerPackage(current),/STOP_OWNER_V3_PACKAGE_SOURCE_CHANGED/);
 });

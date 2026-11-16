@@ -42,13 +42,30 @@ export const CURRENT_CANDIDATE=Object.freeze({
   "index.html": "5edde6d5e5459ba283d12d157c021d4eee03d587",
   "partner-workspace.html": "431b200e02934315eda57b6998bdde801252f78f"
 });
+// Exact integrated source review; historical release/default pins remain unchanged.
+export const INTEGRATED_CANDIDATE=Object.freeze({
+  "staging/partner-owner-correction-v3/entry.cjs": "309bd57fa808c59ab2cba4e9d7fd10b664f0b626",
+  "staging/partner-owner-correction-v3/firebase.owner-correction.json": "2bb289edd33de3a17c2579c2ffbdf1eae0a75417",
+  "staging/partner-owner-correction-v3/service.cjs": "13079c29d6b88167fbaec22361636215fea52764",
+  "staging/partner-owner-correction-v3/trusted-auth.cjs": "a3e1f03f3e7032024e00109d9211bc34384b9a49",
+  "staging/partner-sb-v2/sb-category-v2.cjs": "7f1f7214dd38c6aae3339bab26a8378f1e556f4c",
+  "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
+  "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
+  "functions-partner-workspace/index.js": "42eea81ab01449bedbbedabdc1a8fb6bfba1e284",
+  "functions-partner-workspace/service.cjs": "ff2911be0bfa23d7c041e7451729d59862b2261f",
+  "firestore.rules": "d9f4df6a2ac0f8b5720534a2461ec66b94379190",
+  "index.html": "03e213565a2037c73913602701363476ae0db9fd",
+  "partner-workspace.html": "d8262633f35cf0f015de44c9a223c4289f8d2a6b",
+  "functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
+  "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e"
+});
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
  const data=Buffer.isBuffer(s)?s:Buffer.from(s,"utf8");
  return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
 }
 export function makeOwnerPackage(files,sourcePins=REVIEWED){
- if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE)stop("UNREVIEWED_BASELINE");
+ if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE&&sourcePins!==INTEGRATED_CANDIDATE)stop("UNREVIEWED_BASELINE");
  if(!files||typeof files!=="object"||Array.isArray(files))stop("SOURCE_SHAPE");
  for(const [name,digest] of Object.entries(sourcePins)){
   if(typeof files[name]!=="string"||gitBlob(files[name])!==digest)
@@ -164,3 +181,5 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   process.exitCode=1;
  });
 }
+
+export function makeIntegratedCandidateOwnerPackage(files){return makeOwnerPackage(files,INTEGRATED_CANDIDATE);}

@@ -123,6 +123,8 @@ export function mergeVerifiedTwoMonthInputs({primary,secondary}={}){
   // Teams and SKUs are trusted metadata; they must remain unchanged between
   // reads at the exact same snapshot. Roster may be empty in either month.
   if(!same(a.teams,b.teams)||!same(a.products,b.products))reject();
+  if([a,b].some(s=>s.publicNamesVerified!==undefined&&
+     typeof s.publicNamesVerified!=="boolean"))reject();
   // Never allow a foreign-company row to be attributed to this source.
   // A cross-company sourceId collision must not silently affect rankings.
   for(const row of [...(a.records??[]),...(b.records??[]),
@@ -131,6 +133,8 @@ export function mergeVerifiedTwoMonthInputs({primary,secondary}={}){
   }
   const roster=mergeRows(a.roster,b.roster,"uid",first,second,true);
   return {...a,roster,
+   ...([a,b].some(s=>s.publicNamesVerified!==undefined)?
+    {publicNamesVerified:a.publicNamesVerified===true&&b.publicNamesVerified===true}:{}),
    records:mergeRows(a.records,b.records,"sourceId",first,second),
    lines:mergeRows(a.lines,b.lines,"sourceId",first,second),
    completeWindows:{current:true,previous:true}};

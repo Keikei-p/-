@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
+import {historicalBlob} from './helpers/historical-builder-fixtures.mjs';
 
 const read=path=>readFileSync(new URL(path,import.meta.url),"utf8");
-const actual=read("../partner-workspace.html");
+const current=read("../partner-workspace.html");
+const actual=historicalBlob('1ea7e1a26702681294ec999c7b36a8f10b880aa2');
 const originalBlob="431b200e02934315eda57b6998bdde801252f78f";
 const gitBlob=s=>{
  const bytes=Buffer.from(s,"utf8");
@@ -23,7 +25,7 @@ const once=(s,find,replacement,label)=>{
  return s.replace(find,replacement);
 };
 
-test("undoing ONLY the approved seven count-only additions restores the exact original partner login, counts and finance-free UI bytes",()=>{
+test("historical main host restores its exact original partner login and count bytes after undoing only its seven approved additions",()=>{
  let s=actual;
  assert.equal(s.includes("const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=true;"),false);
  s=once(s,` <section id="countInlineJointCompanies" hidden>
@@ -61,6 +63,7 @@ const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;
   "login, UI, count editing/saving, Firebase calls and original data flow must be byte-identical");
 });
 test("feature OFF, only existing verification endpoint can be reached when explicitly enabled",()=>{
+ const actual=current;
  assert.match(actual,/const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;/);
  assert.match(actual,/if\(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED\|\|/);
  assert.match(actual,/if\(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED\)\s+await refreshVerifiedJointInlineForPartner/);

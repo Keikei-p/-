@@ -49,6 +49,24 @@ const publication={serverVerified:true,ownerSettingsRead:true,
  ownerUidVerified:true,productMappingsReviewed:true,
  hubCompanyId:"hub",revision:2,enabledHubProductIds:["nuro"],
  partnerOverrides:[]};
+
+test("two-month count sharing continues when a public-name proof is absent or revoked",()=>{
+ for(const pair of [[true,true],[true,false],[true,undefined],[false,true]]){
+  const args=fixtures();args.primary.sources[1].publicNamesVerified=pair[0];
+  if(pair[1]!==undefined)args.secondary.sources[1].publicNamesVerified=pair[1];
+  const before=copy(args),merged=mergeVerifiedTwoMonthInputs(args);
+  const ctx={...context,activeCountSharingVerified:true,publicNameCompanyIds:["hub","partner"]};
+  delete ctx.reciprocalOwnersApproved;delete ctx.individualNamesApproved;
+  const expected=pair.every(x=>x===true);
+  assert.equal(merged.sources[1].publicNamesVerified,expected);
+  const result=buildOwnerVisibleCountRanking({input:{...merged,context:ctx,
+   period:{kind:"week",day:"2026-11-01",asOf:"2026-11-11"}},publication});
+  assert.equal(result.summary.total,14);
+  assert.equal(result.memberRanking.find(p=>p.id==="partner:employee").name,
+   expected?"担当者":"担当者（名称非公開）");
+  assert.deepEqual(args,before);
+ }
+});
 test("one verified readTime merges both original months exactly once and publishes full cross-month week",()=>{
  const args=fixtures(),snapshot=copy(args);
  const merged=mergeVerifiedTwoMonthInputs(args);

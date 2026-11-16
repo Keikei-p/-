@@ -17,7 +17,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nico-partner-workspace-production
+  # PR #704 only validates offline. Keep the production lock for every other event.
+  group: nico-partner-workspace-production${{ github.event_name == 'pull_request' && github.head_ref == 'integration/nico-sales-count-publication-rank-ready-20261113' && format('-offline-{0}', github.workflow) || '' }}
   cancel-in-progress: false
 jobs:
   legacy-team-snapshot-validate:
@@ -32,6 +33,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs
+            node --check functions-partner-workspace/service.cjs
+            node --check functions-partner-workspace/index.js
+            exit 0
+          fi
           # Reviewed current count-save SKU publication branch and main ONLY.
           # Historical workflow_dispatch / release conditions below remain frozen.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&

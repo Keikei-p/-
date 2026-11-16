@@ -22,8 +22,11 @@ test("production and extra-board feature flags stay OFF, no unauthorized network
  assert(source.includes("const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;"));
  assert(source.includes("const NICO_APPROVED_PARTNER_RANKING_RELEASED=false;"));
  assert(source.includes('if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||'));
- assert(source.includes('data?.role!=="owner"||activeCodeSession'));
- assert(source.includes("identity===auth.currentUser&&identity?.emailVerified===true"));
+ assert(source.includes('!["owner","leader","member"].includes(data?.role)'));
+ assert(source.includes("session===activeCodeSession&&company===workspaceCompanyId"));
+ assert(source.includes('(session?true:identity?.emailVerified===true)'));
+ assert(source.includes('getCodeSession:()=>activeCodeSession||""'));
+ assert(source.includes('getWorkspaceCompanyId:()=>activeCodeSession?"":workspaceCompanyId'));
  assert(source.includes('window.location.origin==="https://nico-factory.web.app"'));
  assert(source.includes("if(!valid())return;"));
  assert(!source.includes('from "firebase/firestore"'));

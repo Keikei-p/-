@@ -58,7 +58,7 @@ const ordered=(rows,value)=>[...rows].sort((a,b)=>value(b)-value(a)||
 function ownerContext(ctx,hub,companyIds) {
  if(!ctx||ctx.serverVerified!==true||ctx.userActive!==true||
     ctx.memberActive!==true||ctx.companyActive!==true||
-    ctx.reciprocalOwnersApproved!==true||
+    (ctx.activeCountSharingVerified!==true&&ctx.reciprocalOwnersApproved!==true)||
     ctx.completeSnapshotBudgetApproved!==true||
     !id(ctx.viewerUid)||!id(ctx.viewerCompanyId)||!id(ctx.hubCompanyId)||
     ctx.hubCompanyId!==hub||!["hub_owner","partner_owner"].includes(ctx.role)||
@@ -71,9 +71,11 @@ function ownerContext(ctx,hub,companyIds) {
     new Set(ctx.approvedCompanyIds).size!==companyIds.length||
     companyIds.some(x=>!ctx.approvedCompanyIds.includes(x))||
     !ctx.approvedCompanyIds.includes(ctx.viewerCompanyId)||
-    ctx.individualNamesApproved!==true)stop();
+    (ctx.publicNameCompanyIds!==undefined&&(!Array.isArray(ctx.publicNameCompanyIds)||
+     new Set(ctx.publicNameCompanyIds).size!==ctx.publicNameCompanyIds.length||
+     ctx.publicNameCompanyIds.some(cid=>!id(cid)||!companyIds.includes(cid)))))stop();
 }
-function checkSources(sources,companyIds,hub){
+function checkSources(sources,companyIds,hub,context){
  if(!Array.isArray(sources)||sources.length!==companyIds.length)stop();
  const seen=new Set(),recordKeys=new Set(),lineKeys=new Set();
  let readTime=null;
@@ -94,13 +96,22 @@ function checkSources(sources,companyIds,hub){
      !s.completeWindows||s.completeWindows.current!==true||
      typeof s.completeWindows.previous!=="boolean"||
      !Array.isArray(s.roster)||s.roster.length>10000||
-     Object.keys(s).sort().join("|")!==[
+     (s.publicNamesVerified!==undefined&&typeof s.publicNamesVerified!=="boolean")||
+     Object.keys(s).filter(k=>k!=="publicNamesVerified").sort().join("|")!==[
        "companyId","companyLabel","kind","consentVerified","isComplete",
        "readTime","teams","records","lines","products","completeWindows","roster"
      ].sort().join("|"))stop();
   if(readTime!==null&&readTime!==s.readTime)stop();
   readTime=s.readTime;seen.add(s.companyId);
   const company=label(s.companyLabel);names.set(s.companyId,company);
+  // Count-sharing authorizes totals; a missing public-name approval never
+  // grants permission to reveal another company's personal names.
+  const viewerNamesVerified=context.viewerCompanyId===hub||
+   sources.some(v=>v.companyId===context.viewerCompanyId&&v.publicNamesVerified===true);
+  const namesAllowed=s.companyId===context.viewerCompanyId||context.individualNamesApproved===true||
+   (viewerNamesVerified&&context.publicNameCompanyIds?.includes(s.companyId)&&
+    (s.companyId===hub||s.publicNamesVerified===true));
+  const memberName=raw=>{const checked=label(raw);return namesAllowed?checked:"担当者（名称非公開）";};
   coverage.set(s.companyId,{current:true,previous:s.completeWindows.previous});
   assertPublicSchema("publicRecords",s.records);
   assertPublicSchema("publicRecordLines",s.lines);
@@ -128,7 +139,7 @@ function checkSources(sources,companyIds,hub){
    teamMetadata.get(teamKey(s.companyId,p.teamId)).memberCount++;
    roster.set(key,{id:key,companyId:s.companyId,companyName:company,
     uid:p.uid,teamId:p.teamId,teamName:teamNames.get(p.teamId),
-    name:label(p.name)});
+    name:memberName(p.name)});
   }
   const headers=new Map(),totals=new Map();
   for(const r of s.records){
@@ -142,7 +153,7 @@ function checkSources(sources,companyIds,hub){
    if(!roster.has(memberKey)){
     roster.set(memberKey,{id:memberKey,companyId:s.companyId,companyName:company,
      uid:r.uid,teamId:r.teamId,teamName:teamNames.get(r.teamId),
-     name:label(r.memberNameSnapshot||"担当者")});
+     name:memberName(r.memberNameSnapshot||"担当者")});
    }
    headers.set(r.sourceId,r);totals.set(r.sourceId,0);
   }
@@ -234,11 +245,14 @@ export function buildVerifiedCountDashboard({
  if(!period||Object.keys(period).sort().join("|")!==
     ["kind","day","asOf"].sort().join("|"))stop();
  const range=windowFor(period);
- const parsed=checkSources(sources,approvedCompanyIds,hubCompanyId);
+ const parsed=checkSources(sources,approvedCompanyIds,hubCompanyId,context);
  const rows=[...parsed.rows,...safeUnassigned(unassigned,parsed.sku,parsed.rows)];
  const map=mappings(productGroups,parsed.sku),goals=goalIndex(personGoals,parsed.roster);
  if(!filters||typeof filters!=="object"||Array.isArray(filters)||
-    Object.keys(filters).some(k=>!["companyId","teamId","uid","productId"].includes(k)))stop();
+    Object.keys(filters).some(k=>!["companyId","teamId","uid","productId","scope"].includes(k))||
+    (filters.scope!==undefined&&!["joint","direct","partner"].includes(filters.scope)))stop();
+ const inScope=cid=>filters.scope==="direct"?cid===hubCompanyId:
+  filters.scope==="partner"?cid!==hubCompanyId:true;
  const allowed=(value,test)=>value==null||value===""||test(value);
  if(!allowed(filters.companyId,x=>approvedCompanyIds.includes(x))||
     !allowed(filters.teamId,id)||!allowed(filters.uid,id)||
@@ -246,7 +260,7 @@ export function buildVerifiedCountDashboard({
  const productKey=k=>map.lookup.get(k)||"unmapped:"+k;
  const productName=k=>map.lookup.has(k)?map.names.get(map.lookup.get(k)):
    parsed.sku.get(k).companyName+"・"+parsed.sku.get(k).name+"（未統合）";
- const filtered=rows.filter(r=>
+ const filtered=rows.filter(r=>inScope(r.companyId)&&
   (filters.companyId==null||filters.companyId===""||filters.companyId===r.companyId)&&
   (filters.teamId==null||filters.teamId===""||filters.teamId===r.teamId)&&
   (filters.uid==null||filters.uid===""||filters.uid===r.uid)&&
@@ -274,6 +288,7 @@ export function buildVerifiedCountDashboard({
   return people.get(key);
  }
  for(const base of parsed.roster.values()){
+  if(!inScope(base.companyId))continue;
   if(filters.companyId&&filters.companyId!==base.companyId)continue;
   if(filters.teamId&&filters.teamId!==base.teamId)continue;
   if(filters.uid&&filters.uid!==base.uid)continue;
@@ -291,6 +306,7 @@ export function buildVerifiedCountDashboard({
  // Registered teams remain visible even before their first report. Metadata
  // is current membership; historical counts below keep saved team attribution.
  for(const team of parsed.teamMetadata.values()){
+  if(!inScope(team.companyId))continue;
   if(filters.companyId&&filters.companyId!==team.companyId)continue;
   if(filters.teamId&&filters.teamId!==team.id.slice(team.companyId.length+1))continue;
   teams.set(JSON.stringify([team.companyId,team.sourceTeamId]),{id:team.id,companyId:team.companyId,
@@ -351,7 +367,7 @@ export function buildVerifiedCountDashboard({
   }
  }
  // Zero-person and empty-company rows keep "unreported" distinct from zero.
- for(const cid of approvedCompanyIds)if(!allCompany.has(cid))
+ for(const cid of approvedCompanyIds)if(inScope(cid)&&!allCompany.has(cid))
    allCompany.set(cid,{id:cid,name:parsed.names.get(cid),
     kind:cid===hubCompanyId?"自社":"協力店",count:0,unidentifiedCount:0});
  if(!Array.isArray(historicalBest)||historicalBest.length>10000)stop();

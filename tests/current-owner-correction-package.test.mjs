@@ -3,14 +3,15 @@ import assert from "node:assert/strict";
 import {readFileSync,mkdtempSync,existsSync,rmSync,readdirSync} from "node:fs";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import {fileURLToPath} from 'node:url';
+import {historicalSources} from './helpers/historical-builder-fixtures.mjs';
 import {
  REVIEWED,CURRENT_CANDIDATE,gitBlob,makeOwnerPackage,
  makeCurrentCandidateOwnerPackage,writeDisposablePackage
 } from "../tools/production/prepare-hub-owner-correction-v3-package.mjs";
 
-const root=path.resolve(new URL("../",import.meta.url).pathname);
-const sources=()=>Object.fromEntries(Object.keys(CURRENT_CANDIDATE).map(name=>
- [name,readFileSync(path.join(root,name),"utf8")]));
+const root=fileURLToPath(new URL('../',import.meta.url));
+const sources=()=>historicalSources(CURRENT_CANDIDATE);
 
 test("exact current source pins include finance, old Functions, original Hosting and isolated Owner API",()=>{
  const all=sources();

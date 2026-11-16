@@ -86,7 +86,9 @@ test("validated count-only partner month aggregates and refuses partial old snap
 });
 test("existing ranking UIs reused, not a new ranking screen or money blending",()=>{
  assert(html.includes('const originalRows=buildTeamRankingRows(teamMap,monthly,teamRankingMode)'));
- assert(html.includes('const partnerRows=teamRankingMode==="progress"'));
+ assert(html.includes('sortTeamRankingRows(originalRows,teamRankingMode)'));
+ assert(!fn("renderTeamRanking").includes('id:"quick-partner:"'),
+  "a company aggregate is not a human team in the existing team leaderboard");
  assert(html.includes('const augmentedRows=[...monthly,...partnerRankingVirtualRecords()]'));
  assert(html.includes("const productsWithCounts=buildGroupedProductMemberRanking("));
  assert(html.includes("function renderIndividualRanking("));
@@ -142,12 +144,16 @@ test("actual quick + staff count API merge prioritizes staff ledger without doub
    readPartnerQuickDay:async({date})=>{
     calls.push(["quick",date]);
     return {data:{role:"hub",date,partners:date==="2026-10-31"?
-     [row("partnerA","協力店A",{NURO:9}),row("partnerB","協力店B",{SBMNP:2})]:[]}};
+     [row("partnerA","協力店A",{NURO:9}),row("partnerB","協力店B",{SBMNP:2})]:
+     [row("partnerA","協力店A",{}),row("partnerB","協力店B",{})]}};
    },
    readPartnerWorkDay:async({date})=>{
     calls.push(["staff",date]);
-    return {data:{role:"hub",date,partners:date==="2026-10-31"?
-     [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:[]}};
+    return {data:{role:"hub",date,registeredCompanies:[
+     {partnerCompanyId:"partnerA",active:true},
+     {partnerCompanyId:"partnerB",active:true}],partners:date==="2026-10-31"?
+     [row("partnerA","協力店A",{NURO:2,"つばさ・HTB":3})]:
+     [row("partnerA","協力店A",{})]}};
    },
    dashboardMonth:{value:"2026-10"},
    currentPartnerRankingRows:()=>ctx.monthRows,

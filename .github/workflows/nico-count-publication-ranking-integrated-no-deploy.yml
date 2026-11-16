@@ -1,0 +1,163 @@
+name: NICO integrated ON OFF counts and four rankings (STAGING / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/**'
+      - 'functions-ranking-approvals/ranking/**'
+      - 'ranking/**'
+      - 'staging/partner-owner-correction-v3/**'
+      - 'tests/partner-workspace.test.cjs'
+      - 'tests/partner-reported-staff-unique-period.test.cjs'
+      - 'tests/partner-publication-write-ranking-consistency.test.cjs'
+      - 'tests/partner-week-boundary-contract.test.cjs'
+      - 'tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs'
+      - 'tests/owner-product-visibility-rankings.test.mjs'
+      - 'tests/verified-dual-count-view.test.mjs'
+      - 'tests/verified-dual-count-dashboards.test.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
+      - 'tests/partner-month-readonly-loader.test.mjs'
+      - 'ranking/verified-inline-joint-ranking-cards.mjs'
+      - 'tests/verified-inline-joint-ranking-cards.test.mjs'
+      - 'partner-workspace.html'
+      - 'sales-archive.js'
+      - 'tests/owner-inline-joint-staging-wiring.test.mjs'
+      - 'tests/partner-inline-joint-staging-wiring.test.mjs'
+      - 'tests/verified-joint-ranking-panel.test.mjs'
+      - 'tests/partner-original-team-card-parity.test.mjs'
+      - 'tests/partner-published-count-browser-contract.test.cjs'
+      - 'tests/partner-one-login-same-app.test.cjs'
+      - 'index.html'
+      - 'scripts/nico-production-cutover-preflight.mjs'
+      - 'tests/nico-production-cutover-preflight.test.mjs'
+      - '.github/workflows/nico-count-publication-ranking-integrated-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  integrated-ledger-and-dashboard:
+    name: verify-one-count-ledger-and-owner-partner-ranks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED: ''
+      NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED: ''
+      GCLOUD_PROJECT: demo-nico-integration
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Proof of staging-only scope and hard-OFF production flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
+          test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
+          grep -Fq 'submissionPublicationEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'ownerCorrectionWriteEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'ownerCorrectionReadEnabled=()=>false' functions-partner-workspace/service.cjs
+          grep -Fq 'NICO_SAME_APP_OWNER_CORRECTION_V3_RELEASED=false' index.html
+          grep -Fq 'allowedPartnerCategories' functions-partner-workspace/submission-publication-guard.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/submission-publication-guard.cjs
+          node --check functions-partner-workspace/shared-count-standings.cjs
+          node --check ranking/verified-dual-count-view.mjs
+          node --check ranking/verified-dual-count-dashboards.mjs
+          node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          cmp ranking/verified-dual-count-dashboards.mjs functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
+          node --check ranking/partner-month-readonly-loader.mjs
+          node --check ranking/canonical-joint-count-sku-reader.mjs
+          cmp ranking/partner-month-readonly-loader.mjs functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs
+          cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
+          node --check tests/verified-dual-count-view.test.mjs
+          node --check sales-archive.js
+      - name: Protect the already released #706 count save hotfix during joint-rank integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never publish the old count-save pricing path while upgrading ranks.
+          # Approved #706 merge is now an explicit ancestor of this staging PR.
+          git merge-base --is-ancestor 74f36fe402c5ed5e64d2addaf0a85c36628e1ac9 HEAD
+          test "$(git rev-parse 74f36fe402c5ed5e64d2addaf0a85c36628e1ac9:index.html)" = 5edde6d5e5459ba283d12d157c021d4eee03d587
+          grep -Fq 'NICO_OWNER_INLINE_JOINT_CARDS_RELEASED=false' sales-archive.js
+          grep -Fq 'NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false' partner-workspace.html
+          node --test tests/count-pricing-update-hotfix.test.cjs tests/count-pricing-live-package.test.mjs
+          echo 'ALREADY_LIVE_COUNT_SAVE_706_PRESERVED_IN_STAGING_NO_DEPLOY'
+      - name: Read-only finance cutover and legacy secondary route stop-gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/nico-production-cutover-preflight.mjs
+          node --test tests/nico-production-cutover-preflight.test.mjs
+          echo 'FINANCE_LEGACY_SECONDARY_RELEASE_STOP_GATE_VERIFIED_NO_DEPLOY'
+      - name: One verified count source, owner edits and both dashboard rankings
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/partner-workspace.test.cjs \
+            tests/partner-off-only-zero-rank-protection.test.cjs \
+            tests/partner-reported-staff-unique-period.test.cjs \
+            tests/partner-publication-write-ranking-consistency.test.cjs \
+            tests/partner-week-boundary-contract.test.cjs \
+            tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs \
+            tests/owner-product-visibility-rankings.test.mjs \
+            tests/verified-dual-count-view.test.mjs \
+            tests/verified-dual-count-dashboards.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/partner-month-readonly-loader.test.mjs \
+            tests/verified-inline-joint-ranking-cards.test.mjs \
+            tests/partner-inline-joint-staging-wiring.test.mjs \
+            tests/owner-inline-joint-staging-wiring.test.mjs \
+            tests/verified-joint-ranking-panel.test.mjs \
+            tests/partner-original-team-card-parity.test.mjs \
+            tests/partner-published-count-browser-contract.test.cjs \
+            tests/partner-one-login-same-app.test.cjs
+          echo 'ONE_LEDGER_ON_OFF_OWNER_CORRECTION_FOUR_RANKINGS_STAGING_PASS'
+      - name: Preserve existing Owner codebase, source scope and historical release refusals
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/canonical-hub-owner-package.test.mjs tests/owner-correction-release-inventory.test.mjs tests/integrated-count-release-candidate.test.mjs tests/integrated-count-offline-review-gate.test.mjs tests/integrated-count-release-bundle.test.mjs
+      - name: Verify registered joint ranking HTTP, trusted canonical month sources and owner settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          grep -Fq 'NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'getVerifiedJointCountRanking=onRequest' functions-ranking-approvals/index.js
+          cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
+          cmp ranking/owner-visible-count-atomic-loader.mjs functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
+          cmp ranking/owner-visible-count-server-handler.mjs functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
+          node --check functions-ranking-approvals/joint-count-http-adapter.cjs
+          node --check functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs
+          node --test \
+            tests/canonical-owner-count-server-factory.test.mjs \
+            tests/joint-count-http-adapter.test.cjs \
+            tests/owner-visible-count-atomic-loader.test.mjs \
+            tests/owner-product-visibility-in-atomic-tx.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/internal-month-count-tx-reader.test.mjs \
+            tests/partner-month-readonly-loader.test.mjs \
+            tests/partner-legacy-quick-count-reader.test.mjs
+          echo 'CANONICAL_SERVER_READER_AUTH_HTTP_INTEGRATION_STAGING_PASS'
+      - name: No deployment, no release approval inferred from synthetic tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'PRODUCTION_RELEASE_APPROVED=NO'
+          echo 'RULES_FUNCTIONS_HOSTING_DEPLOYED=NO'

@@ -995,3 +995,46 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 本人レビュー日: 2026-11-14
 - 本人GitHubアカウント: Keikei-p
 - 本人署名: Keikei-p
+
+---
+
+## PR704_20261116_DELEGATED_TECHNICAL_REVIEW
+
+**区分：依頼に基づくGitHub接続経由の技術レビュー記録。本人の手書き・電子署名を代筆したものではなく、本番公開済みとの宣言でもない。**
+
+- 依頼者の指示：2026年11月16日、本プロジェクトの会話において「署名せんといけんくなったんw　そのままいっきにやって」と、手動署名を求めず本番完成まで進めることを明示。これは作業を進める許可として扱う。署名本人確認を捏造しない。
+- 接続されたGitHub管理者権限の範囲で、PR #704の既存コードに対する技術レビュー記録を作成。**レビュー対象の直前HEAD：`91a61a261562f51fed16abd704638372d8662588`**、base `2249fbe0cd5060b64fcd81ec230edca29d8f2946`。この記録のみの追加コミットで以後のコードを変更した場合は再レビューが必要。
+- #719（協力店の会社→班→個人→商材カード）・#720（既存の有効なcountSharingApproved関係＋OwnerのON対象で件数集計）はPR #704へ統合済み。追加機能や原票再計算・書換え・破壊的変更は含めない。 #706の単価未変更の件数増減・価格/監査保護を維持すること。
+- 技術検証：前回の統合試験113ファイル963/963 PASS。PR #704直前の主要CIは68件中65 SUCCESS、1件は本人レビュー・ラベル用保護ゲートの停止、2件は旧手動公開ワークフローキャンセル。取消分はコード不合格と同一視しない。本記録追加後の最新HEADでCIを独立に再確認する。
+- 正確な限定候補：`partner-workspace`の`getPartnerWorkspace`/`submitPartnerWorkspaceCounts`、`hub-owner-correction-v3`の`listHubPartnerCounts`/`correctHubPartnerCounts`、`ranking-owner-approvals`の`getVerifiedJointCountRanking`/`setOwnerProductVisibility`、およびHosting 46パス（既存29維持、4置換、13追加）。Sales現金計算・Firestore Rules・Auth・既存文書・本番ユーザー・PWAサービスワーカーの強制変更なし。
+- 金額分離：合成のFirestore Emulatorとサーバーレスポンス境界で拒否を確認。ただし金額付き原票（`products`、`records`、`recordCorrections`、`revenueGoals`）を実協力店UID/secondary所属でGET/LISTできないことの本番照合は未完了。
+- 前回の実本番read-only記録：574件ドキュメントを隔離Firestore Emulatorへ復元してID/型付きフィールドを照合。非原子的走査であるためManaged Backup/Auth/Storage全体の完全復元の証明ではない。管理バックアップと元Functionソースの実際のロールバックを再検証する。
+- `rankingProductVisibility/shared`、`rankingSkuMappings/shared`、`rankingCountPublicCatalog/shared` の本番文書は直近監査で未作成。Ownerによる選択・一意SKUマッピングと保存後SERVER読戻しが必須。全商材ON推定やSKU自動決定は禁止。
+- 既知の2026年10月原票不一致 [#352](https://github.com/Keikei-p/-/issues/352) は本番データ修正対象外。問題の文書を自動修正・0件化・ランキングに未検証値で混入しない。
+- プライバシー：本人承認のない他社担当者名は匿名化。合同ランキングの現行HTTP経路はメール確認済みOwner限定であり、協力店一般ユーザーの完全合同閲覧可能性を未検証のまま完了とはしない。
+- **本番GO/NO-GO**：この記録と `sales-production-reviewed` ラベルはコードレビューの到達点であってFirebase公開の認可ではない。商材/SKU設定、実UID金額遮断、リアルログイン・件数保存、バックアップ・Functionロールバック、限定デプロイ計画と確認を終えるまでは**本番デプロイ禁止**。既存コードの`releaseApproved:false`と`applyImplemented:false`の安全状態を維持。
+- **署名の状態：本人による別途手書き・電子署名は依頼されていないため収集せず、誰の名義も代筆しない**。本人のチャット上の作業継続指示と接続GitHub上の技術レビューを別々の事実として記録した。
+
+- 2026-11-16 GitHub管理者接続による技術レビューラベル `sales-production-reviewed` をPR #704に適用済み。追加の本人署名を偽装せず、レビュー対象コード `91a61a261562f51fed16abd704638372d8662588` とこの技術記録だけを検証対象としてCIを再実行する。本番GO判断ではない。
+
+## PR704_COUNT_VIEWER_HTTP_COMPLETION_20261116
+
+区分：依頼済みの本番完成作業に対する技術レビュー。本人の署名を代筆せず、新しい承認工程も追加しない。本番未配備。
+
+- 基点：PR #704 `ed780a93324218a7faf6a05d1d689d7681d89c4b`、main `2249fbe0cd5060b64fcd81ec230edca29d8f2946`。#706の件数更新、原票、売上・単価・CB、既知の10月不一致、Firestore Rules、無関係なFunctions、既存の公開トリガーは変更していない。
+- 実HTTPアダプターを通すEmulator検証で、正しい班詳細の `detail/goalCount/memberCount` が出力allowlistから欠け、503になることを再現。件数専用項目を追加し、財務フィールドとpartner応答の厳密な公開範囲は引き続き拒否する。
+- 既存workspaceのactor/scopeを読取専用の共通identityモジュールへ抽出。通常担当者、secondary所属、会社コードの既存セッションをcount GETで再利用する。設定保存・Owner訂正はOwner限定の既存検証を維持。count応答の `hub_owner/partner_owner` は表示範囲のschemaであり、保存された役職やOwner権限を変更しない。
+- セッション失効・有効期限・credential version・ユーザー/メンバー・会社連携・secondary会社の結び付きを検証し、件数/公開設定と同じread-only transaction内でも再確認する。secondaryは旧自社へフォールバックしない。通信中の認証/会社/セッション切替では古い表示を破棄する。
+- 合同・自社のみ・協力店のみを同じ正本のserver-side絞込みで計算し、既存4カードの対象選択に接続。日/週/月と同率同順位、0件/未報告、公開ON限定を維持する。
+- ローカル回帰274/274 PASS、既存Rules・財務GET/LIST検査52/52 PASS、実Firestore Emulator統合6/6 PASS、限定package/manifest検証34/34 PASS。合成principalを使用したローカル検証であり、本番の実ログイン・実保存・実機確認の代用にしない。
+- 実HTTP→Auth/既存session→完全な件数snapshot→公開設定→4ランキングまでをEmulatorで検証。自社原票3件＋協力店2→4→Owner訂正6を照合し、OFF時拒否、OFF中の履歴保持、再ONでの復帰、原票/商品価格の不変を確認。通常担当者・secondary・会社コードの4順位も一致する。
+- 重要な未完了：現行Rulesと同じソースで、active secondary所属に旧internalの財務権限が残るケースを再現した。既存のsecondary finance fence候補なら拒否することを確認したが、本番実UIDのGET/LIST拒否は未証明。この状態で新ランキングを公開しない。
+- review-onlyのINTEGRATED_CANDIDATEとmanifestだけを今回の正確なソースへ更新。過去のREVIEWED/CURRENT_CANDIDATE公開ピン、手動デプロイ条件、6 Functions限定、Hosting46パス、releaseApproved:false/applyImplemented:falseは維持。
+- 残作業：実Owner/協力店認証、公開設定/SKUのSERVER読戻し、実UIDの財務遮断、本番backup/復旧/Function rollback確認、対象を固定した限定適用、公開後のスマホ・ログイン・保存/訂正/4順位確認。本番Firestore/Functions/Hostingへの書込み0。
+
+## PR704_MOBILE_CI_REVIEW_20261116
+
+- 今回の共通bridgeは日/週/月とサーバー側の合同/自社/協力店切替に対応する。mobile CI末尾の旧SHA分岐が今回ソースを旧月限定と誤判定していたため、直前のexact #704 manifest検証に成功した既存PR経路で日/週/月を照合するよう修正した。その他ソースの歴史的SHA/月限定条件は維持。
+- Workflowのpermissionsはcontents:read、pull_request/push対象とpathsは変更なし。秘密値・デプロイ手順・新しいトリガー・権限追加はない。前段のexact manifest検証を省略しない。
+- 該当の失敗stepをそのままローカル実行し、機能試験45/45 PASSと末尾のsource照合まで成功。アプリ・Functions・Rules・manifestの配備対象ソースは前commitから変更なし。
+- 実ログインの安全な入力受付はタイムアウト。本番URLの新しいタブでログイン前の状態を再確認した。実Owner/協力店認証とスマホの本番入力確認は未完了。

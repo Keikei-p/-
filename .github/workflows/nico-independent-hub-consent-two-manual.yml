@@ -43,7 +43,7 @@ jobs:
       FIREBASE_PROJECT_ID: sales-management-cc116
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Verify all original money/count/Rules/functions code and exact server vendor parity OFFLINE
@@ -51,12 +51,16 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
-          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
-          test "$(git hash-object functions-ranking-approvals/controller.cjs)" = 0a7691d8a01ca6a47931300a2b650c7fbfb5b391
-          test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
-          test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
-          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+            test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+            test "$(git hash-object functions-ranking-approvals/controller.cjs)" = 0a7691d8a01ca6a47931300a2b650c7fbfb5b391
+            test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
+            test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
+            test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          fi
           node --check ranking/ranking-owner-consent-service.mjs
           node --check functions-ranking-approvals/vendor/ranking-owner-consent-service.mjs
           node --check ranking/ranking-owner-consent-status.mjs

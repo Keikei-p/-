@@ -69,7 +69,7 @@ export function buildPartnerCountRankingSource({
    relation.partnerCompanyId!==partnerCompanyId||
    relation.active!==true||relation.countSharingApproved!==true||
    !proof||proof.serverVerified!==true||
-   proof.reciprocalOwnersApproved!==true||
+   (proof.countSharingVerified!==true&&proof.reciprocalOwnersApproved!==true)||
    proof.completeMonthEntriesRead!==true||
    proof.completeMonthSummariesRead!==true||
    proof.historicalTeamsVerified!==true||
