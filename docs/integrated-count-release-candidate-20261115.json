@@ -2,7 +2,7 @@
   "format": "nico-integrated-count-review-only-v1",
   "project": "sales-management-cc116",
   "site": "nico-factory",
-  "candidateCommit": "0701fd732c3f33d58f91a28d8d0f3f94856244ec",
+  "candidateCommit": "5c8dee69fe13e651b4503387fcfd82e80df8a393",
   "releaseApproved": false,
   "applyImplemented": false,
   "functionTargets": [
@@ -64,7 +64,7 @@
     },
     {
       "path": "functions-partner-workspace/service.cjs",
-      "sha256": "241d944685994b1df0109034f02130751a91468357f13078ac5c87c628f1702c"
+      "sha256": "c78d76182fbff3ad2a1f85b87600c29becfd35e4f59f8992a646ffdb63f4b56e"
     },
     {
       "path": "functions-partner-workspace/shared-count-standings.cjs",
@@ -75,6 +75,10 @@
       "sha256": "97a484a7f001160e5e06e6427e687ac30833c01f652cd9e6a1098739ec624fe7"
     },
     {
+      "path": "functions-partner-workspace/workspace-identity.cjs",
+      "sha256": "e9bf671e9afaf5db1a252c1e79569f059c0d8cf3250ad521962df1919ff06321"
+    },
+    {
       "path": "functions-ranking-approvals/controller.cjs",
       "sha256": "e26be4fb9520992e1a62967ad291a66bb02537842686bf0fe1194b089cba8406"
     },
@@ -83,12 +87,16 @@
       "sha256": "bf847eb9cdea13e583e0a6080222a002d35d6487cabae2f48a0306a55702c2bb"
     },
     {
+      "path": "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs",
+      "sha256": "e9bf671e9afaf5db1a252c1e79569f059c0d8cf3250ad521962df1919ff06321"
+    },
+    {
       "path": "functions-ranking-approvals/index.js",
       "sha256": "24dd7ad022f3a57e218cdfee5477bba69f00dd1bbda10982a5decd116f736d60"
     },
     {
       "path": "functions-ranking-approvals/joint-count-http-adapter.cjs",
-      "sha256": "1602884988b37b9bc4f7e2f37752dc323a0113997b42ddb35e0610cbe9ae5dec"
+      "sha256": "79b1d4cc7b5f5a303576f7d19c59bfc10655a8229410b1e3a9b6bd12718c1a3d"
     },
     {
       "path": "functions-ranking-approvals/owner-sku-mapping-controller.cjs",
@@ -108,7 +116,7 @@
     },
     {
       "path": "functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs",
-      "sha256": "9deacdb195fa5d3ebb58d8a3d0c23aa17e127d42a194cc5ff6f5fc9dfaa76188"
+      "sha256": "67ffc4dac7df702f0959d6dd3b50fc55c1b37bcd5f76a33246f93fd8275dc931"
     },
     {
       "path": "functions-ranking-approvals/ranking/internal-month-count-tx-reader.mjs",
@@ -116,11 +124,11 @@
     },
     {
       "path": "functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs",
-      "sha256": "98b4e6fbff651a2a0c98581ea1e120d8cd3fd8e53248ffafd9bc93f33a961639"
+      "sha256": "e4fb0e200c9986c20f0e62465fadca865359ff60179a316b040a5463d2325bf4"
     },
     {
       "path": "functions-ranking-approvals/ranking/owner-product-visibility-in-atomic-tx.mjs",
-      "sha256": "0d0ec9173392048b517e032de109a9e9b123308b19734e1888f6984cc238ba94"
+      "sha256": "874e2c1f0cc432743b28befdfc5e09dbc299e91339a5f2aad2c6eca3649eda69"
     },
     {
       "path": "functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs",
@@ -136,7 +144,7 @@
     },
     {
       "path": "functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs",
-      "sha256": "112d5852f68d508127bd98a80e5d029b885e68b4fee46ef946f0f80223ab2cbc"
+      "sha256": "6f8da19cb6d54d9f1f48b209752c25cb47fe407fc8f7cd93ec2d7ba7395bbeac"
     },
     {
       "path": "functions-ranking-approvals/ranking/partner-legacy-quick-count-reader.mjs",
@@ -152,11 +160,11 @@
     },
     {
       "path": "functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs",
-      "sha256": "6dbf44ef70d396c13676525c7dd6642e15c2595b4f26a023a642b65654b1a345"
+      "sha256": "4b6fe0e857c78375612e9bd1ad96127262cf242fb5201e87a51f5070afc54b5b"
     },
     {
       "path": "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
-      "sha256": "2097e6837c13a4a16b55b3ae7e66b811e6d9c602baac1b46d4476b921fc45295"
+      "sha256": "a86b05e77d0901415f08ce72160294ba1f5129511e09d1ab00bc26bef3343ef0"
     },
     {
       "path": "functions-ranking-approvals/ranking/verified-two-month-count-input.mjs",
@@ -168,7 +176,7 @@
     },
     {
       "path": "functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs",
-      "sha256": "98b4e6fbff651a2a0c98581ea1e120d8cd3fd8e53248ffafd9bc93f33a961639"
+      "sha256": "e4fb0e200c9986c20f0e62465fadca865359ff60179a316b040a5463d2325bf4"
     },
     {
       "path": "functions-ranking-approvals/vendor/ranking-owner-consent-service.mjs",
@@ -180,7 +188,7 @@
     },
     {
       "path": "functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs",
-      "sha256": "6dbf44ef70d396c13676525c7dd6642e15c2595b4f26a023a642b65654b1a345"
+      "sha256": "4b6fe0e857c78375612e9bd1ad96127262cf242fb5201e87a51f5070afc54b5b"
     },
     {
       "path": "functions/index.js",
@@ -196,7 +204,7 @@
     },
     {
       "path": "partner-workspace.html",
-      "sha256": "f08e9241ac776f26bddaa1230b1080a84785796417c1d967dbe516f5aea7d260"
+      "sha256": "c06a62cde9b579afd3a922a82f46f5b841daed9e29525ec73f7d8249a8254d73"
     },
     {
       "path": "ranking/owner-partner-setup-mount.mjs",
@@ -244,7 +252,7 @@
     },
     {
       "path": "ranking/verified-dual-count-view.mjs",
-      "sha256": "19eca0cfcb610fe87fcec1ca7ad54339d0bb9232183c7a14908c7158fb2c2c32"
+      "sha256": "24eac6d283c78a4e17010d77f350ecae20c0ca2945b6ec8dd24c91ef7b2283af"
     },
     {
       "path": "ranking/verified-inline-joint-ranking-cards.mjs",
@@ -252,7 +260,7 @@
     },
     {
       "path": "ranking/verified-joint-month-http-bridge.mjs",
-      "sha256": "4df286a1b22fc960e6c52858d595a0b4d1e3f10d1df229d05222e716c841418f"
+      "sha256": "43c8315c3efee7f9fa9eb8426bd40f450ddd160c98dd0552e2e144d98c64f56e"
     },
     {
       "path": "ranking/verified-joint-ranking-panel.mjs",
@@ -260,7 +268,7 @@
     },
     {
       "path": "sales-archive.js",
-      "sha256": "ecd170c39e8d09159da9827f49a60e1a29794c35afa1d858fd0a7bfa561e4b44"
+      "sha256": "f98a63bbd65f4c5703dc3bdb6bc6233566fcbda2b47217491158a4e0c1084037"
     },
     {
       "path": "service-worker.js",
@@ -304,7 +312,7 @@
     },
     {
       "path": "tools/production/prepare-hub-owner-correction-v3-package.mjs",
-      "sha256": "1815664ab077cdcf217f018223e11f4a40f3b0267d3c6799d88684026b5ab7fc"
+      "sha256": "f9833fbda0771286e27458c8f5c0a4b738e158c16190f0af91bca7ab3f6aa3dd"
     }
   ],
   "backendFiles": [
@@ -315,8 +323,10 @@
     "functions-partner-workspace/service.cjs",
     "functions-partner-workspace/shared-count-standings.cjs",
     "functions-partner-workspace/submission-publication-guard.cjs",
+    "functions-partner-workspace/workspace-identity.cjs",
     "functions-ranking-approvals/controller.cjs",
     "functions-ranking-approvals/functions-partner-workspace/service.cjs",
+    "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs",
     "functions-ranking-approvals/index.js",
     "functions-ranking-approvals/joint-count-http-adapter.cjs",
     "functions-ranking-approvals/owner-sku-mapping-controller.cjs",
@@ -561,7 +571,7 @@
       "staging/partner-owner-correction-v3/owner-client.mjs",
       "staging/partner-owner-correction-v3/owner-ui.mjs"
     ],
-    "planSha256": "b349c2dc2540634e568bc4cb0627386fc84bfc1b0a1a53c1ab767db5b2824248",
+    "planSha256": "387f187a51ba208a8425c57bdbfe2539261fb57ff485732b62634fff8a0d3ec7",
     "authenticatedObservationAt": "2026-11-15T00:33:23.423Z"
   },
   "preparedOwnerPackage": {

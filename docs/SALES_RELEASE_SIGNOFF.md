@@ -1016,3 +1016,18 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - **署名の状態：本人による別途手書き・電子署名は依頼されていないため収集せず、誰の名義も代筆しない**。本人のチャット上の作業継続指示と接続GitHub上の技術レビューを別々の事実として記録した。
 
 - 2026-11-16 GitHub管理者接続による技術レビューラベル `sales-production-reviewed` をPR #704に適用済み。追加の本人署名を偽装せず、レビュー対象コード `91a61a261562f51fed16abd704638372d8662588` とこの技術記録だけを検証対象としてCIを再実行する。本番GO判断ではない。
+
+## PR704_COUNT_VIEWER_HTTP_COMPLETION_20261116
+
+区分：依頼済みの本番完成作業に対する技術レビュー。本人の署名を代筆せず、新しい承認工程も追加しない。本番未配備。
+
+- 基点：PR #704 `ed780a93324218a7faf6a05d1d689d7681d89c4b`、main `2249fbe0cd5060b64fcd81ec230edca29d8f2946`。#706の件数更新、原票、売上・単価・CB、既知の10月不一致、Firestore Rules、無関係なFunctions、既存の公開トリガーは変更していない。
+- 実HTTPアダプターを通すEmulator検証で、正しい班詳細の `detail/goalCount/memberCount` が出力allowlistから欠け、503になることを再現。件数専用項目を追加し、財務フィールドとpartner応答の厳密な公開範囲は引き続き拒否する。
+- 既存workspaceのactor/scopeを読取専用の共通identityモジュールへ抽出。通常担当者、secondary所属、会社コードの既存セッションをcount GETで再利用する。設定保存・Owner訂正はOwner限定の既存検証を維持。count応答の `hub_owner/partner_owner` は表示範囲のschemaであり、保存された役職やOwner権限を変更しない。
+- セッション失効・有効期限・credential version・ユーザー/メンバー・会社連携・secondary会社の結び付きを検証し、件数/公開設定と同じread-only transaction内でも再確認する。secondaryは旧自社へフォールバックしない。通信中の認証/会社/セッション切替では古い表示を破棄する。
+- 合同・自社のみ・協力店のみを同じ正本のserver-side絞込みで計算し、既存4カードの対象選択に接続。日/週/月と同率同順位、0件/未報告、公開ON限定を維持する。
+- ローカル回帰274/274 PASS、既存Rules・財務GET/LIST検査52/52 PASS、実Firestore Emulator統合6/6 PASS、限定package/manifest検証34/34 PASS。合成principalを使用したローカル検証であり、本番の実ログイン・実保存・実機確認の代用にしない。
+- 実HTTP→Auth/既存session→完全な件数snapshot→公開設定→4ランキングまでをEmulatorで検証。自社原票3件＋協力店2→4→Owner訂正6を照合し、OFF時拒否、OFF中の履歴保持、再ONでの復帰、原票/商品価格の不変を確認。通常担当者・secondary・会社コードの4順位も一致する。
+- 重要な未完了：現行Rulesと同じソースで、active secondary所属に旧internalの財務権限が残るケースを再現した。既存のsecondary finance fence候補なら拒否することを確認したが、本番実UIDのGET/LIST拒否は未証明。この状態で新ランキングを公開しない。
+- review-onlyのINTEGRATED_CANDIDATEとmanifestだけを今回の正確なソースへ更新。過去のREVIEWED/CURRENT_CANDIDATE公開ピン、手動デプロイ条件、6 Functions限定、Hosting46パス、releaseApproved:false/applyImplemented:falseは維持。
+- 残作業：実Owner/協力店認証、公開設定/SKUのSERVER読戻し、実UIDの財務遮断、本番backup/復旧/Function rollback確認、対象を固定した限定適用、公開後のスマホ・ログイン・保存/訂正/4順位確認。本番Firestore/Functions/Hostingへの書込み0。
