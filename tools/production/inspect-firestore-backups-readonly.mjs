@@ -53,7 +53,39 @@ export async function inspect({request=fetch,getToken}={}){
   method:"GET",redirect:"error",headers:{Authorization:"Bearer "+token}
  });
  if(!r.ok)throw Error("STOP_BACKUP_LIST_HTTP_"+r.status);
- return summarizeBackups(await r.json());
+ const body=await r.json();
+ // Fail closed on incomplete or partially unreachable backup inventories.
+ summarizeBackups(body);
+ const now=Date.now(),hour=3600000;
+ const validName=name=>typeof name==="string"&&
+  /^projects\/sales-management-cc116\/locations\/[a-z0-9-]+\/backups\/[A-Za-z0-9_-]+$/.test(name);
+ const candidates=body.backups.filter(b=>b.database===DATABASE&&b.state==="READY"&&
+  (b.stats===undefined||b.stats===null)&&validName(b.name)&&
+  typeof b.databaseUid==="string"&&b.databaseUid.length>0&&
+  Number.isFinite(Date.parse(b.snapshotTime))&&
+  Date.parse(b.snapshotTime)<=now&&now-Date.parse(b.snapshotTime)<=48*hour&&
+  Date.parse(b.expireTime)>now+24*hour)
+  .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime)).slice(0,2);
+ let recovered=0,denied=0;
+ for(const candidate of candidates){
+  // Metadata GET only; never access document content or restoration endpoints.
+  const detailResponse=await request("https://firestore.googleapis.com/v1/"+candidate.name,{
+   method:"GET",redirect:"error",headers:{Authorization:"Bearer "+token}
+  });
+  if(!detailResponse.ok){denied++;continue;}
+  const detail=await detailResponse.json();
+  if(detail?.name!==candidate.name||detail?.database!==candidate.database||
+    detail?.databaseUid!==candidate.databaseUid||
+    detail?.state!=="READY"||detail?.snapshotTime!==candidate.snapshotTime||
+    detail?.expireTime!==candidate.expireTime)
+   throw Error("STOP_BACKUP_DETAIL_MISMATCH");
+  if(detail.stats!==undefined&&detail.stats!==null){
+   candidate.stats=detail.stats;recovered++;
+  }
+ }
+ return Object.freeze({...summarizeBackups(body),
+  detailGetsAttempted:candidates.length,detailStatsRecovered:recovered,
+  detailGetsDenied:denied});
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
