@@ -97,6 +97,18 @@ test('backup budget failure reasons remain separate and fail closed',()=>{
  const d=clone(backups);d.backups[0].stats.sizeBytes='NaN';
  assert.throws(()=>selectBackup(databases,d,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_STATS_INVALID/);
 });
+test('fallback uses only a fresh READY backup with verified stats, never a larger backup',()=>{
+ const newer=clone(backup);newer.name=newer.name.replace('backup-123','backup-456');
+ newer.snapshotTime=new Date(NOW-1800000).toISOString();delete newer.stats;
+ const chosen=selectBackup(databases,{backups:[newer,clone(backup)]},NOW);
+ assert.equal(chosen.selected.name,BACKUP);
+ const old=clone(backup);old.snapshotTime=new Date(NOW-49*3600000).toISOString();
+ assert.throws(()=>selectBackup(databases,{backups:[newer,old]},NOW),/BACKUP_STATS_INVALID/);
+ const over=clone(newer);over.stats={documentCount:'2',sizeBytes:String(33*1024*1024)};
+ assert.throws(()=>selectBackup(databases,{backups:[over,clone(backup)]},NOW),/BACKUP_SIZE_BUDGET/);
+ const malformed=clone(backup);malformed.stats={documentCount:'x',sizeBytes:'500'};
+ assert.throws(()=>selectBackup(databases,{backups:[newer,malformed]},NOW),/BACKUP_STATS_INVALID/);
+});
 test('transport rejects production deletes, document writes, foreign backups and destinations',()=>{
  for(const [method,url,body] of [
   ['DELETE',API+SOURCE],['PATCH',API+SOURCE+'/documents/records/r1',{fields:{}}],
