@@ -149,10 +149,15 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
  let result,failure,attempted=false;
  try{
   attempted=true;
-  await wait(await call('POST',RESTORE,{databaseId:DESTINATION,backup:selected.name}));
+  const completed=await wait(await call('POST',RESTORE,{databaseId:DESTINATION,backup:selected.name}));
+  // Only a successful response to OUR restore operation proves ownership.
+  // An occupied-target race or lost response must never authorize cleanup.
+  if(completed.response?.name!==TARGET||!validUid(completed.response?.uid)||
+     completed.response.uid===initial.current.uid)STOP('RESTORE_OWNERSHIP_UNPROVEN');
+  createdUid=completed.response.uid;
   const criteria={backup:selected.name,sourceUid:initial.current.uid,started,operation};
-  const db=validateRestoredDatabase(await call('GET',API+TARGET),criteria);
-  createdUid=db.uid;cleanupEtag=db.etag;
+  const db=validateRestoredDatabase(await call('GET',API+TARGET),{...criteria,uid:createdUid});
+  cleanupEtag=db.etag;
   log({temporaryDatabaseCreated:true,cleanupPending:true,sourceDocumentWrites:0});
   if(await call('GET',RULES,undefined,{allow404:true})!==null)STOP('DESTINATION_CLIENT_RULES_PRESENT');
   const restored=await collect(isolatedCollector((m,u,b)=>call(m,u,b)),{maxDocuments:10000});
@@ -182,6 +187,7 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
     const latest=await call('GET',API+TARGET,undefined,{allow404:true});
     if(latest===null){if(createdUid)STOP('TEMPORARY_DATABASE_DISAPPEARED');}
     else{
+     if(!createdUid)STOP('RESTORE_OWNERSHIP_UNPROVEN');
      const db=validateRestoredDatabase(latest,{backup:selected.name,sourceUid:initial.current.uid,
       started,operation,uid:createdUid});
      // Never disable a delete-protection policy set by another operator.

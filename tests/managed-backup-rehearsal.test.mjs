@@ -35,7 +35,11 @@ function fixture(options={}){
   if(url===RULES)return response({},404);
   if(url===DB+':restore'){
    assert.equal(method,'POST');assert.deepEqual(body,{databaseId:DESTINATION,backup:BACKUP});
-   created=true;return response({name:options.foreignOperation??OP,done:true,response:restoredMeta()});
+   created=true;
+   if(options.concurrentConflict)return response({},409);
+   if(options.operationFailed)return response({name:OP,done:true,error:{code:6}});
+   if(options.missingAcknowledgedUid)return response({name:OP,done:true,response:{name:TARGET}});
+   return response({name:options.foreignOperation??OP,done:true,response:restoredMeta()});
   }
   if(url===API+TARGET){
    const m=restoredMeta();if(options.foreignUid&&created)m.sourceInfo.backup.backup='foreign-backup';
@@ -140,6 +144,11 @@ test('source changes and missing backup documents fail, then still clean up only
 });
 
 test('concurrent or unverified restored database provenance is never deleted',async()=>{
+ for(const option of [{concurrentConflict:true},{operationFailed:true},{missingAcknowledgedUid:true}]){
+  const race=fixture(option);
+  await assert.rejects(run(race),/CLEANUP_REQUIRES_OPERATOR/);
+  assert(!race.calls.some(x=>x.method==='DELETE'));
+ }
  const f=fixture({foreignUid:true});
  await assert.rejects(run(f),/CLEANUP_REQUIRES_OPERATOR/);
  assert(!f.calls.some(x=>x.method==='DELETE'));
