@@ -18,5 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Regression-test final source-pinned approval policy (synthetic local git only)
+        run: node --test tests/sales-integrated-release-signoff-guard.test.mjs
       - name: Verify monetary data and live deployment guardrails (no Firebase credentials)
         run: node scripts/check-sales-safe-pr.mjs
