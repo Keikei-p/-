@@ -995,3 +995,34 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 本人レビュー日: 2026-11-14
 - 本人GitHubアカウント: Keikei-p
 - 本人署名: Keikei-p
+
+
+---
+
+## INTEGRATED_COUNT_PR704_20261116 — リリース候補の本人レビュー欄（未署名・未承認）
+
+**状態: 技術検証記録のみ。本人レビュー・電子署名・公開承認は未取得。以下の本文追加をもって承認済みとしない。**
+
+- 対象: [PR #704](https://github.com/Keikei-p/-/pull/704)、レビュー対象HEAD `c00636085bb107a00c5982a755ec00f84ec427a7`、tree `517d5fdc58f97481375a0f32538954f32d57784f`、base main `2249fbe0cd5060b64fcd81ec230edca29d8f2946`。
+- 親PRに [#719](https://github.com/Keikei-p/-/pull/719) と [#720](https://github.com/Keikei-p/-/pull/720) を統合。単価を変えない既存件数更新 #706 の3関数と売上計算・保存済み原票・監査履歴・認証は保護。
+- 公開対象: `getPartnerWorkspace` と `submitPartnerWorkspaceCounts`（partner-workspace）、`listHubPartnerCounts` と `correctHubPartnerCounts`（hub-owner-correction-v3）、`getVerifiedJointCountRanking` と `setOwnerProductVisibility`（ranking-owner-approvals）。関係ないFunctionsの配備はしない。現時点の仕様上、完全合同HTTPランキングは認証済み自社Ownerのみ対象である点を公開前に確認する。
+- Hosting: 既存46パスの候補（29維持、4置換、13追加／変更アップロード17）。Service Worker・PWA・Hosting設定・金融Firestore Rulesの既存動作を維持。署名済みの限定手動公開手順なしにmainをマージして自動公開を発火させない。
+- ソースレビュー用manifest: `docs/integrated-count-release-candidate-20261115.json` の71ソース SHA-256 `d62a3acf79f2c06ff04e950c7775c3672acc02cffb9387ef2ff47a4b2d7f7c01`。これは過去のsource anchor `0701fd732c3f33d58f91a28d8d0f3f94856244ec` に対応し、最新HEADの本人レビューとは別。
+- 最新候補の自動検証記録: 113ファイル・963/963 PASS、[GitHub Actions](https://github.com/Keikei-p/-/actions/runs/43780983058) と同じHEADの68チェック中67成功。残りは `Sales app protected change gate` がラベル・今回用署名不足で正しく停止。試験のPassを実UIDでの金額遮断や本番公開成功とみなさない。
+- 既存の復元検証 `docs/fresh-firestore-restore-verification-20261115.json` は574文書をlocalhost隔離環境へ読み取り復元した証拠。管理バックアップの完全な復元、Auth、Storageの復旧証明ではない。配備前に現行バックアップと費用上限を再確認。
+- 未解消の本番設定: `rankingProductVisibility/shared`、`rankingSkuMappings/shared`、`rankingCountPublicCatalog/shared` は直近のread-only検査で未作成。自社Ownerが公開商材と一意なSKU対応を正規設定画面で実際に保存・再取得するまで、全商材ONとして公開しない。
+- 既知の10月金額原票の不一致1件（[#352](https://github.com/Keikei-p/-/issues/352)）を修正なしで保護し、該当の不確定な順位は正確に検証できるまで保留する。件数・売上・単価・CB・既存ユーザー・監査履歴に無断の書込み・削除・移行をしない。
+- 金額遮断は合成principalでGET/LIST拒否を確認済みだが、自社・協力店実UID、兼務secondary、実ブラウザの再検証は未完了。対象日の件数保存→再取得、Owner訂正、公開名匿名化、日週月・4種順位・協力店の画面同等性も実アカウントで検証が必要。
+- 認証のない外部実HTTPの再確認は2026-11-16に試行したが、この実行環境は名前解決／取得に失敗。前回2026-11-16 00:32:59 UTCのHosting GETが本番 `index.html` raw SHA-256 `0822a201ac791e62dac9e032e80af8eb08622c2ba5adc62cc6313934f9cbe6d1` と一致した証跡は維持し、**今回の取得成功とは扱わない**。
+
+### 管理者による独立レビュー・署名（未実施）
+
+- [ ] 今回のPR #704最終HEAD・変更137ファイル・6 Functions・46 Hostingパス、Workflowトリガーと本番変更範囲を管理者本人が確認
+- [ ] 影響・バックアップ・金額遮断・本番の商材/SKU設定内容、費用・ロールバック手順を確認
+- [ ] 本人レビュー日（本人が記入）: **未記入**
+- [ ] 本人GitHubアカウント（本人が記入）: **未記入**
+- [ ] 本人の署名（本人が記入）: **未記入**
+- [ ] 正式レビュー確認後、maintainerが `sales-production-reviewed` ラベルを付与。ラベル付与・署名後の新HEADで保護CIを再実行
+- [ ] 本人確認済みの限定デプロイとFunctions/Hostingの本番事後検証。失敗時は原票保持と安全なロールバック
+
+**注意:** 最新HEADはこの記録の追記で更新される。実際のリリース承認は、改めて最終HEADをレビューしてから署名する。本文のテスト結果とリンクは追記前のHEADの証拠であり、新しいHEADのCIは独立に確認する。
