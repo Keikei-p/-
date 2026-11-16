@@ -53,6 +53,7 @@ jobs:
             test "$(wc -l < /tmp/nico-onoff-changed-files.txt)" -eq 2
             grep -Fxq '.github/workflows/nico-owner-onoff-static-two-production.yml' /tmp/nico-onoff-changed-files.txt
             grep -Fxq '.github/workflows/nico-owner-product-onoff-isolated-no-deploy.yml' /tmp/nico-onoff-changed-files.txt
+            test "$(git hash-object .github/workflows/nico-owner-onoff-static-two-production.yml)" = ca2f7fe6e7e89ee91e32e218a69b886d5a8a0896
             test "$(git hash-object index.html)" = 03e213565a2037c73913602701363476ae0db9fd
             test "$(git hash-object functions-partner-workspace/service.cjs)" = ff2911be0bfa23d7c041e7451729d59862b2261f
             grep -Fq 'test "$(git hash-object index.html)" = 03e213565a2037c73913602701363476ae0db9fd' .github/workflows/nico-owner-onoff-static-two-production.yml
