@@ -34,6 +34,49 @@ test("incomplete response or unreachable backup location blocks inventory",()=>{
  assert.throws(()=>summarizeBackups({backups:[],unreachable:["asia-northeast1"]}),/STOP_BACKUP_LOCATIONS_UNREACHABLE/);
  assert.throws(()=>summarizeBackups({backups:{"bad":1}}),/STOP_BACKUP_RESPONSE_MALFORMED/);
 });
+test("read-only detail GET recovers materialized stats without disclosing bytes, docs or names",async()=>{
+ const name="projects/sales-management-cc116/locations/asia-northeast1/backups/backup-abc";
+ const snapshot=new Date(Date.now()-3600000).toISOString();
+ const expiry=new Date(Date.now()+7*86400000).toISOString();
+ const backup={name,database,databaseUid:"synthetic-uid",state:"READY",
+  snapshotTime:snapshot,expireTime:expiry};
+ let calls=0;
+ const result=await inspect({getToken:async()=>"fake-secret",
+  request:async(url,opts)=>{
+   calls++;
+   assert.equal(opts.method,"GET");assert.equal(opts.redirect,"error");
+   assert(url.startsWith("https://firestore.googleapis.com/v1/"));
+   assert.equal(url,calls===1?
+    "https://firestore.googleapis.com/v1/projects/sales-management-cc116/locations/-/backups":
+    "https://firestore.googleapis.com/v1/"+name);
+   return {ok:true,json:async()=>calls===1?
+    {backups:[{...backup}],unreachable:[]}:
+    {...backup,stats:{documentCount:"2",sizeBytes:"512"}}};
+  }});
+ assert.equal(calls,2);
+ assert.equal(result.detailGetsAttempted,1);
+ assert.equal(result.detailStatsRecovered,1);
+ assert.equal(result.recentReadyWithValidStats,1);
+ assert.equal(result.recentReadyWithinAuditBudget,1);
+ assert(!JSON.stringify(result).includes("fake-secret"));
+ assert(!JSON.stringify(result).includes(name));
+ assert(!JSON.stringify(result).includes("512"));
+});
+test("backup detail mismatches stop without merging metadata or writing",async()=>{
+ const name="projects/sales-management-cc116/locations/asia-northeast1/backups/backup-abc";
+ const backup={name,database,databaseUid:"same",state:"READY",
+  snapshotTime:new Date(Date.now()-3600000).toISOString(),
+  expireTime:new Date(Date.now()+7*86400000).toISOString()};
+ let calls=0;
+ await assert.rejects(inspect({getToken:async()=>"fake-secret",
+  request:async(_url,opts)=>{
+   assert.equal(opts.method,"GET");calls++;
+   return {ok:true,json:async()=>calls===1?
+    {backups:[backup],unreachable:[]}:
+    {...backup,databaseUid:"other",stats:{documentCount:"2",sizeBytes:"512"}}};
+  }}),/STOP_BACKUP_DETAIL_MISMATCH/);
+ assert.equal(calls,2);
+});
 test("audit only performs a GET and reports insufficient permissions without leaking token",async()=>{
  let calls=0;
  const result=await inspect({getToken:async()=>"fake-secret",
