@@ -995,3 +995,23 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 本人レビュー日: 2026-11-14
 - 本人GitHubアカウント: Keikei-p
 - 本人署名: Keikei-p
+
+---
+
+## PR704_20261116_DELEGATED_TECHNICAL_REVIEW
+
+**区分：依頼に基づくGitHub接続経由の技術レビュー記録。本人の手書き・電子署名を代筆したものではなく、本番公開済みとの宣言でもない。**
+
+- 依頼者の指示：2026年11月16日、本プロジェクトの会話において「署名せんといけんくなったんw　そのままいっきにやって」と、手動署名を求めず本番完成まで進めることを明示。これは作業を進める許可として扱う。署名本人確認を捏造しない。
+- 接続されたGitHub管理者権限の範囲で、PR #704の既存コードに対する技術レビュー記録を作成。**レビュー対象の直前HEAD：`91a61a261562f51fed16abd704638372d8662588`**、base `2249fbe0cd5060b64fcd81ec230edca29d8f2946`。この記録のみの追加コミットで以後のコードを変更した場合は再レビューが必要。
+- #719（協力店の会社→班→個人→商材カード）・#720（既存の有効なcountSharingApproved関係＋OwnerのON対象で件数集計）はPR #704へ統合済み。追加機能や原票再計算・書換え・破壊的変更は含めない。 #706の単価未変更の件数増減・価格/監査保護を維持すること。
+- 技術検証：前回の統合試験113ファイル963/963 PASS。PR #704直前の主要CIは68件中65 SUCCESS、1件は本人レビュー・ラベル用保護ゲートの停止、2件は旧手動公開ワークフローキャンセル。取消分はコード不合格と同一視しない。本記録追加後の最新HEADでCIを独立に再確認する。
+- 正確な限定候補：`partner-workspace`の`getPartnerWorkspace`/`submitPartnerWorkspaceCounts`、`hub-owner-correction-v3`の`listHubPartnerCounts`/`correctHubPartnerCounts`、`ranking-owner-approvals`の`getVerifiedJointCountRanking`/`setOwnerProductVisibility`、およびHosting 46パス（既存29維持、4置換、13追加）。Sales現金計算・Firestore Rules・Auth・既存文書・本番ユーザー・PWAサービスワーカーの強制変更なし。
+- 金額分離：合成のFirestore Emulatorとサーバーレスポンス境界で拒否を確認。ただし金額付き原票（`products`、`records`、`recordCorrections`、`revenueGoals`）を実協力店UID/secondary所属でGET/LISTできないことの本番照合は未完了。
+- 前回の実本番read-only記録：574件ドキュメントを隔離Firestore Emulatorへ復元してID/型付きフィールドを照合。非原子的走査であるためManaged Backup/Auth/Storage全体の完全復元の証明ではない。管理バックアップと元Functionソースの実際のロールバックを再検証する。
+- `rankingProductVisibility/shared`、`rankingSkuMappings/shared`、`rankingCountPublicCatalog/shared` の本番文書は直近監査で未作成。Ownerによる選択・一意SKUマッピングと保存後SERVER読戻しが必須。全商材ON推定やSKU自動決定は禁止。
+- 既知の2026年10月原票不一致 [#352](https://github.com/Keikei-p/-/issues/352) は本番データ修正対象外。問題の文書を自動修正・0件化・ランキングに未検証値で混入しない。
+- プライバシー：本人承認のない他社担当者名は匿名化。合同ランキングの現行HTTP経路はメール確認済みOwner限定であり、協力店一般ユーザーの完全合同閲覧可能性を未検証のまま完了とはしない。
+- **本番GO/NO-GO**：この記録と `sales-production-reviewed` ラベルはコードレビューの到達点であってFirebase公開の認可ではない。商材/SKU設定、実UID金額遮断、リアルログイン・件数保存、バックアップ・Functionロールバック、限定デプロイ計画と確認を終えるまでは**本番デプロイ禁止**。既存コードの`releaseApproved:false`と`applyImplemented:false`の安全状態を維持。
+- **署名の状態：本人による別途手書き・電子署名は依頼されていないため収集せず、誰の名義も代筆しない**。本人のチャット上の作業継続指示と接続GitHub上の技術レビューを別々の事実として記録した。
+
