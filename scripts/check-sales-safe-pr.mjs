@@ -53,17 +53,17 @@ function verifySignedIntegratedReview() {
   let prior;
   try{prior=execFileSync("git",["rev-parse",currentHead+"^"],{encoding:"utf8"}).trim();}
   catch{return false;}
-  if(!/^[a-f0-9]{40}$/.test(prior)||gitDiff(prior,currentHead).join("\\n")!=="docs/SALES_RELEASE_SIGNOFF.md")return false;
+  if(!/^[a-f0-9]{40}$/.test(prior)||gitDiff(prior,currentHead).join("\n")!=="docs/SALES_RELEASE_SIGNOFF.md")return false;
   const signed=fs.readFileSync("docs/SALES_RELEASE_SIGNOFF.md","utf8");
   const marker="## SALES_RELEASE_PR_704_SIGNED";
   const at=signed.lastIndexOf(marker);
   if(at<0)return false;
-  const body=signed.slice(at+marker.length).split(/\\r?\\n## /,1)[0];
-  return body.split(/\\r?\\n/).some(line=>line==="reviewed_source_sha: "+prior)&&
-    body.split(/\\r?\\n/).some(line=>line==="reviewed_by: Keikei-p")&&
-    body.split(/\\r?\\n/).some(line=>line==="signature: Keikei-p")&&
-    body.split(/\\r?\\n/).some(line=>line==="decision: APPROVE_PR_704_BOUNDED_RELEASE")&&
-    /^review_date: 20\\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$/m.test(body);
+  const body=signed.slice(at+marker.length).split(/\r?\n## /,1)[0];
+  return body.split(/\r?\n/).some(line=>line==="reviewed_source_sha: "+prior)&&
+    body.split(/\r?\n/).some(line=>line==="reviewed_by: Keikei-p")&&
+    body.split(/\r?\n/).some(line=>line==="signature: Keikei-p")&&
+    body.split(/\r?\n/).some(line=>line==="decision: APPROVE_PR_704_BOUNDED_RELEASE")&&
+    /^review_date: 20\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$/m.test(body);
 }
 if(protectedChanges.length>0){
   console.error("Sensitive production paths changed:",protectedChanges.join(", "));
