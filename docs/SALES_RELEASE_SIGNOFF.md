@@ -1031,3 +1031,10 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 重要な未完了：現行Rulesと同じソースで、active secondary所属に旧internalの財務権限が残るケースを再現した。既存のsecondary finance fence候補なら拒否することを確認したが、本番実UIDのGET/LIST拒否は未証明。この状態で新ランキングを公開しない。
 - review-onlyのINTEGRATED_CANDIDATEとmanifestだけを今回の正確なソースへ更新。過去のREVIEWED/CURRENT_CANDIDATE公開ピン、手動デプロイ条件、6 Functions限定、Hosting46パス、releaseApproved:false/applyImplemented:falseは維持。
 - 残作業：実Owner/協力店認証、公開設定/SKUのSERVER読戻し、実UIDの財務遮断、本番backup/復旧/Function rollback確認、対象を固定した限定適用、公開後のスマホ・ログイン・保存/訂正/4順位確認。本番Firestore/Functions/Hostingへの書込み0。
+
+## PR704_MOBILE_CI_REVIEW_20261116
+
+- 今回の共通bridgeは日/週/月とサーバー側の合同/自社/協力店切替に対応する。mobile CI末尾の旧SHA分岐が今回ソースを旧月限定と誤判定していたため、直前のexact #704 manifest検証に成功した既存PR経路で日/週/月を照合するよう修正した。その他ソースの歴史的SHA/月限定条件は維持。
+- Workflowのpermissionsはcontents:read、pull_request/push対象とpathsは変更なし。秘密値・デプロイ手順・新しいトリガー・権限追加はない。前段のexact manifest検証を省略しない。
+- 該当の失敗stepをそのままローカル実行し、機能試験45/45 PASSと末尾のsource照合まで成功。アプリ・Functions・Rules・manifestの配備対象ソースは前commitから変更なし。
+- 実ログインの安全な入力受付はタイムアウト。本番URLの新しいタブでログイン前の状態を再確認した。実Owner/協力店認証とスマホの本番入力確認は未完了。

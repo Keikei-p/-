@@ -76,7 +76,11 @@ jobs:
           node --check tests/verified-joint-month-http-bridge.test.mjs
           node --test tests/verified-dual-count-view.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/verified-joint-month-http-bridge.test.mjs
           grep -Fq 'featureEnabled=false' ranking/verified-joint-month-http-bridge.mjs
-          if [ "$(git hash-object ranking/verified-joint-month-http-bridge.mjs)" = 2d960d8762761022df98b01a50cc4e7dd43b4840 ]; then
+          # The exact #704 manifest was verified in the preceding step.
+          # Its reviewed bridge supports day/week/month plus server scope.
+          # Retain the historical month-only assertion for every other source.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ] ||
+             [ "$(git hash-object ranking/verified-joint-month-http-bridge.mjs)" = 2d960d8762761022df98b01a50cc4e7dd43b4840 ]; then
             grep -Fq 'availablePeriods:["day","week","month"],allowFilters:false' ranking/verified-joint-month-http-bridge.mjs
           else
           grep -Fq 'availablePeriods:["month"],allowFilters:false' ranking/verified-joint-month-http-bridge.mjs
