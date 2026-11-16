@@ -63,7 +63,7 @@ function verifySignedIntegratedReview() {
     body.split(/\r?\n/).some(line=>line==="reviewed_by: Keikei-p")&&
     body.split(/\r?\n/).some(line=>line==="signature: Keikei-p")&&
     body.split(/\r?\n/).some(line=>line==="decision: APPROVE_PR_704_BOUNDED_RELEASE")&&
-    /^review_date: 20\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$/m.test(body);
+    /^review_date: 20\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/m.test(body);
 }
 if(protectedChanges.length>0){
   console.error("Sensitive production paths changed:",protectedChanges.join(", "));
