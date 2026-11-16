@@ -103,7 +103,7 @@ test('fallback uses only a fresh READY backup with verified stats, never a large
  const chosen=selectBackup(databases,{backups:[newer,clone(backup)]},NOW);
  assert.equal(chosen.selected.name,BACKUP);
  const old=clone(backup);old.snapshotTime=new Date(NOW-49*3600000).toISOString();
- assert.throws(()=>selectBackup(databases,{backups:[newer,old]},NOW),/BACKUP_STATS_INVALID/);
+ assert.throws(()=>selectBackup(databases,{backups:[newer,old]},NOW),/BACKUP_STATS_UNAVAILABLE/);
  const over=clone(newer);over.stats={documentCount:'2',sizeBytes:String(33*1024*1024)};
  assert.throws(()=>selectBackup(databases,{backups:[over,clone(backup)]},NOW),/BACKUP_SIZE_BUDGET/);
  const malformed=clone(backup);malformed.stats={documentCount:'x',sizeBytes:'500'};
