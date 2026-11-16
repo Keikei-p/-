@@ -67,11 +67,12 @@ export function selectBackup(databases,backups,now){
  const integer=x=>typeof x==='string'&&/^\d+$/.test(x)&&Number.isSafeInteger(Number(x));
  // A READY backup can lack stats until secondary-storage materialization completes.
  // Only skip unverified stats; never skip a valid but over-budget backup.
- const selected=candidates.find(x=>integer(x.stats?.documentCount)&&
-  Number(x.stats.documentCount)>0&&integer(x.stats?.sizeBytes)&&Number(x.stats.sizeBytes)>0);
+ const selected=candidates.find(x=>x.stats!==undefined&&x.stats!==null);
  if(!selected)STOP('BACKUP_STATS_INVALID');
  if(!BACKUP.test(selected.name))STOP('BACKUP_NAME');
  const stats=selected.stats;
+ if(!integer(stats?.documentCount)||Number(stats.documentCount)<1||
+    !integer(stats?.sizeBytes)||Number(stats.sizeBytes)<1)STOP('BACKUP_STATS_INVALID');
  if(Number(stats.documentCount)>10000)STOP('BACKUP_DOCUMENT_COUNT_BUDGET');
  if(Number(stats.sizeBytes)>limit)STOP('BACKUP_SIZE_BUDGET');
  return {selected,current,report};
