@@ -59,13 +59,18 @@ export function selectBackup(databases,backups,now){
  if(!report.backupRestoreMetadataPreflightPassed)STOP('NO_RECENT_BACKUP_OR_DESTINATION_OCCUPIED');
  const current=databases.databases.find(x=>x.name===SOURCE);
  if(current.locationId!=='asia-northeast1')STOP('SOURCE_LOCATION');
- const selected=backups.backups.filter(x=>x.database===SOURCE&&x.state==='READY'&&
+ const candidates=backups.backups.filter(x=>x.database===SOURCE&&x.state==='READY'&&
   Date.parse(x.snapshotTime)<=now&&now-Date.parse(x.snapshotTime)<=48*3600000&&
   Date.parse(x.expireTime)>now+24*3600000)
-  .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime))[0];
- if(!BACKUP.test(selected?.name||''))STOP('BACKUP_NAME');
- const stats=selected.stats;
+  .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime));
+ if(!BACKUP.test(candidates[0]?.name||''))STOP('BACKUP_NAME');
  const integer=x=>typeof x==='string'&&/^\d+$/.test(x)&&Number.isSafeInteger(Number(x));
+ // A READY backup can lack stats until secondary-storage materialization completes.
+ // Only skip unverified stats; never skip a valid but over-budget backup.
+ const selected=candidates.find(x=>x.stats!==undefined&&x.stats!==null);
+ if(!selected)STOP('BACKUP_STATS_UNAVAILABLE');
+ if(!BACKUP.test(selected.name))STOP('BACKUP_NAME');
+ const stats=selected.stats;
  if(!integer(stats?.documentCount)||Number(stats.documentCount)<1||
     !integer(stats?.sizeBytes)||Number(stats.sizeBytes)<1)STOP('BACKUP_STATS_INVALID');
  if(Number(stats.documentCount)>10000)STOP('BACKUP_DOCUMENT_COUNT_BUDGET');
