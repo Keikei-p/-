@@ -1,0 +1,80 @@
+name: NICO publication runtime feature flags (LIVE READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-publication-runtime-flags-readonly.mjs'
+      - 'tests/inspect-publication-runtime-flags-readonly.test.mjs'
+      - '.github/workflows/nico-publication-runtime-flags-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-publication-runtime-flags-readonly.mjs'
+      - 'tests/inspect-publication-runtime-flags-readonly.test.mjs'
+      - '.github/workflows/nico-publication-runtime-flags-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-publication-runtime-flags-get-only
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify scoped runtime classification without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/inspect-publication-runtime-flags-readonly.mjs
+          node --test tests/inspect-publication-runtime-flags-readonly.test.mjs
+          node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+  live-get-only:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PUBLICATION_RUNTIME_AUDIT_MODE: GET_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm exact source and audit scope before loading read identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          node --test tests/inspect-publication-runtime-flags-readonly.test.mjs
+      - name: Install existing Admin OAuth dependency only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Bind existing audit identity privately
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-publication-flags-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-publication-flags-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-publication-flags-identity.private.json" >> "$GITHUB_ENV"
+      - name: GET only Gen1 and Gen2 runtime flag states for seven allowlisted Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-publication-runtime-flags-readonly.mjs
+          echo 'PRODUCTION_DOCUMENT_READS=0 PRODUCTION_DOCUMENT_WRITES=0 FUNCTION_INVOCATIONS=0 DEPLOYMENTS=0'
+      - name: Remove private audit identity
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/nico-publication-flags-identity.private.json"
