@@ -1,0 +1,50 @@
+name: NICO current production public smoke (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-current-production-public-smoke-no-deploy.yml'
+      - 'tools/production/nico-live-public-release-audit.mjs'
+      - 'index.html'
+      - 'partner-workspace.html'
+permissions:
+  contents: read
+jobs:
+  public-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect PUBLIC status and anonymous rejection without credentials or writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          node --input-type=module <<'NODE'
+          import {checkNicoLivePublic} from './tools/production/nico-live-public-release-audit.mjs';
+          const result=await checkNicoLivePublic({timeoutMs:8000});
+          const statuses=Object.fromEntries(Object.entries(result.pages).filter(([k,v])=>v&&typeof v==='object'&&Number.isInteger(v.status)).map(([k,v])=>[k,v.status]));
+          console.log(JSON.stringify({
+            project:result.project,publicPageStatus:statuses,
+            countFunctionsAnonymousDenied:result.callableAnonymousProtected,
+            gatewayAnonymousDenied:result.gatewayAnonymousProtected,
+            moneyAndDataReads:0,productionWrites:0,
+            authenticatedOwnerAndPartnerProof:false,
+            releaseAuthorized:false
+          }));
+          if(result.pages.home.status!==200)
+            throw Error('STOP_NICO_PUBLIC_HOME_NOT_200');
+          if(!result.callableAnonymousProtected||!result.gatewayAnonymousProtected)
+            throw Error('STOP_NICO_ANONYMOUS_FINANCE_OR_COUNT_BOUNDARY_NOT_CONFIRMED');
+          NODE
