@@ -1,0 +1,82 @@
+name: NICO partner full historical count reconciliation (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/partner-full-history-inventory.mjs'
+      - 'tools/production/inspect-partner-full-history-readonly.mjs'
+      - 'tests/partner-full-history-inventory.test.mjs'
+      - 'tests/inspect-partner-full-history-readonly.test.mjs'
+      - '.github/workflows/nico-partner-full-history-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/partner-full-history-inventory.mjs'
+      - 'tools/production/inspect-partner-full-history-readonly.mjs'
+      - 'tests/partner-full-history-inventory.test.mjs'
+      - 'tests/inspect-partner-full-history-readonly.test.mjs'
+      - '.github/workflows/nico-partner-full-history-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-full-history-readonly
+  cancel-in-progress: false
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify source conservation, overlap holding, complete pagination and private output
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ranking/partner-full-history-inventory.mjs
+          node --check tools/production/inspect-partner-full-history-readonly.mjs
+          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+  live-readonly:
+    needs: synthetic
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' &&
+          needs.synthetic.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_AUDIT_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact reviewed main source before loading audit identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          node -e "if(JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+      - name: Install existing Admin SDK only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Bind existing identity privately for bounded read-only inventory
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node -e "if(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON).project_id!=='sales-management-cc116')throw Error('AUDIT_IDENTITY_PROJECT_MISMATCH')"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-full-history-identity.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-full-history-identity.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-full-history-identity.private.json" >> "$GITHUB_ENV"
+      - name: Read all bounded historical count sources and print pseudonymous summaries only
+        run: node tools/production/inspect-partner-full-history-readonly.mjs --read-only
+      - name: Remove transient identity
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/nico-full-history-identity.private.json"
