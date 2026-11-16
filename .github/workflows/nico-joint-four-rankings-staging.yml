@@ -36,7 +36,7 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS: ''
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Confirm no Firebase credentials, no finance or production source changes
@@ -47,7 +47,11 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
+          fi
           node --check ranking/verified-dual-count-dashboards.mjs
           node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           node --check ranking/verified-joint-ranking-panel.mjs

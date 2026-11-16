@@ -177,6 +177,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          firebase emulators:exec --project demo-nico-partner-ranking --only firestore \
-            'node --test tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs tests/ranking-owner-consent-emulator.test.mjs'
+          # Each suite gets a fresh demo database; their fictional hub IDs overlap.
+          for suite in tests/partner-month-readonly-loader-emulator.test.mjs tests/trusted-combined-ranking-context-emulator.test.mjs tests/ranking-owner-consent-emulator.test.mjs; do
+            firebase emulators:exec --project demo-nico-partner-ranking --only firestore "node --test $suite"
+          done
           echo 'STAGING_ONLY_PARTNER_MONTH_EMULATOR_PASS_PRODUCTION_WRITES=0'

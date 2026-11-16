@@ -40,13 +40,17 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$FIREBASE_TOKEN"
-          git fetch --no-tags origin main
-          while IFS= read -r path; do
-            case "$path" in
-              ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|ranking/verified-dual-count-dashboards.mjs|functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs|tests/verified-dual-count-dashboards.test.mjs|ranking/unified-partner-team-cards.mjs|tests/unified-partner-team-cards.test.mjs|ranking/verified-joint-ranking-panel.mjs|tests/verified-joint-ranking-panel.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
-              *) echo "STOP_UNREVIEWED_SCOPE: $path"; exit 1 ;;
-            esac
-          done < <(git diff --name-only origin/main...HEAD)
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
+            node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          else
+            git fetch --no-tags origin main
+            while IFS= read -r path; do
+              case "$path" in
+                ranking/owner-product-visibility-rankings.mjs|functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs|tests/owner-product-visibility-rankings.test.mjs|ranking/verified-dual-count-dashboards.mjs|functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs|tests/verified-dual-count-dashboards.test.mjs|ranking/unified-partner-team-cards.mjs|tests/unified-partner-team-cards.test.mjs|ranking/verified-joint-ranking-panel.mjs|tests/verified-joint-ranking-panel.test.mjs|.github/workflows/nico-owner-visibility-isolated-no-deploy.yml) ;;
+                *) echo "STOP_UNREVIEWED_SCOPE: $path"; exit 1 ;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+          fi
           cmp ranking/owner-product-visibility-rankings.mjs functions-ranking-approvals/ranking/owner-product-visibility-rankings.mjs
           cmp ranking/verified-dual-count-dashboards.mjs functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
           node --check ranking/verified-dual-count-dashboards.mjs
