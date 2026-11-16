@@ -114,7 +114,7 @@ jobs:
             'node tools/production/rehearse-managed-backup.mjs "$NICO_BACKUP_REHEARSAL_MODE"' \
             > "$RUNNER_TEMP/nico-managed-rehearsal.private.log" 2>&1 || status=$?
           # Never publish emulator logs, customer fields/IDs, source archives or credentials.
-          rg '^(NICO_MANAGED_REHEARSAL_(CHECK|RESULT) |STOP_MANAGED_[A-Z0-9_]+$)' "$RUNNER_TEMP/nico-managed-rehearsal.private.log" || true
+          grep -E '^(NICO_MANAGED_REHEARSAL_(CHECK|RESULT) |STOP_MANAGED_[A-Z0-9_]+$)' "$RUNNER_TEMP/nico-managed-rehearsal.private.log" || true
           test "$status" = 0
       - name: Always remove identity and private emulator logs; no artifacts
         if: always()
