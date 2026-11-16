@@ -108,6 +108,8 @@ test('fallback uses only a fresh READY backup with verified stats, never a large
  assert.throws(()=>selectBackup(databases,{backups:[over,clone(backup)]},NOW),/BACKUP_SIZE_BUDGET/);
  const malformed=clone(backup);malformed.stats={documentCount:'x',sizeBytes:'500'};
  assert.throws(()=>selectBackup(databases,{backups:[newer,malformed]},NOW),/BACKUP_STATS_INVALID/);
+ const badLatest=clone(newer);badLatest.stats={documentCount:'x',sizeBytes:'500'};
+ assert.throws(()=>selectBackup(databases,{backups:[badLatest,clone(backup)]},NOW),/BACKUP_STATS_INVALID/);
 });
 test('transport rejects production deletes, document writes, foreign backups and destinations',()=>{
  for(const [method,url,body] of [
