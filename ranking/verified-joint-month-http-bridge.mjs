@@ -43,34 +43,44 @@ const expectedWindow=period=>{
 };
 export function createVerifiedJointMonthHttpBridge({
  featureEnabled=false,auth,fetcher,endpoint=ORIGIN+"/v1/owner-visible-counts",
- expectedRole=null
+ expectedRole=null,getCodeSession=()=>"",getWorkspaceCompanyId=()=>""
 }={}){
  if(featureEnabled!==true||!auth||typeof fetcher!=="function"||
+    typeof getCodeSession!=="function"||typeof getWorkspaceCompanyId!=="function"||
     !ENDPOINTS.has(endpoint)||
     (expectedRole!==null&&!["hub_owner","partner_owner"].includes(expectedRole)))stop();
  let generation=0;
  async function load({period,filters}={}){
   const window=expectedWindow(period);
   if(!filters||typeof filters!=="object"||Array.isArray(filters)||
-     Object.keys(filters).length!==0)stop();
+     Object.keys(filters).some(k=>k!=="scope")||
+     (filters.scope!==undefined&&!["joint","direct","partner"].includes(filters.scope)))stop();
   const month=period.day.slice(0,7),seq=++generation;
   const identity=auth.currentUser;
-  if(!identity||typeof identity.uid!=="string"||!ID.test(identity.uid)||
-     identity.emailVerified!==true||typeof identity.getIdToken!=="function")
+  const codeSession=getCodeSession(),workspaceCompanyId=getWorkspaceCompanyId();
+  if(typeof codeSession!=="string"||typeof workspaceCompanyId!=="string"||
+     (workspaceCompanyId!==""&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))||
+     (codeSession!==""&&(!/^[A-Za-z0-9_-]{43}$/.test(codeSession)||workspaceCompanyId!=="")))stop();
+  if(!codeSession&&(!identity||typeof identity.uid!=="string"||!ID.test(identity.uid)||
+     identity.emailVerified!==true||typeof identity.getIdToken!=="function"))
    stop();
+  const sameIdentity=()=>seq===generation&&identity===auth.currentUser&&
+   codeSession===getCodeSession()&&workspaceCompanyId===getWorkspaceCompanyId();
   let token,response,raw,value;
   try{
-   token=await identity.getIdToken();
+   token=codeSession||await identity.getIdToken();
    if(typeof token!=="string"||!/^[-A-Za-z0-9._]{20,12000}$/.test(token)||
-      seq!==generation||identity!==auth.currentUser)stop();
+      !sameIdentity())stop();
    const query=period.kind==="month"?"month="+month:
     period.kind+"="+period.day;
-   const url=endpoint+"?"+query;
+   const url=endpoint+"?"+query+(filters.scope&&filters.scope!=="joint"?
+    "&scope="+filters.scope:"")+(workspaceCompanyId?
+    "&workspaceCompanyId="+encodeURIComponent(workspaceCompanyId):"");
    response=await fetcher(url,{
     method:"GET",headers:{Authorization:"Bearer "+token,Accept:"application/json"},
     cache:"no-store",redirect:"error",credentials:"omit",referrerPolicy:"no-referrer"
    });
-   if(seq!==generation||auth.currentUser!==identity||
+   if(!sameIdentity()||
       !response||response.status!==200||
       typeof response.text!=="function"||
       !/application\/json/i.test(response.headers?.get?.("Content-Type")||""))
@@ -78,7 +88,7 @@ export function createVerifiedJointMonthHttpBridge({
    raw=await response.text();
    if(typeof raw!=="string"||raw.length>900000)stop();
    value=JSON.parse(raw);
-   if(seq!==generation||identity!==auth.currentUser||
+   if(!sameIdentity()||
       !value||value.schema!=="nico-verified-dual-count-v1"||
       !["hub_owner","partner_owner"].includes(value.role)||
       value.period!==period.kind||value.unit!=="件"||

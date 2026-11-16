@@ -18,7 +18,9 @@ const raw=s=>Buffer.from(s);
 test('candidate locks actual source and preserves original 29 assets/config while updating the existing Owner setup',()=>{
  const result=verifyLocal(root,manifest);
  assert.equal(result.localSourceVerified,true);
- assert.equal(result.backendFiles,38);
+ assert.equal(result.backendFiles,40);
+ assert.deepEqual(sourceBytes(root,'functions-partner-workspace/workspace-identity.cjs'),
+  sourceBytes(root,'functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs'));
  assert.equal(result.frontendDependencies,26);
  assert.equal(result.hosting.originalCount,33);
  assert.equal(result.hosting.finalCount,46);

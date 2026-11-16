@@ -76,7 +76,7 @@ function sameSet(a,b){
  */
 export function createStagedOwnerVisibleCountHandler({
  enabled=false,auth,db,FieldValue,loadCompleteVerifiedCountInput,
- loadAtomicVerifiedCountSnapshot
+ loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext
 }={}){
  if(enabled!==true)return async request=>reply(503,
   {error:"service_disabled"},request?.headers?.get?.("Origin")??"");
@@ -94,19 +94,38 @@ export function createStagedOwnerVisibleCountHandler({
    if(origin&&origin!==ORIGIN)throw new Block(403);
    const url=new URL(request.url);
    if(url.pathname!==PATH||url.origin!==ORIGIN)throw new Block(404);
-   const {kind,month,day,secondMonth}=requestedPeriod(url.searchParams);
+   const params=new URLSearchParams(url.searchParams);
+   const selected=params.getAll("workspaceCompanyId");
+   if(selected.length>1||selected.length===1&&
+      !/^[A-Za-z0-9_-]{1,128}$/.test(selected[0]))throw new Block(400);
+   const workspaceCompanyId=selected[0]??"";
+   params.delete("workspaceCompanyId");
+   const scopes=params.getAll("scope");
+   if(scopes.length>1||scopes.length===1&&
+      !["joint","direct","partner"].includes(scopes[0]))throw new Block(400);
+   const scope=scopes[0]??"joint";
+   params.delete("scope");
+   if(workspaceCompanyId&&!loadVerifiedCountContext)throw new Block(400);
+   const {kind,month,day,secondMonth}=requestedPeriod(params);
    const token=request.headers.get("Authorization")?.match(TOKEN)?.[1];
    if(!token)throw new Block(401);
-   let principal;
-   try{principal=await verify(token);}catch{throw new Block(401);}
-   const context=await contextReader(principal);
+   let context;
+   if(loadVerifiedCountContext){
+    try{context=await loadVerifiedCountContext({token,workspaceCompanyId});}
+    catch{throw new Block(401);}
+   }else{
+    let principal;
+    try{principal=await verify(token);}catch{throw new Block(401);}
+    context=await contextReader(principal);
+   }
    // The optional atomic path requires a single read-only transaction
    // spanning canonical counts and owner publication. The legacy staged
    // loader remains for offline tests, but is NOT production-release ready.
    let input,publication;
    if(secondMonth&&!atomic)throw new Block(503);
    if(atomic){
-    const pair=await loadAtomicVerifiedCountSnapshot({month,context,secondMonth});
+    const pair=await loadAtomicVerifiedCountSnapshot({month,context,secondMonth,
+     ...(loadVerifiedCountContext?{token,workspaceCompanyId}:{})});
     input=pair?.input;publication=pair?.publication;
     if(typeof input?.snapshotReadTime!=="string"||
        publication?.snapshotReadTime!==input.snapshotReadTime||
@@ -141,7 +160,8 @@ export function createStagedOwnerVisibleCountHandler({
    });
    if(day>input.period.asOf)throw new Block(400);
    const result=buildOwnerVisibleCountRanking({
-    input:{...countInput,context,period:{kind,day,asOf:input.period.asOf}},
+    input:{...countInput,context,period:{kind,day,asOf:input.period.asOf},
+     ...(scope!=="joint"?{filters:{scope}}:{})},
     publication
    });
    auditNoFinancialKeys(result);

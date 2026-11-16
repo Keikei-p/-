@@ -7,8 +7,8 @@
 import {createOwnerProductVisibilityStore}
  from "./owner-product-visibility-firestore.mjs";
 
-export function createAtomicOwnerPublicationReader({db,FieldValue}={}){
- const store=createOwnerProductVisibilityStore({db,FieldValue});
+export function createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}={}){
+ const store=createOwnerProductVisibilityStore({db,FieldValue,verifyCountViewer});
  return async ({tx,context}={})=>store.readForRankingInTransaction({
   tx,context,mappingsReviewed:true,requireReadTime:true
  });

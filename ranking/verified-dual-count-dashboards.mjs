@@ -249,7 +249,10 @@ export function buildVerifiedCountDashboard({
  const rows=[...parsed.rows,...safeUnassigned(unassigned,parsed.sku,parsed.rows)];
  const map=mappings(productGroups,parsed.sku),goals=goalIndex(personGoals,parsed.roster);
  if(!filters||typeof filters!=="object"||Array.isArray(filters)||
-    Object.keys(filters).some(k=>!["companyId","teamId","uid","productId"].includes(k)))stop();
+    Object.keys(filters).some(k=>!["companyId","teamId","uid","productId","scope"].includes(k))||
+    (filters.scope!==undefined&&!["joint","direct","partner"].includes(filters.scope)))stop();
+ const inScope=cid=>filters.scope==="direct"?cid===hubCompanyId:
+  filters.scope==="partner"?cid!==hubCompanyId:true;
  const allowed=(value,test)=>value==null||value===""||test(value);
  if(!allowed(filters.companyId,x=>approvedCompanyIds.includes(x))||
     !allowed(filters.teamId,id)||!allowed(filters.uid,id)||
@@ -257,7 +260,7 @@ export function buildVerifiedCountDashboard({
  const productKey=k=>map.lookup.get(k)||"unmapped:"+k;
  const productName=k=>map.lookup.has(k)?map.names.get(map.lookup.get(k)):
    parsed.sku.get(k).companyName+"・"+parsed.sku.get(k).name+"（未統合）";
- const filtered=rows.filter(r=>
+ const filtered=rows.filter(r=>inScope(r.companyId)&&
   (filters.companyId==null||filters.companyId===""||filters.companyId===r.companyId)&&
   (filters.teamId==null||filters.teamId===""||filters.teamId===r.teamId)&&
   (filters.uid==null||filters.uid===""||filters.uid===r.uid)&&
@@ -285,6 +288,7 @@ export function buildVerifiedCountDashboard({
   return people.get(key);
  }
  for(const base of parsed.roster.values()){
+  if(!inScope(base.companyId))continue;
   if(filters.companyId&&filters.companyId!==base.companyId)continue;
   if(filters.teamId&&filters.teamId!==base.teamId)continue;
   if(filters.uid&&filters.uid!==base.uid)continue;
@@ -302,6 +306,7 @@ export function buildVerifiedCountDashboard({
  // Registered teams remain visible even before their first report. Metadata
  // is current membership; historical counts below keep saved team attribution.
  for(const team of parsed.teamMetadata.values()){
+  if(!inScope(team.companyId))continue;
   if(filters.companyId&&filters.companyId!==team.companyId)continue;
   if(filters.teamId&&filters.teamId!==team.id.slice(team.companyId.length+1))continue;
   teams.set(JSON.stringify([team.companyId,team.sourceTeamId]),{id:team.id,companyId:team.companyId,
@@ -362,7 +367,7 @@ export function buildVerifiedCountDashboard({
   }
  }
  // Zero-person and empty-company rows keep "unreported" distinct from zero.
- for(const cid of approvedCompanyIds)if(!allCompany.has(cid))
+ for(const cid of approvedCompanyIds)if(inScope(cid)&&!allCompany.has(cid))
    allCompany.set(cid,{id:cid,name:parsed.names.get(cid),
     kind:cid===hubCompanyId?"自社":"協力店",count:0,unidentifiedCount:0});
  if(!Array.isArray(historicalBest)||historicalBest.length>10000)stop();

@@ -240,6 +240,10 @@ font:inherit;font-size:13px;line-height:1.6}
   <button type="button" id="periodMonth" aria-pressed="true">月別</button>
  </div>
  <p id="countDashboardStatus" role="status" aria-live="polite"></p>
+ <div id="countJointScopeControls" hidden>
+  <label for="countJointScope">ランキングの対象</label>
+  <select id="countJointScope"><option value="joint">自社＋協力店</option><option value="direct">自社のみ</option><option value="partner">協力店のみ</option></select>
+ </div>
  <div id="countKpis" class="dashboard-summary"></div>
  <div id="nicoVerifiedPartnerJointCountMonth" hidden aria-label="自社・協力店の合同件数ランキング"></div>
  <div class="dashboard-app-grid" aria-label="件数ダッシュボードの機能">
@@ -524,6 +528,10 @@ const NICO_PARTNER_JOINT_COUNT_MONTH_RELEASED=false;
 // Prefer the ORIGINAL ranking cards over the older separate joint board.
 // Never enable before verified server finance rules and full ledger sign-off.
 const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;
+if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED){
+ $("countJointScopeControls").hidden=false;
+ $("countJointScope").addEventListener("change",()=>void loadCountDashboard());
+}
 let verifiedJointMonthMount=null,verifiedJointMonthEpoch=0,jointMonthStyles=null;
 function resetVerifiedJointMonth(){
  ++verifiedJointMonthEpoch;
@@ -1296,8 +1304,8 @@ function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompa
 // Neither a financial collection nor a browser-supplied role is consulted.
 async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
  if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||
-    data?.role!=="owner"||activeCodeSession)return;
- const identity=auth.currentUser;
+    !["owner","leader","member"].includes(data?.role))return;
+ const identity=auth.currentUser,session=activeCodeSession,company=workspaceCompanyId;
  const roots={companies:$("countCompanyRank"),teams:$("countTeamRank"),
   people:$("countStaffRank"),products:$("countProductRank")};
  const clear=()=>{
@@ -1305,8 +1313,9 @@ async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
   $("countInlineJointCompanies").hidden=true;
  };
  const valid=()=>gen===countLoadId&&currentCountIdentity()===uid&&
-  identity===auth.currentUser&&identity?.emailVerified===true&&
-  data?.role==="owner"&&!activeCodeSession&&!$("dashboardBox").hidden&&
+  identity===auth.currentUser&&session===activeCodeSession&&company===workspaceCompanyId&&
+  (session?true:identity?.emailVerified===true)&&
+  ["owner","leader","member"].includes(data?.role)&&!$("dashboardBox").hidden&&
   window.location.origin==="https://nico-factory.web.app";
  clear();
  if(!valid()){
@@ -1326,10 +1335,12 @@ async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
   const bridge=createVerifiedJointMonthHttpBridge({
    featureEnabled:true,auth,fetcher:window.fetch.bind(window),
    endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
-   expectedRole:"partner_owner"
+   expectedRole:"partner_owner",getCodeSession:()=>activeCodeSession||"",
+   getWorkspaceCompanyId:()=>activeCodeSession?"":workspaceCompanyId
   });
   const payload=await bridge.load({
-   period:{kind:countPeriod,day,asOf:today},filters:{}
+   period:{kind:countPeriod,day,asOf:today},
+   filters:$("countJointScope").value==="joint"?{}:{scope:$("countJointScope").value}
   });
   if(!valid())return;
   renderVerifiedInlineJointCards({

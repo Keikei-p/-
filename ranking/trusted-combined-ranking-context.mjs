@@ -106,19 +106,34 @@ export function createVerifiedRankTokenReader({auth}={}){
 /**
  * Server-only Auth result -> fresh active count-sharing scope and optional
  * existing public-name permissions, independently verified by the server.
- * Current phase deliberately authorizes OWNER accounts only. This excludes
- * partner-secondary / shared-code principals until their separate secure
- * approval and role scopes can be implemented, NOT a claim that their
- * existing direct finance permissions have already been blocked.
+ * The default remains Owner-only for the existing settings callers. The
+ * canonical count GET injects the existing workspace identity authorizer for
+ * active members, secondary workspaces and opaque company-code sessions.
+ * Response roles describe count audiences; they never grant Owner actions.
  */
-export function createFreshCombinedRankingContext({db}={}){
+export function createFreshCombinedRankingContext({db,loadCountViewer}={}){
  if(!db||typeof db.collection!=="function"||
     typeof db.runTransaction!=="function")throw Error("rank DB dependency missing");
  const root=name=>db.collection(name),company=id=>root("companies").doc(id);
  return async function load(auth){
-  if(!id(auth?.uid)||auth.emailVerified!==true||
-     !EMAIL.test(auth.email||""))blocked();
+  if(loadCountViewer!==undefined&&typeof loadCountViewer!=="function")blocked();
+  if(!loadCountViewer&&(!id(auth?.uid)||auth.emailVerified!==true||
+     !EMAIL.test(auth.email||"")))blocked();
   return db.runTransaction(async tx=>{
+   let viewerCompanyId,viewerCompanySnap,viewerMemberSnap,viewerCompany,viewerIsPartner,uid;
+   if(loadCountViewer){
+    // Only the canonical count GET injects this server-owned authorizer.
+    // The result selects a count-response audience, never an Owner privilege.
+    const s=await loadCountViewer(tx);
+    if(!s||!id(s.uid)||!id(s.cid)||!["hub","partner"].includes(s.kind)||
+       !["owner","leader","member"].includes(s.role))blocked();
+    uid=s.uid;viewerCompanyId=s.cid;viewerIsPartner=s.kind==="partner";
+    viewerCompanySnap=await tx.get(company(viewerCompanyId));
+    viewerCompany=read(viewerCompanySnap);
+    if(!isObj(viewerCompany)||viewerCompany.active!==true||
+       (viewerIsPartner?(viewerCompany.companyKind!=="partner"||
+         viewerCompany.hubCompanyId!==s.hubId):!kindInternal(viewerCompany.companyKind)))blocked();
+   }else{
    const [userSnap,secondarySnap]=await Promise.all([
     tx.get(root("users").doc(auth.uid)),
     tx.get(root("partnerWorkspaceContexts").doc(auth.uid))
@@ -132,17 +147,19 @@ export function createFreshCombinedRankingContext({db}={}){
    // An old internal membership in a partner-secondary account MUST NEVER
    // turn into an internal-owner authorization.
    if(secondarySnap.exists&&secondary?.active!==false)blocked();
-   const viewerCompanyId=user.companyId;
-   const [viewerCompanySnap,viewerMemberSnap]=await Promise.all([
+   uid=auth.uid;viewerCompanyId=user.companyId;
+   [viewerCompanySnap,viewerMemberSnap]=await Promise.all([
     tx.get(company(viewerCompanyId)),
     tx.get(company(viewerCompanyId).collection("members").doc(auth.uid))
    ]);
-   const viewerCompany=read(viewerCompanySnap),viewerMember=read(viewerMemberSnap);
-   const viewerIsPartner=viewerCompany?.companyKind==="partner";
+   viewerCompany=read(viewerCompanySnap);
+   const viewerMember=read(viewerMemberSnap);
+   viewerIsPartner=viewerCompany?.companyKind==="partner";
    assertOwner({uid:auth.uid,companyId:viewerCompanyId,
     user,member:viewerMember,company:viewerCompany,
     kind:viewerIsPartner?"partner":"hub"});
    if(user.authKind==="partner_code_shared")blocked();
+   }
    const hubId=viewerIsPartner?viewerCompany.hubCompanyId:viewerCompanyId;
    if(!id(hubId))blocked();
    const hubSnap=viewerIsPartner?await tx.get(company(hubId)):viewerCompanySnap;
@@ -204,7 +221,7 @@ export function createFreshCombinedRankingContext({db}={}){
      publicNameCompanyIds.add(partnerId);
    }
    return Object.freeze({
-    serverVerified:true,viewerUid:auth.uid,viewerCompanyId,
+    serverVerified:true,viewerUid:uid,viewerCompanyId,
     role:viewerIsPartner?"partner_owner":"hub_owner",
     hubCompanyId:hubId,approvedCompanyIds:Object.freeze(
      [hubId,...verified.sort()]),

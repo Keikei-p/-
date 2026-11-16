@@ -382,8 +382,8 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
   companies:{panel:"teamRankingContent",label:"合同・会社件数ランキング"}
  };
  if(monthInput&&Object.values(slots).every(s=>$(s.panel))){
-  const roots={},cards={},modeControls=[],dateControls=[];
-  let periodKind="month",periodDay="";
+  const roots={},cards={},modeControls=[],dateControls=[],scopeControls=[];
+  let periodKind="month",periodDay="",countScope="joint";
   for(const [key,slot] of Object.entries(slots)){
    const card=document.createElement("section");
    card.className="nico-owner-inline-joint-count";
@@ -420,7 +420,20 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
     for(const input of dateControls)input.value=periodDay;
     void refresh(auth.currentUser);
    });
-   choices.append(mode,date);
+   const scope=document.createElement("select");
+   scope.setAttribute("aria-label","ランキングの対象");
+   for(const [value,label] of [["joint","自社＋協力店"],["direct","自社のみ"],["partner","協力店のみ"]]){
+    const option=document.createElement("option");
+    option.value=value;option.textContent=label;scope.append(option);
+   }
+   scopeControls.push(scope);
+   scope.addEventListener("change",()=>{
+    if(!["joint","direct","partner"].includes(scope.value))return;
+    countScope=scope.value;
+    for(const control of scopeControls)control.value=countScope;
+    void refresh(auth.currentUser);
+   });
+   choices.append(mode,date,scope);
    const list=document.createElement("div");
    list.className="nico-owner-inline-joint-list";
    card.append(heading,choices,list);
@@ -479,7 +492,7 @@ if(NICO_OWNER_INLINE_JOINT_CARDS_RELEASED){
      expectedRole:"hub_owner"
     });
     const payload=await bridge.load({
-     period:{kind,day,asOf},filters:{}
+     period:{kind,day,asOf},filters:countScope==="joint"?{}:{scope:countScope}
     });
     if(epoch!==generation||auth.currentUser!==user||
        monthInput.value!==month||periodKind!==kind||

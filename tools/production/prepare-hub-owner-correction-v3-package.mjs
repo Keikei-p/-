@@ -52,10 +52,12 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
   "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
   "functions-partner-workspace/index.js": "42eea81ab01449bedbbedabdc1a8fb6bfba1e284",
-  "functions-partner-workspace/service.cjs": "79066025dfb6aa8b35830380e7d87510ef3c928a",
+  "functions-partner-workspace/service.cjs": "ff2911be0bfa23d7c041e7451729d59862b2261f",
   "firestore.rules": "d9f4df6a2ac0f8b5720534a2461ec66b94379190",
   "index.html": "03e213565a2037c73913602701363476ae0db9fd",
-  "partner-workspace.html": "c88b08bdaf2b3007a053bec6aa4717f897b1110d"
+  "partner-workspace.html": "d8262633f35cf0f015de44c9a223c4289f8d2a6b",
+  "functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
+  "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e"
 });
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
