@@ -16,9 +16,29 @@ export function summarizeBackups(body){
   typeof b.snapshotTime==="string"&&!Number.isNaN(Date.parse(b.snapshotTime)));
  if((body.unreachable||[]).length>0)
   throw Error("STOP_BACKUP_LOCATIONS_UNREACHABLE");
+ if(body.nextPageToken)throw Error("STOP_BACKUP_INVENTORY_INCOMPLETE");
+ const now=Date.now(),hour=3600000;
+ const isSafeInt=x=>typeof x==="string"&&/^\d+$/.test(x)&&
+  Number.isSafeInteger(Number(x))&&Number(x)>0;
+ const hasStats=b=>b.stats!==undefined&&b.stats!==null;
+ const validStats=b=>hasStats(b)&&isSafeInt(b.stats.documentCount)&&
+  isSafeInt(b.stats.sizeBytes);
+ const recent=ready.filter(b=>{
+  const snapshot=Date.parse(b.snapshotTime),expiry=Date.parse(b.expireTime);
+  return Number.isFinite(snapshot)&&Number.isFinite(expiry)&&
+   snapshot<=now&&now-snapshot<=48*hour&&expiry>now+24*hour;
+ });
+ const underBudget=b=>validStats(b)&&Number(b.stats.documentCount)<=10000&&
+  Number(b.stats.sizeBytes)<=32*1024*1024;
  return Object.freeze({managedBackupsFound:all.length,readyBackups:ready.length,
   latestReadySnapshot:ready.map(b=>b.snapshotTime).sort().at(-1)||null,
-  // Backup metadata cannot prove a successful restore or include Auth/Storage.
+  readyMissingStats:ready.filter(b=>!hasStats(b)).length,
+  readyMalformedStats:ready.filter(b=>hasStats(b)&&!validStats(b)).length,
+  readyWithValidStats:ready.filter(validStats).length,
+  recentReadyWithin48hAndExpiryBuffer:recent.length,
+  recentReadyWithValidStats:recent.filter(validStats).length,
+  recentReadyWithinAuditBudget:recent.filter(underBudget).length,
+  // The metadata summary does not check source UID, IAM or restore payload.
   actualRestoreVerified:false,allFirestoreDocumentsAudited:false});
 }
 export async function inspect({request=fetch,getToken}={}){

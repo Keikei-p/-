@@ -13,6 +13,23 @@ test("read-only backup metadata reports READY but never asserts actual restore",
  assert.equal(s.actualRestoreVerified,false);
  assert.equal(s.allFirestoreDocumentsAudited,false);
 });
+test("read-only inventory reports stats availability without exposing backup size or IDs",()=>{
+ const older={database,state:"READY",snapshotTime:"2026-11-14T00:00:00Z",
+  expireTime:"2026-11-21T00:00:00Z",stats:{documentCount:"2",sizeBytes:"512"}};
+ const missing={database,state:"READY",snapshotTime:"2026-11-16T12:00:00Z",
+  expireTime:"2026-11-21T00:00:00Z"};
+ const malformed={...missing,stats:{documentCount:"no",sizeBytes:"512"}};
+ const r=summarizeBackups({backups:[older,missing,malformed]});
+ assert.equal(r.readyBackups,3);
+ assert.equal(r.readyMissingStats,1);
+ assert.equal(r.readyMalformedStats,1);
+ assert.equal(r.readyWithValidStats,1);
+ assert.equal(r.actualRestoreVerified,false);
+ assert.equal(r.allFirestoreDocumentsAudited,false);
+ for(const k of Object.keys(r))assert(!/sizeBytes|documentCount|backupId|uid|token/i.test(k));
+ assert(!JSON.stringify(r).includes("512"));
+ assert(!JSON.stringify(r).includes("no"));
+});
 test("incomplete response or unreachable backup location blocks inventory",()=>{
  assert.throws(()=>summarizeBackups({backups:[],unreachable:["asia-northeast1"]}),/STOP_BACKUP_LOCATIONS_UNREACHABLE/);
  assert.throws(()=>summarizeBackups({backups:{"bad":1}}),/STOP_BACKUP_RESPONSE_MALFORMED/);
