@@ -93,7 +93,7 @@ test('backup budget failure reasons remain separate and fail closed',()=>{
  const b=clone(backups);b.backups[0].stats.documentCount='10001';
  assert.throws(()=>selectBackup(databases,b,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_DOCUMENT_COUNT_BUDGET/);
  const c=clone(backups);delete c.backups[0].stats;
- assert.throws(()=>selectBackup(databases,c,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_STATS_INVALID/);
+ assert.throws(()=>selectBackup(databases,c,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_STATS_UNAVAILABLE/);
  const d=clone(backups);d.backups[0].stats.sizeBytes='NaN';
  assert.throws(()=>selectBackup(databases,d,NOW),/STOP_MANAGED_REHEARSAL_BACKUP_STATS_INVALID/);
 });
