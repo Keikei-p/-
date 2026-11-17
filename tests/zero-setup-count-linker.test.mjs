@@ -83,3 +83,71 @@ test("invalid source identities, amount-coded labels, private unknown partner SK
    /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED|FINANCIAL/);
  }
 });
+
+test("same actual 3-company ledger produces matching joint company, team, person and product rankings",async()=>{
+ const {buildVerifiedCountDashboard}=await import(
+  "../ranking/verified-dual-count-dashboards.mjs");
+ const fixtureData=fixture(),day="2026-11-17";
+ const ids=["hub","partner1","partner2","partner3"];
+ const totals=[2,5,5,0];
+ const sourceOf=(companyId,n)=>({
+  companyId,companyLabel:companyId==="hub"?"自社":companyId,
+  kind:companyId==="hub"?"own":"partner",
+  consentVerified:true,isComplete:true,readTime:TIME,
+  completeWindows:{current:true,previous:false},
+  teams:[{id:"team1",name:"第一班",goalCount:null}],
+  roster:[{uid:"staff1",name:companyId+"担当",teamId:"team1"}],
+  records:[{companyId,sourceId:day+"_"+companyId,uid:"staff1",
+   teamId:"team1",date:day,totalCount:n,
+   reportStatus:n===0?"no_result":"submitted",
+   memberNameSnapshot:companyId+"担当",
+   teamNameSnapshot:"第一班",workLocation:""}],
+  lines:n>0?[{companyId,recordId:day+"_"+companyId,
+   sourceId:day+"_line_"+companyId,
+   uid:"staff1",teamId:"team1",date:day,
+   productId:companyId==="hub"?"nuro":"partnerSku01",count:n}]:[],
+  products:companyId==="hub"?structuredClone(hubProducts):
+   PARTNER_RANK_SKUS.map(p=>({companyId,sourceId:p.id,
+    name:p.name,active:true,sortOrder:0}))
+ });
+ const sources=ids.map((id,i)=>sourceOf(id,totals[i]));
+ const productGroups=linkAllRegisteredCountsWithoutSetup({
+  ...fixtureData,hubSource:sources[0],partnerSources:sources.slice(1)
+ });
+ const common={hubCompanyId:"hub",approvedCompanyIds:ids,
+  sources,productGroups,unassigned:[],personGoals:[],historicalBest:[],
+  period:{kind:"day",day,asOf:day}};
+ const roleContext=(role)=>({
+  serverVerified:true,userActive:true,memberActive:true,
+  companyActive:true,activeCountSharingVerified:true,
+  completeSnapshotBudgetApproved:true,viewerUid:role==="hub_owner"?
+   "owner":"partner1Owner",
+  viewerCompanyId:role==="hub_owner"?"hub":"partner1",
+  hubCompanyId:"hub",approvedCompanyIds:ids,role,
+  publicNameCompanyIds:["hub","partner1","partner2","partner3"]
+ });
+ const views=["hub_owner","partner_owner"].map(role=>
+  buildVerifiedCountDashboard({...common,context:roleContext(role)}));
+ for(const view of views){
+  const products=view.role==="hub_owner"?view.productRanking:
+   view.publicRanking.products;
+  const nuro=products.find(x=>x.name==="NURO光");
+  assert(nuro,"all three companies share the existing product label");
+  assert.equal(nuro.count,12);
+  assert.equal(nuro.rank,1);
+  assert(!/unitPrice|revenue|cashback|salary|[¥￥]/i.test(JSON.stringify(view)));
+ }
+ const owner=views[0],partner=views[1];
+ assert.equal(owner.summary.total,12);
+ assert.equal(owner.summary.own,2);
+ assert.equal(owner.summary.partner,10);
+ assert.deepEqual(owner.companyBreakdown.filter(x=>x.count>0)
+  .map(x=>x.count).sort((a,b)=>a-b),[2,5,5]);
+ assert.deepEqual(owner.teamBreakdown.filter(x=>x.count>0)
+  .map(x=>x.count).sort((a,b)=>a-b),[2,5,5]);
+ assert(owner.memberRanking.some(x=>x.count===0&&x.rank===null),
+  "unreported staff are not ranked; submitted zero may be ranked");
+ assert.deepEqual(partner.publicRanking.products.map(x=>[x.name,x.count]),
+  owner.productRanking.map(x=>[x.name,x.count]));
+ assert(!("companyBreakdown" in partner));
+});
