@@ -58,10 +58,12 @@ exports.getVerifiedJointCountRanking=onRequest({
   );
   return createCanonicalOwnerCountHandler({
    enabled:true,auth:getAuth(),db:getFirestore(),FieldValue,
-   // No Owner SKU binding screen or per-product ON/OFF setup required for
-   // the common count leaderboard. The outer production flag remains OFF
-   // until authenticated finance-denial and backup release gates pass.
-   zeroSetupLink:true
+   // The hub Owner's published ON/OFF and exact reviewed/auto-confirmed
+   // partner SKU IDs are REQUIRED for the public count ranking. The old
+   // zero-setup mode ignored OFF switches, so it must not back this endpoint.
+   // The outer production flag stays OFF until the live finance-denial,
+   // isolated restore, and real-account count save/read proofs are complete.
+   zeroSetupLink:false
   });
  }
 }));
