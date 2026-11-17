@@ -1,0 +1,98 @@
+name: NICO login FX only surgical Hosting release
+on:
+  push:
+    branches: [main]
+    paths: ['index.html', '.github/workflows/nico-premium-login-index-only-release.yml']
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  login-index-only:
+    if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(sales): premium login FX isolated (APPROVED INDEX ONLY)')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm exact reviewed scope and no backend/finance source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object index.html)" = 9bc74a866860f0210ae4cb2c9f67a2470d37d220
+          test "$(git hash-object tests/login-presentation-contract.test.cjs)" = 85107468cfb25d37df5247dbce7c85e5c5568011
+          for f in firestore.rules firebase.json .firebaserc functions/index.js; do
+            test "$(git hash-object "$f")" = "$(git show 7c0a640c3a223d79ef49fd0d294edf80ec2dedd9:"$f" | git hash-object --stdin)"
+          done
+          actual=$(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)
+          expected=$(printf '%s\n' '.github/workflows/nico-login-presentation-live-preflight.yml' '.github/workflows/nico-premium-login-index-only-release.yml' 'docs/SALES_RELEASE_SIGNOFF.md' 'index.html' 'tests/login-presentation-contract.test.cjs' | LC_ALL=C sort)
+          test "$actual" = "$expected" || { echo 'STOP_UNREVIEWED_MAIN_CHANGESET'; exit 1; }
+          remote=$(git ls-remote https://github.com/Keikei-p/-.git refs/heads/main | cut -f1)
+          test "$remote" = "$GITHUB_SHA" || { echo 'STOP_NEWER_MAIN_EXISTS'; exit 1; }
+          node --test tests/login-presentation-contract.test.cjs
+          node --test tests/sales-regressions.cjs
+          node --test tests/internal-owner-finance-visibility.test.cjs
+          node -e "if(require('./.firebaserc').projects.default!=='sales-management-cc116')process.exit(1)"
+          echo 'LOGIN_ONLY_SOURCE_AND_SALES_REGRESSIONS_PASS'
+      - name: Compare published HTML with immutable approved old index
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 7c0a640c3a223d79ef49fd0d294edf80ec2dedd9:index.html > "$RUNNER_TEMP/approved-prior-index.html"
+          curl --fail --silent --show-error --location --max-time 30 "https://nico-factory.web.app/?login_guard=$GITHUB_SHA" > "$RUNNER_TEMP/live-before.html"
+          if cmp -s "$RUNNER_TEMP/live-before.html" index.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'ALREADY_PUBLISHED_SKIP_WRITE'
+          elif cmp -s "$RUNNER_TEMP/live-before.html" "$RUNNER_TEMP/approved-prior-index.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'EXACT_LIVE_BASELINE_PASS'
+          else
+            echo 'STOP_UNREVIEWED_LIVE_INDEX_NO_OVERWRITE'
+            exit 1
+          fi
+      - name: Load protected Firebase identity for Hosting only
+        if: env.ALREADY_LIVE == 'false'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-login-only.json"
+          chmod 600 "$RUNNER_TEMP/nico-login-only.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login-only.json" >> "$GITHUB_ENV"
+      - name: Install existing read/write Hosting REST auth dependency only
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Confirm complete existing Hosting manifest
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Release only existing index and preserve all other live hashes
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify published index bytes and existing partner routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          success=false
+          for attempt in $(seq 1 12); do
+            curl --fail --silent --show-error --location --max-time 30 "https://nico-factory.web.app/?login_after=$GITHUB_SHA-$attempt" > "$RUNNER_TEMP/live-after.html"
+            if cmp -s "$RUNNER_TEMP/live-after.html" index.html; then success=true; break; fi
+            sleep 5
+          done
+          test "$success" = true || { echo 'STOP_POST_RELEASE_BYTE_PARITY_UNCONFIRMED'; exit 1; }
+          for page in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            code=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --max-time 30 "https://nico-factory.web.app$page")
+            test "$code" = 200
+          done
+          echo 'LOGIN_ONLY_LIVE_CONFIRMED; NO_FIRESTORE_RULES_FUNCTIONS_AUTH_WRITES'
+      - name: Delete temporary service identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-login-only.json" || true

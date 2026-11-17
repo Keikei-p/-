@@ -1,0 +1,90 @@
+name: NICO login presentation exact-scope and live GET preflight (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/login-presentation-contract.test.cjs'
+      - '.github/workflows/nico-login-presentation-live-preflight.yml'
+permissions:
+  contents: read
+jobs:
+  login-ui-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Execute login visual regression contract and exact current-main isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node --test tests/login-presentation-contract.test.cjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const assert=require('node:assert/strict');
+          const {execFileSync}=require('node:child_process');
+          const expected=execFileSync('git',['show','7c0a640c3a223d79ef49fd0d294edf80ec2dedd9:index.html'],{maxBuffer:5_000_000}).toString('utf8');
+          let html=fs.readFileSync('index.html','utf8');
+          const replaceOnce=(fragment,original)=>{
+            const first=html.indexOf(fragment);
+            assert(first>=0&&html.indexOf(fragment,first+1)<0,'presentation fragment must be unique');
+            html=html.replace(fragment,original);
+          };
+          const css=html.match(/<style id="nfPremiumLogin">[\s\S]*?<\/style>\n\n/);
+          assert(css,'login-only CSS missing');
+          replaceOnce(css[0],'');
+          const overlay=html.match(/^<div id="nfLoginFX"[^\n]*\n/m);
+          assert(overlay,'noninteractive login overlay missing');
+          replaceOnce(overlay[0],'');
+          const wrapper='  <div class="auth-wrapper">\n';
+          const begin=html.indexOf(wrapper);
+          assert(begin>=0,'login wrapper absent');
+          const first=begin+wrapper.length;
+          const end=html.indexOf('    <div class="auth-card">',first);
+          assert(end>first&&html.slice(first,end).startsWith('    <div class="nf-brand">'),'login brand invalid');
+          html=html.slice(0,first)+'\n'+html.slice(end);
+          const logo=html.match(/      <div class="auth-logo" aria-hidden="true">NF<\/div>\n      <div class="nf-card-kicker">SECURE WORKSPACE<\/div>\n\n/);
+          assert(logo,'visual-only logo missing');
+          replaceOnce(logo[0],'      <div class="auth-logo">📊</div>\n\n');
+          const controller=html.match(/\n<script id="nfLoginFXController">[\s\S]*?<\/script>\n(?=<\/body>)/);
+          assert(controller,'passive FX controller missing');
+          replaceOnce(controller[0],'\n');
+          assert.equal(html,expected,'SAFETY STOP: Sales/auth/finance content differs from protected base');
+          console.log('LOGIN_PRESENTATION_REVERSE_DIFF_EXACT_PASS existing sales/auth bytes unchanged');
+          NODE
+      - name: Read currently published anonymous sales index without modifying data
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 2 --max-time 30 \
+            "https://nico-factory.web.app/?login_visual_readonly=$GITHUB_SHA" \
+            > "$RUNNER_TEMP/live-nico-index.html"
+          LIVE="$RUNNER_TEMP/live-nico-index.html" node <<'NODE'
+          const fs=require('node:fs');
+          const assert=require('node:assert/strict');
+          const {createHash}=require('node:crypto');
+          const {execFileSync}=require('node:child_process');
+          const live=fs.readFileSync(process.env.LIVE);
+          assert(live.length>100000&&live.includes(Buffer.from('営業実績管理')),'LIVE_INDEX_UNEXPECTED');
+          const base=execFileSync('git',['show','7c0a640c3a223d79ef49fd0d294edf80ec2dedd9:index.html'],{maxBuffer:5_000_000});
+          const proposed=fs.readFileSync('index.html');
+          const sha=b=>createHash('sha256').update(b).digest('hex');
+          console.log('LIVE_HTTP_GET_OK live_sha256='+sha(live));
+          console.log('LIVE_EQUALS_REVIEWED_BASE='+String(live.equals(base)));
+          console.log('LIVE_EQUALS_PROPOSED_LOGIN='+String(live.equals(proposed)));
+          console.log('LIVE_HAS_LOGIN_EFFECTS='+String(live.includes(Buffer.from('id="nfPremiumLogin"'))));
+          console.log('PRODUCTION_WRITE_OPERATIONS=0');
+          NODE
