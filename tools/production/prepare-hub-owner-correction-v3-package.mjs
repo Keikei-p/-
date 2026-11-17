@@ -64,7 +64,7 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
 // immutable baseline separately available and never auto-publish this candidate.
 export const OWNER_ONLY_CANDIDATE=Object.freeze({
  ...INTEGRATED_CANDIDATE,
- "functions-partner-workspace/service.cjs":"361e41d2a1259c33a5479e22073c6da3599d1697"
+ "functions-partner-workspace/service.cjs":"f78b1fa16f71848b20579ad220f82b703fe7f209"
 });
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
