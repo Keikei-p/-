@@ -12,6 +12,33 @@ concurrency:
   group: nico-surgical-index-release
   cancel-in-progress: false
 jobs:
+  verify-live-login-without-writes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Compare the public index byte for byte with the premium login revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'id="nfPremiumLogin"' index.html
+          grep -Fq 'id="nfLoginFX"' index.html
+          grep -Fq 'id="nfLoginFXController"' index.html
+          curl --fail --silent --show-error --location --retry 2 --max-time 30 \
+            "https://nico-factory.web.app/?login_live_audit=$GITHUB_SHA" > "$RUNNER_TEMP/login-public.html"
+          if ! cmp -s index.html "$RUNNER_TEMP/login-public.html"; then
+            echo 'STOP_LIVE_INDEX_NOT_PREMIUM_LOGIN_BYTES'
+            exit 1
+          fi
+          for path in /partner-workspace.html /partner-invite.html /partner-counts.html; do
+            status=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --max-time 30 "https://nico-factory.web.app$path")
+            test "$status" = 200 || { echo 'STOP_DEPENDENT_ROUTE_BAD_HTTP'; exit 1; }
+          done
+          echo 'LOGIN_PREMIUM_LIVE_BYTE_PARITY_PASS'
+          echo 'OTHER_EXISTING_PARTNER_ROUTES_HTTP_200'
+          echo 'LIVE_READ_ONLY_NO_DATA_WRITES'
   login-index-only:
     if: >-
       github.event_name == 'push' &&
