@@ -79,14 +79,21 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 --max-time 25 "https://nico-factory.web.app/?login_release_preflight=$GITHUB_SHA" > "$RUNNER_TEMP/live-login-before.html"
-          cmp -s "$RUNNER_TEMP/reviewed-previous-index.html" "$RUNNER_TEMP/live-login-before.html" || {
+          if cmp -s index.html "$RUNNER_TEMP/live-login-before.html"; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'LOGIN_VISUAL_ALREADY_LIVE_SAME_REVIEWED_BYTES'
+          elif cmp -s "$RUNNER_TEMP/reviewed-previous-index.html" "$RUNNER_TEMP/live-login-before.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'PUBLIC_LOGIN_BYTES_EXACTLY_REVIEWED_MAIN_BEFORE_WRITE'
+          else
             echo 'STOP_PRODUCTION_SOURCE_DRIFT_INDEX_NOT_RELEASED'
             exit 1
-          }
-          echo 'PUBLIC_LOGIN_BYTES_EXACTLY_REVIEWED_MAIN_BEFORE_WRITE'
+          fi
       - name: Install existing Firebase Hosting credential library only
+        if: env.ALREADY_LIVE != 'true'
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
       - name: Configure protected Hosting credentials (no Firestore operations)
+        if: env.ALREADY_LIVE != 'true'
         shell: bash
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -98,8 +105,10 @@ jobs:
           chmod 600 "$RUNNER_TEMP/nico-login-hosting-private.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login-hosting-private.json" >> "$GITHUB_ENV"
       - name: Preserve every other live Hosting asset and run exact dry-run
+        if: env.ALREADY_LIVE != 'true'
         run: node tools/hosting/surgical-existing-index.mjs --dry-run
       - name: Release only the reviewed login index HTML using existing guarded Hosting tool
+        if: env.ALREADY_LIVE != 'true'
         run: node tools/hosting/surgical-existing-index.mjs --release
       - name: Verify public HTML equals the reviewed candidate and existing pages stay live
         shell: bash
