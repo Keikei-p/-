@@ -15,11 +15,24 @@ test("main Firestore financial reads require verified internal company membershi
  ])assert.match(member,check);
  const same=rules.slice(rules.indexOf("function sameCompany("),rules.indexOf("function ownerBootstrap("));
  assert.match(same,/isCompanyMember\(companyId\)/);
+ // The current-main Phase-1 candidate *adds* a secondary-partner veto before
+ // every raw financial read. A test which accepts the old vulnerable spelling
+ // would silently bless a regression during the real integration merge.
+ const veto=rules.slice(rules.indexOf("function noSecondaryPartnerWorkspace("),
+  rules.indexOf("function isCompanyMember("));
+ assert.match(veto,/!exists\(\/databases\/\$\(database\)\/documents\/partnerWorkspaceContexts\/\$\(request\.auth\.uid\)\)/);
  for(const name of ["products","records","recordCorrections","goals","revenueGoals"]){
   const start=rules.indexOf("match /"+name+"/{");
   assert(start>=0,"missing "+name);
   const tail=rules.slice(start,start+950);
-  assert.match(tail,/allow read: if resource\.data\.companyId != null\s*&& sameCompany\(resource\.data\.companyId\)/);
+  assert.match(tail,/allow read: if noSecondaryPartnerWorkspace\(\)\s*&& resource\.data\.companyId != null\s*&& sameCompany\(resource\.data\.companyId\)/,
+   name+" may never expose raw finance to a secondary partner");
+ }
+ for(const fn of ["isCompanyMaster","isCompanyOwner","isCompanyManager"]){
+  const start=rules.indexOf("function "+fn+"(");
+  assert(start>=0,"missing "+fn);
+  assert.match(rules.slice(start,start+700),/return noSecondaryPartnerWorkspace\(\)/,
+   fn+" must not re-open old Owner or Master finance privileges");
  }
 });
 test("ranking and product visibility callables are disabled by default",()=>{
