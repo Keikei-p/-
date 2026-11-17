@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {PROJECT,DESTINATION,TARGET,PERMISSIONS,permittedCall,selectBackup,
- validateRestoredDatabase,isolatedCollector,rehearse} from '../tools/production/rehearse-managed-backup.mjs';
+ inspectBackup,validateRestoredDatabase,isolatedCollector,rehearse} from '../tools/production/rehearse-managed-backup.mjs';
 import {fingerprint} from '../tools/readonly-backup/backup.mjs';
 import {restoreToLocalEmulator} from '../tools/readonly-backup/restore-emulator.mjs';
 const API='https://firestore.googleapis.com/v1/';
@@ -26,12 +26,15 @@ const restoredMeta=()=>({name:TARGET,uid:OTHER,type:'FIRESTORE_NATIVE',locationI
 const clone=x=>structuredClone(x);
 function fixture(options={}){
  const calls=[];let created=false,deleted=false,defaultRead=0;
+ const backupResponse=clone(backups);
+ if(options.missingStats)delete backupResponse.backups[0].stats;
+ if(options.overBudget)backupResponse.backups[0].stats.sizeBytes=String(33*1024*1024);
  const send=async(method,url,body)=>{
   calls.push({method,url,body});
   const response=(data,status=200)=>({status,json:async()=>clone(data)});
   if(url===IAM)return response({permissions:options.permissions??PERMISSIONS});
   if(url===DB)return response({databases:[clone(sourceMeta),...(created&&!deleted?[restoredMeta()]:[])]});
-  if(url===BACKUPS)return response(backups);
+  if(url===BACKUPS)return response(backupResponse);
   if(url===RULES)return response({},404);
   if(url===DB+':restore'){
    assert.equal(method,'POST');assert.deepEqual(body,{databaseId:DESTINATION,backup:BACKUP});
@@ -135,6 +138,49 @@ test('inspect performs no restore, deletion, document reads or Rules mutation',a
  assert.equal(result.temporaryDatabaseCreated,false);
  assert(f.calls.every(x=>x.method==='GET'||x.url===IAM));
  assert(!f.calls.some(x=>x.url.includes('/documents')));
+});
+
+test('inspect-only checks real IAM and isolated destination even if READY backup stats are absent',async()=>{
+ const f=fixture({missingStats:true,permissions:[]});
+ const proof=await run(f,{mode:'inspect'});
+ assert.equal(proof.mode,'inspect');
+ assert.equal(proof.backupStatsVerified,false);
+ assert.equal(proof.restoreBlockedByMissingStats,true);
+ assert.equal(proof.backupDocumentCount,null);
+ assert.equal(proof.backupSizeWithin32MiB,false);
+ assert.deepEqual(proof.missingPermissions,PERMISSIONS);
+ assert.equal(proof.managedBackupRestored,false);
+ assert.equal(proof.temporaryDatabaseCreated,false);
+ assert.equal(proof.sourceDocumentWrites,0);
+ assert.equal(proof.deployments,0);
+ assert(f.calls.some(x=>x.url===IAM&&x.method==='POST'));
+ assert(f.calls.some(x=>x.url===RULES&&x.method==='GET'));
+ assert(!f.calls.some(x=>x.url===DB+':restore'||x.method==='DELETE'||
+  x.url.includes('/documents')));
+ const out=JSON.stringify(proof);
+ for(const privateValue of [UID,OTHER,BACKUP,'etag-123'])
+  assert(!out.includes(privateValue));
+});
+
+test('missing official backup stats NEVER permit cloud restore even if all IAM permissions exist',async()=>{
+ const f=fixture({missingStats:true});
+ await assert.rejects(run(f),
+  /STOP_MANAGED_REHEARSAL_BACKUP_STATS_UNAVAILABLE/);
+ assert(!f.calls.some(x=>x.url===DB+':restore'||x.method==='DELETE'||
+  x.url.includes('/documents')));
+ assert.equal(f.deleted,false);
+ const inspection=inspectBackup(databases,{backups:[{
+  ...backup,stats:undefined
+ }]},NOW);
+ assert.equal(inspection.statsUnavailable,true);
+ assert.equal(inspection.current.uid,UID);
+});
+
+test('inspect mode cannot hide a known over-budget backup under the missing-stat fallback',async()=>{
+ const f=fixture({overBudget:true});
+ await assert.rejects(run(f,{mode:'inspect'}),
+  /STOP_MANAGED_REHEARSAL_BACKUP_SIZE_BUDGET/);
+ assert(!f.calls.some(x=>x.url===DB+':restore'||x.method==='DELETE'));
 });
 
 test('missing cleanup permission blocks before restoring a database or reading documents',async()=>{

@@ -77,6 +77,35 @@ export function selectBackup(databases,backups,now){
  if(Number(stats.sizeBytes)>limit)STOP('BACKUP_SIZE_BUDGET');
  return {selected,current,report};
 }
+/** Inspect-only mode may report why restore is blocked when Google has not
+ * published the backup stats yet. Restore mode NEVER calls this fallback.
+ * Source UID/location, unused destination and recent READY backup still
+ * require the same verified metadata as the size-limited restore candidate.
+ */
+export function inspectBackup(databases,backups,now){
+ try{return {...selectBackup(databases,backups,now),statsUnavailable:false};}
+ catch(error){
+  if(error?.message!=='STOP_MANAGED_REHEARSAL_BACKUP_STATS_UNAVAILABLE')throw error;
+  const report=summarizeManagedRestorePreflight({
+   databases,backups,nowMs:now,destination:DESTINATION
+  });
+  if(!report.backupRestoreMetadataPreflightPassed)
+   STOP('NO_RECENT_BACKUP_OR_DESTINATION_OCCUPIED');
+  const current=databases.databases.find(x=>x.name===SOURCE);
+  if(current?.locationId!=='asia-northeast1')STOP('SOURCE_LOCATION');
+  const candidates=backups.backups.filter(x=>x.database===SOURCE&&
+   x.databaseUid===current.uid&&x.state==='READY'&&
+   Date.parse(x.snapshotTime)<=now&&now-Date.parse(x.snapshotTime)<=48*3600000&&
+   Date.parse(x.expireTime)>now+24*3600000)
+   .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime));
+  if(!BACKUP.test(candidates[0]?.name||''))STOP('BACKUP_NAME');
+  // Never replace the absent official stats with a guessed document count.
+  if(candidates[0].stats!==undefined&&candidates[0].stats!==null)
+   STOP('BACKUP_STATS_INVALID');
+  return {selected:candidates[0],current,report,statsUnavailable:true};
+ }
+}
+
 export function validateRestoredDatabase(db,{backup,sourceUid,started,operation,uid}={}){
  if(!obj(db)||db.name!==TARGET||!validUid(db.uid)||db.uid===sourceUid||
     (uid!==undefined&&db.uid!==uid)||db.type!=='FIRESTORE_NATIVE'||
@@ -116,19 +145,23 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
   let data;try{data=await response.json()}catch{STOP('RESPONSE_JSON');}
   if(!obj(data))STOP('RESPONSE_SHAPE');return data;
  };
- const read=async()=>{
+ const read=async(requireVerifiedStats=true)=>{
   const databases=await call('GET',DATABASES_URL);
   const backups=await call('GET',BACKUPS_URL);
-  return selectBackup(databases,backups,now());
+  return requireVerifiedStats?selectBackup(databases,backups,now()):
+   inspectBackup(databases,backups,now());
  };
  const permissions=await call('POST',IAM,{permissions:PERMISSIONS});
  if(!Array.isArray(permissions.permissions??[])||
     (permissions.permissions??[]).some(x=>typeof x!=='string'))STOP('IAM_RESPONSE');
  const missingPermissions=PERMISSIONS.filter(x=>!permissions.permissions?.includes(x));
- const initial=await read();selected=initial.selected;
+ const initial=await read(mode!=='inspect');selected=initial.selected;
  if(await call('GET',RULES,undefined,{allow404:true})!==null)STOP('DESTINATION_RULES_ALREADY_EXIST');
+ const statsVerified=initial.statsUnavailable!==true;
  const proof={project:PROJECT,mode,backupSnapshotTime:selected.snapshotTime,
-  backupDocumentCount:Number(selected.stats.documentCount),backupSizeWithin32MiB:true,
+  backupDocumentCount:statsVerified?Number(selected.stats.documentCount):null,
+  backupSizeWithin32MiB:statsVerified,
+  backupStatsVerified:statsVerified,restoreBlockedByMissingStats:!statsVerified,
   missingPermissions,sourceDocumentWrites:0,sourceRulesWrites:0,deployments:0,
   managedBackupRestored:false,temporaryDatabaseCreated:false,temporaryDatabaseDeleted:false,
   sourceTraversalIsAtomic:false,authOrStorageRestored:false,fullCutoverApproved:false};
