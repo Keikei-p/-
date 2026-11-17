@@ -5,6 +5,7 @@ on:
     paths:
       - 'index.html'
       - 'tests/login-*'
+      - 'tests/internal-owner-finance-visibility.test.cjs'
       - 'tools/hosting/audit-live-login-fx-transplant.mjs'
       - '.github/workflows/nico-login-fx-live-transplant-audit.yml'
   push:
@@ -34,7 +35,7 @@ jobs:
           set -euo pipefail
           node --check tools/hosting/audit-live-login-fx-transplant.mjs
           node --check tools/hosting/release-live-login-fx-transplant.mjs
-          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs
+          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs
       - name: Compare live index visual slots without reading credentials or changing Hosting
         shell: bash
         env:
