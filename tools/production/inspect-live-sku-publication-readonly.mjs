@@ -24,23 +24,20 @@ function financialFields(v,depth=0){
  const keys=Object.keys(v);
  return keys.length>1000||keys.some(k=>MONEY.test(k)||financialFields(v[k],depth+1));
 }
-export function assessSkuPublication({hubId,ownerUid,relations,visibility,mapping,catalog,approvals=[]}={}){
+export function assessSkuPublication({hubId,ownerUid,relations,visibility,mapping,catalog}={}){
  if(!id(hubId)||!id(ownerUid)||!Array.isArray(relations)||
-    relations.length>100||!Array.isArray(approvals)||
-    (approvals.length!==0&&approvals.length!==relations.length))
+    relations.length>100)
   fail("BAD_SCOPE");
  if(new Set(relations.map(r=>r.partnerCompanyId)).size!==relations.length||
     relations.some(r=>!obj(r)||!id(r.partnerCompanyId)||r.partnerCompanyId===hubId||
      r.hubCompanyId!==hubId||r.active!==true||r.countSharingApproved!==true))
   fail("RELATION_UNTRUSTED");
  const mappedPartnerCount=relations.length;
- // Consent is independent from SKU/catalog publication: never label an
- // already approved relationship as unapproved solely because setup is missing.
- const reciprocal=approvals.length===relations.length&&approvals.every(x=>x&&x.hubApproved===true&&
-  x.partnerApproved===true&&x.namesApproved===true);
+ // Active server-verified company relation is the count-sharing boundary.
+ // No bilateral Owner ranking or individual-name consent is required here.
  if(!visibility||!mapping||!catalog)return Object.freeze({
   publishedCatalogReady:false,mappingsReviewed:false,companyScopedOnOffReady:false,
-  reciprocalOwnerRankConsentReady:reciprocal,partnerCompanyCount:mappedPartnerCount,
+  partnerCompanyCount:mappedPartnerCount,
   partnerCompaniesMapped:0,enabledCategoriesMappedToAllPartners:false
  });
  if(financialFields(visibility)||financialFields(mapping)||financialFields(catalog))
@@ -102,7 +99,7 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
  }
  return Object.freeze({
   publishedCatalogReady:true,mappingsReviewed:true,
-  companyScopedOnOffReady:true,reciprocalOwnerRankConsentReady:reciprocal,
+  companyScopedOnOffReady:true,
   partnerCompanyCount:relations.length,partnerCompaniesMapped:partnersReady,
   enabledCategoriesMappedToAllPartners:allEligibleMapped
  });
@@ -113,7 +110,7 @@ export async function inspectSkuPublication(db){
  const hubs=await db.collection("companies").select("companyKind","ownerUid","active")
   .limit(201).get();
  if(!Array.isArray(hubs?.docs)||hubs.docs.length>200)fail("COMPANY_LIMIT");
- let count=0,ready=0,mapping=0,consent=0,partnerCount=0,mappedPartners=0;
+ let count=0,ready=0,mapping=0,partnerCount=0,mappedPartners=0;
  const blockers=new Set();
  for(const doc of hubs.docs){
   const v=doc.data();
@@ -124,10 +121,8 @@ export async function inspectSkuPublication(db){
   const hub=db.collection("companies").doc(doc.id);
   const relSnapshot=await db.collection("partnerRelations")
    .where("hubCompanyId","==",doc.id)
-   .select("partnerCompanyId","hubCompanyId","active",
-    "countSharingApproved","combinedRankingApprovedByHub",
-    "combinedRankingApprovedByPartner","individualNamesApprovedByHub",
-    "individualNamesApprovedByPartner").limit(101).get();
+   .select("partnerCompanyId","hubCompanyId","active","countSharingApproved")
+   .limit(101).get();
   if(!Array.isArray(relSnapshot.docs)||relSnapshot.docs.length>100)
    fail("RELATION_LIMIT");
   const relations=relSnapshot.docs.filter(x=>x.data().active===true&&
@@ -137,41 +132,22 @@ export async function inspectSkuPublication(db){
    hub.collection("rankingSkuMappings").doc("shared").get(),
    hub.collection("rankingCountPublicCatalog").doc("shared").get()
   ]);
-  // Ranking consent is an extra business gate. Never assume existence.
-  const approved=await Promise.all(relations.map(async rel=>{
-   const p=db.collection("companies").doc(rel.partnerCompanyId);
-   const [lhs,rhs]=await Promise.all([
-    hub.collection("rankingApprovals").doc(rel.partnerCompanyId).get(),
-    p.collection("rankingApprovals").doc(doc.id).get()
-   ]);
-   const a=read(lhs),b=read(rhs);
-   return {hubApproved:a?.active===true&&a.combinedRankingApproved===true&&
-    rel.combinedRankingApprovedByHub===true,
-    partnerApproved:b?.active===true&&b.combinedRankingApproved===true&&
-    rel.combinedRankingApprovedByPartner===true,
-    namesApproved:a?.individualNamesApproved===true&&
-     b?.individualNamesApproved===true&&
-     rel.individualNamesApprovedByHub===true&&
-     rel.individualNamesApprovedByPartner===true};
-  }));
+  // No reads of either company's obsolete ranking consent documents.
   const result=assessSkuPublication({hubId:doc.id,ownerUid:v.ownerUid,
    relations,visibility:read(snaps[0]),mapping:read(snaps[1]),
-   catalog:read(snaps[2]),approvals:approved});
+   catalog:read(snaps[2])});
   partnerCount+=result.partnerCompanyCount;
   mappedPartners+=result.partnerCompaniesMapped;
   if(result.publishedCatalogReady)ready++;
   else blockers.add("OWNER_PUBLIC_CATALOG_MISSING");
   if(result.mappingsReviewed&&result.enabledCategoriesMappedToAllPartners)mapping++;
   else blockers.add("PARTNER_SKU_MAPPING_INCOMPLETE");
-  if(result.reciprocalOwnerRankConsentReady)consent++;
-  // Optional public-name evidence is reported, never a prerequisite for counts.
  }
  if(count===0)fail("NO_INTERNAL_COMPANY");
  return Object.freeze({project:PROJECT,mode:"LIVE_READ_ONLY_NO_DEPLOY",
   hubCompanyCount:count,activeApprovedPartnerCount:partnerCount,
   mappedPartnerCount:mappedPartners,ownerPublicationCatalogReady:ready===count,
   allEnabledPartnerSkuMapped:mapping===count,
-  reciprocalOwnerRankConsentReady:consent===count,
   ownerPublicationWriteFeatureEnabledInProd:false,
   realAccountCountSaveVerified:false,
   realPartnerFinanceGetListDeniedVerified:false,
