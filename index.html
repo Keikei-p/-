@@ -38753,7 +38753,7 @@ recordDate.value =
  const detail=document.getElementById('nfFXDetail');
  function dismiss(){
    clearTimeout(timer);clearTimeout(waitTimer);phase='';
-   box.classList.remove('on');help.hidden=true;
+   box.classList.remove('on');help.hidden=true;retry.hidden=true;
    box.setAttribute('aria-hidden','true');
  }
  function showLoading(force=false){
@@ -38765,12 +38765,12 @@ recordDate.value =
    symbol.textContent='NF';
    name.textContent='データを読み込み中';
    detail.textContent='会社・商材・スタッフ情報を確認しています';
-   help.hidden=true;
+   help.hidden=true;retry.hidden=true;
    box.setAttribute('aria-hidden','false');
    box.classList.add('on');
    // Never leave all screens hidden with no feedback or force an automatic sign-out.
    waitTimer=setTimeout(()=>{
-     if(phase==='loading'&&noScreen())help.hidden=false;
+     if(phase==='loading'&&noScreen()){help.hidden=false;retry.hidden=false;}
    },12000);
  }
  function flash(next,duration){
@@ -38783,7 +38783,7 @@ recordDate.value =
    }else{
      symbol.textContent='NF';name.textContent='NICO FACTORY';detail.textContent='SALES MANAGEMENT SYSTEM';
    }
-   help.hidden=true;box.setAttribute('aria-hidden','true');
+   help.hidden=true;retry.hidden=true;box.setAttribute('aria-hidden','true');
    box.classList.add('on');
    timer=setTimeout(()=>{
      if(phase!==next)return;
