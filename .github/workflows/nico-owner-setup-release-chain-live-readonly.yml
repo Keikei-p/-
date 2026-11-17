@@ -37,17 +37,14 @@ jobs:
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          if { [ "$GITHUB_EVENT_NAME" = pull_request ] &&
-               [ "$GITHUB_REPOSITORY" = Keikei-p/- ] &&
-               [ "${GITHUB_HEAD_REF:-}" = integration/nico-sales-count-publication-rank-ready-20261113 ] &&
-               node -e "const e=require(process.env.GITHUB_EVENT_PATH);if(e.pull_request?.number!==704||e.pull_request.head.repo.full_name!=='Keikei-p/-'||e.pull_request.base.repo.full_name!=='Keikei-p/-')process.exit(1)"; } ||
-             { [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_REPOSITORY" = Keikei-p/- ] &&
-               { [ "$GITHUB_EVENT_NAME" = push ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; }; }; then
-            node tools/production/verify-integrated-count-release-candidate.mjs --offline . docs/integrated-count-release-candidate-20261115.json
-          else
-            test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
-            test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
-          fi
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 8187d046661d91b7e497b8c7a802c8b402acd9a3
+          test "$(git hash-object tools/production/inspect-live-sku-publication-readonly.mjs)" = 037470a0394457d11372dbeea99544b464065bd7
+          test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = c7eab608a3fe031f5841b79895eb1fff4056bbf6
+          test "$(git hash-object owner-partner-setup.html)" = 8cb4ad80c3c03658d1fb070339614cf2f5617d7b
+          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = c6cec9b2ed46870277073911192a45114fea6a3b
+          test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = d36ab386b4979d2e5ba4b66ac2b0821a8c123b51
+          test "$(git hash-object ranking/owner-reviewed-sku-mapping-panel.mjs)" = 1ee2861ce2dd4144d900097b67037ef252717060
           node --check tools/production/inspect-owner-setup-release-chain-readonly.mjs
           node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs
           node --test tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-setup-six-release-scope.test.mjs tests/owner-setup-additive-hosting-release.test.mjs

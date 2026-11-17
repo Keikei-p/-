@@ -14,7 +14,9 @@ import {NEW,EXPECTED_FLAGS,PROJECT,REGION}
  from "./owner-setup-six-release-scope.mjs";
 import {SOURCES,uploadSha,blobSha}
  from "../hosting/owner-setup-additive-guard.mjs";
-import {inspectSkuPublication}
+import {OWNER_ONLY_REPLACEMENTS}
+ from "../hosting/owner-only-setup-replacement-guard.mjs";
+import {inspectSkuPublication,assessOwnerPublicationFunctions}
  from "./inspect-live-sku-publication-readonly.mjs";
 
 const STOP=code=>{throw Error("STOP_OWNER_SETUP_CHAIN_"+code);};
@@ -74,7 +76,7 @@ export function classifyFunctions(rows){
   jointRankingDisabled:true
  });
 }
-export function classifyHosting(releases,version,files,sources,financeSource=null){
+export function classifyHosting(releases,version,files,sources,financeSource=null,currentSources=null){
  const name=releases?.releases?.[0]?.version?.name;
  if(!Array.isArray(releases?.releases)||releases.releases.length!==1||
     !HOSTING_VERSION.test(name||"")||
@@ -86,6 +88,15 @@ export function classifyHosting(releases,version,files,sources,financeSource=nul
    STOP("HOSTING_MANIFEST_UNVERIFIED");
  if(version.fileCount!=null&&Number(version.fileCount)!==files.length)
   STOP("HOSTING_COUNT_DRIFT");
+ // Historical seven and currently published four Owner assets are independently SHA pinned.
+ const modern=currentSources!==null;
+ if(modern&&(!isObj(currentSources)||
+    keys(currentSources).length!==Object.keys(OWNER_ONLY_REPLACEMENTS).length||
+    keys(currentSources).some(k=>!Object.hasOwn(OWNER_ONLY_REPLACEMENTS,k))||
+    Object.entries(OWNER_ONLY_REPLACEMENTS).some(([file,sha])=>
+      typeof currentSources[file]!=="string"||
+      blobSha(currentSources[file])!==sha)))
+  STOP("CURRENT_CANDIDATE_SOURCE_UNREVIEWED");
  const map=new Map();
  for(const x of files){
   if(!isObj(x)||typeof x.path!=="string"||
@@ -98,7 +109,7 @@ export function classifyHosting(releases,version,files,sources,financeSource=nul
    "/partner-invite.html","/owner-partner-admin.html","/partner-counts.html"]){
   if(!map.has(mandatory))STOP("HOSTING_CANONICAL_MISSING");
  }
- let present=0,matched=0;
+ let present=0,matched=0,currentMatched=0;
  for(const [file,sha] of Object.entries(SOURCES)){
   const data=sources[file];
   if(typeof data!=="string"||blobSha(data)!==sha)
@@ -106,7 +117,11 @@ export function classifyHosting(releases,version,files,sources,financeSource=nul
   const actual=map.get("/"+file);
   if(actual!==undefined){
    present++;
-   if(actual===uploadSha(data))matched++;
+   const useCurrent=modern&&Object.hasOwn(currentSources,file);
+   if(actual===uploadSha(useCurrent?currentSources[file]:data)){
+    matched++;
+    if(useCurrent)currentMatched++;
+   }
   }
  }
  const financeHash=map.get("/finance-boundary-check.html");
@@ -120,14 +135,17 @@ export function classifyHosting(releases,version,files,sources,financeSource=nul
  const financeExact=financeInspected&&financeHash!==undefined&&
   financeHash===uploadSha(financeSource);
  return Object.freeze({
-  ownerSetupSourceBasis:"HISTORICAL_PINNED_PUBLISHED_SOURCES",
-  currentCandidateSourceVerified:false,
+  ownerSetupSourceBasis:modern?
+   "CURRENT_OWNER_FOUR_AND_HISTORICAL_SEVEN_REVIEWED":
+   "HISTORICAL_PINNED_PUBLISHED_SOURCES",
+  currentCandidateSourceVerified:modern&&currentMatched===4,
   financeBoundaryDiagnosticInspected:financeInspected,
   financeBoundaryDiagnosticPresent:financeHash!==undefined,
   financeBoundaryDiagnosticExactMatch:financeExact,
   ownerSetupHostingAssetsPresent:present,
   ownerSetupHostingAssetsExactMatch:matched,
-  ownerSetupPageReady:present===11&&matched===11,
+  currentOwnerAssetCountExactMatch:modern?currentMatched:0,
+  ownerSetupPageReady:present===11&&matched===11&&(!modern||currentMatched===4),
   ownerSetupAssetsAllAbsent:present===0,
   liveHostingConfigRead:true,
   originalCanonicalAssetsPresent:true
@@ -174,12 +192,13 @@ export function readinessBoard({functions,hosting,publication}={}){
   ownerSetupHostingAssetsExactMatch:hosting.ownerSetupHostingAssetsExactMatch,
   ownerSetupPageReady:hosting.ownerSetupPageReady,
   ownerSetupSourceBasis:hosting.ownerSetupSourceBasis,
-  currentCandidateSourceVerified:false,
+  currentCandidateSourceVerified:hosting.currentCandidateSourceVerified===true,
   financeBoundaryDiagnosticInspected:hosting.financeBoundaryDiagnosticInspected===true,
   financeBoundaryDiagnosticPresent:hosting.financeBoundaryDiagnosticPresent===true,
   financeBoundaryDiagnosticExactMatch:hosting.financeBoundaryDiagnosticExactMatch===true,
   partnerCompaniesApprovedForCountSharing:publication.activeApprovedPartnerCount,
   partnerCompaniesWithMappedRankCategories:publication.mappedPartnerCount,
+  ownerPublicationAPIsEnabledInProd:publication.ownerPublicationWriteFeatureEnabledInProd===true,
   ownerPublicCatalogReady:publication.ownerPublicationCatalogReady,
   allEnabledPartnerSkuMapped:publication.allEnabledPartnerSkuMapped,
   reciprocalOwnerRankConsentReady:publication.reciprocalOwnerRankConsentReady,
@@ -245,13 +264,16 @@ async function main(){
   if(typeof next!=="string"||next.length>3000)STOP("FILE_PAGE_TOKEN");
  }while(next);
  const sourceRoot=path.resolve(fileURLToPath(new URL("../..",import.meta.url)));
- // These immutable blobs describe the previously published 11-asset setup,
- // not the current integration's changed HTML/mount. Candidate source checks
- // remain the separate reviewed-manifest verifier's responsibility.
+ // Historical seven published assets use immutable original blobs. The current
+ // four Owner-only assets use separately reviewed main Git blob pins.
  const sources=readPublishedOwnerSetupSources();
+ const currentSources=Object.fromEntries(Object.keys(OWNER_ONLY_REPLACEMENTS)
+  .map(file=>[file,readFileSync(path.join(sourceRoot,file),"utf8")]));
  const h=classifyHosting(release,version,files,sources,
-  readFileSync(path.join(sourceRoot,"finance-boundary-check.html"),"utf8"));
- const published=await inspectSkuPublication(getFirestore());
+  readFileSync(path.join(sourceRoot,"finance-boundary-check.html"),"utf8"),
+  currentSources);
+ const ownerApiStatus=assessOwnerPublicationFunctions(fn.functions??[]);
+ const published=await inspectSkuPublication(getFirestore(),ownerApiStatus);
  const report=readinessBoard({functions:f,hosting:h,publication:published});
  console.log("NICO_OWNER_SETUP_CHAIN_READINESS "+JSON.stringify(report));
  for(const b of report.blockingReasons)console.log("BLOCK_"+b);

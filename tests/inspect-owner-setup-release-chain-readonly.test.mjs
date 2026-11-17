@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {NEW,EXPECTED_FLAGS} from "../tools/production/owner-setup-six-release-scope.mjs";
 import {SOURCES,uploadSha} from "../tools/hosting/owner-setup-additive-guard.mjs";
+import {OWNER_ONLY_REPLACEMENTS} from "../tools/hosting/owner-only-setup-replacement-guard.mjs";
 import {classifyFunctions,classifyHosting,readinessBoard,readPublishedOwnerSetupSources}
  from "../tools/production/inspect-owner-setup-release-chain-readonly.mjs";
 import {historicalSources} from "./helpers/historical-builder-fixtures.mjs";
@@ -194,4 +195,39 @@ test("live Hosting finance diagnostic status is HASH-verified but never equated 
  assert.equal(board.financeBoundaryDiagnosticExactMatch,true);
  assert.equal(board.realPartnerFinanceGetListDeniedVerified,false);
  assert.equal(board.safeToEnableJointRanking,false);
+});
+
+test("current published four Owner modules and seven historical assets are all exact",()=>{
+ const current=Object.fromEntries(Object.keys(OWNER_ONLY_REPLACEMENTS).map(file=>[
+  file,readFileSync(new URL("../"+file,import.meta.url),"utf8")
+ ]));
+ const live=hosted().map(row=>{
+  const key=row.path.slice(1);
+  return Object.hasOwn(current,key)?{...row,hash:uploadSha(current[key])}:row;
+ });
+ const versionMeta={name:version,status:"FINALIZED",fileCount:live.length,config:{headers:[]}};
+ const h=classifyHosting(release,versionMeta,live,sourced(),null,current);
+ assert.equal(h.ownerSetupPageReady,true);
+ assert.equal(h.ownerSetupHostingAssetsPresent,11);
+ assert.equal(h.ownerSetupHostingAssetsExactMatch,11);
+ assert.equal(h.currentOwnerAssetCountExactMatch,4);
+ assert.equal(h.currentCandidateSourceVerified,true);
+ assert.equal(h.ownerSetupSourceBasis,"CURRENT_OWNER_FOUR_AND_HISTORICAL_SEVEN_REVIEWED");
+ const board=readinessBoard({functions:classifyFunctions(funcs()),hosting:h,publication:pub()});
+ assert.equal(board.nextStep,"OWNER_CONFIGURE_PUBLICATION_AND_SKU_BINDINGS");
+ assert.equal(board.currentCandidateSourceVerified,true);
+ assert.equal(board.safeToEnableJointRanking,false);
+ assert.equal(board.productionDocumentWrites,0);
+ const staleHtml=live.map(row=>row.path==="/owner-partner-setup.html"?
+  {...row,hash:uploadSha(sourced()["owner-partner-setup.html"])}:row);
+ const stale=classifyHosting(release,versionMeta,staleHtml,sourced(),null,current);
+ assert.equal(stale.ownerSetupPageReady,false);
+ assert.equal(stale.currentCandidateSourceVerified,false);
+ assert.equal(stale.currentOwnerAssetCountExactMatch,3);
+ const bad={...current,"owner-partner-setup.html":"tampered"};
+ assert.throws(()=>classifyHosting(release,versionMeta,live,sourced(),null,bad),
+  /STOP_OWNER_SETUP_CHAIN_CURRENT_CANDIDATE_SOURCE_UNREVIEWED/);
+ const dropped=Object.fromEntries(Object.entries(current).slice(1));
+ assert.throws(()=>classifyHosting(release,versionMeta,live,sourced(),null,dropped),
+  /STOP_OWNER_SETUP_CHAIN_CURRENT_CANDIDATE_SOURCE_UNREVIEWED/);
 });
