@@ -75,12 +75,12 @@ jobs:
           import {readFileSync} from 'node:fs';
           import {createHash} from 'node:crypto';
           import {createRequire} from 'node:module';
-          import {ASSETS,inspectOwnerShareLive} from './tools/production/inspect-owner-share-live-readonly.mjs';
+          import {ASSETS,SKU_ASSETS,inspectOwnerShareLive} from './tools/production/inspect-owner-share-live-readonly.mjs';
           const require=createRequire(new URL('./functions/package.json',import.meta.url));
           const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
           if(!token)throw Error('STOP_OWNER_SHARE_AUDIT_NO_TOKEN');
           const files={};
-          for(const path of ['/index.html',...Object.keys(ASSETS)]){
+          for(const path of ['/index.html','/owner-partner-setup.html',...Object.keys(ASSETS),...Object.keys(SKU_ASSETS)]){
             const response=await fetch('https://nico-factory.web.app'+path,
               {method:'GET',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(12000)});
             const body=await response.text();
