@@ -169,7 +169,9 @@ export function createStagedOwnerVisibleCountHandler({
    // A reported count is not silently removed by an obsolete ON/OFF switch.
    if(zeroSetupLink===true&&
       (!atomic||publication?.serverVerified!==true||
-       publication.ownerSettingsRead!==true||
+       publication.zeroSetupVerified!==true||
+       publication.ownerSettingsRead!==false||
+       publication.productMappingsReviewed!==false||
        publication.ownerUidVerified!==true||
        publication.snapshotReadTime!==input.snapshotReadTime))
     throw new Block();
