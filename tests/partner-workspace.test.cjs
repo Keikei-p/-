@@ -356,6 +356,56 @@ test("owner invites leader, leader accepts own team and manages name-only staff,
  const memberView=await api.view(req("m",{date:"2026-10-31"}));
  assert.equal(memberView.staff.length,1);assert.equal(memberView.staff[0].id,"m");
 });
+test("Owner-only partner company GET works with workspace and all count writes disabled",async()=>{
+ const {db,req,dependencies}=setup();
+ const api=makeWorkspace({...dependencies,enabled:()=>false,
+  sharedRankingEnabled:()=>false,submissionPublicationEnabled:()=>false});
+ const before=clone([...db.store]),date="2026-10-31";
+ const only={date,ownerSetupCompaniesOnly:true};
+ assert.deepEqual(await api.view(req("h",only)),{
+  role:"hub",date,registeredCompanies:[
+   {partnerCompanyId:"partner",name:"協力店",active:true}
+  ]
+ });
+ assert.deepEqual([...db.store],before);
+ await assert.rejects(api.view(req("p",only)),{code:"permission-denied"});
+ await assert.rejects(api.view(req("h",{date})),{code:"unavailable"});
+ await assert.rejects(api.manage(req("h",{action:"hubAddTeam",
+  partnerCompanyId:"partner",name:"new"})),{code:"unavailable"});
+ await assert.rejects(api.submit(req("p",{date,staffId:"s",counts:{}})),
+  {code:"unavailable"});
+ for(const extra of [
+  {workspaceCompanyId:"partner"},{sharedCountRankings:true},
+  {includeTeamStatus:true},{partnerCompanyId:"partner"}
+ ]){
+  await assert.rejects(api.view(req("h",{...only,...extra})),
+   {code:"permission-denied"});
+ }
+ const noBearer=req("h",only);
+ noBearer.rawRequest.headers={};
+ await assert.rejects(api.view(noBearer),{code:"unauthenticated"});
+ const noVerifiedEmail=req("h",only);
+ noVerifiedEmail.auth.token.email_verified=false;
+ await assert.rejects(api.view(noVerifiedEmail),{code:"unauthenticated"});
+ assert.deepEqual([...db.store],before,"no Owner setup GET may mutate company/counts");
+ assert(!JSON.stringify(await api.view(req("h",only))).match(
+  /totalCount|staff|teams|price|revenue|unitPrice|売上|単価/));
+});
+test("Owner-only GET filters inactive partners and never requires bilateral ranking consent",async()=>{
+ const {db,req,dependencies}=setup();
+ const api=makeWorkspace({...dependencies,enabled:()=>false});
+ const rel=db.store.get("partnerRelations/partner");
+ rel.countSharingApproved=false;
+ rel.combinedRankingApprovedByHub=false;
+ rel.combinedRankingApprovedByPartner=false;
+ const before=clone([...db.store]);
+ const out=await api.view(req("h",{
+  date:"2026-10-31",ownerSetupCompaniesOnly:true
+ }));
+ assert.equal(out.registeredCompanies[0].active,false);
+ assert.equal(out.registeredCompanies.length,1);
+ assert.deepEqual([...db.store],before);
+});
 test("no unauthenticated or disabled access, malformed count and finance fields denied",async()=>{
  const {api,req,zero}=setup();
  const team=(await api.manage(req("p",{action:"addTeam",name:"A班"}))).teamId;
