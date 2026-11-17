@@ -356,6 +356,49 @@ test("owner invites leader, leader accepts own team and manages name-only staff,
  const memberView=await api.view(req("m",{date:"2026-10-31"}));
  assert.equal(memberView.staff.length,1);assert.equal(memberView.staff[0].id,"m");
 });
+test("Owner can list registered partner names for SKU setup while every general workspace operation stays OFF",async()=>{
+ const {db,req,dependencies}=setup();
+ const api=makeWorkspace({...dependencies,enabled:()=>false,
+  sharedRankingEnabled:()=>false,submissionPublicationEnabled:()=>false});
+ const before=clone([...db.store]);
+ const date="2026-10-31",params={date,ownerSetupCompaniesOnly:true};
+ const result=await api.view(req("h",params));
+ assert.deepEqual(result,{role:"hub",date,registeredCompanies:[
+  {partnerCompanyId:"partner",name:"協力店",active:true}
+ ]});
+ assert(!JSON.stringify(result).match(/money|revenue|price|単価|売上|totalCount|staff|teams/i));
+ assert.deepEqual([...db.store],before,"Owner setup read never writes documents");
+ await assert.rejects(api.view(req("p",params)),{code:"permission-denied"});
+ await assert.rejects(api.view(req("h",{date})),{code:"unavailable"});
+ await assert.rejects(api.view(req("p",{date})),{code:"unavailable"});
+ await assert.rejects(api.view(req("h",{date,sharedCountRankings:true,rankingPeriod:"month"})),
+  {code:"unavailable"});
+ await assert.rejects(api.manage(req("h",{action:"hubAddTeam",partnerCompanyId:"partner",name:"new"})),
+  {code:"unavailable"});
+ await assert.rejects(api.submit(req("p",{date,staffId:"s",expectedVersion:0,counts:{}})),
+  {code:"unavailable"});
+ await assert.rejects(api.view(req("h",{...params,partnerCompanyId:"partner"})),
+  {code:"permission-denied"});
+ await assert.rejects(api.view(req("h",{...params,includeTeamStatus:true})),
+  {code:"permission-denied"});
+ const wrongEmail=req("h",params);wrongEmail.auth.token.email_verified=false;
+ await assert.rejects(api.view(wrongEmail),{code:"unauthenticated"});
+ const badBearer=req("h",params);badBearer.rawRequest.headers.authorization="Bearer forged";
+ await assert.rejects(api.view(badBearer),{code:"unauthenticated"});
+ assert.deepEqual([...db.store],before,"all setup attempts are read-only");
+});
+
+test("Owner setup company list rejects inactive relationships without deleting or changing history",async()=>{
+ const {db,req,dependencies}=setup();
+ db.store.get("partnerRelations/partner").countSharingApproved=false;
+ const before=clone([...db.store]);
+ const api=makeWorkspace({...dependencies,enabled:()=>false});
+ const result=await api.view(req("h",{date:"2026-10-31",ownerSetupCompaniesOnly:true}));
+ assert.equal(result.registeredCompanies.length,1);
+ assert.equal(result.registeredCompanies[0].active,false);
+ assert.deepEqual([...db.store],before);
+});
+
 test("no unauthenticated or disabled access, malformed count and finance fields denied",async()=>{
  const {api,req,zero}=setup();
  const team=(await api.manage(req("p",{action:"addTeam",name:"A班"}))).teamId;
