@@ -1,0 +1,104 @@
+name: NICO Owner-only setup FOUR Hosting replacements (GET ONLY / RELEASE BLOCKED)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/release-owner-only-four.mjs'
+      - 'tests/release-owner-only-four.test.mjs'
+      - '.github/workflows/nico-owner-only-four-hosting-preflight.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/release-owner-only-four.mjs'
+      - 'tests/release-owner-only-four.test.mjs'
+      - '.github/workflows/nico-owner-only-four-hosting-preflight.yml'
+  workflow_dispatch:
+    inputs:
+      reviewed_main_sha:
+        description: Exact current main SHA (inspect only)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-four-hosting-get-only-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin reviewed source, four replacements, original finance Rules and Owner API
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
+          test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = 6eb64ba4ccfb456df60fa48b9970c6d77513d12f
+          test "$(git hash-object tools/hosting/release-owner-only-four.mjs)" = 701b74c73996e7bfd82e77b40a456aa61d03b844
+          test "$(git hash-object tests/release-owner-only-four.test.mjs)" = 24afe259d46d5a015ad650edb937eff8d937344c
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --check tools/hosting/release-owner-only-four.mjs
+          node --check tests/release-owner-only-four.test.mjs
+          node --test tests/owner-only-setup-replacement-guard.test.mjs tests/release-owner-only-four.test.mjs
+          node --test tests/owner-partner-setup-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs
+          echo 'FOUR_OWNER_SETUP_STATIC_PRE_FLIGHT_NO_DEPLOY'
+  live-readonly:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' ||
+           github.event_name == 'workflow_dispatch' &&
+           github.ref == 'refs/heads/main' &&
+           inputs.reviewed_main_sha == github.sha) &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm current main and immutable read-only reviewed source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object tools/hosting/release-owner-only-four.mjs)" = 701b74c73996e7bfd82e77b40a456aa61d03b844
+      - name: Install only existing Admin SDK for authenticated Hosting metadata GET
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Supply existing private read identity only inside runner
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-four-owner-hosting-private.json"
+          chmod 600 "$RUNNER_TEMP/nico-four-owner-hosting-private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-four-owner-hosting-private.json" >> "$GITHUB_ENV"
+      - name: Actual live Hosting metadata GET and exact existing four-asset preflight
+        run: |
+          set -euo pipefail
+          node tools/hosting/release-owner-only-four.mjs --dry-run
+          echo 'FOUR_OWNER_SETUP_LIVE_HOSTING_PRE_FLIGHT_PASS_NO_DEPLOY'
+          echo 'PRODUCTION_DOCUMENT_WRITES=0'
+          echo 'FUNCTIONS_RULES_HOSTING_DEPLOYS=0'
+      - name: Clear private credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-four-owner-hosting-private.json"
