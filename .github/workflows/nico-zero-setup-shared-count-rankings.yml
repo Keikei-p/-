@@ -1,4 +1,4 @@
-name: NICO verified zero-setup shared count rankings (NO DEPLOY)
+name: NICO Owner ON-only shared count rankings, zero-setup regressions (NO DEPLOY)
 on:
   pull_request:
     branches: [main]
@@ -53,7 +53,7 @@ jobs:
         with: {persist-credentials: false, fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Assert canonical and isolated Function bytes agree, while production route is OFF
+      - name: Owner ON-only canonical Function routing stays finance-gated and original zero-setup helpers are mirrored
         shell: bash
         run: |
           set -euo pipefail
@@ -62,7 +62,10 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
           grep -Fq 'process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
-          grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js
+          grep -Fq 'zeroSetupLink:false' functions-ranking-approvals/index.js
+          if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
+            echo 'STOP_RANKING_MUST_OBEY_OWNER_ON_OFF'; exit 1
+          fi
           for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx; do
             cmp "ranking/$f.mjs" "functions-ranking-approvals/ranking/$f.mjs"
             node --check "ranking/$f.mjs"
@@ -70,7 +73,7 @@ jobs:
           done
           node --check functions-ranking-approvals/index.js
           echo 'SAME_COUNT_SOURCE_USED_IN_OWNER_AND_PARTNER_NO_DEPLOY'
-      - name: Zero-setting automatic linking + old original mappings + server finance controls
+      - name: Optional historical zero-setup helper regression plus reviewed Owner ON-only mapping and finance controls
         run: |
           set -euo pipefail
           node --test tests/zero-setup-count-linker.test.mjs \
@@ -83,4 +86,4 @@ jobs:
             tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/owner-product-visibility-rankings.test.mjs \
             tests/partner-workspace-count-source.test.mjs
-          echo 'ZERO_SETUP_SAME_LEDGER_COUNT_RANKINGS_PASS_NO_PRODUCTION_DEPLOY'
+          echo 'OWNER_ON_ONLY_COUNT_RANKINGS_PASS_ZERO_SETUP_HELPER_STILL_TESTED_NO_PRODUCTION_DEPLOY'
