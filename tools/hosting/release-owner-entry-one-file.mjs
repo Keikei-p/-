@@ -52,8 +52,9 @@ function exactManifest(rows,expected){
   stop("NEW_MANIFEST_DRIFT");
 }
 export async function releaseOwnerEntryOneFile({request,historicalSources,candidateSources,
- release=false,log=()=>{}}={}){
- if(typeof request!=="function"||typeof release!=="boolean"||typeof log!=="function")
+ release=false,log=()=>{},publicGet}={}){
+ if(typeof request!=="function"||typeof release!=="boolean"||typeof log!=="function"||
+    (release&&typeof publicGet!=="function"))
   stop("ARGUMENTS");
  const latest=async()=>versionName(await request("GET",URLS.latest));
  const original=await latest();
@@ -112,9 +113,15 @@ export async function releaseOwnerEntryOneFile({request,historicalSources,candid
   if(published?.version?.name!==created.name)stop("PUBLISH_RESPONSE");
   if(await latest()!==created.name)stop("PUBLISHED_VERSION_CHANGED");
   exactManifest(await manifest(request,created.name),plan.proposedManifest);
+  let visible=false;
+  for(let i=0;i<6;i++){
+   try{if(await publicGet()===candidateSources["owner-partner-setup.html"]){visible=true;break;}}catch{}
+   if(i<5)await new Promise(resolve=>setTimeout(resolve,3000));
+  }
+  if(!visible)stop("PUBLIC_OWNER_ENTRY_NOT_VERIFIED");
  }catch(e){
   // Restore the previous immutable Hosting version only if our release is still live.
-  if(didPublish){
+  {
    let current=null;
    try{current=await latest();}catch{}
    if(current===created.name){
@@ -188,9 +195,17 @@ async function main(){
   if(payload.length>12000000)stop("RESULT_TOO_LARGE");
   try{return payload?JSON.parse(payload):{};}catch{stop("HOSTING_JSON");}
  };
+ const publicGet=async()=>{
+  const uri="https://nico-factory.web.app/owner-partner-setup.html?owner_release="+Date.now();
+  const response=await fetch(uri,{method:"GET",cache:"no-store",redirect:"error",headers:{"Cache-Control":"no-cache"}});
+  if(response.status!==200)stop("PUBLIC_OWNER_HTML_HTTP");
+  const text=await response.text();
+  if(text.length>150000)stop("PUBLIC_OWNER_HTML_TOO_LARGE");
+  return text;
+ };
  await releaseOwnerEntryOneFile({
   request,historicalSources:readPublishedOwnerSetupSources(),
-  candidateSources,release,log:console.log
+  candidateSources,release,log:console.log,publicGet
  });
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))
