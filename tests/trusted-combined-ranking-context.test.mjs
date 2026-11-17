@@ -150,7 +150,7 @@ test("existing active count sharing works without any additional ranking or name
 });
 
 test("optional existing name approvals are strict display permissions, never count gates",async()=>{
- for(const path of ["companies/hub/rankingApprovals/p1","companies/p1/rankingApprovals/hub"]){
+ for(const path of ["companies/hub/rankingApprovals/p1"]){
   for(const mutate of [
    f=>f.docs.delete(path),
    ...[["active",false],["approvedByUid","otherOwner"],["individualNamesApproved",false],
@@ -174,13 +174,28 @@ test("optional existing name approvals are strict display permissions, never cou
   "existing individual-name approval is independent of obsolete ranking consent");
 });
 
+test("partner Owner approval is never required or queried when hub Owner publishes names",async()=>{
+ const f=fakeDb();
+ f.docs.delete("companies/p1/rankingApprovals/hub");
+ f.docs.get("partnerRelations/p1").individualNamesApprovedByPartner=false;
+ f.docs.get("partnerRelations/p1").combinedRankingApprovedByPartner=false;
+ for(const uid of ["hubOwner","partnerOwner"]){
+  const ctx=await load(f)(await verified(uid));
+  assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
+  assert.deepEqual(ctx.publicNameCompanyIds,["hub","p1"]);
+ }
+ assert(!f.ops.some(x=>x.kind==="get"&&x.path==="companies/p1/rankingApprovals/hub"));
+ assert(f.ops.every(x=>x.kind!=="get"||
+  !/(?:records|recordCorrections|revenueGoals)/.test(x.path)));
+});
+
 test("an unclaimed linked partner remains count-eligible without impersonating its Owner",async()=>{
  for(const ownerUid of [undefined,null,""]){
   const f=fakeDb();if(ownerUid===undefined)delete f.docs.get("companies/p1").ownerUid;
   else f.docs.get("companies/p1").ownerUid=ownerUid;
   const ctx=await load(f)(await verified("hubOwner"));
   assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
-  assert.deepEqual(ctx.publicNameCompanyIds,["hub"]);
+  assert.deepEqual(ctx.publicNameCompanyIds,["hub","p1"]);
   await assert.rejects(load(f)(await verified("partnerOwner")),refuse,
    "a viewer still needs the company's actual Owner identity");
  }
@@ -264,7 +279,7 @@ test("legacy rank-only fixture requires the independently verified all-name poli
  const body=await success.json();
  assert.equal(body.schema,"nico-combined-rank-only-v1");
  assert(!/"(?:count|totalRevenue|unitPrice|cashback|uid)"/.test(JSON.stringify(body)));
- f.docs.get("companies/p1/rankingApprovals/hub").active=false;
+ f.docs.get("companies/hub/rankingApprovals/p1").active=false;
  const denied=await handler(get());
  assert.equal(denied.status,503);
  assert.deepEqual(await denied.json(),{error:"request_blocked"});
@@ -316,7 +331,7 @@ test("a partner without existing audience-name approval sees only its own compan
    active:true,scope:"combined_rank_only",version:1,individualNamesApproved:true
   });
  assert.deepEqual((await load(f)(await verified("partnerOwner"))).publicNameCompanyIds,["hub","p1","p2"]);
- f.docs.get("partnerRelations/p1").individualNamesApprovedByPartner=false;
+ f.docs.get("partnerRelations/p1").individualNamesApprovedByHub=false;
  const ctx=await load(f)(await verified("partnerOwner"));
  assert.deepEqual(ctx.approvedCompanyIds,["hub","p1","p2"]);
  assert.deepEqual(ctx.publicNameCompanyIds,["p1"],
