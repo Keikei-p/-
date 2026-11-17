@@ -55,7 +55,8 @@ function singleReplace(text,from,to){
 }
 for(const path of paths){
  const old=execFileSync("git",["show","origin/main:"+path],{encoding:"utf8"});
- let expected=singleReplace(old,"const ",declaration+"const ");
+ if(!/^const /m.test(old)||old.includes("LEGACY_COMBINED_LIGHT_AIR"))fail("UNREVIEWED_BASE_SOURCE");
+ let expected=old.replace(/^const /m,declaration+"const ");
  let count=0;
  for(const [before,after] of rewrites){
   const seen=expected.split(before).length-1;
