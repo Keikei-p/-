@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
+const {createPartnerSubmissionPublicationGuard}=
+ require("../functions-partner-workspace/submission-publication-guard.cjs");
+const {KEYS}=require("../functions-partner-workspace/approved-published-categories.cjs");
 import {createOwnerProductVisibilityStore}
  from "../ranking/owner-product-visibility-firestore.mjs";
 import {buildOwnerVisibleCountRanking}
@@ -59,7 +64,7 @@ function fake(){
  const store=createOwnerProductVisibilityStore({
   db,FieldValue:{serverTimestamp:()=> "SERVER_TIMESTAMP"}
  });
- return {store,state,get writes(){return writes}};
+ return {store,state,tx,db,get writes(){return writes}};
 }
 test("owner starts with every shared product OFF, raw prices are NEVER sent",async()=>{
  const f=fake(),status=await f.store.readStatus(principal);
@@ -392,4 +397,47 @@ test("legacy 光/AIR maps ONLY to its exact combined category; toggling OFF keep
  assert.equal(f.state.get("products/combined").revenue,25000);
  assert.equal(f.state.get("companies/hub/rankingProductVisibility/shared")
   .enabledHubProductIds.includes("combined"),false);
+});
+
+
+test("Owner ON -> existing partner input allowed -> OFF blocks new counts, history stays -> re-ON restores input",async()=>{
+ const f=fake(),zero=Object.fromEntries(KEYS.map(key=>[key,0]));
+ const scope={verifiedByServer:true,kind:"partner",uid:"partner-worker",
+  cid:"partner",hubId:"hub"};
+ const verify=createPartnerSubmissionPublicationGuard({db:f.db});
+ await assert.rejects(verify({tx:f.tx,scope,
+  previousCounts:zero,nextCounts:{...zero,NURO:1}}),
+  /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/,
+  "with no Owner publication, partner must not write that category");
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:0});
+ const enabled=await verify({tx:f.tx,scope,previousCounts:zero,
+  nextCounts:{...zero,NURO:3}});
+ assert.deepEqual([...enabled.enabledCategories],["NURO"]);
+ assert.equal(enabled.publicationVersion,1);
+ assert.deepEqual(f.state.get("companies/hub/rankingSkuMappings/shared")
+  .bindings,[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}]);
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:false,expectedVersion:1});
+ const old={...zero,NURO:3};
+ const off=await verify({tx:f.tx,scope,previousCounts:old,nextCounts:old});
+ assert.deepEqual([...off.enabledCategories],[]);
+ await assert.rejects(verify({tx:f.tx,scope,
+  previousCounts:old,nextCounts:{...old,NURO:4}}),
+  /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/,
+  "OFF must not allow new input");
+ await assert.rejects(verify({tx:f.tx,scope,
+  previousCounts:old,nextCounts:zero}),
+  /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/,
+  "OFF must never reset earlier 3 saved counts");
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:2});
+ const resumed=await verify({tx:f.tx,scope,previousCounts:old,
+  nextCounts:{...old,NURO:4}});
+ assert.deepEqual([...resumed.enabledCategories],["NURO"]);
+ assert.equal(resumed.publicationVersion,3);
+ const map=f.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.equal(map.version,1,"ON/OFF does not duplicate existing mappings");
+ assert.equal(map.bindings.length,1);
+ assert.equal(f.state.get("products/nuro").revenue,25000);
 });
