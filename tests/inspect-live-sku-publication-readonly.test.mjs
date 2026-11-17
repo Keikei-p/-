@@ -18,15 +18,14 @@ const base=()=>{
    {id:"nuro",companyId:"hub",name:"NURO光",active:true},
    {id:"air",companyId:"hub",name:"SB光・AIR（旧合算）",active:true}
   ]};
- return {hubId:"hub",ownerUid:"owner",relations,visibility,mapping,catalog,
-  approvals:[{hubApproved:true,partnerApproved:true,namesApproved:true}]};
+ return {hubId:"hub",ownerUid:"owner",relations,visibility,mapping,catalog};
 };
-test("real owner-published count-only settings + reciprocal consent are ready",()=>{
+test("owner-published count-only settings require no bilateral ranking consent",()=>{
  const r=assessSkuPublication(base());
  assert.equal(r.publishedCatalogReady,true);
  assert.equal(r.partnerCompaniesMapped,1);
  assert.equal(r.enabledCategoriesMappedToAllPartners,true);
- assert.equal(r.reciprocalOwnerRankConsentReady,true);
+ assert.equal(Object.hasOwn(r,"reciprocalOwnerRankConsentReady"),false);
  assert.doesNotMatch(JSON.stringify(r),/owner|hubId|nuro|air|uid|email|token|￥|円/);
 });
 test("missing Owner publication does not claim readiness or modify previous partner counts",()=>{
@@ -35,8 +34,8 @@ test("missing Owner publication does not claim readiness or modify previous part
  const r=assessSkuPublication(v);
  assert.equal(r.publishedCatalogReady,false);
  assert.equal(r.partnerCompaniesMapped,0);
- assert.equal(r.reciprocalOwnerRankConsentReady,true,
-  "approved ranking consent must remain independently visible");
+ assert.equal(Object.hasOwn(r,"reciprocalOwnerRankConsentReady"),false,
+  "bilateral ranking consent is not a publication prerequisite");
  assert.deepEqual(previous.relations, v.relations);
  assert.deepEqual(previous.visibility, v.visibility);
 });
@@ -61,8 +60,8 @@ test("missing one partner category mapping fails readiness instead of inventing 
  const r=assessSkuPublication(p);
  assert.equal(r.enabledCategoriesMappedToAllPartners,false);
  assert.equal(r.partnerCompaniesMapped,1);
- const q=base();q.approvals[0].namesApproved=false;
- assert.equal(assessSkuPublication(q).reciprocalOwnerRankConsentReady,false);
+ const q=base();q.relations[0].active=false;
+ assert.throws(()=>assessSkuPublication(q),/STOP_SKU_PUBLICATION_READONLY_RELATION_UNTRUSTED/);
 });
 class DB{
  constructor(){this.docs=new Map();this.reads=[];}
@@ -117,34 +116,37 @@ test("bounded live metadata reader checks only approved count-only paths, never 
  assert.equal(r.activeApprovedPartnerCount,1);
  assert.equal(r.ownerPublicationCatalogReady,true);
  assert.equal(r.allEnabledPartnerSkuMapped,true);
- assert.equal(r.reciprocalOwnerRankConsentReady,true);
+ assert.equal(Object.hasOwn(r,"reciprocalOwnerRankConsentReady"),false);
  assert.equal(r.safeToEnableNewRanking,false,"no real logged-in proof");
  assert.equal(r.productionDocumentWrites,0);
  assert.equal(r.blockingReasons.length,0);
- assert(db.reads.length<=9);
+ assert(db.reads.length<=6);
+ assert(!db.reads.some(x=>x.includes("/rankingApprovals/")),
+  "no bilateral Owner approval GET is allowed in publication readiness");
  assert(!db.reads.some(s=>/^(products|records|recordCorrections|revenueGoals|users)\//.test(s)));
  assert.doesNotMatch(JSON.stringify(r),/secret|price|token|salary|50000/);
 });
-test("missing live catalog or approval reports blockers and never creates a document",async()=>{
+test("missing live catalog reports blockers without requiring another company's approval",async()=>{
  const db=live();
  db.docs.delete("companies/hub/rankingCountPublicCatalog/shared");
  db.docs.delete("companies/partner/rankingApprovals/hub");
  const before=[...db.docs].map(([k,v])=>[k,structuredClone(v)]);
  const r=await inspectSkuPublication(db);
  assert.equal(r.ownerPublicationCatalogReady,false);
- assert.equal(r.reciprocalOwnerRankConsentReady,false);
+ assert.equal(Object.hasOwn(r,"reciprocalOwnerRankConsentReady"),false);
  assert(r.blockingReasons.includes("OWNER_PUBLIC_CATALOG_MISSING"));
  assert.deepEqual([...db.docs],before);
 });
-test("missing catalog cannot falsely imply missing Owner ranking consent",async()=>{
+test("missing catalog cannot invent bilateral approval as a blocker",async()=>{
  const db=live();
  db.docs.delete("companies/hub/rankingCountPublicCatalog/shared");
  const before=structuredClone([...db.docs]);
  const r=await inspectSkuPublication(db);
  assert.equal(r.ownerPublicationCatalogReady,false);
- assert.equal(r.reciprocalOwnerRankConsentReady,true);
+ assert.equal(Object.hasOwn(r,"reciprocalOwnerRankConsentReady"),false);
  assert(r.blockingReasons.includes("OWNER_PUBLIC_CATALOG_MISSING"));
  assert(!r.blockingReasons.includes("RECIPROCAL_RANK_CONSENT_INCOMPLETE"));
+ assert(!db.reads.some(x=>x.includes("/rankingApprovals/")));
  assert.equal(r.productionDocumentWrites,0);
  assert.deepEqual([...db.docs],before);
 });
