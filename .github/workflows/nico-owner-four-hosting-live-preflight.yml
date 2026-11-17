@@ -57,7 +57,7 @@ jobs:
       - name: Require exact currently reviewed main
         shell: bash
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
@@ -67,7 +67,7 @@ jobs:
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
       - name: Attach existing cloud read identity for this runner only
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: \${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         shell: bash
         run: |
           set -euo pipefail
