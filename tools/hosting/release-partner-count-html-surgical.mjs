@@ -43,7 +43,7 @@ export function planSinglePartnerCountHtmlRelease({files,oldHashes,newHash,index
   if(!old.has(required))stop("REQUIRED_HOSTING_FILE_MISSING");
  if(old.get("/index.html")!==indexHash)stop("EXISTING_SALES_APP_INDEX_CHANGED");
  const current=old.get(ASSET),already=current===newHash;
- if(!already&&!oldHashes.includes(current))stop("UNREVIEWED_OLD_PANEL_HASH");
+ if(!already&&!oldHashes.includes(current))stop("UNREVIEWED_OLD_PARTNER_HTML_HASH");
  const next=new Map(old);
  next.set(ASSET,newHash);
  if(next.size!==old.size||[...old].some(([p,hash])=>
