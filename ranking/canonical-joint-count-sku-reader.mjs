@@ -20,6 +20,8 @@ import {auditNoFinancialKeys}
  from "../security/public-projection.mjs";
 import {mergeVerifiedTwoMonthInputs}
  from "./verified-two-month-count-input.mjs";
+import {linkAllRegisteredCountsWithoutSetup}
+ from "./zero-setup-count-linker.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -91,7 +93,8 @@ function partnerRankingSource(source){
  return result;
 }
 export function composeCanonicalMonthlyRankingInput({
- context,hubSource,partnerSources,skuMap,hubOwnerUid,month,serverAsOf
+ context,hubSource,partnerSources,skuMap,hubOwnerUid,month,serverAsOf,
+ zeroSetupLink=false
 }={}){
  if(!context||context.serverVerified!==true||
     !["hub_owner","partner_owner"].includes(context.role)||
@@ -102,12 +105,13 @@ export function composeCanonicalMonthlyRankingInput({
     context.approvedCompanyIds.length>30||
     !context.approvedCompanyIds.includes(context.hubCompanyId)||
     !array(partnerSources)||!hubSource||
-    !skuMap||skuMap.active!==true||
-    skuMap.hubCompanyId!==context.hubCompanyId||
-    skuMap.ownerUid!==hubOwnerUid||
-    skuMap.reviewedByUid!==hubOwnerUid||
-    !Number.isSafeInteger(skuMap.version)||skuMap.version<1||
-    !array(skuMap.bindings)||skuMap.bindings.length>1000)
+    (zeroSetupLink!==true&&(
+     !skuMap||skuMap.active!==true||
+     skuMap.hubCompanyId!==context.hubCompanyId||
+     skuMap.ownerUid!==hubOwnerUid||
+     skuMap.reviewedByUid!==hubOwnerUid||
+     !Number.isSafeInteger(skuMap.version)||skuMap.version<1||
+     !array(skuMap.bindings)||skuMap.bindings.length>1000)))
    STOP();
  const asOf=safeDay(serverAsOf,month);
  const hub=context.hubCompanyId;
@@ -135,11 +139,13 @@ export function composeCanonicalMonthlyRankingInput({
   sourceProducts.set(s.companyId,set);
  }
  const seen=new Set();
- const groups=hubSource.products.map(p=>({
+ const groups=zeroSetupLink===true?
+  linkAllRegisteredCountsWithoutSetup({hubCompanyId:hub,
+   hubSource,partnerSources:sources.slice(1)}):hubSource.products.map(p=>({
   companyId:hub,productId:p.sourceId,
   groupId:p.sourceId,groupName:p.name
  }));
- for(const b of skuMap.bindings){
+ for(const b of zeroSetupLink===true?[]:skuMap.bindings){
   if(!b||Object.keys(b).sort().join("|")!==
       ["companyId","productId","hubProductId"].sort().join("|")||
      !valid(b.companyId)||!valid(b.productId)||!valid(b.hubProductId)||
@@ -190,7 +196,7 @@ function trustedJapanAsOf(month,clock){
   .toISOString().slice(0,10);
  return month===today.slice(0,7)?today:end;
 }
-export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}={}){
+export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),zeroSetupLink=false}={}){
  if(typeof clock!=="function")STOP();
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
@@ -215,19 +221,21 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
   const hubRef=db.collection("companies").doc(hubId);
   const mappingRef=hubRef.collection("rankingSkuMappings").doc("shared");
   const partners=context.approvedCompanyIds.filter(x=>x!==hubId);
-  const [hubCompanySnap,mappingSnap,hubSource,...partnerSources]=
-   await Promise.all([
-    tx.get(hubRef),tx.get(mappingRef),
+  const snapshots=await Promise.all([
+    tx.get(hubRef),...(zeroSetupLink===true?[]:[tx.get(mappingRef)]),
     loadHub({tx,hubCompanyId:hubId,month,context}),
     ...partners.map(partnerCompanyId=>loadPartner({
      tx,hubCompanyId:hubId,partnerCompanyId,month,context
     }))
    ]);
+  const [hubCompanySnap,...rest]=snapshots;
+  const mappingSnap=zeroSetupLink===true?null:rest.shift();
+  const [hubSource,...partnerSources]=rest;
   const hubCompany=doc(hubCompanySnap);
   if(!valid(hubCompany.ownerUid)||hubCompany.active===false||
-     !mappingSnap.exists)STOP();
+     zeroSetupLink!==true&&!mappingSnap?.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
-  sameTime(mappingSnap,hubSource.readTime);
+  if(mappingSnap)sameTime(mappingSnap,hubSource.readTime);
   // Recover legacy company-only daily reports from the SAME verified
   // transaction, without assigning their counts to a guessed staff/team.
   // The legacy reader rejects overlap with staff-summary or staff entries.
@@ -239,7 +247,8 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date()}=
   ));
   const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
-   skuMap:doc(mappingSnap),hubOwnerUid:hubCompany.ownerUid,
+   skuMap:zeroSetupLink===true?null:doc(mappingSnap),
+   zeroSetupLink,hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
   const primary={...original,unassigned:legacyByCompany.flat()};
