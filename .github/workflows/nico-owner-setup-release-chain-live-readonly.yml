@@ -56,12 +56,14 @@ jobs:
             test "$(git hash-object tools/production/inspect-owner-setup-release-chain-readonly.mjs)" = 4504449f997b1727f69f00d052c019671c2578bb
             test "$(git hash-object tests/inspect-live-sku-publication-readonly.test.mjs)" = 218bb967fc5ef82c4ec769b44cf7c1244c1b9504
             test "$(git hash-object tests/inspect-owner-setup-release-chain-readonly.test.mjs)" = 97b5db26c3ba3930f768842ff08f513876701633
+            test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = 6eb64ba4ccfb456df60fa48b9970c6d77513d12f
+            test "$(git hash-object tests/owner-only-setup-replacement-guard.test.mjs)" = 0b0649c549007fc2bc5e12492610572ea82b0686
           else
             test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
             test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
           fi
           node --check tools/production/inspect-owner-setup-release-chain-readonly.mjs
-          node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs
+          node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs tests/owner-only-setup-replacement-guard.test.mjs
           node --test tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-setup-six-release-scope.test.mjs tests/owner-setup-additive-hosting-release.test.mjs
           node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
           echo 'OWNER_RELEASE_CHAIN_OFFLINE_ONLY_NO_DEPLOY'
