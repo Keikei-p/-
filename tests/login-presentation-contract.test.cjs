@@ -40,7 +40,9 @@ test('boot and success overlay is passive and contains no auth operations', () =
   assert.match(controller, /visible\(app\)/);
   assert.doesNotMatch(controller, /sessionStorage/, 'repeated page loads must not suppress startup');
   assert.match(controller, /flash\('boot',2000\)/, '2-second startup phase on every load');
-  assert.match(controller, /flash\('pending',1600\)/, 'visible login-in-progress phase');
+  assert.doesNotMatch(controller, /flash\('pending'/, 'passkey and button presses do not start an overlay');
+  assert.doesNotMatch(controller, /button\.addEventListener\('click'/, 'passkey or credential UI must never retrigger the FX');
+  assert.match(controller, /queuedSuccess/, 'boot must finish before a fast sign-in success overlay');
   assert.match(html, /id="nfFXLoadingHelp"/);
   assert.match(html, /id="nfFXRetry"/);
   assert.match(controller, /showLoading\(true\)/);
@@ -49,4 +51,9 @@ test('boot and success overlay is passive and contains no auth operations', () =
   assert.doesNotMatch(controller, /signInWith|createUserWith|signOut|setDoc|updateDoc|deleteDoc|fetch\s*\(/);
   const css = extract('<style id="nfPremiumLogin">', '</style>');
   assert.match(css, /pointer-events:none/);
+  assert.match(css, /height:100svh/, 'FX uses a stable mobile viewport height');
+  assert.match(css, /min-height:48px;border-radius:11px;font-size:16px/, 'iOS credential fields must not zoom the page on focus');
+  assert.match(css, /nfOrbitReverse/, 'visibly moving rings are retained');
+  assert.match(css, /nfFXSuccess/, 'success has a dedicated animation');
+  assert.match(css, /#nfLoginFX \.nf-ring:before/, 'circular sweep is visible even during boot');
 });

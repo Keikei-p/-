@@ -1121,3 +1121,35 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 限界: 通信やFirebaseのサーバー読み取りそのものが遅い場合、今回のUI変更は処理時間の短縮や通信障害の修復を保証しない。真っ白状態を可視化し、ユーザーの手動回復操作を提供する。実端末ログインや長時間停止の再現は別途検証が必要。
 - GitHubの保護ラベル `sales-production-reviewed` は技術レビューの事実記録であり、本人の署名や本番GOを意味しない。リリース成功・本番確認はActionsログで実際に確認後に報告する。
 - 管理者本人の独立署名: **未取得**。この文書時点の公開状態: **未実施**。
+
+
+---
+
+## NICO login FX PR #786 signoff
+
+### 公開依頼と対象
+- 2026-11-18 JST：ユーザーから「よし本番」「よろしく」と本番公開の意思表示を受領。正式な管理者署名とは別に記録。
+- PR： https://github.com/Keikei-p/-/pull/786
+- 対象：営業実績アプリ /index.html 内の既存ログイン演出4か所だけ（iOS入力文字サイズ、FX CSS、低モーション表示、表示専用JS）。
+- Firebase Auth / Firestore / Functions / Rules / 商材 / 売上 / 単価 / CB / 実績 / 監査履歴 / 協力店データ：変更なし。
+- 既存の別作業で本番配信済みのHTML全体を保持し、単純なGitHub版上書きは禁止。
+
+### 実検証
+- GitHub Actions 読取専用確認：https://github.com/Keikei-p/-/actions/runs/44140725966
+- 公開中HTML SHA256：0a07f7b3df37055bd8ece616b776e02a6c8957dc5bfc02a50a7787c3bd951484、893384 bytes
+- 限定差替え候補 SHA256：ca7ef44b66e576cc4734ddf96a38d0a8d8636c5fe8502c58bb239f08ed1c4b9d、895731 bytes
+- LIVE_FX_SURGICAL_READONLY_PASS_NO_DEPLOY（4領域の元・先SHA確認、他の公開バイトすべて保持して逆変換一致）
+- tests/login-fx-passkey-stability.test.cjs、tests/login-fx-visible-on-iphone.test.cjs、tests/login-presentation-contract.test.cjs のUI契約テストを実行
+- Sales App Validation成功の過去証跡：https://github.com/Keikei-p/-/actions/runs/44138992582
+- 本番限定公開ツールは別途SHA固定、Hosting全既存ファイル保全、変更中の公開版ドリフト停止を要求
+
+### 本番運用の承認欄（本人だけが記入）
+- sales-production-reviewed ラベル：適用済み（GitHub管理者接続を確認した後、明示的な本番公開指示に基づき2026-11-18 JSTに付与。別途の本人署名とは異なる）
+- 管理者または独立レビュー担当者による GitHub 承認：未取得
+- 担当者署名（本人記入）: 未記入
+- 署名日（本人記入）: 未記入
+- 保護ゲート最新PR HEAD成功：未確認
+- 本番Hosting限定公開：未実施
+- 公開後の本人iPhone表示・ログイン確認：未実施
+
+未署名・未承認の状態を公開承認完了とみなさず、本番デプロイは行わない。

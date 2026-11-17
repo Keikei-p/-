@@ -4559,7 +4559,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 #authScreen .auth-title{margin-top:7px;text-align:left;font-size:clamp(23px,3vw,30px)}
 #authScreen .auth-description{text-align:left;margin-top:5px;color:#c4d5e9;font-size:13px}
 #authScreen .form-group label{font-size:12px;color:#e1edff}
-#authScreen .form-group input:not([type="checkbox"]):not([type="radio"]),#authScreen .form-group select{background:#07172ce8;border:1px solid #82a7cb72;color:#fff;min-height:48px;border-radius:11px}
+#authScreen .form-group input:not([type="checkbox"]):not([type="radio"]),#authScreen .form-group select{background:#07172ce8;border:1px solid #82a7cb72;color:#fff;min-height:48px;border-radius:11px;font-size:16px}
 #authScreen .form-group input::placeholder{color:#acbad0}
 #authScreen .form-group input:focus{border-color:#69e0ff;box-shadow:0 0 0 3px #69cfff26}
 #authScreen #authButton{min-height:50px;border-radius:11px;color:#fff;background:linear-gradient(100deg,#22c6e8,#0a8df5 63%,#5650eb);border:1px solid #72dfff8f;box-shadow:0 12px 29px #0e8ff34b;font-weight:800}
@@ -4569,26 +4569,38 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 #authScreen #accountRecoveryHelp{background:#112c4d!important;color:#dfedff!important;border:1px solid #4976a4}
 #authScreen #partnerEmailLinkVerifyPanel,#authScreen #partnerEmailLinkPasswordPanel{background:#152c4d;color:#eaf6ff}
 #authScreen #partnerInviteAtMain:not([hidden]){max-width:850px;margin:25px auto;padding:24px;border-radius:15px;background:#fff;color:#142b48}
-#nfLoginFX{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;pointer-events:none;visibility:hidden;opacity:0;background:radial-gradient(circle at 50% 45%,#1c447b,#061126 67%);color:#f4fbff;transition:opacity .22s,visibility .22s}
+#nfLoginFX{position:fixed;inset:0;width:100%;height:100svh;z-index:9999;display:grid;place-items:center;overflow:hidden;isolation:isolate;pointer-events:none;visibility:hidden;opacity:0;background:radial-gradient(ellipse at 50% 42%,#163e72 0%,#0b2040 40%,#050e20 82%);color:#f4fbff;transition:opacity .22s ease,visibility .22s ease}
 #nfLoginFX.on{visibility:visible;opacity:1}
-#nfLoginFX[data-phase="loading"] .nf-ring{animation:nfLoginPulse 1.3s ease-in-out infinite}
+#nfLoginFX:before{content:"";position:absolute;inset:-18%;pointer-events:none;background:radial-gradient(ellipse at 27% 43%,#27c9ff24,transparent 42%),radial-gradient(ellipse at 75% 64%,#ac64ff25,transparent 43%),linear-gradient(#92dfff0a 1px,transparent 1px),linear-gradient(90deg,#92dfff0a 1px,transparent 1px);background-size:auto,auto,42px 42px,42px 42px;animation:nfFXAtmosphere 5s ease-in-out infinite alternate}
+#nfLoginFX:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(135deg,transparent 38%,#a4e9ff0b 50%,transparent 62%);animation:nfFXLightSweep 3s ease-in-out infinite}
 #nfFXLoadingHelp{max-width:320px;margin:22px auto 0;padding:12px 15px;border:1px solid #74c5ff65;border-radius:12px;background:#0b244dcc;color:#eff9ff;font-size:12px;line-height:1.7}
 #nfFXLoadingHelp[hidden],#nfFXRetry[hidden]{display:none!important}
 #nfFXRetry:not([hidden]){display:block;pointer-events:auto;cursor:pointer;margin:12px auto 0;border:1px solid #91e6ff;border-radius:9px;padding:10px 14px;background:#14578f;color:#fff;font-size:14px;font-weight:750}
 #nfFXRetry:focus-visible{outline:3px solid #91e6ff;outline-offset:3px}
-#nfLoginFX[data-phase="pending"] .nf-ring{animation:nfLoginPulse 1s ease-in-out infinite}
-#nfLoginFX[data-phase="success"] .nf-ring{border-color:#78e5ff;box-shadow:0 0 56px #57ddff88}
-@keyframes nfLoginPulse{50%{box-shadow:0 0 74px #46bdff99;transform:translate(-50%,-50%) scale(1.06)}}
-#nfLoginFX .nf-fx-center{text-align:center;position:relative}
-#nfLoginFX .nf-ring{position:absolute;width:182px;height:182px;left:50%;top:50%;transform:translate(-50%,-50%);border:1px solid #72d8ff7d;border-radius:50%;box-shadow:0 0 45px #39aaff33}
-#nfLoginFX .nf-ring:after{content:"";position:absolute;inset:16px;border:1px dashed #7ae6ff9b;border-radius:50%;animation:nfOrbit 10s linear infinite}
-#nfLoginFX .nf-fx-symbol{position:relative;font-size:48px;letter-spacing:-.12em;font-weight:900;color:#d5faff;text-shadow:0 0 24px #4adeff}
-#nfLoginFX .nf-fx-name{position:relative;margin-top:15px;font-size:13px;letter-spacing:.22em;font-weight:800}
-#nfLoginFX .nf-fx-detail{position:relative;margin-top:8px;font-size:10px;letter-spacing:.13em;color:#9bcff0}
-@keyframes nfOrbit{to{transform:rotate(360deg)}}@keyframes nfDraw{to{stroke-dashoffset:0}}
+#nfLoginFX .nf-fx-center{position:relative;z-index:1;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;width:min(340px,calc(100vw - 32px));min-height:252px;transform:translateZ(0)}
+#nfLoginFX .nf-fx-center:before{content:"";position:absolute;inset:18px 15px;border-radius:50%;z-index:-1;pointer-events:none;background:radial-gradient(circle,#2bc4ff38 0%,#6d55ff16 37%,transparent 70%);animation:nfFXGlow 2s ease-in-out infinite alternate}
+#nfLoginFX .nf-ring{position:absolute;width:196px;height:196px;left:50%;top:50%;transform:translate(-50%,-50%);border:1px solid #77d7ff65;border-radius:50%;box-shadow:0 0 35px #279aff27,inset 0 0 29px #289aff12}
+#nfLoginFX .nf-ring:before{content:"";position:absolute;inset:-7px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0deg,#63e8ff 63deg,transparent 115deg,transparent 206deg,#e390ff 267deg,transparent 335deg);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));animation:nfOrbit 2.1s linear infinite}
+#nfLoginFX .nf-ring:after{content:"";position:absolute;inset:15px;border:1px dashed #83ddffa1;border-radius:50%;animation:nfOrbitReverse 7s linear infinite}
+#nfLoginFX .nf-fx-symbol{position:relative;font-size:50px;line-height:1.1;letter-spacing:-.11em;font-weight:900;color:#e5fbff;text-shadow:0 0 26px #51d6ff8f;animation:nfFXSymbol 2s ease-in-out infinite}
+#nfLoginFX .nf-fx-name{position:relative;margin-top:15px;font-size:13px;letter-spacing:.19em;font-weight:800;color:#fff;text-shadow:0 2px 17px #0e1d37}
+#nfLoginFX .nf-fx-detail{position:relative;margin-top:8px;font-size:10px;letter-spacing:.12em;color:#afd8f0}
+#nfLoginFX[data-phase="loading"] .nf-ring{animation:nfLoginPulse 1.3s ease-in-out infinite}
+#nfLoginFX[data-phase="success"] .nf-ring{border-color:#78e5ff;box-shadow:0 0 58px #57ddff88,inset 0 0 28px #57ddff2c}
+#nfLoginFX[data-phase="success"] .nf-ring:before{animation-duration:1.2s}
+#nfLoginFX[data-phase="success"] .nf-fx-symbol{color:#ccffed;text-shadow:0 0 34px #68ffd0;animation:nfFXSuccess .7s cubic-bezier(.2,.8,.2,1) both}
+@keyframes nfLoginPulse{50%{box-shadow:0 0 66px #46bdff85;transform:translate(-50%,-50%) scale(1.045)}}
+@keyframes nfOrbit{to{transform:rotate(360deg)}}
+@keyframes nfOrbitReverse{to{transform:rotate(-360deg)}}
+@keyframes nfFXGlow{to{opacity:.65;transform:scale(1.12)}}
+@keyframes nfFXSymbol{50%{transform:scale(1.06);text-shadow:0 0 37px #51d6ff}}
+@keyframes nfFXSuccess{0%{opacity:.35;transform:scale(.7)}65%{opacity:1;transform:scale(1.17)}100%{transform:scale(1)}}
+@keyframes nfFXAtmosphere{to{transform:translate3d(1.5%,-1%,0)}}
+@keyframes nfFXLightSweep{0%,100%{opacity:.1}50%{opacity:.75}}
+@keyframes nfDraw{to{stroke-dashoffset:0}}
 @media(max-width:760px){#authScreen .auth-wrapper{grid-template-columns:minmax(0,1fr);gap:12px;max-width:520px;padding:18px 15px 28px}#authScreen .nf-brand{text-align:center;padding:4px 0}#authScreen .nf-kicker{font-size:9px}#authScreen .nf-headline{font-size:clamp(29px,8vw,42px);margin:7px 0 4px}#authScreen .nf-headline span{display:inline}#authScreen .nf-headline span+span{margin-left:.23em}#authScreen .nf-japanese{font-size:13px}#authScreen .nf-accent,#authScreen .nf-message,#authScreen .nf-support,#authScreen .nf-graph{display:none}#authScreen .auth-card{padding:23px 21px;border-radius:18px}#authScreen .nf-card-kicker{margin-top:10px}}
 @media(max-width:370px){#authScreen .auth-wrapper{padding:12px 9px 22px}#authScreen .auth-card{padding:17px 15px}}
-@media(prefers-reduced-motion:reduce){#authScreen .nf-graph .nf-curve,#nfLoginFX .nf-ring:after,#nfLoginFX .nf-ring{animation:none!important}#nfLoginFX{transition:none!important}}
+@media(prefers-reduced-motion:reduce){#authScreen .nf-graph .nf-curve,#nfLoginFX:before,#nfLoginFX:after,#nfLoginFX .nf-ring,#nfLoginFX .nf-ring:before,#nfLoginFX .nf-ring:after,#nfLoginFX .nf-fx-symbol,#nfLoginFX .nf-fx-center:before{animation:none!important}#nfLoginFX{transition:none!important}}
 </style>
 
 </head>
@@ -38731,36 +38743,34 @@ recordDate.value =
 <script type="module" src="./sales-archive.js"></script>
 
 <script id="nfLoginFXController">
-/* Presentation-only login FX. No Auth, Firestore, finance or role writes. */
+/* Visual-only. The passkey/password dialog and input events never start an overlay. */
 (function(){'use strict';try{
  const box=document.getElementById('nfLoginFX');
  const auth=document.getElementById('authScreen');
  const app=document.getElementById('appScreen');
  const verification=document.getElementById('verificationScreen');
  const setup=document.getElementById('companySetupScreen');
- const button=document.getElementById('authButton');
  const error=document.getElementById('errorMessage');
- const email=document.getElementById('email');
- const password=document.getElementById('password');
  const help=document.getElementById('nfFXLoadingHelp');
  const retry=document.getElementById('nfFXRetry');
- if(!box||!auth||!app||!button||!email||!password||!help||!retry)return;
- let timer=0,waitTimer=0,phase='',visited=false,wasAuthVisible=true;
+ if(!box||!auth||!app||!help||!retry)return;
+ let timer=0,waitTimer=0,phase='',visited=false,wasAuthVisible=true,queuedSuccess=false;
  const visible=element=>!!element&&getComputedStyle(element).display!=='none';
  const noScreen=()=>![auth,app,verification,setup].some(visible);
  const symbol=document.getElementById('nfFXSymbol');
  const name=document.getElementById('nfFXName');
  const detail=document.getElementById('nfFXDetail');
+ if(!symbol||!name||!detail)return;
  function dismiss(){
-   clearTimeout(timer);clearTimeout(waitTimer);phase='';
+   clearTimeout(timer);clearTimeout(waitTimer);phase='';queuedSuccess=false;
    box.classList.remove('on');help.hidden=true;retry.hidden=true;
    box.setAttribute('aria-hidden','true');
  }
  function showLoading(force=false){
    if(!noScreen())return;
-   if(!force&&(phase==='boot'||phase==='pending')&&box.classList.contains('on'))return;
+   if(!force&&phase==='boot'&&box.classList.contains('on'))return;
    if(phase==='loading')return;
-   clearTimeout(timer);clearTimeout(waitTimer);phase='loading';
+   clearTimeout(timer);clearTimeout(waitTimer);phase='loading';queuedSuccess=false;
    box.dataset.phase='loading';
    symbol.textContent='NF';
    name.textContent='データを読み込み中';
@@ -38768,18 +38778,19 @@ recordDate.value =
    help.hidden=true;retry.hidden=true;
    box.setAttribute('aria-hidden','false');
    box.classList.add('on');
-   // Never leave all screens hidden with no feedback or force an automatic sign-out.
+   // A dark loading screen with recovery is safer than a permanent white page.
    waitTimer=setTimeout(()=>{
      if(phase==='loading'&&noScreen()){help.hidden=false;retry.hidden=false;}
    },12000);
  }
  function flash(next,duration){
+   // Keep the startup animation anchored for its full two seconds, even if a
+   // cached Auth session enters the dashboard during startup.
+   if(next==='success'&&phase==='boot'){queuedSuccess=true;return;}
    clearTimeout(timer);clearTimeout(waitTimer);phase=next;
    box.dataset.phase=next;
    if(next==='success'){
      symbol.textContent='✓';name.textContent='ログイン成功';detail.textContent='ダッシュボードを表示します';
-   }else if(next==='pending'){
-     symbol.textContent='NF';name.textContent='ログイン認証中';detail.textContent='安全に接続しています';
    }else{
      symbol.textContent='NF';name.textContent='NICO FACTORY';detail.textContent='SALES MANAGEMENT SYSTEM';
    }
@@ -38787,17 +38798,18 @@ recordDate.value =
    box.classList.add('on');
    timer=setTimeout(()=>{
      if(phase!==next)return;
+     if(next==='boot'&&queuedSuccess){
+       queuedSuccess=false;
+       phase='';
+       flash('success',2000);
+       return;
+     }
      if(noScreen())showLoading(true);else dismiss();
    },duration);
  }
- // Every new launch: exactly 2 seconds. Cached sessions do not suppress it.
+ // A real page launch gets a 2-second opening; no keyboard/credential triggers.
  if(visible(auth))flash('boot',2000);
- button.addEventListener('click',()=>{
-   if(button.disabled||!visible(auth))return;
-   if(button.textContent.trim()!=='ログイン')return;
-   if(!email.value.trim()||!password.value)return;
-   flash('pending',1600);
- },true);
+ else if(noScreen())showLoading();
  retry.addEventListener('click',()=>{
    if(phase==='loading'&&!retry.hidden&&!help.hidden)location.reload();
  });
@@ -38805,12 +38817,13 @@ recordDate.value =
    const showingAuth=visible(auth),showingApp=visible(app);
    const alternative=visible(verification)||visible(setup);
    if(showingAuth){
-     wasAuthVisible=true;if(!showingApp)visited=false;
+     wasAuthVisible=true;
+     if(!showingApp){visited=false;queuedSuccess=false;}
      if(phase==='loading')dismiss();
    }else if(showingApp&&wasAuthVisible&&!visited){
      visited=true;wasAuthVisible=false;flash('success',2000);
    }else if(showingApp||alternative){
-     if(phase==='loading'||phase==='pending')dismiss();
+     if(phase==='loading')dismiss();
    }else showLoading();
  };
  const observer=new MutationObserver(check);
@@ -38822,7 +38835,7 @@ recordDate.value =
    });
    errorObserver.observe(error,{childList:true,characterData:true,subtree:true});
  }
-}catch(_e){/* Optional visual layer cannot block the existing login. */}})();
+}catch(_e){/* Optional presentation can never block login. */}})();
 </script>
 </body>
 </html>
