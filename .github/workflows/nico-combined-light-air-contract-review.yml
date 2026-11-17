@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object scripts/ci/review-combined-light-air-exact-contract-20261118.cjs)" = 44a067ca9346578954ffceb5d74be5a436088cca
+          test "$(git hash-object scripts/ci/review-combined-light-air-exact-contract-20261118.cjs)" = 30857c1227ed8154c69c9b43a27033ac4b0cc502
           node --check scripts/ci/review-combined-light-air-exact-contract-20261118.cjs
           node scripts/ci/review-combined-light-air-exact-contract-20261118.cjs
       - name: Verify packaged count-only modules and financial boundary have not drifted
