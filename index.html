@@ -38800,6 +38800,7 @@ recordDate.value =
      if(phase!==next)return;
      if(next==='boot'&&queuedSuccess){
        queuedSuccess=false;
+       phase='';
        flash('success',2000);
        return;
      }
