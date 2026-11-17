@@ -1,5 +1,8 @@
 name: NICO login FX only surgical Hosting release
 on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/nico-premium-login-index-only-release.yml']
   push:
     branches: [main]
     paths: ['index.html', '.github/workflows/nico-premium-login-index-only-release.yml']
@@ -9,8 +12,38 @@ concurrency:
   group: nico-surgical-index-release
   cancel-in-progress: false
 jobs:
+  verify-live-login-without-writes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Compare the public index byte for byte with the premium login revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'id="nfPremiumLogin"' index.html
+          grep -Fq 'id="nfLoginFX"' index.html
+          grep -Fq 'id="nfLoginFXController"' index.html
+          curl --fail --silent --show-error --location --retry 2 --max-time 30 \
+            "https://nico-factory.web.app/?login_live_audit=$GITHUB_SHA" > "$RUNNER_TEMP/login-public.html"
+          if ! cmp -s index.html "$RUNNER_TEMP/login-public.html"; then
+            echo 'STOP_LIVE_INDEX_NOT_PREMIUM_LOGIN_BYTES'
+            exit 1
+          fi
+          for path in /partner-workspace.html /partner-invite.html /partner-counts.html; do
+            status=$(curl --silent --location --output /dev/null --write-out '%{http_code}' --max-time 30 "https://nico-factory.web.app$path")
+            test "$status" = 200 || { echo 'STOP_DEPENDENT_ROUTE_BAD_HTTP'; exit 1; }
+          done
+          echo 'LOGIN_PREMIUM_LIVE_BYTE_PARITY_PASS'
+          echo 'OTHER_EXISTING_PARTNER_ROUTES_HTTP_200'
+          echo 'LIVE_READ_ONLY_NO_DATA_WRITES'
   login-index-only:
-    if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(sales): premium login FX isolated (APPROVED INDEX ONLY)')
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      startsWith(github.event.head_commit.message, 'release(sales): premium login FX isolated (APPROVED INDEX ONLY)')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -32,7 +65,7 @@ jobs:
             test "$(git hash-object "$f")" = "$(git show 7c0a640c3a223d79ef49fd0d294edf80ec2dedd9:"$f" | git hash-object --stdin)"
           done
           actual=$(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)
-          expected=$(printf '%s\n' '.github/workflows/nico-login-presentation-live-preflight.yml' '.github/workflows/nico-premium-login-index-only-release.yml' 'docs/SALES_RELEASE_SIGNOFF.md' 'index.html' 'tests/login-presentation-contract.test.cjs' | LC_ALL=C sort)
+          expected=$(printf '%s\n' '.github/workflows/nico-premium-login-index-only-release.yml' | LC_ALL=C sort)
           test "$actual" = "$expected" || { echo 'STOP_UNREVIEWED_MAIN_CHANGESET'; exit 1; }
           remote=$(git ls-remote https://github.com/Keikei-p/-.git refs/heads/main | cut -f1)
           test "$remote" = "$GITHUB_SHA" || { echo 'STOP_NEWER_MAIN_EXISTS'; exit 1; }
