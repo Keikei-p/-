@@ -32,6 +32,34 @@ jobs:
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
             node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          elif [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:fix/owner-only-name-publication-20261117" ] &&
+               [ "${GITHUB_REPOSITORY:-}" = "Keikei-p/-" ] &&
+               node -e "const e=require(process.env.GITHUB_EVENT_PATH);if(e.pull_request?.number!==731||e.pull_request.head.repo.full_name!=='Keikei-p/-'||e.pull_request.base.repo.full_name!=='Keikei-p/-')process.exit(1)"; then
+            # This path reviews one exact Owner-only candidate and does not run a release.
+            # Keep historical main/other PR pins unchanged; reject unreviewed edits.
+            test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+            test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+            test -z "$FIREBASE_TOKEN"
+            test -z "$HUB_OWNER_COUNT_CORRECTION_V3_ENABLED"
+            git fetch --no-tags origin main
+            while IFS= read -r file; do
+              case "$file" in
+                .github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-setup-release-chain-live-readonly.yml|functions-partner-workspace/service.cjs|functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs|functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs|functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs|ranking/partner-month-readonly-loader.mjs|ranking/trusted-combined-ranking-context.mjs|tests/canonical-hub-owner-package.test.mjs|tests/inspect-live-sku-publication-readonly.test.mjs|tests/inspect-owner-setup-release-chain-readonly.test.mjs|tests/partner-month-readonly-loader.test.mjs|tests/ranking-owner-consent-service.test.mjs|tests/trusted-combined-ranking-context-emulator.test.mjs|tests/trusted-combined-ranking-context.test.mjs|tools/production/inspect-live-sku-publication-readonly.mjs|tools/production/inspect-owner-setup-release-chain-readonly.mjs|tools/production/prepare-canonical-hub-owner-correction-package.mjs|tools/production/prepare-hub-owner-correction-v3-package.mjs) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_ONLY_SCOPE: $file"; exit 1;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object index.html)" = 03e213565a2037c73913602701363476ae0db9fd
+            test "$(git hash-object partner-workspace.html)" = d8262633f35cf0f015de44c9a223c4289f8d2a6b
+            test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
+            test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 361e41d2a1259c33a5479e22073c6da3599d1697
+            test "$(git hash-object tools/production/prepare-hub-owner-correction-v3-package.mjs)" = b94abe19d04f8bba78f69ec967848fd8d31970db
+            test "$(git hash-object tools/production/prepare-canonical-hub-owner-correction-package.mjs)" = 2aca732471dbcc23b985791c67c7a34122df3aee
+            test "$(git hash-object tests/canonical-hub-owner-package.test.mjs)" = cdb26803c3533a32e60c6f17ebdfa63b42fc2a3b
+            node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
+            node --test tests/canonical-hub-owner-package.test.mjs
           else
             set -euo pipefail
             test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
@@ -68,6 +96,9 @@ jobs:
           test ! -e "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
           if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
             node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+            node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          elif [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:fix/owner-only-name-publication-20261117" ] &&
+               [ "${GITHUB_REPOSITORY:-}" = "Keikei-p/-" ]; then
             node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
           else
             node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare-candidate
