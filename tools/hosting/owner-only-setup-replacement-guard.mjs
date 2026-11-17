@@ -7,9 +7,9 @@ import {SOURCES,blobSha,uploadSha} from "./owner-setup-additive-guard.mjs";
 
 export const OWNER_ONLY_REPLACEMENTS=Object.freeze({
  "owner-partner-setup.html":"8cb4ad80c3c03658d1fb070339614cf2f5617d7b",
- "ranking/owner-partner-setup-mount.mjs":"9a167a2cc5e8c76ff22812fd3279cc047ca25f3b",
- "ranking/owner-product-visibility-panel.mjs":"c85aa14170ac4448b143ece873b4bc22079db05a",
- "ranking/owner-reviewed-sku-mapping-panel.mjs":"de06efe5e50bd6221f9c226c3ff994f632c9dcfd"
+ "ranking/owner-partner-setup-mount.mjs":"c6cec9b2ed46870277073911192a45114fea6a3b",
+ "ranking/owner-product-visibility-panel.mjs":"d36ab386b4979d2e5ba4b66ac2b0821a8c123b51",
+ "ranking/owner-reviewed-sku-mapping-panel.mjs":"1ee2861ce2dd4144d900097b67037ef252717060"
 });
 const REQUIRED=Object.freeze([
  "/index.html","/partner-workspace.html","/partner-invite.html",
