@@ -13,7 +13,7 @@ test("same original partner dashboard cards are the integration point, not an ex
  assert(source.includes("renderVerifiedInlineJointCards({"));
  assert(source.includes("document,roots,payload,expectedRole:\"partner_owner\""));
  assert(source.includes('period:countPeriod,start:dates[0],end:dates.at(-1)'));
- assert(source.includes("await refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates});"));
+ assert(source.includes("await refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates,summary});"));
  assert(source.includes("NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||"));
  assert(source.includes('$("countInlineJointCompanies").hidden=false;'));
  assert(source.includes('if(summary)renderCountOnlyDashboard(summary,dates);'));
