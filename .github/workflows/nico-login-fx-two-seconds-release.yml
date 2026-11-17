@@ -15,7 +15,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nico-surgical-index-release
+  group: nico-login-2s-validate-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   review:
@@ -51,6 +51,9 @@ jobs:
           node --check /tmp/nico-login-fx2s.js
           echo 'LOGIN_TWO_SECONDS_LOADING_OFFLINE_PASS_NO_DEPLOY'
   publish:
+    concurrency:
+      group: nico-surgical-index-release
+      cancel-in-progress: false
     needs: review
     if: >-
       github.event_name == 'push' &&
