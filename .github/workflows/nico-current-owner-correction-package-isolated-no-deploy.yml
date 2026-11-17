@@ -44,7 +44,7 @@ jobs:
             git fetch --no-tags origin main
             while IFS= read -r file; do
               case "$file" in
-                .github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-setup-release-chain-live-readonly.yml|.github/workflows/nico-verified-partner-count-standings-no-deploy.yml|functions-partner-workspace/service.cjs|functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs|functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs|functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs|ranking/partner-month-readonly-loader.mjs|ranking/trusted-combined-ranking-context.mjs|tests/canonical-hub-owner-package.test.mjs|tests/inspect-live-sku-publication-readonly.test.mjs|tests/inspect-owner-setup-release-chain-readonly.test.mjs|tests/partner-month-readonly-loader.test.mjs|tests/ranking-owner-consent-service.test.mjs|tests/trusted-combined-ranking-context-emulator.test.mjs|tests/trusted-combined-ranking-context.test.mjs|tools/production/inspect-live-sku-publication-readonly.mjs|tools/production/inspect-owner-setup-release-chain-readonly.mjs|tools/production/prepare-canonical-hub-owner-correction-package.mjs|tools/production/prepare-hub-owner-correction-v3-package.mjs) ;;
+                .github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-setup-release-chain-live-readonly.yml|.github/workflows/nico-verified-partner-count-standings-no-deploy.yml|ranking/owner-partner-setup-mount.mjs|tests/owner-partner-setup-mount.test.mjs|tests/partner-workspace.test.cjs|functions-partner-workspace/service.cjs|functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs|functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs|functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs|ranking/partner-month-readonly-loader.mjs|ranking/trusted-combined-ranking-context.mjs|tests/canonical-hub-owner-package.test.mjs|tests/inspect-live-sku-publication-readonly.test.mjs|tests/inspect-owner-setup-release-chain-readonly.test.mjs|tests/partner-month-readonly-loader.test.mjs|tests/ranking-owner-consent-service.test.mjs|tests/trusted-combined-ranking-context-emulator.test.mjs|tests/trusted-combined-ranking-context.test.mjs|tools/production/inspect-live-sku-publication-readonly.mjs|tools/production/inspect-owner-setup-release-chain-readonly.mjs|tools/production/prepare-canonical-hub-owner-correction-package.mjs|tools/production/prepare-hub-owner-correction-v3-package.mjs) ;;
                 *) echo "STOP_UNREVIEWED_OWNER_ONLY_SCOPE: $file"; exit 1;;
               esac
             done < <(git diff --name-only origin/main...HEAD)
@@ -54,12 +54,15 @@ jobs:
             test "$(git hash-object partner-workspace.html)" = d8262633f35cf0f015de44c9a223c4289f8d2a6b
             test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
             test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
-            test "$(git hash-object functions-partner-workspace/service.cjs)" = 361e41d2a1259c33a5479e22073c6da3599d1697
-            test "$(git hash-object tools/production/prepare-hub-owner-correction-v3-package.mjs)" = b94abe19d04f8bba78f69ec967848fd8d31970db
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = f78b1fa16f71848b20579ad220f82b703fe7f209
+            test "$(git hash-object tools/production/prepare-hub-owner-correction-v3-package.mjs)" = ea1f36aa9576e1d88921dbf5915a777a90bcca06
             test "$(git hash-object tools/production/prepare-canonical-hub-owner-correction-package.mjs)" = 2aca732471dbcc23b985791c67c7a34122df3aee
             test "$(git hash-object tests/canonical-hub-owner-package.test.mjs)" = cdb26803c3533a32e60c6f17ebdfa63b42fc2a3b
             node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
-            node --test tests/canonical-hub-owner-package.test.mjs
+            test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = 48e3b6ccaf783161ea1565eb530b54b7a25f6bff
+            test "$(git hash-object tests/owner-partner-setup-mount.test.mjs)" = 6c8df060f961469ee3c6c3968a1609ef37267e3e
+            test "$(git hash-object tests/partner-workspace.test.cjs)" = 9c2021a7c6ed68fa08eaf4767ca1f07c7794457e
+            node --test tests/canonical-hub-owner-package.test.mjs tests/partner-workspace.test.cjs tests/owner-partner-setup-mount.test.mjs
           else
             set -euo pipefail
             test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
