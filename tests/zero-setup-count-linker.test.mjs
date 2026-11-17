@@ -96,7 +96,8 @@ test("same actual 3-company ledger produces matching joint company, team, person
   consentVerified:true,isComplete:true,readTime:TIME,
   completeWindows:{current:true,previous:false},
   teams:[{id:"team1",name:"第一班",goalCount:null}],
-  roster:[{uid:"staff1",name:companyId+"担当",teamId:"team1"}],
+  roster:[{uid:"staff1",name:companyId+"担当",teamId:"team1"},
+   ...(companyId==="partner3"?[{uid:"staff2",name:"未報告担当",teamId:"team1"}]:[])],
   records:[{companyId,sourceId:day+"_"+companyId,uid:"staff1",
    teamId:"team1",date:day,totalCount:n,
    reportStatus:n===0?"no_result":"submitted",
@@ -146,7 +147,9 @@ test("same actual 3-company ledger produces matching joint company, team, person
  assert.deepEqual(owner.teamBreakdown.filter(x=>x.count>0)
   .map(x=>x.count).sort((a,b)=>a-b),[2,5,5]);
  assert(owner.memberRanking.some(x=>x.count===0&&x.rank===null),
-  "unreported staff are not ranked; submitted zero may be ranked");
+  "unreported staff do not rank");
+ assert(owner.memberRanking.some(x=>x.count===0&&x.rank!==null),
+  "explicitly submitted zero remains eligible for a rank");
  assert.deepEqual(partner.publicRanking.products.map(x=>[x.name,x.count]),
   owner.productRanking.map(x=>[x.name,x.count]));
  assert(!("companyBreakdown" in partner));
