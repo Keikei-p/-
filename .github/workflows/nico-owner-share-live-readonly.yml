@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
-          test "$(git hash-object index.html)" = 10de822d24a759b843b264d742d540a72553e67b
+          test "$(git hash-object index.html)" = f6d4815ecb09d4db0ba34144e6705926bdc7503c
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
           node --check tools/production/inspect-owner-share-live-readonly.mjs
