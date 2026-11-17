@@ -72,9 +72,16 @@ export function mountOwnerPartnerSetup({
     }
     status={role:"hub_owner",partners};
    }else status={role:"partner_user",partners:[]};
-  }catch{
-   if(!closed&&generation===token&&auth.currentUser===user)
-    message("協力店の連携状況を確認できません。自社Ownerでログインしてください。");
+  }catch(error){
+   if(!closed&&generation===token&&auth.currentUser===user){
+    // The new Owner setup route deliberately denies partner accounts. This
+    // is expected authorization behavior, not a partner count/login outage.
+    const denied=["permission-denied","functions/permission-denied"]
+     .includes(error?.code);
+    message(denied?
+     "商材ON/OFFと合同件数の設定は自社Owner専用です。協力店側での追加承認は不要です。":
+     "協力店の連携状況を確認できません。自社Ownerでログインしてください。");
+   }
    return false;
   }
   if(closed||generation!==token||auth.currentUser!==user)return false;
