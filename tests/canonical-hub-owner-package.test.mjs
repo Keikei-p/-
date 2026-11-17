@@ -7,7 +7,27 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {prepareCanonicalOwnerPackage,writeCanonicalOwnerPackage,OWNER_SOURCE,CODEBASE}
  from '../tools/production/prepare-canonical-hub-owner-correction-package.mjs';
+import {OWNER_ONLY_CANDIDATE,INTEGRATED_CANDIDATE,gitBlob,
+ makeOwnerOnlyCandidateOwnerPackage,makeIntegratedCandidateOwnerPackage}
+ from '../tools/production/prepare-hub-owner-correction-v3-package.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
+test('the new Owner-only correction candidate pins only the reviewed service change and cannot relax historical protections',()=>{
+ const changed='functions-partner-workspace/service.cjs';
+ const diffs=Object.keys(OWNER_ONLY_CANDIDATE).filter(path=>
+  OWNER_ONLY_CANDIDATE[path]!==INTEGRATED_CANDIDATE[path]);
+ assert.deepEqual(diffs,[changed]);
+ const files=Object.fromEntries(Object.keys(OWNER_ONLY_CANDIDATE).map(path=>
+  [path,readFileSync(join(root,path),'utf8')]));
+ assert.equal(gitBlob(files[changed]),OWNER_ONLY_CANDIDATE[changed]);
+ assert.equal(makeOwnerOnlyCandidateOwnerPackage(files).report.productionDataWrites,0);
+ assert.throws(()=>makeIntegratedCandidateOwnerPackage(files),/SOURCE_CHANGED/,
+  'the historical reviewed release source must stay immutable');
+ assert.throws(()=>makeOwnerOnlyCandidateOwnerPackage({...files,
+  [changed]:files[changed]+'\\n'}),/SOURCE_CHANGED/);
+ assert.throws(()=>makeOwnerOnlyCandidateOwnerPackage({...files,
+  'firestore.rules':files['firestore.rules']+'\\n'}),/SOURCE_CHANGED/);
+});
+
 test('reuse the reviewed existing Owner implementation, two callable names and codebase without a second server implementation',()=>{
  const p=prepareCanonicalOwnerPackage(root);
  assert.equal(p.report.codebase,'hub-owner-correction-v3');
