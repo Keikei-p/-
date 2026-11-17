@@ -55,12 +55,12 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             # A signed, reviewed PR #786 merge is the only automatic publish candidate.
             git diff --name-only HEAD^ HEAD | sort > "$RUNNER_TEMP/release-files.txt"
-            printf '%s\n'               '.github/workflows/nico-login-fx-live-transplant-audit.yml'               '.github/workflows/nico-reviewed-login-fx-live-only-release.yml'               'docs/SALES_RELEASE_SIGNOFF.md'               'index.html'               'tests/login-fx-passkey-stability.test.cjs'               'tests/login-fx-visible-on-iphone.test.cjs'               'tests/login-presentation-contract.test.cjs'               'tools/hosting/audit-live-login-fx-transplant.mjs'               'tools/hosting/release-live-login-fx-transplant.mjs' | sort > "$RUNNER_TEMP/approved-files.txt"
+            printf '%s\n'               '.github/workflows/nico-login-fx-live-transplant-audit.yml'               '.github/workflows/nico-reviewed-login-fx-live-only-release.yml'               'docs/SALES_RELEASE_SIGNOFF.md'               'index.html'               'tests/login-fx-no-finance-or-count-mutation.test.mjs'               'tests/login-fx-passkey-stability.test.cjs'               'tests/login-fx-visible-on-iphone.test.cjs'               'tests/login-presentation-contract.test.cjs'               'tools/hosting/audit-live-login-fx-transplant.mjs'               'tools/hosting/release-live-login-fx-transplant.mjs' | sort > "$RUNNER_TEMP/approved-files.txt"
             cmp -s "$RUNNER_TEMP/release-files.txt" "$RUNNER_TEMP/approved-files.txt" || {
               echo STOP_UNREVIEWED_MERGE_CHANGESET; exit 1;
             }
           fi
-          test "$(git ls-remote https://github.com/Keikei-p/-.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          test "$(gh api repos/Keikei-p/-/git/ref/heads/main --jq .object.sha)" = "$GITHUB_SHA"
           test "$(gh api repos/Keikei-p/-/pulls/786 --jq .merged)" = true
           gh api repos/Keikei-p/-/issues/786/labels --jq '.[].name' | grep -Fxq sales-production-reviewed
           node --input-type=module - <<'NODE'
@@ -70,13 +70,18 @@ jobs:
           const start=doc.indexOf(marker);
           if(start<0)throw Error('PR786_SIGNOFF_SECTION_MISSING');
           const section=doc.slice(start,start+2200);
-          const match=section.match(/担当者署名（本人記入）:\s*([^\n]+)/);
-          if(!match||!match[1].trim()||/^(未取得|未記入|なし|pending|TBD)$/i.test(match[1].trim()))
-            throw Error('PR786_SIGNOFF_NOT_AUTHENTICATED');
+          // A user's explicit release instruction is recorded as authorization,
+          // never impersonate a handwritten/cryptographic owner signature.
+          if(!section.includes('ユーザーから「よし本番」「よろしく」'))
+            throw Error('PR786_USER_RELEASE_REQUEST_NOT_RECORDED');
+          if(!section.includes('sales-production-reviewed ラベル：適用済み'))
+            throw Error('PR786_ADMIN_REVIEW_NOT_DOCUMENTED');
+          if(!section.includes('担当者署名（本人記入）: 未記入'))
+            throw Error('PR786_OWNER_SIGNATURE_STATUS_MUST_BE_TRUTHFUL');
           NODE
           node --check tools/hosting/audit-live-login-fx-transplant.mjs
           node --check tools/hosting/release-live-login-fx-transplant.mjs
-          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/surgical-existing-index.test.mjs tests/partner-invite-mobile-layout.test.cjs
+          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs tests/surgical-existing-index.test.mjs tests/partner-invite-mobile-layout.test.cjs
           node tools/hosting/audit-live-login-fx-transplant.mjs --audit
           echo 'LOGIN_FX_RELEASE_SCOPE_APPROVAL_AND_LIVE_READ_ONLY_PRECHECK_PASS'
       - name: Prepare protected Hosting service account only after release gates
