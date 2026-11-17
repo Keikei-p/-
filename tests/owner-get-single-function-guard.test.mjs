@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {PROJECT,REGION,TARGET,inspectOwnerGetMetadata,compareSingleFunctionRollout}
+import {PROJECT,REGION,TARGET,inspectOwnerGetMetadata,inspectOwnerGetEnvironmentKeyNames,compareSingleFunctionRollout}
  from "../tools/production/owner-get-single-function-guard.mjs";
 const fn=(name,time="2026-11-17T00:00:00Z",env={})=>({
  name:"projects/"+PROJECT+"/locations/"+REGION+"/functions/"+name,
@@ -57,4 +57,20 @@ test("exact target rollout can update only GET; all other version, URI, identity
   assert.throws(()=>compareSingleFunctionRollout(before,inspectOwnerGetMetadata(v)),
    /STOP_OWNER_GET_ONE_FUNCTION_/);
  }
+});
+
+test("live name-only diagnostic reports unfamiliar keys but never accepts them for release",()=>{
+ const records=base();
+ records[0].serviceConfig.environmentVariables.RUNTIME_SPECIAL_KEY="private_value_never_logged";
+ const names=inspectOwnerGetEnvironmentKeyNames(records);
+ assert.deepEqual(names.unrecognizedKeyNames,["RUNTIME_SPECIAL_KEY"]);
+ assert.equal(names.unrecognizedKeyCount,1);
+ assert.equal(names.productionWrites,0);
+ assert.equal(names.releaseApproved,false);
+ assert(!JSON.stringify(names).includes("private_value_never_logged"));
+ assert.throws(()=>inspectOwnerGetMetadata(records),
+   /STOP_OWNER_GET_ONE_FUNCTION_UNREVIEWED_RUNTIME_VARIABLE/);
+ records[0].serviceConfig.secretEnvironmentVariables=[{key:"TOKEN"}];
+ assert.throws(()=>inspectOwnerGetEnvironmentKeyNames(records),
+   /STOP_OWNER_GET_ONE_FUNCTION_KEY_AUDIT_UNVERIFIED/);
 });

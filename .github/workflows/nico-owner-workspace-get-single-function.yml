@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' }}
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' }}
     runs-on: ubuntu-latest
     timeout-minutes: 13
     env:
@@ -67,8 +67,8 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
           test "$(git hash-object tests/partner-workspace.test.cjs)" = 94c7b76caaa7cf057c0bf8361d188d61ffe8a07d
           test "$(git hash-object tests/owner-workspace-get-only-release-safety.test.mjs)" = d2071e8dfed1a07386aaf1f34464df067a90a99e
-          test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = b777e31f62b34ec47a403b52560ad4f61cd16f02
-          test "$(git hash-object tests/owner-get-single-function-guard.test.mjs)" = d8c80a32d5d89a9ef1cd1f4d6cd521a04883b9e3
+          test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = 33d0a2e20000b9320420d4fb521f708c00f604f2
+          test "$(git hash-object tests/owner-get-single-function-guard.test.mjs)" = fafe7c3d4cfb5f9835ab8a4d880f039a0404239d
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             git fetch --no-tags origin main
             while IFS= read -r file; do
@@ -89,7 +89,7 @@ jobs:
   manually-inspect-or-release:
     needs: offline
     if: >-
-      ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == '26e2f3aac53009bcc6fd1adc1b757e68cdd19593' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): one-time live GET owner workspace inventory retry')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == 'aecca88526f51c5f47d0bdcc4d06bc8be5dc060c' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): verify unknown Owner GET env keys read only')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -107,9 +107,9 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            test "$(git rev-parse HEAD^1)" = 26e2f3aac53009bcc6fd1adc1b757e68cdd19593
-            test "$(git show -s --format=%s HEAD)" = 'audit(sales): one-time live GET owner workspace inventory retry'
-            test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = '.github/workflows/nico-owner-workspace-get-single-function.yml'
+            test "$(git rev-parse HEAD^1)" = aecca88526f51c5f47d0bdcc4d06bc8be5dc060c
+            test "$(git show -s --format=%s HEAD)" = 'audit(sales): verify unknown Owner GET env keys read only'
+            test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = "$(printf '%s\n' '.github/workflows/nico-owner-workspace-get-single-function.yml' 'tests/owner-get-single-function-guard.test.mjs' 'tools/production/owner-get-single-function-guard.mjs')"
           else
             test "$GITHUB_SHA" = "${{ inputs.reviewed_main_sha }}"
           fi
@@ -132,7 +132,7 @@ jobs:
           node --input-type=module <<'NODE'
           import {writeFileSync,existsSync} from 'node:fs';
           import {createRequire} from 'node:module';
-          import {inspectOwnerGetMetadata} from './tools/production/owner-get-single-function-guard.mjs';
+          import {inspectOwnerGetMetadata,inspectOwnerGetEnvironmentKeyNames} from './tools/production/owner-get-single-function-guard.mjs';
           const require=createRequire(new URL('./functions/package.json',import.meta.url));
           const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
           if(!token)throw Error('STOP_OWNER_GET_TOKEN');
@@ -141,15 +141,18 @@ jobs:
           if(res.status!==200)throw Error('STOP_OWNER_GET_METADATA_HTTP');
           const payload=await res.json();
           if(!Array.isArray(payload.functions)||payload.nextPageToken)throw Error('STOP_OWNER_GET_METADATA_INCOMPLETE');
-          const before=inspectOwnerGetMetadata(payload.functions);
-          writeFileSync(process.env.RUNNER_TEMP+'/owner-get-before.json',
-            JSON.stringify(payload.functions),{mode:0o600,flag:'wx'});
+          const names=inspectOwnerGetEnvironmentKeyNames(payload.functions);
+          // Names ONLY, not environment values, Auth, UID, finance or secrets.
+          console.log('OWNER_GET_UNKNOWN_ENV_KEYS '+JSON.stringify(names));
           if(process.env.RELEASE_MODE==='release'){
+           const before=inspectOwnerGetMetadata(payload.functions);
+           writeFileSync(process.env.RUNNER_TEMP+'/owner-get-before.json',
+            JSON.stringify(payload.functions),{mode:0o600,flag:'wx'});
            const file='functions-partner-workspace/.env.sales-management-cc116';
            if(existsSync(file))throw Error('STOP_OWNER_GET_EXISTING_ENV');
            writeFileSync(file,before.envText,{mode:0o600,flag:'wx'});
           }
-          console.log('LIVE_OWNER_GET_READ_ONLY_PREFLIGHT_PASS functions='+before.count+' flagsUnchanged=true');
+          console.log('LIVE_OWNER_GET_READ_ONLY_ENV_AUDIT_PASS productionWrites=0 releaseApproved=false');
           NODE
       - name: Require explicit reviewed one-Function release scope and cost approval
         if: ${{ inputs.mode == 'release' }}
