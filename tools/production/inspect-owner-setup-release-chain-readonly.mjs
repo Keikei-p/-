@@ -182,7 +182,6 @@ export function readinessBoard({functions,hosting,publication}={}){
   partnerCompaniesWithMappedRankCategories:publication.mappedPartnerCount,
   ownerPublicCatalogReady:publication.ownerPublicationCatalogReady,
   allEnabledPartnerSkuMapped:publication.allEnabledPartnerSkuMapped,
-  reciprocalOwnerRankConsentReady:publication.reciprocalOwnerRankConsentReady,
   nextStep,blockingReasons:blockers,
   realPartnerCountSaveVerified:false,
   realPartnerFinanceGetListDeniedVerified:false,
