@@ -78,6 +78,33 @@ test("ON count passes, OFF count denied, server reads exact policy and never wri
  await denied(call(zero(),counts({SBMNP:1})));
  assert.equal(db.writes,0);
 });
+test("read-only publication accepts exact combined 光/AIR aliases and rejects separate SKUs without writes",async()=>{
+ for(const name of ["光/AIR","光／AIR","SB光/AIR","光・Air","ソフトバンク光/Air"]){
+  const {db,call}=fixture();
+  db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[1].name=name;
+  const before=structuredClone([...db.rows]);
+  const result=await call(zero(),counts({"SB光・AIR":2}));
+  assert.deepEqual(result.enabledCategories,["NURO","SB光・AIR"],name);
+  const vendor=vendorGuard({db});
+  const policy=await vendor({tx:db.transaction(),
+   scope:{verifiedByServer:true,kind:"partner",uid:"staff",cid:"partner",hubId:"hub"},
+   previousCounts:zero(),nextCounts:counts({"SB光・AIR":2})});
+  assert.deepEqual(policy.enabledCategories,result.enabledCategories,name);
+  assert.deepEqual([...db.rows],before,name);
+  assert.equal(db.writes,0,name);
+  assert(!db.reads.some(p=>p.startsWith("products/")),"financial sources never read");
+ }
+ for(const name of ["光","SoftBank Air","太陽光/AIR","光/AIRMNP"]){
+  const {db,call}=fixture();
+  db.rows.get("companies/hub/rankingCountPublicCatalog/shared").products[1].name=name;
+  await denied(call(zero(),counts({"SB光・AIR":1})));
+  const guard=vendorGuard({db});
+  await denied(guard({tx:db.transaction(),
+   scope:{verifiedByServer:true,kind:"partner",uid:"staff",cid:"partner",hubId:"hub"},
+   previousCounts:zero(),nextCounts:counts({"SB光・AIR":1})}));
+  assert.equal(db.writes,0,name);
+ }
+});
 test("OFF historical count cannot be deleted or increased while ON count is corrected",async()=>{
  const {db,call}=fixture(),before=counts({NURO:2,SBMNP:7});
  await call(before,counts({NURO:4,SBMNP:7}));
