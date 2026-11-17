@@ -79,7 +79,8 @@ function createVisualHarness({ reduced = false, seen = false } = {}) {
       observe() {}
     }
   };
-  const script = extract('<script id="nfLoginFXController">', '</script>');
+  const controller = extract('<script id="nfLoginFXController">', '</script>');
+  const script = controller.slice(controller.indexOf('>') + 1);
   vm.runInNewContext(script, context, { timeout: 500 });
   assert.equal(typeof notify, 'function', 'controller attaches a passive visual observer');
   return {
