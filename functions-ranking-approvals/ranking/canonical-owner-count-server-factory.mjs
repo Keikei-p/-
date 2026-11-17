@@ -16,7 +16,7 @@ import {createStagedAtomicOwnerCountLoader}
  from "./owner-visible-count-atomic-loader.mjs";
 import {createCanonicalCountTransactionReader}
  from "./canonical-joint-count-sku-reader.mjs";
-import {createAtomicOwnerPublicationReader}
+import {createAtomicOwnerPublicationReader,createZeroSetupCountPublicationReader}
  from "./owner-product-visibility-in-atomic-tx.mjs";
 import {createFreshCombinedRankingContext} from "./trusted-combined-ranking-context.mjs";
 import {createRequire} from "node:module";
@@ -35,9 +35,10 @@ export function createCanonicalOwnerCountSnapshot({
  return createStagedAtomicOwnerCountLoader({
   db,
   loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink}),
-  loadPublicationInTransaction:createAtomicOwnerPublicationReader({
-   db,FieldValue,verifyCountViewer
-  })
+  loadPublicationInTransaction:zeroSetupLink===true?
+   createZeroSetupCountPublicationReader({db,verifyCountViewer}):
+   createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}),
+  zeroSetupLink
  });
 }
 
@@ -56,7 +57,13 @@ export function createCanonicalOwnerCountHandler({
   throw Error("CANONICAL_OWNER_COUNT_AUTH_MISSING");
  // Validate every dependency before constructing any request authorizer.
  createCanonicalOwnerCountSnapshot({
-  db,FieldValue,clock,zeroSetupLink
+  db,FieldValue,clock,zeroSetupLink,
+  // Construction-only dependency check, before Firebase Auth is initialized.
+  // This callback can NEVER authorize a request. The real in-transaction
+  // workspace identity gate is installed below for every actual invocation.
+  ...(zeroSetupLink===true?{verifyCountViewer:async()=>{
+   throw Error("COUNT_SESSION_NOT_AUTHORIZED");
+  }}:{})
  });
  class CountIdentityError extends Error{}
  const {readCountViewer}=makeWorkspaceIdentity({
