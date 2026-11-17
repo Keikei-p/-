@@ -83,7 +83,7 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
   if(ids.has(pair))fail("DUPLICATE_PARTNER_SKU");
   ids.add(pair);
   if(bind.productId==="partnerSku05"&&
-    !/SB光・AIR|旧合算|未分類/.test(products.get(bind.hubProductId).name))
+    !/(?:SB光・AIR|旧合算|未分類|(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(products.get(bind.hubProductId).name))
    fail("LEGACY_LIGHT_AIR_MAPPING");
  }
  let partnersReady=0,allEligibleMapped=true;

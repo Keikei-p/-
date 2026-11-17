@@ -171,3 +171,17 @@ test("public release path is GET-only, no credential output and no deploy",()=>{
  assert.match(source,/mode:"LIVE_READ_ONLY_NO_DEPLOY"/);
  assert.match(source,/safeToEnableNewRanking:false/);
 });
+
+test("read-only audit matches Owner-approved combined 光/AIR categories without guessing a split",()=>{
+ for(const label of ["SB光・AIR（旧合算）","光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
+  const p=base();p.catalog.products[1].name=label;
+  const result=assessSkuPublication(p);
+  assert.equal(result.partnerCompaniesMapped,1,label);
+  assert.equal(result.enabledCategoriesMappedToAllPartners,true,label);
+ }
+ for(const label of ["SB光","SoftBank Air","NURO光","太陽光/AIR","光/AIRMNP"]){
+  const p=base();p.catalog.products[1].name=label;
+  assert.throws(()=>assessSkuPublication(p),
+   /STOP_SKU_PUBLICATION_READONLY_LEGACY_LIGHT_AIR_MAPPING/,label);
+ }
+});
