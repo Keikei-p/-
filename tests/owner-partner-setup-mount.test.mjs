@@ -17,7 +17,7 @@ const document={createElement:t=>new Node(t)};
 const walk=n=>[n,...n.children.flatMap(walk)];
 const content=n=>walk(n).map(x=>x.textContent).join(" ");
 const user={uid:"owner",emailVerified:true,getIdToken:async()=>"signed-server-checked-token-abc"};
-function fixture(role="hub"){
+function fixture(role="hub",multi="none"){
  const calls=[],root=new Node("main"),auth={currentUser:user};
  const status={role,registeredCompanies:[{
   partnerCompanyId:"partner",name:"協力店A",active:true
@@ -26,9 +26,12 @@ function fixture(role="hub"){
   version:1,hubCompanyId:"hub",products:[
    {id:"nuro",name:"NURO光",active:true,enabled:true},
    {id:"air",name:"SoftBank Air",active:true,enabled:false}
-  ],partnerOverrides:{partner:[]}};
+  ],partnerOverrides:multi==="none"?{partner:[]}:{}};
  const mapping={schema:"nico-owner-reviewed-sku-map-v1",hubCompanyId:"hub",
   version:0,bindings:[]};
+ if(multi!=="none")status.registeredCompanies.push(
+  {partnerCompanyId:"partner2",name:"協力店B",active:true},
+  {partnerCompanyId:"partner3",name:"協力店C",active:true});
  let observer=()=>{};
  const httpsCallable=(_fn,name)=>async payload=>{
   calls.push({name,payload});
@@ -57,11 +60,26 @@ function fixture(role="hub"){
     partnerCompanyId:payload.partnerCompanyId}};
   }
   if(name==="getOwnerReviewedSkuMapping")return {data:mapping};
+  if(name==="setOwnerReviewedSkuMapping"&&multi!=="none"){
+   assert.equal(payload.expectedVersion,mapping.version);
+   if(multi==="fail-third"&&payload.partnerCompanyId==="partner3")
+    throw Error("permission-denied");
+   assert(["partner","partner2","partner3"].includes(payload.partnerCompanyId));
+   assert.equal(payload.partnerProductId,"partnerSku01");
+   assert.equal(payload.hubProductId,"nuro");
+   assert(!mapping.bindings.some(b=>b.companyId===payload.partnerCompanyId));
+   mapping.version++;
+   mapping.bindings.push({companyId:payload.partnerCompanyId,
+    productId:payload.partnerProductId,hubProductId:payload.hubProductId});
+   return {data:{saved:true,version:mapping.version,
+    partnerCompanyId:payload.partnerCompanyId,
+    partnerProductId:payload.partnerProductId,hubProductId:payload.hubProductId}};
+  }
   throw Error("Unexpected callable: "+name);
  };
  const mount=()=>mountOwnerPartnerSetup({document,root,auth,functions:{},
   httpsCallable,onAuthStateChanged:(_auth,cb)=>{observer=cb;return()=>{observer=()=>{};}}});
- return {auth,root,calls,status,mount,onChange:()=>observer()};
+ return {auth,root,calls,status,mapping,products,mount,onChange:()=>observer()};
 }
 test("hub owner sees existing active partner, global switches and nine mappings without extra consent",async()=>{
  const f=fixture(),controller=f.mount();
@@ -191,4 +209,67 @@ test("global and partner ON/OFF keep the same fresh revision without reloading t
  assert.equal(f.calls.some(x=>/RankingOwnerConsent/.test(x.name)),false);
  assert(f.calls.every(x=>!/records|unitPrice|revenue|cashback/i.test(x.name)));
  controller.destroy();
+});
+
+test("three registered partners preview three exact mappings but no write on initial load",async()=>{
+ const f=fixture("hub","three"),ctl=f.mount();
+ assert.equal(await ctl.refresh(),true);
+ assert.match(content(f.root),/登録済み協力店の一致商材をまとめて連携/);
+ const trigger=walk(f.root).find(x=>x.tagName==="button"&&
+  x.textContent==="上記3件を全社まとめて保存");
+ assert(trigger);
+ assert.match(content(f.root),/協力店A：NURO → NURO光/);
+ assert.match(content(f.root),/協力店B：NURO → NURO光/);
+ assert.match(content(f.root),/協力店C：NURO → NURO光/);
+ assert(!f.calls.some(x=>x.name==="setOwnerReviewedSkuMapping"),
+  "no automatic Firestore mappings on page load");
+ ctl.destroy();
+});
+test("all-company Owner click saves all three through existing API with version and real re-reads",async()=>{
+ const f=fixture("hub","three"),ctl=f.mount();
+ assert.equal(await ctl.refresh(),true);
+ const trigger=walk(f.root).find(x=>x.tagName==="button"&&
+  x.textContent==="上記3件を全社まとめて保存");
+ assert(trigger);
+ await trigger.fire("click");
+ const saves=f.calls.filter(x=>x.name==="setOwnerReviewedSkuMapping");
+ assert.deepEqual(saves.map(x=>[x.payload.partnerCompanyId,x.payload.expectedVersion]),[
+  ["partner",0],["partner2",1],["partner3",2]
+ ]);
+ assert.equal(f.mapping.version,3);
+ assert.deepEqual(f.mapping.bindings.map(x=>x.companyId),[
+  "partner","partner2","partner3"
+ ]);
+ assert.match(content(f.root),/全社の商材対応3件を保存・再確認しました/);
+ assert(!walk(f.root).some(x=>x.tagName==="button"&&
+   x.textContent.includes("全社まとめて保存")));
+ assert(f.calls.every(x=>!/record|revenue|unitPrice|cashback/i.test(x.name)));
+ ctl.destroy();
+});
+test("third-company denial stops batch and keeps first two audited confirmed changes only",async()=>{
+ const f=fixture("hub","fail-third"),ctl=f.mount();
+ assert.equal(await ctl.refresh(),true);
+ const trigger=walk(f.root).find(x=>x.tagName==="button"&&
+  x.textContent==="上記3件を全社まとめて保存");
+ assert(trigger);
+ await trigger.fire("click");
+ const saves=f.calls.filter(x=>x.name==="setOwnerReviewedSkuMapping");
+ assert.equal(saves.length,3);
+ assert.equal(f.mapping.version,2);
+ assert.equal(f.mapping.bindings.length,2);
+ assert.match(content(f.root),/全社一括連携を停止しました。保存確認済み2件/);
+ assert.match(content(f.root),/協力店C：NURO → NURO光/);
+ assert(!content(f.root).includes("協力店A：NURO → NURO光"),
+  "no already-saved proposal left in the updated batch");
+ ctl.destroy();
+});
+test("no active partner SKU offer with company-specific OFF never shows multi-company save",async()=>{
+ const f=fixture("hub","three");
+ f.products.partnerOverrides={partner:[],partner2:[],partner3:[]};
+ const ctl=f.mount();assert.equal(await ctl.refresh(),true);
+ assert.match(content(f.root),/全社一括連携の未設定候補はありません/);
+ assert(!walk(f.root).some(x=>x.tagName==="button"&&
+  x.textContent.includes("全社まとめて保存")));
+ assert(!f.calls.some(x=>x.name==="setOwnerReviewedSkuMapping"));
+ ctl.destroy();
 });
