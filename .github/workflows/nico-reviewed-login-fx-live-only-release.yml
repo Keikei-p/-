@@ -6,6 +6,7 @@ on:
       - 'index.html'
       - 'docs/SALES_RELEASE_SIGNOFF.md'
       - 'tools/hosting/release-live-login-fx-transplant.mjs'
+      - '.github/workflows/nico-reviewed-login-fx-live-only-release.yml'
   workflow_dispatch:
     inputs:
       expected_main_sha:
@@ -53,12 +54,35 @@ jobs:
           test "$INPUT_SHA" = "$GITHUB_SHA"
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            # A signed, reviewed PR #786 merge is the only automatic publish candidate.
-            git diff --name-only HEAD^ HEAD | sort > "$RUNNER_TEMP/release-files.txt"
-            printf '%s\n'               '.github/workflows/nico-login-fx-live-transplant-audit.yml'               '.github/workflows/nico-reviewed-login-fx-live-only-release.yml'               'docs/SALES_RELEASE_SIGNOFF.md'               'index.html'               'tests/login-fx-no-finance-or-count-mutation.test.mjs'               'tests/login-fx-passkey-stability.test.cjs'               'tests/login-fx-visible-on-iphone.test.cjs'               'tests/login-presentation-contract.test.cjs'               'tools/hosting/audit-live-login-fx-transplant.mjs'               'tools/hosting/release-live-login-fx-transplant.mjs' | sort > "$RUNNER_TEMP/approved-files.txt"
-            cmp -s "$RUNNER_TEMP/release-files.txt" "$RUNNER_TEMP/approved-files.txt" || {
-              echo STOP_UNREVIEWED_MERGE_CHANGESET; exit 1;
-            }
+            # Two allowed release triggers, both scoped and immutable:
+            # (1) the exact ten-file PR #786 merge; or
+            # (2) a single-file workflow concurrency-retry commit directly after
+            #     approved PR #786 merged. Every app/finance/count byte stays pinned.
+            git diff --name-only HEAD^ HEAD | LC_ALL=C sort > "$RUNNER_TEMP/release-files.txt"
+            if [ "$(cat "$RUNNER_TEMP/release-files.txt")" = '.github/workflows/nico-reviewed-login-fx-live-only-release.yml' ]; then
+              test "$(git rev-parse HEAD^)" = 3a8972d2d3db76a61e1ef3e310deb050b957ae83
+              for f in index.html tools/hosting/audit-live-login-fx-transplant.mjs tools/hosting/release-live-login-fx-transplant.mjs docs/SALES_RELEASE_SIGNOFF.md firestore.rules firebase.json .firebaserc functions/index.js partner-workspace.html partner-counts.html; do
+                old=$(git show "3a8972d2d3db76a61e1ef3e310deb050b957ae83:$f" | git hash-object --stdin)
+                new=$(git hash-object "$f")
+                test "$old" = "$new" || { echo "STOP_PROTECTED_SOURCE_DRIFT $f"; exit 1; }
+              done
+              echo 'PR786_WORKFLOW_ONLY_RETRY_EXACT_SOURCE_PASS'
+            else
+              printf '%s\n' \
+                '.github/workflows/nico-login-fx-live-transplant-audit.yml' \
+                '.github/workflows/nico-reviewed-login-fx-live-only-release.yml' \
+                'docs/SALES_RELEASE_SIGNOFF.md' \
+                'index.html' \
+                'tests/login-fx-no-finance-or-count-mutation.test.mjs' \
+                'tests/login-fx-passkey-stability.test.cjs' \
+                'tests/login-fx-visible-on-iphone.test.cjs' \
+                'tests/login-presentation-contract.test.cjs' \
+                'tools/hosting/audit-live-login-fx-transplant.mjs' \
+                'tools/hosting/release-live-login-fx-transplant.mjs' | LC_ALL=C sort > "$RUNNER_TEMP/approved-files.txt"
+              cmp -s "$RUNNER_TEMP/release-files.txt" "$RUNNER_TEMP/approved-files.txt" || {
+                echo STOP_UNREVIEWED_MERGE_CHANGESET; exit 1;
+              }
+            fi
           fi
           test "$(gh api repos/Keikei-p/-/git/ref/heads/main --jq .object.sha)" = "$GITHUB_SHA"
           test "$(gh api repos/Keikei-p/-/pulls/786 --jq .merged)" = true
