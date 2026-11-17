@@ -52,7 +52,8 @@ test("hub owner sees existing active partner, global switches and nine mappings 
  const selections=walk(f.root).filter(x=>x.tagName==="select");
  assert(selections.length>=10);
  assert.equal(selections[0].value,"partner");
- assert(f.calls.some(x=>x.name==="getPartnerWorkspace"));
+ assert(f.calls.some(x=>x.name==="getPartnerWorkspace"&&
+  x.payload?.ownerSetupCompaniesOnly===true&&/^\\d{4}-\\d{2}-\\d{2}$/.test(x.payload.date)));
  assert(f.calls.every(x=>x.name!=="getRankingOwnerConsentStatus"&&x.name!=="setRankingOwnerConsent"));
  assert(f.calls.some(x=>x.name==="getOwnerProductVisibility"));
  assert(f.calls.some(x=>x.name==="getOwnerReviewedSkuMapping"));
