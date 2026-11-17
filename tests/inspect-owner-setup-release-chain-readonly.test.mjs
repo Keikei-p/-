@@ -231,3 +231,15 @@ test("current published four Owner modules and seven historical assets are all e
  assert.throws(()=>classifyHosting(release,versionMeta,live,sourced(),null,dropped),
   /STOP_OWNER_SETUP_CHAIN_CURRENT_CANDIDATE_SOURCE_UNREVIEWED/);
 });
+
+test("live Owner four API proof is passed as a named option, never discarded",()=>{
+ const script=readFileSync(new URL("../tools/production/inspect-owner-setup-release-chain-readonly.mjs",import.meta.url),"utf8");
+ assert.match(script,/inspectSkuPublication\(getFirestore\(\),\{ownerApiStatus\}\)/);
+ assert.doesNotMatch(script,/inspectSkuPublication\(getFirestore\(\),ownerApiStatus\)/);
+ const h=classifyHosting(release,{name:version,status:"FINALIZED",fileCount:hosted().length,config:{}},hosted(),sourced());
+ const board=readinessBoard({functions:classifyFunctions(funcs()),hosting:h,
+  publication:pub({ownerPublicationWriteFeatureEnabledInProd:true})});
+ assert.equal(board.ownerPublicationAPIsEnabledInProd,true);
+ assert.equal(board.safeToEnableJointRanking,false);
+ assert.equal(board.productionDocumentWrites,0);
+});
