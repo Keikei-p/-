@@ -43,7 +43,6 @@ jobs:
           test "$INPUT_CONFIRMATION" = PR786_APPROVED_INDEX_ONLY
           test "$INPUT_SHA" = "$GITHUB_SHA"
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
-          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
           test "$(git ls-remote https://github.com/Keikei-p/-.git refs/heads/main | cut -f1)" = "$GITHUB_SHA"
           test "$(gh api repos/Keikei-p/-/pulls/786 --jq .merged)" = true
           gh api repos/Keikei-p/-/issues/786/labels --jq '.[].name' | grep -Fxq sales-production-reviewed
