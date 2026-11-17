@@ -52,6 +52,7 @@ test('boot and success overlay is passive and contains no auth operations', () =
   const css = extract('<style id="nfPremiumLogin">', '</style>');
   assert.match(css, /pointer-events:none/);
   assert.match(css, /height:100svh/, 'FX uses a stable mobile viewport height');
+  assert.match(css, /min-height:48px;border-radius:11px;font-size:16px/, 'iOS credential fields must not zoom the page on focus');
   assert.match(css, /nfOrbitReverse/, 'visibly moving rings are retained');
   assert.match(css, /nfFXSuccess/, 'success has a dedicated animation');
   assert.match(css, /#nfLoginFX \.nf-ring:before/, 'circular sweep is visible even during boot');
