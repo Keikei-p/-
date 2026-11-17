@@ -10,9 +10,9 @@
 import {PROJECT,REGION,TARGET,inspectOwnerGetMetadata,inspectOwnerGetEnvironmentKeyNames}
  from "./owner-get-single-function-guard.mjs";
 const stop=(reason)=>{throw Error("STOP_OWNER_GET_POSTDEPLOY_"+reason);};
-export const EARLIEST_RELEASE_UPDATE="2026-11-17T10:00:48.000Z";
+export const EARLIEST_RELEASE_UPDATE="2026-11-17T15:26:45.000Z";
 export function inspectOwnerGetPostDeploy(rows,{
- earliest=EARLIEST_RELEASE_UPDATE,now="2026-11-17T11:00:00.000Z"
+ earliest=EARLIEST_RELEASE_UPDATE,now="2026-11-17T15:30:00.000Z"
 }={}){
  if(!Array.isArray(rows)||rows.length!==20)stop("EXACT_TWENTY_FUNCTIONS");
  const names=inspectOwnerGetEnvironmentKeyNames(rows);

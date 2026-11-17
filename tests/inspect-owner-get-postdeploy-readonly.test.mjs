@@ -7,7 +7,7 @@ const mk=(i)=>({
  name:"projects/"+PROJECT+"/locations/"+REGION+"/functions/"+
   (i===0?"getPartnerWorkspace":"someFunction"+i),
  state:"ACTIVE",
- updateTime:i===0?"2026-11-17T10:01:57Z":"2026-11-10T10:00:00Z",
+ updateTime:i===0?"2026-11-17T15:27:38Z":"2026-11-10T10:00:00Z",
  buildConfig:{runtime:"nodejs22",entryPoint:i===0?"getPartnerWorkspace":"someFunction"+i},
  serviceConfig:{
   uri:"https://function"+i+".run.app",
@@ -20,8 +20,8 @@ const mk=(i)=>({
 const seed=()=>Array.from({length:20},(_,i)=>mk(i));
 test("live read-only audit verifies release happened after CLI start and 20 functions active",()=>{
  const p=inspectOwnerGetPostDeploy(seed());
- assert.equal(EARLIEST_RELEASE_UPDATE,"2026-11-17T10:00:48.000Z");
- assert.equal(p.liveTargetUpdateTime,"2026-11-17T10:01:57Z");
+ assert.equal(EARLIEST_RELEASE_UPDATE,"2026-11-17T15:26:45.000Z");
+ assert.equal(p.liveTargetUpdateTime,"2026-11-17T15:27:38Z");
  assert.equal(p.liveFunctionsFound,20);
  assert.equal(p.highRiskCountAndRankingModesDisabled,true);
  assert.equal(p.postDeployAuditDocumentWrites,0);
@@ -29,7 +29,7 @@ test("live read-only audit verifies release happened after CLI start and 20 func
  assert.equal(p.realOwnerAuthenticatedGetVerified,false);
 });
 test("cannot falsely pass if target updateTime has not advanced",()=>{
- const x=seed();x[0].updateTime="2026-11-17T10:00:45Z";
+ const x=seed();x[0].updateTime="2026-11-17T15:26:44Z";
  assert.throws(()=>inspectOwnerGetPostDeploy(x),/TARGET_NOT_UPDATED_IN_RELEASE_WINDOW/);
 });
 test("cannot pass missing/duplicated functions or inactive unrelated function",()=>{
