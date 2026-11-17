@@ -1092,3 +1092,16 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - GitHub管理者本人の自筆・電子署名は未取得。本項は管理者本人の署名を代筆・捏造するものではない。
 - 本番実績データ変更、金額ロジック変更、権限変更、他画面の変更、復元・移行の承認は与えられていない。
 - 2026-11-18: ユーザーの本番公開指示に基づき、GitHub管理者権限の接続からPR #776に sales-production-reviewed ラベルを実際に付与済み。これは本人の自筆・電子署名ではない。
+
+
+---
+
+## LOGIN_FX_IPHONE_VISIBILITY_FIX_20261118
+
+- 依頼: 2026-11-18「ログインのエフェクトがない」。既に公開済みのPremium Login画面の起動/ログイン演出がiPhoneで確認できない不具合を是正する。前回PR #763は同一HTMLが別経路で本番公開されたためsuperseded。対象は現在mainのログイン表示だけ。
+- 根本原因（実コード）: `nfLoginFXController` は `sessionStorage['nf-login-intro-v1']` で起動演出を同一タブ中1回に制限し、iOSの `prefers-reduced-motion: reduce` に対して表示そのものを拒否。さらにログインボタンタップ中は何も表示せず、成功後の600msだけ表示。このため見えないケースがある。
+- 修正範囲: `index.html` の `nfPremiumLogin` CSSの演出数行と `nfLoginFXController` の表示専用JSだけ。ページ読込の度に起動表示1.2秒、既存ログインボタンで空欄以外の有効なクリックを検知したら認証中1.6秒、元アプリ画面を実際に表示できた場合だけ成功1.5秒。ログインエラーでは認証中演出を消す。動きを減らす端末には回転なしの静止表示を残す。
+- イベント監視は `authButton` のcaptureハンドラと既存DOMの `MutationObserver` だけ。Firebase `login()`/`onAuthStateChanged`/Auth設定・DB・Functions・Rules・商材・売上・ランキング・協力店画面・PWA・実績保存処理は変更しない。元のFirestoreデータ/会社/ユーザーの読み書き・移行・削除なし。
+- 検証: `tests/login-fx-visible-on-iphone.test.cjs` で起動繰り返し、入力前/後タップ、登録モード除外、ログインエラー、成功時のみ発火、ログアウト後再ログイン、Reduced Motionでの静的表示をネットワークなしDOMモックで検証。`.github/workflows/nico-login-fx-visible-no-deploy.yml` は資格情報なし・read-only CIのみ。既存 Sales App Validation、protected-change-guard、協力店/財務境界テストの成功を別に必要とする。
+- 本番公開条件: 最新mainの変更ファイルと公開中indexの実バイト照合、既存32以上のHosting資産の完全保持と競合リリース除外、CI成功・権限境界不変を確認した後のみ `index.html` 限定で配備。実機iPhoneと認証済みOwner/協力店ログインは公開後の別検証とし、完了を推測しない。
+- この記録は技術レビューであり管理者本人署名を偽装しない。本人署名: **未取得**。この記録を書いた時点で今回修正の本番公開: **未実施**。
