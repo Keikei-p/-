@@ -1,0 +1,106 @@
+name: NICO Owner GET post-deploy live metadata (READ ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-get-postdeploy-readonly.mjs'
+      - 'tests/inspect-owner-get-postdeploy-readonly.test.mjs'
+      - '.github/workflows/nico-owner-get-postdeploy-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-get-postdeploy-readonly.mjs'
+      - 'tests/inspect-owner-get-postdeploy-readonly.test.mjs'
+      - '.github/workflows/nico-owner-get-postdeploy-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-get-postdeploy-readonly-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Preserve exact reviewed backend and test no-deploy audit
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
+          test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = 5f7108a23ac9b72a45c795a299a5cc579dcd48ea
+          test "$(git hash-object tools/production/inspect-owner-get-postdeploy-readonly.mjs)" = a1183fb52da2fdf7602c1a7bb133b3f1c6a7454d
+          test "$(git hash-object tests/inspect-owner-get-postdeploy-readonly.test.mjs)" = 9bd2dd72c5409d296db852cb106dedbd707c8f4a
+          node --check tools/production/inspect-owner-get-postdeploy-readonly.mjs
+          node --test tests/inspect-owner-get-postdeploy-readonly.test.mjs tests/owner-get-single-function-guard.test.mjs
+          echo 'OWNER_GET_POSTDEPLOY_OFFLINE_PASS_NO_DEPLOY'
+  live:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact current main; forbid all writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = 5f7108a23ac9b72a45c795a299a5cc579dcd48ea
+      - name: Install existing Admin SDK only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Attach private read-only cloud identity in runner only
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-get-postdeploy-identity.json"
+          chmod 600 "$RUNNER_TEMP/owner-get-postdeploy-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-get-postdeploy-identity.json" >> "$GITHUB_ENV"
+      - name: Verify deployed GET is ACTIVE and risky flags remain OFF (GET only)
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {inspectOwnerGetPostDeploy} from './tools/production/inspect-owner-get-postdeploy-readonly.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_GET_POSTDEPLOY_NO_TOKEN');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const res=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',
+           headers:{Authorization:'Bearer '+token}});
+          if(res.status!==200)throw Error('STOP_OWNER_GET_POSTDEPLOY_METADATA_HTTP');
+          const json=await res.json();
+          if(!Array.isArray(json.functions)||json.nextPageToken)
+            throw Error('STOP_OWNER_GET_POSTDEPLOY_INCOMPLETE');
+          const proof=inspectOwnerGetPostDeploy(json.functions,{now:new Date().toISOString()});
+          console.log('OWNER_GET_POSTDEPLOY_LIVE_METADATA_PASS '+JSON.stringify(proof));
+          console.log('NO_FIRESTORE_RULES_FUNCTIONS_HOSTING_OR_ARTIFACT_WRITES');
+          NODE
+      - name: Delete runner credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/owner-get-postdeploy-identity.json"
