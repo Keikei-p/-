@@ -72,7 +72,7 @@ jobs:
           node --test tests/login-presentation-contract.test.cjs
           node --test tests/sales-regressions.cjs
           node --test tests/internal-owner-finance-visibility.test.cjs
-          node -e "if(require('./.firebaserc').projects.default!=='sales-management-cc116')process.exit(1)"
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
           echo 'LOGIN_ONLY_SOURCE_AND_SALES_REGRESSIONS_PASS'
       - name: Compare published HTML with immutable approved old index
         shell: bash
