@@ -1,0 +1,99 @@
+name: NICO live ranking finance and backup gate (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-live-ranking-finance-backup-readonly.yml'
+      - 'tests/nico-live-ranking-finance-backup-readonly.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-live-ranking-finance-backup-readonly.yml'
+      - 'tests/nico-live-ranking-finance-backup-readonly.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: nico-live-ranking-finance-backup-readonly
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate immutable production data boundaries and strict read-only inspectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          node --check tools/production/audit-live-firestore-rules-readonly.mjs
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --check tools/production/audit-managed-backup-restore-preflight-readonly.mjs
+          node --test tests/nico-live-ranking-finance-backup-readonly.test.mjs \
+            tests/audit-live-firestore-rules-readonly.test.mjs \
+            tests/nico-secondary-readonly-inventory.test.mjs \
+            tests/managed-backup-restore-preflight-readonly.test.mjs
+          echo LIVE_RANKING_FINANCE_BACKUP_OFFLINE_PROTECTION_PASS
+  live:
+    needs: offline
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_SECONDARY_INVENTORY_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm exact current main and unchanged rules before private reads
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --test tests/nico-live-ranking-finance-backup-readonly.test.mjs
+      - name: Install existing Admin SDK without touching project data
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Bind existing authorized read identity into private temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-ranking-security-readonly.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-ranking-security-readonly.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ranking-security-readonly.private.json" >> "$GITHUB_ENV"
+      - name: Read live Firestore Rules release source; compare reviewed finance fence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-live-firestore-rules-readonly.mjs
+      - name: Read-only audit of secondary finance access paths (no user IDs in logs)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-secondary-contexts-readonly.mjs
+      - name: Read-only backup restore preflight; no destination created or production writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-managed-backup-restore-preflight-readonly.mjs
+          echo RANKING_FINANCE_READINESS_STILL_REQUIRES_REAL_ACCOUNT_DENIAL_PROOF
+      - name: Remove temporary identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-ranking-security-readonly.private.json"
