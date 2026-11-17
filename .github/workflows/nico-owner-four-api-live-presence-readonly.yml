@@ -1,0 +1,141 @@
+name: NICO four Owner ONOFF SKU APIs live status (GET ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-four-api-live-presence-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-four-api-live-presence-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-four-owner-api-status-readonly
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin reviewed four APIs and protect the existing 20 plus finance Rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 8187d046661d91b7e497b8c7a802c8b402acd9a3
+          test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
+          test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 83484484d44dde5144852baee29164034cd79d1e
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
+          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          node --test tests/owner-product-visibility-callables.test.cjs tests/owner-sku-mapping-controller.test.cjs tests/owner-product-visibility-firestore.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-partner-setup-mount.test.mjs
+          echo 'OWNER_FOUR_LOCAL_AUTH_COUNT_ONLY_REGRESSION_PASS_NO_DEPLOY'
+  live:
+    needs: offline
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.offline.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Confirm immutable main without write permissions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+      - name: Install existing Admin SDK without scripts
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Configure existing read identity only inside runner
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-four-readonly.json"
+          chmod 600 "$RUNNER_TEMP/owner-four-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-four-readonly.json" >> "$GITHUB_ENV"
+      - name: Read only live Cloud Functions metadata, never update runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(typeof token!=='string'||token.length<30)throw Error('STOP_OWNER_FOUR_READ_TOKEN');
+          const uri='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const reply=await fetch(uri,{method:'GET',cache:'no-store',redirect:'error',headers:{Authorization:'Bearer '+token}});
+          if(reply.status!==200)throw Error('STOP_OWNER_FOUR_READ_HTTP');
+          const {functions:rows,nextPageToken}=await reply.json();
+          if(!Array.isArray(rows)||nextPageToken||rows.length<20||rows.length>24)
+            throw Error('STOP_OWNER_FOUR_FUNCTION_INVENTORY');
+          const prefix='projects/sales-management-cc116/locations/asia-northeast1/functions/';
+          if(new Set(rows.map(x=>x.name)).size!==rows.length||rows.some(x=>x.state!=='ACTIVE'||typeof x.name!=='string'||!x.name.startsWith(prefix)))
+            throw Error('STOP_OWNER_FOUR_FUNCTION_STATE');
+          const target=[
+            'getOwnerProductVisibility','setOwnerProductVisibility',
+            'getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping'
+          ];
+          const present=target.filter(name=>rows.some(x=>x.name===prefix+name));
+          const consent=['getRankingOwnerConsentStatus','setRankingOwnerConsent'];
+          if(consent.some(name=>rows.some(x=>x.name===prefix+name)))
+            throw Error('STOP_OWNER_FOUR_CONSENT_UNEXPECTED');
+          const ranking=rows.find(x=>x.name===prefix+'getVerifiedJointCountRanking');
+          if(ranking?.serviceConfig?.environmentVariables?.NICO_JOINT_COUNT_RANKING_ENABLED==='enabled')
+            throw Error('STOP_OWNER_FOUR_JOINT_RANK_ACTIVE');
+          const original=rows.find(x=>x.name===prefix+'getPartnerWorkspace');
+          if(!original||original.buildConfig?.entryPoint!=='getPartnerWorkspace'||
+            original.buildConfig?.runtime!=='nodejs22')throw Error('STOP_OWNER_FOUR_GET_MISSING');
+          const ownerOriginalFlags=original.serviceConfig?.environmentVariables||{};
+          if(['NICO_PARTNER_SHARED_RANKING_ENABLED','NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED',
+              'NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED','NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED']
+              .some(key=>ownerOriginalFlags[key]==='enabled'))throw Error('STOP_OWNER_FOUR_OLD_RISK_FLAGS');
+          if(present.length!==0&&present.length!==4)
+            throw Error('STOP_OWNER_FOUR_PARTIAL_DEPLOY');
+          if(rows.length!==20+present.length)throw Error('STOP_OWNER_FOUR_OTHER_FUNCTION_DRIFT');
+          if(present.length){
+            for(const name of target){
+              const x=rows.find(row=>row.name===prefix+name);
+              const vars=x.serviceConfig?.environmentVariables||{};
+              if(x.buildConfig?.entryPoint!==name||x.buildConfig?.runtime!=='nodejs22'||
+                !x.serviceConfig?.uri?.startsWith('https://')||
+                vars.NICO_OWNER_PRODUCT_VISIBILITY_ENABLED!=='enabled'||
+                vars.NICO_OWNER_SKU_MAPPING_ENABLED!=='enabled'||
+                vars.NICO_JOINT_COUNT_RANKING_ENABLED!=='disabled')
+                throw Error('STOP_OWNER_FOUR_FLAGS_UNREVIEWED');
+            }
+          }
+          console.log('OWNER_FOUR_LIVE_STATUS '+JSON.stringify({
+            project:'sales-management-cc116',region:'asia-northeast1',
+            totalActiveFunctions:rows.length,ownerFourPresent:present.length,
+            ownerOnOffAndSkuAPIsReady:present.length===4,
+            extraMutualConsentFunctionsPresent:false,
+            jointRankingDisabled:true,existingCountWriteFlagDisabled:true,
+            firebaseFunctionUpdatesInThisAudit:0,
+            firestoreDocumentWrites:0,hostingChanges:0,
+            realOwnerAuthenticatedReadVerified:false
+          }));
+          NODE
+      - name: Always remove runner-only credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/owner-four-readonly.json"
