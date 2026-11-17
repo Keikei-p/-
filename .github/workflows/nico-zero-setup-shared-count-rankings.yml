@@ -1,0 +1,75 @@
+name: NICO verified zero-setup shared count rankings (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/zero-setup-count-linker.mjs'
+      - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'ranking/canonical-owner-count-server-factory.mjs'
+      - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'functions-ranking-approvals/index.js'
+      - 'functions-ranking-approvals/ranking/zero-setup-count-linker.mjs'
+      - 'functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs'
+      - 'functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs'
+      - 'tests/zero-setup-count-linker.test.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
+      - 'tests/owner-visible-count-server-handler.test.mjs'
+      - '.github/workflows/nico-zero-setup-shared-count-rankings.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/zero-setup-count-linker.mjs'
+      - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'ranking/canonical-owner-count-server-factory.mjs'
+      - 'ranking/owner-visible-count-server-handler.mjs'
+      - 'functions-ranking-approvals/index.js'
+      - 'functions-ranking-approvals/ranking/**'
+      - 'tests/zero-setup-count-linker.test.mjs'
+      - 'tests/canonical-joint-count-sku-reader.test.mjs'
+      - 'tests/owner-visible-count-server-handler.test.mjs'
+      - '.github/workflows/nico-zero-setup-shared-count-rankings.yml'
+permissions:
+  contents: read
+jobs:
+  no-new-setup-and-no-production-writes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: disabled
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert canonical and isolated Function bytes agree, while production route is OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
+          grep -Fq 'process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js
+          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler; do
+            cmp "ranking/$f.mjs" "functions-ranking-approvals/ranking/$f.mjs"
+            node --check "ranking/$f.mjs"
+            node --check "functions-ranking-approvals/ranking/$f.mjs"
+          done
+          node --check functions-ranking-approvals/index.js
+          echo 'SAME_COUNT_SOURCE_USED_IN_OWNER_AND_PARTNER_NO_DEPLOY'
+      - name: Zero-setting automatic linking + old original mappings + server finance controls
+        run: |
+          set -euo pipefail
+          node --test tests/zero-setup-count-linker.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/owner-visible-count-server-handler.test.mjs \
+            tests/verified-dual-count-dashboards.test.mjs \
+            tests/verified-inline-joint-ranking-cards.test.mjs \
+            tests/owner-product-visibility-rankings.test.mjs \
+            tests/partner-workspace-count-source.test.mjs
+          echo 'ZERO_SETUP_SAME_LEDGER_COUNT_RANKINGS_PASS_NO_PRODUCTION_DEPLOY'
