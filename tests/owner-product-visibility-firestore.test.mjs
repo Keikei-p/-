@@ -87,16 +87,25 @@ test("one owner toggle is atomic, version checked, audited, and changes no sales
    {id:"nuro",name:"NURO光",active:true}].sort((a,b)=>a.name.localeCompare(b.name,"ja")||
     a.id.localeCompare(b.id)));
  assert.doesNotMatch(JSON.stringify(publicCatalog),/revenue|unitPrice|cashback|25000|10000/);
- assert.equal(f.writes,3,"only visibility, sanitized public catalog and immutable audit");
+ assert.equal(f.writes,5,"visibility, catalog, audit plus one exact mapping and its audit");
+ const linked=f.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.equal(linked.version,1);
+ assert.deepEqual(linked.bindings,[{
+  companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"
+ }]);
+ assert.equal(linked.reviewedByUid,"owner");
+ assert.equal([...f.state.keys()].filter(x=>
+  x.startsWith("companies/hub/rankingSkuMappingAudit/")).length,1);
+ assert(!/revenue|unitPrice|cashback|25000|10000/.test(JSON.stringify(linked)));
  assert.equal((await f.store.readStatus(principal)).products
   .find(p=>p.id==="nuro").enabled,true);
  const repeat=await f.store.saveSwitch({principal,productId:"nuro",
   enabled:true,expectedVersion:1});
  assert.equal(repeat.saved,false);
- assert.equal(f.writes,3,"idempotent no-op must not duplicate catalog or audit");
+ assert.equal(f.writes,5,"idempotent no-op must not duplicate catalog or mapping audits");
  await assert.rejects(f.store.saveSwitch({principal,productId:"air",
   enabled:true,expectedVersion:0}),/UNAUTHORIZED_OR_INCOMPLETE/);
- assert.equal(f.writes,3);
+ assert.equal(f.writes,5);
 });
 test("partner-specific OFF cannot turn on globally OFF product; OFF never deletes counts",async()=>{
  const f=fake(),saved=await f.store.saveSwitch({principal,productId:"nuro",
@@ -258,7 +267,7 @@ test("revoked partner override stays in audit settings but is omitted from activ
  await assert.rejects(f.store.readForRanking({context:{
   ...context,role:"partner_owner",viewerCompanyId:"foreign"
  },mappingsReviewed:true}),/UNAUTHORIZED_OR_INCOMPLETE/);
- assert.equal(f.writes,6,"two Owner toggles update settings, public catalog and audits; ranking reads add zero writes");
+ assert.equal(f.writes,8,"two Owner toggles preserve the original mapping, ranking reads add zero writes");
 });
 
 
@@ -295,4 +304,92 @@ test("Unicode-normalized amount labels never enter count-only owner publication 
   "../functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs"
  ])assert.equal(readFileSync(new URL(path,import.meta.url),"utf8"),canonical,
   "canonical and deployable copies must have identical finance fences");
+});
+
+
+test("Owner global ON links three active count-sharing partners at once, without their approval or count rewrites",async()=>{
+ const f=fake();
+ for(const cid of ["partner2","partner3"]){
+  f.state.set("companies/"+cid,{name:cid,ownerUid:cid+"Owner",
+   companyKind:"partner",hubCompanyId:"hub",active:true});
+  f.state.set("partnerRelations/"+cid,{partnerCompanyId:cid,
+   hubCompanyId:"hub",active:true,countSharingApproved:true});
+ }
+ const before=new Map([...f.state].filter(([key])=>
+  key.startsWith("products/")||key.includes("partnerWorkEntries")||
+  key.includes("records/")).map(([key,v])=>[key,structuredClone(v)]));
+ const result=await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:true,expectedVersion:0
+ });
+ assert.equal(result.saved,true);
+ const mapping=f.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.equal(mapping.version,1);
+ assert.deepEqual(mapping.bindings,[ "partner","partner2","partner3"].map(companyId=>({
+  companyId,productId:"partnerSku01",hubProductId:"nuro"
+ })));
+ assert.equal([...f.state.keys()].filter(p=>
+  p.startsWith("companies/hub/rankingSkuMappingAudit/")).length,3);
+ for(const [p,v] of before)assert.deepEqual(f.state.get(p),v);
+ assert(!/revenue|unitPrice|cashback|25000|10000/.test(JSON.stringify(mapping)));
+ assert.equal(f.writes,7,"3 existing publication writes plus mapping and three audits");
+});
+test("global Owner ON does not bypass company OFF or a manually reviewed SKU choice",async()=>{
+ const f=fake();
+ f.state.set("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"owner",version:1,
+  enabledHubProductIds:[],partnerOverrides:{partner:[]}
+ });
+ const saved=await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:1});
+ assert.equal(saved.saved,true);
+ assert.equal(f.state.has("companies/hub/rankingSkuMappings/shared"),false,
+  "partner explicitly OFF still cannot receive the SKU mapping");
+ assert.equal(f.writes,3);
+ const g=fake();
+ g.state.set("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",active:true,
+  version:4,bindings:[{companyId:"partner",
+   productId:"partnerSku01",hubProductId:"air"}]
+ });
+ await g.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:0});
+ const mapped=g.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.equal(mapped.version,4,"the existing audited choice cannot be overwritten");
+ assert.deepEqual(mapped.bindings,[{
+  companyId:"partner",productId:"partnerSku01",hubProductId:"air"
+ }]);
+ assert.equal(g.writes,3,"no automatic mapping or mapping audit for a chosen category");
+});
+test("ambiguous Owner labels fail closed for auto-mapping; unknown merchandise never guesses a category",async()=>{
+ const f=fake();
+ f.state.set("products/nuro2",product("nuro2","NURO"));
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:0});
+ assert.equal(f.state.has("companies/hub/rankingSkuMappings/shared"),false,
+  "duplicate plausible NURO masters must not be guessed");
+ assert.equal(f.writes,3);
+ const g=fake();
+ await g.store.saveSwitch({principal,productId:"air",
+  enabled:true,expectedVersion:0});
+ assert.equal(g.state.has("companies/hub/rankingSkuMappings/shared"),false,
+  "standalone Air cannot impersonate the old combined optical/AIR product");
+});
+test("legacy 光/AIR maps ONLY to its exact combined category; toggling OFF keeps the binding and history",async()=>{
+ const f=fake();
+ f.state.set("products/combined",
+  product("combined","SB光・AIR（旧合算・未分類）"));
+ await f.store.saveSwitch({principal,productId:"combined",
+  enabled:true,expectedVersion:0});
+ const before=structuredClone(f.state.get("companies/hub/rankingSkuMappings/shared"));
+ assert.deepEqual(before.bindings,[{
+  companyId:"partner",productId:"partnerSku05",hubProductId:"combined"
+ }]);
+ const off=await f.store.saveSwitch({
+  principal,productId:"combined",enabled:false,expectedVersion:1
+ });
+ assert.equal(off.saved,true);
+ assert.deepEqual(f.state.get("companies/hub/rankingSkuMappings/shared"),before);
+ assert.equal(f.state.get("products/combined").revenue,25000);
+ assert.equal(f.state.get("companies/hub/rankingProductVisibility/shared")
+  .enabledHubProductIds.includes("combined"),false);
 });
