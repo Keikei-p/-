@@ -52,7 +52,7 @@ function validate(mapping,catalog,partner){
   if(!keys(p,["id","name","active","enabled"])||
      !id(p.id)||products.has(p.id)||!name(p.name)||
      typeof p.active!=="boolean"||typeof p.enabled!=="boolean")fail();
-  products.set(p.id,{id:p.id,name:p.name,active:p.active});
+  products.set(p.id,{id:p.id,name:p.name,active:p.active,enabled:p.enabled});
  }
  for(const b of mapping.bindings){
   if(!keys(b,["companyId","productId","hubProductId"])||
@@ -67,6 +67,52 @@ function validate(mapping,catalog,partner){
   match.set(b.productId,b.hubProductId);
  }
  return {version:mapping.version,products:[...products.values()],match};
+}
+// An exact, narrow preview only. No fuzzy/substring matches or automatic writes.
+// Historical 光/AIR remains one combined SKU and never splits into 光 + AIR.
+const skuKey=value=>value.normalize("NFKC").toLowerCase()
+ .replace(/[\s　・･\/／_\-‐－（()）]/g,"");
+const exactNames=Object.freeze({
+ partnerSku01:["NURO","NURO光"],
+ partnerSku02:["SBMNP","SoftBankMNP","ソフトバンクMNP"],
+ partnerSku03:["YMMNP","ワイモバイルMNP"],
+ partnerSku04:["YM純新規","ワイモバイル純新規"],
+ partnerSku06:["ウォーター"],
+ partnerSku07:["つばさ・HTB"],
+ partnerSku08:["太陽光・蓄電池AP"],
+ partnerSku09:["U-NEXT"]
+});
+export function suggestUnambiguousOwnerSkuMappings({mapping,catalog,partnerCompanyId}={}){
+ if(!id(partnerCompanyId))fail();
+ const view=validate(mapping,catalog,partnerCompanyId);
+ const published=new Set(catalog.products.filter(p=>p.active&&p.enabled).map(p=>p.id));
+ const override=catalog.partnerOverrides;
+ if(!obj(override)||Object.values(override).some(x=>!Array.isArray(x)||
+     x.some(y=>!id(y))))fail();
+ if(Object.hasOwn(override,partnerCompanyId)){
+  const allowed=new Set(override[partnerCompanyId]);
+  for(const productId of published)if(!allowed.has(productId))published.delete(productId);
+ }
+ const occupied=new Set(view.match.values());
+ const result=[];
+ for(const [category,label] of CATEGORIES){
+  if(view.match.has(category))continue;
+  const aliases=new Set((exactNames[category]||[]).map(skuKey));
+  const candidates=view.products.filter(p=>published.has(p.id)&&!occupied.has(p.id)&&(
+   category===LEGACY?
+    combined(p.name)&&/(?:SB光・AIR|旧合算|未分類)/.test(p.name):
+    aliases.has(skuKey(p.name))
+  ));
+  if(candidates.length===1)result.push({
+   partnerProductId:category,partnerLabel:label,
+   hubProductId:candidates[0].id,hubProductLabel:candidates[0].name
+  });
+ }
+ const freq=new Map();
+ for(const proposal of result)freq.set(proposal.hubProductId,
+  (freq.get(proposal.hubProductId)||0)+1);
+ return Object.freeze(result.filter(x=>freq.get(x.hubProductId)===1)
+  .map(x=>Object.freeze(x)));
 }
 export const PARTNER_CATEGORIES=CATEGORIES;
 /**
@@ -173,6 +219,78 @@ export function createOwnerReviewedSkuMappingPanel({
      }
     });
     selects.push(select);row.appendChild(select);section.appendChild(row);
+   }
+   // Owner reviews exact matches first. No page-load save, guessed partner
+   // finance read, duplicate hub product or alteration of existing bindings.
+   const proposals=suggestUnambiguousOwnerSkuMappings({
+    mapping,catalog:products,partnerCompanyId
+   });
+   if(proposals.length){
+    const preview=el(document,"section");
+    preview.className="nico-sku-batch-preview";
+    preview.appendChild(el(document,"h3","一致した商材の一括連携"));
+    preview.appendChild(el(document,"p",
+     "名称が確実に一致する未設定の商材のみ。内容を確認して保存してください。対象外は従来どおり個別に設定できます。"));
+    for(const p of proposals)
+     preview.appendChild(el(document,"p",p.partnerLabel+" → "+p.hubProductLabel));
+    const batch=el(document,"button",
+     "上記"+proposals.length+"件を確認して連携する");
+    batch.type="button";
+    batch.setAttribute?.("aria-label","一致商材を確認して一括保存");
+    batch.addEventListener("click",async()=>{
+     if(closed||saving||auth.currentUser!==user)return;
+     saving=true;batch.disabled=true;
+     for(const x of selects)x.disabled=true;
+     let completed=0,failed=false,expectedVersion=view.version;
+     try{
+      for(const proposed of proposals){
+       if(closed||auth.currentUser!==user||current!==sequence)fail();
+       const token=await user.getIdToken();
+       if(auth.currentUser!==user||closed)fail();
+       // Authoritative revocation, version, Owner and publication checks
+       // are repeated by the existing server callables for each change.
+       const [latestMap,latestProducts]=await Promise.all([
+        readMappings({token}),readProducts({token})
+       ]);
+       const latest=validate(latestMap,latestProducts,partnerCompanyId);
+       if(latest.version!==expectedVersion)fail();
+       const stillEligible=suggestUnambiguousOwnerSkuMappings({
+        mapping:latestMap,catalog:latestProducts,partnerCompanyId
+       }).some(p=>p.partnerProductId===proposed.partnerProductId&&
+        p.hubProductId===proposed.hubProductId);
+       if(!stillEligible)fail();
+       const result=await saveMapping({token,partnerCompanyId,
+        partnerProductId:proposed.partnerProductId,
+        hubProductId:proposed.hubProductId,expectedVersion});
+       if(!keys(result,["saved","version","partnerCompanyId",
+           "partnerProductId","hubProductId"])||
+          result.saved!==true||result.version!==expectedVersion+1||
+          result.partnerCompanyId!==partnerCompanyId||
+          result.partnerProductId!==proposed.partnerProductId||
+          result.hubProductId!==proposed.hubProductId)fail();
+       const checked=await readMappings({token});
+       const confirmed=validate(checked,latestProducts,partnerCompanyId);
+       if(confirmed.version!==result.version||
+          confirmed.match.get(proposed.partnerProductId)!==
+           proposed.hubProductId)fail();
+       expectedVersion=result.version;completed++;
+      }
+     }catch{failed=true;
+     }finally{
+      saving=false;
+      if(!closed&&auth.currentUser===user){
+       const fresh=await refresh();
+       if(fresh&&!closed&&auth.currentUser===user){
+        const notice=el(document,"p",failed?
+         "一括連携は途中で停止しました。保存確認済み"+completed+
+          "件。最新状態を再取得したため残りを確認してください。":
+         "一括連携を保存・再確認しました（"+completed+"件）。");
+        notice.setAttribute?.("role","status");root.appendChild(notice);
+       }
+      }
+     }
+    });
+    preview.appendChild(batch);section.appendChild(preview);
    }
    root.replaceChildren(section);
    lastVersion=view.version;

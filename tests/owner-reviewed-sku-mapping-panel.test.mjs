@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {createOwnerReviewedSkuMappingPanel,PARTNER_CATEGORIES}
+import {createOwnerReviewedSkuMappingPanel,PARTNER_CATEGORIES,suggestUnambiguousOwnerSkuMappings}
  from "../ranking/owner-reviewed-sku-mapping-panel.mjs";
 import {createOwnerSkuMappingFirebaseBridge}
  from "../ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs";
@@ -193,4 +193,110 @@ test("bridge rejects spoofed token and changed user before rendering",async()=>{
   hubProductId:"nuro",expectedVersion:0}),/UNVERIFIED/);
  auth.currentUser=null;bridge.onAuthChange();
  await assert.rejects(bridge.readMappings({token:"a".repeat(40)}),/UNVERIFIED/);
+});
+
+
+test("Owner preview matches only exact published names and NEVER silently saves on refresh",async()=>{
+ const products=catalog(),map=status(),proposals=suggestUnambiguousOwnerSkuMappings({
+  mapping:map,catalog:products,partnerCompanyId:"partner"
+ });
+ assert.deepEqual(proposals.map(p=>[p.partnerProductId,p.hubProductId]),
+  [["partnerSku01","nuro"]]);
+ assert(!proposals.some(p=>p.partnerProductId==="partnerSku05"),
+  "combined legacy is not proposed while globally OFF");
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth,
+  partnerCompanyId:"partner",readMappings:async()=>map,
+  readProducts:async()=>products,saveMapping:async x=>{calls.push(x);throw Error("not expected");}
+ });
+ await panel.refresh();
+ assert.equal(calls.length,0);
+ assert.match(displayed(root),/上記1件を確認して連携する/);
+ assert.equal(all(root).filter(x=>x.tagName==="button").length,1);
+ panel.destroy();
+});
+
+test("Owner batch performs versioned sequential exact mappings only after click, rechecks server",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ const products=catalog();
+ products.products.push({id:"water",name:"ウォーター",enabled:true,active:true});
+ let version=0,bindings=[];
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth,
+  partnerCompanyId:"partner",
+  readProducts:async()=>products,
+  readMappings:async()=>status(version,bindings),
+  saveMapping:async input=>{
+   calls.push(input);
+   assert.equal(input.expectedVersion,version);
+   assert(!bindings.some(b=>b.productId===input.partnerProductId));
+   version++;
+   bindings.push({companyId:input.partnerCompanyId,
+    productId:input.partnerProductId,hubProductId:input.hubProductId});
+   return {saved:true,version,partnerCompanyId:input.partnerCompanyId,
+    partnerProductId:input.partnerProductId,hubProductId:input.hubProductId};
+  }
+ });
+ await panel.refresh();
+ assert.equal(calls.length,0,"never write on load");
+ const action=all(root).find(x=>x.tagName==="button");
+ assert(action);
+ assert.match(displayed(root),/上記2件を確認して連携する/);
+ await action.fire("click");
+ assert.deepEqual(calls.map(x=>[x.partnerProductId,x.hubProductId,x.expectedVersion]),[
+  ["partnerSku01","nuro",0],["partnerSku06","water",1]
+ ]);
+ assert.equal(panel.getVersion(),2);
+ assert.equal(selects(root)[0].value,"nuro");
+ assert.equal(selects(root)[5].value,"water");
+ assert.match(displayed(root),/一括連携を保存・再確認しました（2件）/);
+ assert.equal(all(root).filter(x=>x.tagName==="button").length,0);
+ panel.destroy();
+});
+
+test("ambiguous matching, already mapped SKU, and legacy split never get a batch proposal",()=>{
+ const c=catalog();
+ c.products[2].enabled=true;
+ c.products.push({id:"nuro2",name:"nuro",active:true,enabled:true});
+ let proposals=suggestUnambiguousOwnerSkuMappings({
+  mapping:status(),catalog:c,partnerCompanyId:"partner"
+ });
+ assert(!proposals.some(x=>x.partnerProductId==="partnerSku01"),
+  "two NURO candidate IDs are ambiguous");
+ assert(proposals.some(x=>x.partnerProductId==="partnerSku05"&&x.hubProductId==="combined"),
+  "only explicit and currently published combined 光/AIR may be proposed");
+ c.products[2].name="SoftBank Air";
+ assert(!suggestUnambiguousOwnerSkuMappings({
+  mapping:status(),catalog:c,partnerCompanyId:"partner"
+ }).some(x=>x.partnerProductId==="partnerSku05"));
+ c.products[2].name="SB光・AIR（旧合算・未分類）";
+ c.partnerOverrides.partner=[];
+ assert.equal(suggestUnambiguousOwnerSkuMappings({
+  mapping:status(),catalog:c,partnerCompanyId:"partner"
+ }).length,0,"company-specific OFF is respected");
+});
+
+test("batch failure stops at first error and reloads server-confirmed partial state",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ const c=catalog();c.products.push({id:"water",name:"ウォーター",enabled:true,active:true});
+ let version=0,bindings=[];
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth,
+  partnerCompanyId:"partner",
+  readMappings:async()=>status(version,bindings),readProducts:async()=>c,
+  saveMapping:async data=>{
+   calls.push(data);
+   if(data.partnerProductId==="partnerSku06")throw Error("permission-denied");
+   version=1;bindings=[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"}];
+   return {saved:true,version,partnerCompanyId:"partner",
+    partnerProductId:"partnerSku01",hubProductId:"nuro"};
+  }
+ });
+ await panel.refresh();
+ const action=all(root).find(x=>x.tagName==="button");
+ await action.fire("click");
+ assert.equal(calls.length,2);
+ assert.equal(panel.getVersion(),1);
+ assert.equal(selects(root)[0].value,"nuro");
+ assert.equal(selects(root)[5].value,"");
+ assert.match(displayed(root),/途中で停止しました。保存確認済み1件/);
+ panel.destroy();
 });
