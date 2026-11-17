@@ -6919,6 +6919,16 @@ body.product-reordering .product-list {
         id="productList"
         class="product-list">
       </div>
+      <!-- OWNER_PRODUCT_SHARE_INLINE_START: existing hub SKU publication, no duplicate products -->
+      <details id="ownerProductShareInline" hidden style="margin-top:16px;border:1px solid var(--border);border-radius:12px;background:var(--card);padding:12px;">
+        <summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700;">🤝 協力店へ連携（登録済み商材のON/OFF）</summary>
+        <p style="font-size:13px;line-height:1.7;color:var(--sub);margin:10px 0;">
+          自社で登録した商材をそのまま使います。協力店用に商材を追加登録する必要はありません。公開ONの商材だけを協力店に表示し、OFFにしても過去の実績・件数・履歴は保持します。
+        </p>
+        <p id="ownerProductShareInlineStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--sub);"></p>
+        <div id="ownerProductShareInlineRoot"></div>
+      </details>
+      <!-- OWNER_PRODUCT_SHARE_INLINE_END -->
 
     </div>
 
@@ -9415,6 +9425,12 @@ function openManagementCard(
   }
 
 
+  // The existing merchant editor stays unchanged. Partner publication is Owner-only.
+  if(type==="product"){
+    ownerProductShareInline.hidden=!canLoadPartnerRanking();
+    if(ownerProductShareInline.hidden)ownerProductShareInline.open=false;
+  }
+
   resetQuickMenuButtons();
 
   config.button.setAttribute(
@@ -9947,6 +9963,49 @@ quickPartnerProductsButton.onclick=async()=>{
       "商材設定を読み込めませんでした。オーナー権限と通信状態を確認してください。";
   }
 };
+
+// OWNER_PRODUCT_SHARE_INLINE_JS_START: use the EXISTING Owner callable and Auth
+// No new product creates, no raw Firestore access, and no startup calls.
+// The server rechecks Owner membership for every load and explicit toggle.
+const ownerProductShareInline=document.getElementById("ownerProductShareInline");
+const ownerProductShareInlineRoot=document.getElementById("ownerProductShareInlineRoot");
+const ownerProductShareInlineStatus=document.getElementById("ownerProductShareInlineStatus");
+let ownerProductShareInlinePanel=null;
+let ownerProductShareInlineGeneration=0;
+ownerProductShareInline.addEventListener("toggle",async()=>{
+  const generation=++ownerProductShareInlineGeneration;
+  if(!ownerProductShareInline.open)return;
+  if(!canLoadPartnerRanking()){
+    ownerProductShareInline.open=false;
+    return;
+  }
+  const uid=currentUser.uid;
+  const stillOwner=()=>generation===ownerProductShareInlineGeneration &&
+    ownerProductShareInline.open && !ownerProductShareInline.hidden &&
+    currentUser?.uid===uid && canLoadPartnerRanking() &&
+    productManagement.style.display!=="none";
+  ownerProductShareInlineStatus.textContent="自社の登録済み商材を確認中…";
+  try{
+    if(!ownerProductShareInlinePanel){
+      const {mountOwnerProductVisibilityDashboard}=await import(
+        "./ranking/owner-product-visibility-dashboard-mount.mjs"
+      );
+      if(!stillOwner())return;
+      ownerProductShareInlinePanel=mountOwnerProductVisibilityDashboard({
+        featureEnabled:true,document,root:ownerProductShareInlineRoot,
+        auth,functions:partnerCountFunctions,httpsCallable,onAuthStateChanged
+      });
+    }
+    if(!stillOwner())return;
+    const ok=await ownerProductShareInlinePanel.refresh();
+    if(stillOwner())ownerProductShareInlineStatus.textContent=ok?""
+      :"商材の取得に失敗しました。Owner権限と通信状態を確認してください。";
+  }catch(_error){
+    if(stillOwner())ownerProductShareInlineStatus.textContent=
+      "協力店への公開設定を読み込めません。Owner権限とAPIを確認してください。";
+  }
+});
+// OWNER_PRODUCT_SHARE_INLINE_JS_END
 
 document.getElementById("refreshPartnerCompanies").onclick=()=>void loadPartnerCompanyList();
 document.getElementById("closePartnerCompanyButton").onclick=closeQuickPanels;

@@ -1,0 +1,44 @@
+name: NICO Owner existing products to partner inline (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/owner-product-share-in-management.test.mjs'
+      - '.github/workflows/nico-owner-product-inline-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Preserve Firebase project, finance Rules, server authorization and old product panel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object ranking/owner-product-visibility-dashboard-mount.mjs)" = d606cdf258f0a53c4b9295e009b567b475badf31
+          test "$(git hash-object ranking/owner-product-visibility-firebase-bridge.mjs)" = 1ade778691c27e9517d04cc69d3093af87af46fd
+          node -e 'const f=require("fs");if(JSON.parse(f.readFileSync(".firebaserc")).projects.default!=="sales-management-cc116")process.exit(1)'
+      - name: Test exact additive modification against historical page and original Owner server bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-product-share-in-management.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs
+          echo 'OWNER_PRODUCT_SHARE_INLINE_OFFLINE_PASS'
+          echo 'PRODUCTION_DEPLOYED=false'
+          echo 'ORIGINAL_SALES_DATA_WRITES=0'
