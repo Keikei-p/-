@@ -69,13 +69,19 @@ jobs:
             test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
             test "$(git hash-object functions-partner-workspace/service.cjs)" = f78b1fa16f71848b20579ad220f82b703fe7f209
             test "$(git hash-object functions-partner-workspace/shared-count-standings.cjs)" = d8ae8e2a8bfeec66bb82dee049d5f104db26414a
-            test "$(git hash-object functions-partner-workspace/approved-published-categories.cjs)" = 0e020d2b38152cd3669d65bf005bc76fba2cc568
+            test "$(git hash-object functions-partner-workspace/approved-published-categories.cjs)" = aa15d09ec443a0c44155f8288784341a9b60810e
             for file in ranking/trusted-combined-ranking-context.mjs functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs; do
               test "$(git hash-object "$file")" = 3cfc9f6bc91b5dc315357e39fa7b64ee0e6417af
             done
             for file in ranking/partner-month-readonly-loader.mjs functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs; do
               test "$(git hash-object "$file")" = 106dee944507fab31fe5f36ee314738e64d53597
             done
+            # The input/write guard and the read-only ranking must apply
+            # exactly the same reviewed combined-SKU restriction.
+            test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = 3784abc3c179fd5e2b1736351be82a35d3034ef1
+            test "$(git hash-object ranking/approved-published-categories.mjs)" = 551b31c1ebce1e4203f808a936cec438889863bc
+            test "$(git hash-object ranking/partner-submission-publication-guard.mjs)" = 5b46743e0245c0a03447b8f11a4e59970b983b67
+            node --test tests/partner-submission-publication-guard.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/approved-partner-count-standings.test.cjs
             node --test tests/trusted-combined-ranking-context.test.mjs tests/partner-month-readonly-loader.test.mjs
           # Exact #708 source review only; historical deployment gates remain unchanged.
           elif { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
