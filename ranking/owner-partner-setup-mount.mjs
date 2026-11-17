@@ -104,7 +104,17 @@ export function mountOwnerPartnerSetup({
   const globalPanel=createOwnerProductVisibilityPanel({
    document,root:globalBox,auth,
    load:args=>visibilityBridge.load(args),
-   save:args=>visibilityBridge.save(args)
+   save:async args=>{
+    const result=await visibilityBridge.save(args);
+    // Both panels share one server revision. Refresh the selected partner
+    // after a confirmed global write, or its switches stay stale/disabled.
+    if(result?.saved===true&&!closed&&generation===token&&
+       auth.currentUser===user){
+     const activePartner=partnerViews[0];
+     if(activePartner)await activePartner.refresh();
+    }
+    return result;
+   }
   });
   views.push(globalPanel);
   await globalPanel.refresh();
@@ -136,7 +146,14 @@ export function mountOwnerPartnerSetup({
    const switchPanel=createOwnerProductVisibilityPanel({
     document,root:partnerBox,auth,partnerCompanyId:companyId,
     load:args=>visibilityBridge.load(args),
-    save:args=>visibilityBridge.save(args)
+    save:async args=>{
+     const result=await visibilityBridge.save(args);
+     // A partner override also increments the same global visibility version.
+     if(result?.saved===true&&!closed&&generation===token&&
+        partnerGeneration===scope&&auth.currentUser===user)
+      await globalPanel.refresh();
+     return result;
+    }
    });
    const mappingPanel=createOwnerReviewedSkuMappingPanel({
     enabled:true,document,root:mapBox,auth,partnerCompanyId:companyId,
