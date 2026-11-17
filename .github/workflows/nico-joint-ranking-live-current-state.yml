@@ -1,0 +1,102 @@
+name: NICO joint count API actual live status (READ ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-joint-ranking-live-current-state.yml'
+      - 'tests/nico-joint-ranking-live-current-state.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-joint-ranking-live-current-state.yml'
+      - 'tests/nico-joint-ranking-live-current-state.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: nico-live-joint-ranking-current-state
+  cancel-in-progress: false
+jobs:
+  public-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify current source-only no-deploy scope and finance protections
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          grep -Fq 'process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          node --check tools/production/inspect-joint-ranking-live-readonly.mjs
+          node --check tools/production/inspect-ranking-function-cli-readonly.mjs
+          node --test tests/nico-joint-ranking-live-current-state.test.mjs tests/inspect-joint-ranking-live-readonly.test.mjs tests/inspect-ranking-function-cli-readonly.test.mjs
+          echo PUBLIC_RANKING_AUDIT_NO_WRITES_NO_DEPLOY
+      - name: Anonymous HTTP GET response statuses only (no tokens/body)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-joint-ranking-live-readonly.mjs
+          echo REAL_ACCOUNT_FINANCE_DENIAL_NOT_INFERRED
+  inventory-read-only:
+    needs: public-read-only
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.public-read-only.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify current main SHA and original finance sources before identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          node --test tests/nico-joint-ranking-live-current-state.test.mjs
+      - name: Install pinned metadata-only Firebase CLI
+        run: npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Supply authorized service identity in private temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-joint-live-audit.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-joint-live-audit.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-joint-live-audit.private.json" >> "$GITHUB_ENV"
+      - name: Read Functions metadata only and print sanitized deployed/flag booleans
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+            > "$RUNNER_TEMP/nico-joint-live-functions.private.json" \
+            2> "$RUNNER_TEMP/nico-joint-live-functions-errors.private.log" || \
+            { echo STOP_RANKING_FUNCTION_LIST_UNAVAILABLE; exit 1; }
+          node tools/production/inspect-ranking-function-cli-readonly.mjs "$RUNNER_TEMP/nico-joint-live-functions.private.json"
+          echo NO_FIRESTORE_READS_NO_FUNCTION_DEPLOYS_NO_RULES_OR_HOSTING_WRITES
+      - name: Delete service identity and private metadata, even after failure
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/nico-joint-live-audit.private.json" \
+            "$RUNNER_TEMP/nico-joint-live-functions.private.json" \
+            "$RUNNER_TEMP/nico-joint-live-functions-errors.private.log"
