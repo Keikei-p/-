@@ -1,0 +1,46 @@
+name: NICO login 2s production exact-byte audit (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-login-2s-live-bytes-audit.yml'
+permissions:
+  contents: read
+jobs:
+  live-audit-no-writes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact source and live HTML preserving all partner routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object index.html)" = 18ba11afd3735faee67fc0e5a90b6643988f54a1
+          curl -fsSL --retry 3 --max-time 25 -H "Cache-Control: no-cache" "https://nico-factory.web.app/?login2s_exact_audit=$GITHUB_SHA" > "$RUNNER_TEMP/live-index.html"
+          if ! cmp -s "$RUNNER_TEMP/live-index.html" index.html; then
+            sha256sum "$RUNNER_TEMP/live-index.html" index.html
+            echo 'STOP_LOGIN_2S_LIVE_BYTES_DIFFER'
+            exit 1
+          fi
+          for marker in "flash('boot',2000)" "flash('success',2000)" 'id="nfFXLoadingHelp"' 'id="nfFXRetry"' 'id="partnerInviteAtMain"'; do
+            grep -Fq "$marker" "$RUNNER_TEMP/live-index.html"
+          done
+          for route in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            status=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")
+            test "$status" = '200'
+          done
+          node --test tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs
+          echo 'LOGIN_2S_PRODUCTION_EXACT_BYTES_PASS'
+          echo 'LOGIN_2S_PARTNER_ROUTES_HTTP200_PASS'
+          echo 'PRODUCTION_WRITES=0'
