@@ -27,9 +27,9 @@ function mock(){
  const request=async(method,url,body,type,raw)=>{
   if(method==="GET"&&url.includes("/releases?pageSize=1"))
    return {releases:[{version:{name:active}}]};
-  if(method==="GET"&&url.endsWith("/versions/"+active))
+  if(method==="GET"&&url.endsWith("/"+active))
    return {name:active,status:"FINALIZED",config:configs,fileCount:33};
-  if(method==="GET"&&url.endsWith("/versions/"+next))
+  if(method==="GET"&&url.endsWith("/"+next))
    return {name:next,status:"FINALIZED",config:configs,fileCount:33};
   if(method==="GET"&&url.includes("/files?")){
    const v=url.includes("/versions/old/")?old:next;
