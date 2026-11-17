@@ -71,8 +71,13 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  const privateProductRef=(cid,id)=>collection(cid,"partnerPrivateProducts").doc(id);
  const entryRef=(cid,date,id)=>collection(cid,"partnerWorkEntries").doc(date+"__"+id);
  const summaryRef=(hub,date,partner)=>collection(hub,"partnerWorkCountDays").doc(date).collection("reports").doc(partner);
- const {actor,scope}=require("./workspace-identity.cjs").makeWorkspaceIdentity({
-  db,getAuth,HttpsError,enabled,now
+ const identityFactory=require("./workspace-identity.cjs").makeWorkspaceIdentity;
+ const {actor,scope}=identityFactory({db,getAuth,HttpsError,enabled,now});
+ // A separate authenticated read-only Owner setup path must work before the
+ // partner workspace or its count-writing feature is enabled. Never reuse this
+ // actor for manage, submit, correction or general partner workspace reads.
+ const {actor:ownerSetupActor}=identityFactory({
+  db,getAuth,HttpsError,enabled:()=>true,now
  });
  const checkTeam=async(tx,s,id)=>{
   if(!ID.test(id||""))fail("invalid-argument");
@@ -617,8 +622,37 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  }
 
  async function view(request){
-  const a=await actor(request),d=request?.data||{},date=validDate(d.date);
+  const d=request?.data||{};
+  const setupOnly=d.ownerSetupCompaniesOnly===true;
+  const a=await (setupOnly?ownerSetupActor(request):actor(request));
+  const date=validDate(d.date);
   const s=await scope(a.uid,null,d.workspaceCompanyId);
+  if(setupOnly){
+   if(Object.keys(d).sort().join("|")!=="date|ownerSetupCompaniesOnly"||
+      s.kind!=="hub"||s.role!=="owner")fail();
+   // Company names and IDs only; no saved counts, teams, staff or money.
+   // An active relation is sufficient; other-party consent is not queried.
+   const relations=await db.collection("partnerRelations")
+    .where("hubCompanyId","==",s.cid).limit(101).get();
+   if(relations.size>100)fail("resource-exhausted");
+   const registeredCompanies=[];
+   for(const sn of relations.docs){
+    const rel=sn.data()||{};
+    if(!ID.test(sn.id)||rel.partnerCompanyId!==sn.id||
+       rel.hubCompanyId!==s.cid)fail("data-loss");
+    const cs=await db.collection("companies").doc(sn.id).get();
+    const company=cs.data()||{};
+    if(!cs.exists||company.companyKind!=="partner"||
+       company.hubCompanyId!==s.cid||!validCompanyName(company.name))
+     fail("data-loss");
+    registeredCompanies.push({partnerCompanyId:sn.id,
+     name:clean(company.name),
+     active:rel.active===true&&rel.countSharingApproved===true&&
+      company.active===true});
+   }
+   registeredCompanies.sort((x,y)=>x.name.localeCompare(y.name,"ja"));
+   return {role:"hub",date,registeredCompanies};
+  }
   if(d.sharedCountRankings!==undefined){
    if(d.sharedCountRankings!==true||
       (d.rankingPeriod!==undefined&&
