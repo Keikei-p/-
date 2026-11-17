@@ -70,7 +70,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
   if(MONEY.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
   // Never interpret old combined SB光・AIR as either new 光 or Air.
   if(b.productId==="partnerSku05"&&
-     !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))deny();
+     !/(?:SB光・AIR|旧合算|未分類|(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(catalog.get(b.hubProductId).name))deny();
   mapped.set(b.productId,b.hubProductId);
  }
  const allowed=new Set();
