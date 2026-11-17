@@ -1144,7 +1144,7 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 本番限定公開ツールは別途SHA固定、Hosting全既存ファイル保全、変更中の公開版ドリフト停止を要求
 
 ### 本番運用の承認欄（本人だけが記入）
-- sales-production-reviewed ラベル：未適用
+- sales-production-reviewed ラベル：適用済み（GitHub管理者接続を確認した後、明示的な本番公開指示に基づき2026-11-18 JSTに付与。別途の本人署名とは異なる）
 - 管理者または独立レビュー担当者による GitHub 承認：未取得
 - 担当者署名（本人記入）: 未記入
 - 署名日（本人記入）: 未記入
