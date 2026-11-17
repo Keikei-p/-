@@ -1105,3 +1105,6 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 検証: `tests/login-fx-visible-on-iphone.test.cjs` で起動繰り返し、入力前/後タップ、登録モード除外、ログインエラー、成功時のみ発火、ログアウト後再ログイン、Reduced Motionでの静的表示をネットワークなしDOMモックで検証。`.github/workflows/nico-login-fx-visible-no-deploy.yml` は資格情報なし・read-only CIのみ。既存 Sales App Validation、protected-change-guard、協力店/財務境界テストの成功を別に必要とする。
 - 本番公開条件: 最新mainの変更ファイルと公開中indexの実バイト照合、既存32以上のHosting資産の完全保持と競合リリース除外、CI成功・権限境界不変を確認した後のみ `index.html` 限定で配備。実機iPhoneと認証済みOwner/協力店ログインは公開後の別検証とし、完了を推測しない。
 - この記録は技術レビューであり管理者本人署名を偽装しない。本人署名: **未取得**。この記録を書いた時点で今回修正の本番公開: **未実施**。
+
+- 2026-11-18 GitHub PR #781 初回CI: 専用 `NICO iPhone login FX visibility regression (NO DEPLOY)` https://github.com/Keikei-p/-/actions/runs/44131791879 はSUCCESS。Owner金額分離 https://github.com/Keikei-p/-/actions/runs/44131792115 と本番公開GET-only https://github.com/Keikei-p/-/actions/runs/44131792090 もSUCCESS。既存ランキングUI CI https://github.com/Keikei-p/-/actions/runs/44131791941 はSUCCESS。
+- 初回protected-change-guard https://github.com/Keikei-p/-/actions/runs/44131792109 は `sales-production-reviewed` がPRイベントにまだなかったため安全停止。管理者GitHub接続でPR #781へレビューラベルを付与済みであり、これは技術レビューの記録であって実機確認・独立署名・本番公開を意味しない。この追記後の新headで保護ゲートを再評価する。
