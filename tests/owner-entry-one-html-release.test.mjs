@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {SOURCES,uploadSha} from "../tools/hosting/owner-setup-additive-guard.mjs";
+import {SOURCES,uploadSha,uploadBytes} from "../tools/hosting/owner-setup-additive-guard.mjs";
 import {OWNER_ONLY_REPLACEMENTS} from "../tools/hosting/owner-only-setup-replacement-guard.mjs";
 import {LIVE_CURRENT_OWNER_JS} from "../tools/hosting/owner-entry-one-file-guard.mjs";
 import {releaseOwnerEntryOneFile} from "../tools/hosting/release-owner-entry-one-file.mjs";
@@ -44,7 +44,8 @@ function mock(){
   }
   if(method==="POST"&&url.includes("upload-firebasehosting.googleapis.com")){
    assert.equal(type,"application/octet-stream");
-   assert.equal(raw,fresh["owner-partner-setup.html"]);
+   assert(Buffer.isBuffer(raw));
+   assert.deepEqual(raw,uploadBytes(fresh["owner-partner-setup.html"]));
    return {};
   }
   if(method==="PATCH"&&url.endsWith("?update_mask=status"))
