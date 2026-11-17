@@ -67,7 +67,7 @@ jobs:
             test "$(git hash-object index.html)" = 03e213565a2037c73913602701363476ae0db9fd
             test "$(git hash-object partner-workspace.html)" = d8262633f35cf0f015de44c9a223c4289f8d2a6b
             test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
-            test "$(git hash-object functions-partner-workspace/service.cjs)" = 361e41d2a1259c33a5479e22073c6da3599d1697
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = f78b1fa16f71848b20579ad220f82b703fe7f209
             test "$(git hash-object functions-partner-workspace/shared-count-standings.cjs)" = d8ae8e2a8bfeec66bb82dee049d5f104db26414a
             test "$(git hash-object functions-partner-workspace/approved-published-categories.cjs)" = 0e020d2b38152cd3669d65bf005bc76fba2cc568
             for file in ranking/trusted-combined-ranking-context.mjs functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs; do
