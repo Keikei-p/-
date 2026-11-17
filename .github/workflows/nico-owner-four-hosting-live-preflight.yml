@@ -1,0 +1,151 @@
+name: NICO Owner four-asset LIVE Hosting preflight (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-four-hosting-live-preflight.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-four-hosting-live-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-four-hosting-live-preflight
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Lock the original Rules, Owner API, four replacement candidates and their strict guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object tools/hosting/owner-setup-additive-guard.mjs)" = 22ecdf3362c97d3a7abbe423d40c95a157864603
+          test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = c7eab608a3fe031f5841b79895eb1fff4056bbf6
+          test "$(git hash-object owner-partner-setup.html)" = 8cb4ad80c3c03658d1fb070339614cf2f5617d7b
+          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = c6cec9b2ed46870277073911192a45114fea6a3b
+          test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = d36ab386b4979d2e5ba4b66ac2b0821a8c123b51
+          test "$(git hash-object ranking/owner-reviewed-sku-mapping-panel.mjs)" = 1ee2861ce2dd4144d900097b67037ef252717060
+          test "$(git hash-object tools/production/inspect-owner-setup-release-chain-readonly.mjs)" = 527169b34d845ac2e1f5e3aa7557b227b9516982
+          test "$(git hash-object tools/production/inspect-owner-get-postdeploy-readonly.mjs)" = fe69c54e95f75dc7aa4efd4176db8cb7238027f2
+          node --test tests/owner-only-setup-replacement-guard.test.mjs tests/owner-partner-setup-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs
+          echo 'OWNER_FOUR_SCOPE_OFFLINE_PASS_NO_DEPLOY'
+  live-hosting-get:
+    needs: offline
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.offline.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact currently reviewed main
+        shell: bash
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = c7eab608a3fe031f5841b79895eb1fff4056bbf6
+      - name: Install only existing Firebase Admin SDK
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Attach existing cloud read identity for this runner only
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: \${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-four-hosting-readonly.json"
+          chmod 600 "$RUNNER_TEMP/nico-four-hosting-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-four-hosting-readonly.json" >> "$GITHUB_ENV"
+      - name: Inspect LIVE immutable Hosting files and deployed Owner GET without mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createRequire} from 'node:module';
+          import {planOwnerOnlySetupReplacement,OWNER_ONLY_REPLACEMENTS} from './tools/hosting/owner-only-setup-replacement-guard.mjs';
+          import {readPublishedOwnerSetupSources} from './tools/production/inspect-owner-setup-release-chain-readonly.mjs';
+          import {inspectOwnerGetPostDeploy} from './tools/production/inspect-owner-get-postdeploy-readonly.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(typeof token!=='string'||token.length<30)throw Error('STOP_OWNER_FOUR_CLOUD_TOKEN');
+          const request=async uri=>{
+            const res=await fetch(uri,{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+token}});
+            if(res.status!==200)throw Error('STOP_OWNER_FOUR_LIVE_HTTP_'+res.status);
+            const content=await res.text();
+            if(content.length>12000000)throw Error('STOP_OWNER_FOUR_RESPONSE_TOO_LARGE');
+            try{return JSON.parse(content);}catch{throw Error('STOP_OWNER_FOUR_LIVE_JSON');}
+          };
+          const functions=await request('https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000');
+          if(!Array.isArray(functions.functions)||functions.nextPageToken)throw Error('STOP_OWNER_FOUR_FUNCTIONS_INCOMPLETE');
+          const proof=inspectOwnerGetPostDeploy(functions.functions,{now:new Date().toISOString()});
+          if(!proof.liveTargetActive||!proof.highRiskCountAndRankingModesDisabled)
+            throw Error('STOP_OWNER_FOUR_GET_NOT_READY');
+          const base='https://firebasehosting.googleapis.com/v1beta1';
+          const releases=await request(base+'/sites/nico-factory/releases?pageSize=1');
+          const versions=releases?.releases;
+          if(!Array.isArray(versions)||versions.length!==1)throw Error('STOP_OWNER_FOUR_LIVE_RELEASE_UNKNOWN');
+          const name=versions[0]?.version?.name;
+          if(typeof name!=='string'||!/^sites\/nico-factory\/versions\/[A-Za-z0-9_-]+$/.test(name))
+            throw Error('STOP_OWNER_FOUR_VERSION_ID_UNKNOWN');
+          const v=await request(base+'/'+name);
+          if(v.name!==name||v.status!=='FINALIZED'||!v.config)
+            throw Error('STOP_OWNER_FOUR_VERSION_NOT_FINALIZED');
+          const files=[];let cursor='',pages=0;
+          do{
+            if(++pages>50)throw Error('STOP_OWNER_FOUR_MANIFEST_PAGINATION');
+            const query=new URLSearchParams({pageSize:'1000'});
+            if(cursor)query.set('pageToken',cursor);
+            const page=await request(base+'/'+name+'/files?'+query.toString());
+            if(!Array.isArray(page.files)||page.files.length>1000||files.length+page.files.length>20000)
+              throw Error('STOP_OWNER_FOUR_MANIFEST_INVALID');
+            files.push(...page.files);
+            cursor=page.nextPageToken||'';
+            if(typeof cursor!=='string'||cursor.length>3000)
+              throw Error('STOP_OWNER_FOUR_CURSOR_INVALID');
+          }while(cursor);
+          if(v.fileCount!=null&&Number(v.fileCount)!==files.length)
+            throw Error('STOP_OWNER_FOUR_LIVE_FILECOUNT_DRIFT');
+          const root=Object.fromEntries(Object.keys(OWNER_ONLY_REPLACEMENTS).map(x=>[x,readFileSync(x,'utf8')]));
+          const result=planOwnerOnlySetupReplacement({
+            liveFiles:files,
+            historicalSources:readPublishedOwnerSetupSources(),
+            candidateSources:root
+          });
+          if(result.changedPaths.length!==4||!result.allOtherAssetsPreserved||
+             result.safeToPublish!==false||result.backendOwnerOnlyGetVerified!==false)
+            throw Error('STOP_OWNER_FOUR_UNREVIEWED_REPLACEMENT');
+          console.log('OWNER_FOUR_LIVE_REPLACEMENT_PLAN_PASS '+JSON.stringify({
+            project:'sales-management-cc116',hostingSite:'nico-factory',
+            liveFileCount:files.length,preservedFileCount:result.unchangedAssetCount,
+            replacementAssetCount:result.replacementAssetCount,
+            paths:result.changedPaths,reviewedOldElevenExact:true,
+            ownerGetLiveActive:true,highRiskCountWriteAndRankingDisabled:true,
+            authenticatedOwnerGetProven:false,
+            liveProductionWrites:0,readyToPublishWithoutOwnerProof:false
+          }));
+          console.log('OWNER_FOUR_HOSTING_PREFLIGHT_READ_ONLY_ZERO_DEPLOY');
+          NODE
+      - name: Always remove runner-only private identity
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/nico-four-hosting-readonly.json"
