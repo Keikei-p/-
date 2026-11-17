@@ -8,6 +8,11 @@ export const ASSETS = Object.freeze({
   "/ranking/owner-product-visibility-firebase-bridge.mjs": "createOwnerProductVisibilityFirebaseBridge",
   "/ranking/owner-product-visibility-panel.mjs": "createOwnerProductVisibilityPanel"
 });
+export const SKU_ASSETS = Object.freeze({
+  "/ranking/owner-partner-setup-mount.mjs": "mountOwnerPartnerSetup",
+  "/ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs": "createOwnerSkuMappingFirebaseBridge",
+  "/ranking/owner-reviewed-sku-mapping-panel.mjs": "createOwnerReviewedSkuMappingPanel"
+});
 const PROJECT = "sales-management-cc116";
 const REGION = "asia-northeast1";
 const PREFIX = "projects/" + PROJECT + "/locations/" + REGION + "/functions/";
@@ -39,10 +44,28 @@ export function inspectOwnerShareLive({ publicFiles, cloudFunctions, mainIndexMa
     return [p, row.status === 200 && !row.body.includes("<!DOCTYPE html") &&
       row.body.includes(marker)];
   }));
+  const skuPage = publicFiles["/owner-partner-setup.html"];
+  if (!skuPage || !Number.isInteger(skuPage.status) ||
+      typeof skuPage.body !== "string")
+    throw Error("OWNER_SHARE_AUDIT_SKU_PAGE_UNVERIFIED");
+  const skuPageReady = skuPage.status === 200 &&
+    skuPage.body.includes('id="ownerSetupApp"') &&
+    skuPage.body.includes("mountOwnerPartnerSetup");
+  const skuAssets = Object.fromEntries(Object.entries(SKU_ASSETS).map(([p, marker]) => {
+    const row = publicFiles[p];
+    if (!row || !Number.isInteger(row.status) || typeof row.body !== "string")
+      throw Error("OWNER_SHARE_AUDIT_SKU_ASSET_UNVERIFIED");
+    return [p, row.status === 200 && !row.body.includes("<!DOCTYPE html") &&
+      row.body.includes(marker)];
+  }));
   const functions = new Map(cloudFunctions.map(x => [x.name.slice(PREFIX.length), x]));
   const get = functions.get("getOwnerProductVisibility");
   const set = functions.get("setOwnerProductVisibility");
   const rank = functions.get("getVerifiedJointCountRanking");
+  const skuGet = functions.get("getOwnerReviewedSkuMapping");
+  const skuSet = functions.get("setOwnerReviewedSkuMapping");
+  const skuEnabled = f => f?.state === "ACTIVE" &&
+    f?.serviceConfig?.environmentVariables?.NICO_OWNER_SKU_MAPPING_ENABLED === "enabled";
   const visibilityGetActive = get?.state === "ACTIVE";
   const visibilitySetActive = set?.state === "ACTIVE";
   const visibilityGetEnabled = enabled(get);
@@ -53,7 +76,15 @@ export function inspectOwnerShareLive({ publicFiles, cloudFunctions, mainIndexMa
   return Object.freeze({
     project: PROJECT, region: REGION,
     indexReady, mainIndexMatches, assets,
-    assetsReady,
+    assetsReady,skuPageReady,skuAssets,
+    skuAssetsReady: Object.values(skuAssets).every(Boolean),
+    skuMappingGetActive: skuGet?.state === "ACTIVE",
+    skuMappingSetActive: skuSet?.state === "ACTIVE",
+    skuMappingGetEnabled: skuEnabled(skuGet),
+    skuMappingSetEnabled: skuEnabled(skuSet),
+    skuMappingTechnicalReady: !!(skuPageReady &&
+      Object.values(skuAssets).every(Boolean) &&
+      skuEnabled(skuGet) && skuEnabled(skuSet)),
     functionsInventoried: cloudFunctions.length,
     visibilityGetActive: !!visibilityGetActive,
     visibilitySetActive: !!visibilitySetActive,
