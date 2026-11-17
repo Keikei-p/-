@@ -1,0 +1,109 @@
+name: NICO Owner product share live status (GET ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-share-live-readonly.mjs'
+      - 'tests/inspect-owner-share-live-readonly.test.mjs'
+      - '.github/workflows/nico-owner-share-live-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-owner-share-live-readonly.mjs'
+      - 'tests/inspect-owner-share-live-readonly.test.mjs'
+      - '.github/workflows/nico-owner-share-live-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-share-live-readonly-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prove project identity, finance Rules and Functions were not changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object index.html)" = 10de822d24a759b843b264d742d540a72553e67b
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          node --check tools/production/inspect-owner-share-live-readonly.mjs
+          node --test tests/inspect-owner-share-live-readonly.test.mjs
+  live:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Acquire temporary read-only metadata token
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-share-readonly-identity.json"
+          chmod 600 "$RUNNER_TEMP/owner-share-readonly-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-share-readonly-identity.json" >> "$GITHUB_ENV"
+      - name: Install existing Firebase Admin credential library only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read public exact assets and Cloud Functions metadata, never user records
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {createRequire} from 'node:module';
+          import {ASSETS,inspectOwnerShareLive} from './tools/production/inspect-owner-share-live-readonly.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_SHARE_AUDIT_NO_TOKEN');
+          const files={};
+          for(const path of ['/index.html',...Object.keys(ASSETS)]){
+            const response=await fetch('https://nico-factory.web.app'+path,
+              {method:'GET',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(12000)});
+            const body=await response.text();
+            if(body.length>2000000)throw Error('STOP_OWNER_SHARE_AUDIT_PUBLIC_SIZE');
+            files[path]={status:response.status,body};
+          }
+          const hash=s=>createHash('sha256').update(s).digest('hex');
+          const mainIndexMatches=hash(Buffer.from(files['/index.html'].body,'utf8'))===
+            hash(readFileSync('index.html'));
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const response=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',
+            headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});
+          if(response.status!==200)throw Error('STOP_OWNER_SHARE_AUDIT_CLOUD_HTTP_'+response.status);
+          const json=await response.json();
+          if(!Array.isArray(json.functions)||json.nextPageToken)
+            throw Error('STOP_OWNER_SHARE_AUDIT_INVENTORY_INCOMPLETE');
+          const proof=inspectOwnerShareLive({publicFiles:files,cloudFunctions:json.functions,mainIndexMatches});
+          console.log('OWNER_SHARE_LIVE_READONLY '+JSON.stringify(proof));
+          console.log(proof.ownerShareTechnicalReady?
+            'TECHNICALLY_READY_BUT_REAL_OWNER_AND_FINANCE_TESTS_STILL_REQUIRED':
+            'NOT_READY_VERIFY_MISSING_ASSETS_OR_DISABLED_API_NO_DEPLOY');
+          console.log('FIRESTORE_WRITES_0_FUNCTION_UPDATES_0_HOSTING_WRITES_0');
+          NODE
+      - name: Delete runner credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/owner-share-readonly-identity.json"
