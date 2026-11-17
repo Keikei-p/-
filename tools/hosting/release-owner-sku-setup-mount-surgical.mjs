@@ -21,7 +21,9 @@ const HISTORY=Object.freeze([
  // Existing Owner setup 11-asset source; immutable Hosting review from Nov 17.
  "359d46320482086036149d9ec62dda92550a0e01",
  // Pre-batch main's tested Owner module source.
- "9a167a2cc5e8c76ff22812fd3279cc047ca25f3b"
+ "9a167a2cc5e8c76ff22812fd3279cc047ca25f3b",
+ // Current production Owner-only module, confirmed by immutable Hosting audit.
+ "c6cec9b2ed46870277073911192a45114fea6a3b"
 ]);
 const stop=code=>{throw Error("STOP_OWNER_SKU_SETUP_MOUNT_"+code)};
 const isObj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
@@ -58,7 +60,7 @@ async function execute({request,oldText,newText,indexText,release}={}){
     oldText.length!==HISTORY.length||oldText.some(x=>typeof x!=="string")||
     typeof newText!=="string"||typeof indexText!=="string"||
     typeof release!=="boolean")stop("INVALID_DEPENDENCIES");
- if(blobSha(newText)!=="c6cec9b2ed46870277073911192a45114fea6a3b")
+ if(blobSha(newText)!=="9a8498be162c9cb01b77fc3ba0f7d2f85a352032")
   stop("NEW_OWNER_PANEL_HASH_DRIFT");
  const latest=async()=>{
   const r=await request("GET",BASE+"/sites/"+SITE+"/releases?pageSize=1");

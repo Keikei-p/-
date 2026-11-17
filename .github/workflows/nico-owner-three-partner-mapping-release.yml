@@ -40,11 +40,11 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object index.html)" = f6d4815ecb09d4db0ba34144e6705926bdc7503c
+          test "$(git hash-object index.html)" = 9bc74a866860f0210ae4cb2c9f67a2470d37d220
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
-          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 8187d046661d91b7e497b8c7a802c8b402acd9a3
           test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
-          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = c6cec9b2ed46870277073911192a45114fea6a3b
+          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = 9a8498be162c9cb01b77fc3ba0f7d2f85a352032
           node --check ranking/owner-partner-setup-mount.mjs
           node --check tools/hosting/release-owner-sku-setup-mount-surgical.mjs
           node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-partner-setup-mount.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs
@@ -73,8 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)" = "$GITHUB_SHA"
-          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = c6cec9b2ed46870277073911192a45114fea6a3b
-          test "$(git hash-object index.html)" = f6d4815ecb09d4db0ba34144e6705926bdc7503c
+          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = 9a8498be162c9cb01b77fc3ba0f7d2f85a352032
+          test "$(git hash-object index.html)" = 9bc74a866860f0210ae4cb2c9f67a2470d37d220
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/release-owner-sku-setup-mount-surgical.test.mjs
       - name: Install existing Admin SDK for Hosting REST only

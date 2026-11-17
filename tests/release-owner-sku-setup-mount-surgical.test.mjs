@@ -6,13 +6,13 @@ import {
 } from "../tools/hosting/release-owner-sku-setup-mount-surgical.mjs";
 import {uploadSha}
  from "../tools/hosting/owner-setup-additive-guard.mjs";
-const oldText=["prior-published-owner-panel","reviewed-main-owner-panel"];
+const oldText=["prior-published-owner-panel","reviewed-main-owner-panel","current-live-owner-panel"];
 const oldHashes=oldText.map(uploadSha);
 const newText=readFileSync(new URL("../ranking/owner-partner-setup-mount.mjs",import.meta.url),"utf8");
 const indexText=readFileSync(new URL("../index.html",import.meta.url),"utf8");
 const newHash=uploadSha(newText),indexHash=uploadSha(indexText);
 const blob=(path,hash)=>({path,hash});
-function manifest(hash=oldHashes[1]){
+function manifest(hash=oldHashes[2]){
  const files=[
   blob("/index.html",indexHash),
   blob("/partner-workspace.html","0".repeat(64)),

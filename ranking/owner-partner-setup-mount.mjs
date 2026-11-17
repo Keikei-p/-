@@ -26,12 +26,14 @@ export function mountOwnerPartnerSetup({
     !functions||typeof httpsCallable!=="function"||
     typeof onAuthStateChanged!=="function")fail();
  let closed=false,generation=0,views=[],partnerViews=[],partnerGeneration=0;
+ let batchGeneration=0,refreshAllCompanyPreview=async()=>false;
  let unsubscribe=()=>{};
  const clearViews=items=>{
   for(const panel of items.splice(0))panel.destroy();
  };
  const reset=()=>{
-  generation++;partnerGeneration++;
+  generation++;partnerGeneration++;batchGeneration++;
+  refreshAllCompanyPreview=async()=>false;
   clearViews(partnerViews);clearViews(views);root.replaceChildren();
  };
  const message=label=>{
@@ -112,6 +114,9 @@ export function mountOwnerPartnerSetup({
        auth.currentUser===user){
      const activePartner=partnerViews[0];
      if(activePartner)await activePartner.refresh();
+     // The batch preview must immediately reflect the newly published SKU.
+     // Only re-read the Owner-authenticated, count-only GET callables.
+     await refreshAllCompanyPreview();
     }
     return result;
    }
@@ -154,6 +159,9 @@ export function mountOwnerPartnerSetup({
      if(result?.saved===true&&!closed&&generation===token&&
         partnerGeneration===scope&&auth.currentUser===user)
       await globalPanel.refresh();
+     if(result?.saved===true&&!closed&&generation===token&&
+        partnerGeneration===scope&&auth.currentUser===user)
+      await refreshAllCompanyPreview();
      return result;
     }
    });
@@ -161,7 +169,13 @@ export function mountOwnerPartnerSetup({
     enabled:true,document,root:mapBox,auth,partnerCompanyId:companyId,
     readMappings:args=>skuBridge.readMappings(args),
     readProducts:args=>skuBridge.readProducts(args),
-    saveMapping:args=>skuBridge.saveMapping(args)
+    saveMapping:async args=>{
+     const result=await skuBridge.saveMapping(args);
+     if(result?.saved===true&&!closed&&generation===token&&
+        partnerGeneration===scope&&auth.currentUser===user)
+      await refreshAllCompanyPreview();
+     return result;
+    }
    });
    partnerViews.push(switchPanel,mappingPanel);
    await Promise.all([switchPanel.refresh(),mappingPanel.refresh()]);
@@ -174,15 +188,18 @@ export function mountOwnerPartnerSetup({
   // All active partners come from the authenticated, server-verified owner
   // workspace. Preview uses only approved public count-only product labels.
   // No implicit read of original products/records, no automatic save.
-  let initialMapping,initialProducts,plan;
-  try{
+  refreshAllCompanyPreview=async()=>{
+   const batchToken=++batchGeneration;
+   allCompanyBatchBox.replaceChildren();
+   let initialMapping,initialProducts,plan;
+   try{
    const actorToken=await user.getIdToken();
-   if(closed||generation!==token||auth.currentUser!==user)return false;
+   if(closed||generation!==token||batchGeneration!==batchToken||auth.currentUser!==user)return false;
    [initialMapping,initialProducts]=await Promise.all([
     skuBridge.readMappings({token:actorToken}),
     skuBridge.readProducts({token:actorToken})
    ]);
-   if(closed||generation!==token||auth.currentUser!==user)return false;
+   if(closed||generation!==token||batchGeneration!==batchToken||auth.currentUser!==user)return false;
    plan=[];
    for(const partner of status.partners){
     const suggestions=suggestUnambiguousOwnerSkuMappings({
@@ -195,11 +212,14 @@ export function mountOwnerPartnerSetup({
     });
    }
    if(!Number.isSafeInteger(initialMapping.version)||plan.length>60)fail();
+   if(closed||generation!==token||batchGeneration!==batchToken||
+      auth.currentUser!==user)return false;
   }catch{
-   if(!closed&&generation===token&&auth.currentUser===user)
+   if(!closed&&generation===token&&batchGeneration===batchToken&&
+      auth.currentUser===user)
     allCompanyBatchBox.appendChild(el(document,"p",
      "全社の対応候補を読み込めません。会社ごとの設定は引き続き利用できます。"));
-   return true;
+   return false;
   }
   if(plan.length){
    allCompanyBatchBox.appendChild(el(document,"h2",
@@ -217,12 +237,12 @@ export function mountOwnerPartnerSetup({
    run.setAttribute?.("aria-label","全社の一致商材を確認して保存");
    let busy=false;
    run.addEventListener("click",async()=>{
-    if(busy||closed||generation!==token||auth.currentUser!==user)return;
+    if(busy||closed||generation!==token||batchGeneration!==batchToken||auth.currentUser!==user)return;
     busy=true;run.disabled=true;
     let saved=0,failed=false,expected=initialMapping.version;
     try{
      for(const item of plan){
-      if(closed||generation!==token||auth.currentUser!==user)fail();
+      if(closed||generation!==token||batchGeneration!==batchToken||auth.currentUser!==user)fail();
       const freshToken=await user.getIdToken();
       if(closed||generation!==token||auth.currentUser!==user)fail();
       const [mapping,products]=await Promise.all([
@@ -273,7 +293,10 @@ export function mountOwnerPartnerSetup({
    });
    allCompanyBatchBox.appendChild(run);
   }else allCompanyBatchBox.appendChild(el(document,"p",
-   "全社一括連携の未設定候補はありません。必要なら会社別の商材対応を選んでください。"));
+   "全社一括連携の未設定候補はありません。自社の商材を公開ONにすると候補がここに自動表示されます。必要なら会社別に対応してください。"));
+   return true;
+  };
+  await refreshAllCompanyPreview();
   return true;
  };
  const refresh=async()=>{
