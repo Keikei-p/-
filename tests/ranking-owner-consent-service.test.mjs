@@ -107,6 +107,10 @@ test("hub Owner and partner Owner independently approve names/ranks; neither can
  assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByHub,true);
  assert.equal(f.d.get("partnerRelations/p1").individualNamesApprovedByHub,true);
  assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByPartner,undefined);
+ // The managing hub Owner alone publishes names; partner consent is legacy.
+ const hubOnly=await createFreshCombinedRankingContext({db:f.db})(auth("hubOwner"));
+ assert.deepEqual(hubOnly.approvedCompanyIds,["hub","p1"]);
+ assert.deepEqual(hubOnly.publicNameCompanyIds,["hub","p1"]);
  const partner=await submit(f,"partnerOwner",true);
  assert.equal(partner.version,1);
  assert.equal(f.d.get("partnerRelations/p1").combinedRankingApprovedByPartner,true);
@@ -119,7 +123,7 @@ test("hub Owner and partner Owner independently approve names/ranks; neither can
   .every(x=>/rankingApprovals|rankingApprovalAudits|partnerRelations/.test(x.path)));
 });
 
-test("name revocation is immediate while counts, history and the other optional approval stay intact",async()=>{
+test("legacy partner approval withdrawal leaves hub-published names and counts unchanged",async()=>{
  const f=fake();await submit(f,"hubOwner",true);await submit(f,"partnerOwner",true);
  const original=copyOriginals(f);
  const disabled=await submit(f,"partnerOwner",false,1);
@@ -132,10 +136,10 @@ test("name revocation is immediate while counts, history and the other optional 
  assert.equal(f.d.get("companies/p1/rankingApprovalAudits/audit3").previousVersion,1);
  const hubCtx=await createFreshCombinedRankingContext({db:f.db})(auth("hubOwner"));
  assert.deepEqual(hubCtx.approvedCompanyIds,["hub","p1"]);
- assert.deepEqual(hubCtx.publicNameCompanyIds,["hub"]);
+ assert.deepEqual(hubCtx.publicNameCompanyIds,["hub","p1"]);
  const partnerCtx=await createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner"));
  assert.deepEqual(partnerCtx.approvedCompanyIds,["hub","p1"]);
- assert.deepEqual(partnerCtx.publicNameCompanyIds,["p1"]);
+ assert.deepEqual(partnerCtx.publicNameCompanyIds,["hub","p1"]);
  assert.deepEqual(copyOriginals(f),original);
 });
 
@@ -196,7 +200,7 @@ test("no client permission, count sharing and financial originals are untouched 
 });
 
 
-test("optional names ON -> OFF -> ON changes only name policy at version 3, never linked counts",async()=>{
+test("legacy partner name approval ON OFF ON never gates linked counts",async()=>{
  const f=fake();
  const before=copyOriginals(f);
  await submit(f,"hubOwner",true,0);
@@ -208,7 +212,7 @@ test("optional names ON -> OFF -> ON changes only name policy at version 3, neve
  assert.equal(revoked.version,2);
  const namesRevoked=await createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner"));
  assert.deepEqual(namesRevoked.approvedCompanyIds,["hub","p1"]);
- assert.deepEqual(namesRevoked.publicNameCompanyIds,["p1"]);
+ assert.deepEqual(namesRevoked.publicNameCompanyIds,["hub","p1"]);
  const approvedAgain=await submit(f,"partnerOwner",true,2);
  assert.deepEqual(approvedAgain,{
   saved:true,partnerCompanyId:"p1",enabled:true,version:3
@@ -224,7 +228,7 @@ test("optional names ON -> OFF -> ON changes only name policy at version 3, neve
  assert.deepEqual(copyOriginals(f),before);
 });
 
-test("corrupted optional name approval hides other names and cannot be reset by a fake v1",async()=>{
+test("invalid legacy partner approval cannot widen or revoke hub names",async()=>{
  for(const version of [0,-1,1.2,1000,"1",null]){
   const f=fake();
   await submit(f,"hubOwner",true,0);
@@ -233,7 +237,7 @@ test("corrupted optional name approval hides other names and cannot be reset by 
   const before=clone([...f.d]);
   const ctx=await createFreshCombinedRankingContext({db:f.db})(auth("partnerOwner"));
   assert.deepEqual(ctx.approvedCompanyIds,["hub","p1"]);
-  assert.deepEqual(ctx.publicNameCompanyIds,["p1"],String(version));
+  assert.deepEqual(ctx.publicNameCompanyIds,["hub","p1"],String(version));
   await assert.rejects(submit(f,"partnerOwner",true,0),refuse);
   assert.deepEqual([...f.d],before,"invalid old approval cannot be silently replaced");
  }
@@ -372,8 +376,8 @@ test("hub Owner can open configuration status for a hub-created unclaimed partne
  const linked=await createFreshCombinedRankingContext({db:f.db})(auth("hubOwner"));
  assert.deepEqual(linked.approvedCompanyIds,["hub","p1"],
   "existing active count sharing does not need a newly registered Partner Owner");
- assert.deepEqual(linked.publicNameCompanyIds,["hub"],
-  "an unclaimed Partner cannot authorize its names or impersonate its Owner");
+ assert.deepEqual(linked.publicNameCompanyIds,["hub","p1"],
+  "hub Owner may publish names without impersonating an unclaimed Partner");
  await assert.rejects(get(auth("partnerOwner")),
   /RANKING_OWNER_STATUS_UNAUTHORIZED_OR_INCOMPLETE/,
   "cannot invent partner Owner from merely knowing user role");
