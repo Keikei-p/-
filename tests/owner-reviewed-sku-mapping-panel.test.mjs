@@ -122,6 +122,10 @@ test("server rejects mapping write: no fake success or kept optimistic selection
  await control.fire("change");
  assert.equal(selects(root)[0].value,"");
  assert.equal(panel.getVersion(),0);
+ assert.match(displayed(root),/対応設定の保存を確認できません/,
+  "failed-save message must remain visible after canonical reload");
+ assert.equal(selects(root).length,9,
+  "mapping controls remain usable after a rejected save");
 });
 test("unapproved legacy-to-Air mapping from API is never shown",async()=>{
  const root=new Node("main"),auth={currentUser:user};
