@@ -59,8 +59,26 @@ jobs:
             echo 'PARTNER_EXISTING_FOUR_RANK_CANDIDATE_VERIFIED_NO_DEPLOY'
             exit 0
           fi
+          # Exact PR #731: Owner-managed names; partner approval never gates
+          # counts. Source pins retain the original finance/Hosting boundaries.
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:fix/owner-only-name-publication-20261117" ] &&
+             [ "${GITHUB_REPOSITORY:-}" = "Keikei-p/-" ] &&
+             node -e "const e=require(process.env.GITHUB_EVENT_PATH);if(e.pull_request?.number!==731||e.pull_request.head.repo.full_name!=='Keikei-p/-'||e.pull_request.base.repo.full_name!=='Keikei-p/-')process.exit(1)"; then
+            test "$(git hash-object index.html)" = 03e213565a2037c73913602701363476ae0db9fd
+            test "$(git hash-object partner-workspace.html)" = d8262633f35cf0f015de44c9a223c4289f8d2a6b
+            test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 361e41d2a1259c33a5479e22073c6da3599d1697
+            test "$(git hash-object functions-partner-workspace/shared-count-standings.cjs)" = d8ae8e2a8bfeec66bb82dee049d5f104db26414a
+            test "$(git hash-object functions-partner-workspace/approved-published-categories.cjs)" = 0e020d2b38152cd3669d65bf005bc76fba2cc568
+            for file in ranking/trusted-combined-ranking-context.mjs functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs; do
+              test "$(git hash-object "$file")" = 3cfc9f6bc91b5dc315357e39fa7b64ee0e6417af
+            done
+            for file in ranking/partner-month-readonly-loader.mjs functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs; do
+              test "$(git hash-object "$file")" = 106dee944507fab31fe5f36ee314738e64d53597
+            done
+            node --test tests/trusted-combined-ranking-context.test.mjs tests/partner-month-readonly-loader.test.mjs
           # Exact #708 source review only; historical deployment gates remain unchanged.
-          if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+          elif { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
                [ "${GITHUB_HEAD_REF:-}" = "review/partner-onoff-count-write-guard-no-deploy-20261114" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ] &&
                [ "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = "a56ae6100ce70602ed90233af038549129941cd9" ]; }; then
