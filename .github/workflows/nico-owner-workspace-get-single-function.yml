@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' }}
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' }}
     runs-on: ubuntu-latest
     timeout-minutes: 13
     env:
@@ -88,7 +88,7 @@ jobs:
           echo 'OWNER_GET_SOURCE_AND_LEDGER_TESTS_PASS_NO_DEPLOY'
   manually-inspect-or-release:
     needs: offline
-    if: ${{ github.event_name == 'workflow_dispatch' && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && inputs.reviewed_main_sha == github.sha && needs.offline.result == 'success' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == '8ccbab54b620c91056fab5d8533bf57dfcbc21a9' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): one-time live GET owner workspace inventory')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -105,7 +105,14 @@ jobs:
           set -euo pipefail
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
-          test "$GITHUB_SHA" = "${{ inputs.reviewed_main_sha }}"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$GITHUB_EVENT_BEFORE" = 8ccbab54b620c91056fab5d8533bf57dfcbc21a9
+            test "$(git rev-parse HEAD^1)" = 8ccbab54b620c91056fab5d8533bf57dfcbc21a9
+            test "$(git show -s --format=%s HEAD)" = 'audit(sales): one-time live GET owner workspace inventory'
+            test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = '.github/workflows/nico-owner-workspace-get-single-function.yml'
+          else
+            test "$GITHUB_SHA" = "${{ inputs.reviewed_main_sha }}"
+          fi
       - name: Install existing Admin SDK for read-only Cloud Functions metadata
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
       - name: Keep existing authorized service identity private to this runner
