@@ -54,8 +54,9 @@ export function planSinglePanelRelease({files,oldHashes,newHash,indexHash}={}){
   newHash,next});
 }
 async function execute({request,oldText,newText,indexText,release}={}){
- if(typeof request!=="function"||typeof oldText!=="object"||
-    oldText===null||typeof newText!=="string"||typeof indexText!=="string"||
+ if(typeof request!=="function"||!Array.isArray(oldText)||
+    oldText.length!==HISTORY.length||oldText.some(x=>typeof x!=="string")||
+    typeof newText!=="string"||typeof indexText!=="string"||
     typeof release!=="boolean")stop("INVALID_DEPENDENCIES");
  if(blobSha(newText)!=="1ee2861ce2dd4144d900097b67037ef252717060")
   stop("NEW_OWNER_PANEL_HASH_DRIFT");
