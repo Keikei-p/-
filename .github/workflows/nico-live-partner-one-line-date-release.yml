@@ -1,0 +1,131 @@
+name: NICO public live partner single date-line surgical Hosting release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/release-live-partner-one-line-date.mjs'
+      - 'tests/partner-inline-joint-staging-wiring.test.mjs'
+      - 'tools/hosting/release-live-partner-one-line-date.mjs'
+      - 'tests/release-live-partner-one-line-date.test.mjs'
+      - '.github/workflows/nico-live-partner-one-line-date-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/release-live-partner-one-line-date.mjs'
+      - 'tests/partner-inline-joint-staging-wiring.test.mjs'
+      - 'tools/hosting/release-live-partner-one-line-date.mjs'
+      - 'tests/release-live-partner-one-line-date.test.mjs'
+      - '.github/workflows/nico-live-partner-one-line-date-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-partner-one-line-release
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Protect canonical sales rules, totals, finance, Owner Functions and Hosting index
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = f6d4815ecb09d4db0ba34144e6705926bdc7503c
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 8187d046661d91b7e497b8c7a802c8b402acd9a3
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = 6652af761e44da1c33e75d1b7a15eeee4f504036
+          test "$(git hash-object partner-workspace.html)" = 8dfac0b62102f60f84e703afe5d7bc56a1127973
+          node --test tests/partner-inline-joint-staging-wiring.test.mjs
+          node --check tools/hosting/release-live-partner-one-line-date.mjs
+          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-partner-setup-mount.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs
+          node --test tests/release-live-partner-one-line-date.test.mjs
+          echo 'PARTNER_HTML_DATE_FALLBACK_AND_HOSTING_GUARDS_PASS'
+  release:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_ONE_LINE_RELEASE: CONFIRM_PUBLIC_PARTNER_DATE_ONE_LINE_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Restrict to exact main, exactly one Partner workspace HTML and reviewed HTML
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)" = "$GITHUB_SHA"
+          test "$(git hash-object partner-workspace.html)" = 8dfac0b62102f60f84e703afe5d7bc56a1127973
+          test "$(git hash-object index.html)" = f6d4815ecb09d4db0ba34144e6705926bdc7503c
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/release-live-partner-one-line-date.test.mjs
+      - name: Install existing Admin SDK for Hosting REST only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read existing Firebase Hosting identity privately
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-one-line.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-partner-one-line.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-one-line.private.json" >> "$GITHUB_ENV"
+      - name: GET-only current partner HTML SHA256 and full manifest without data reads
+        env:
+          NICO_PARTNER_HASH_DIAGNOSTIC_ONLY: 'true'
+        run: node tools/hosting/release-live-partner-one-line-date.mjs --dry-run
+      - name: Publish ONLY one corrected date line in exact historical live HTML
+        run: node tools/hosting/release-live-partner-one-line-date.mjs --release
+      - name: HTTP check exact updated partner page and existing Owner/partner routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const {execFileSync}=await import("node:child_process");
+          const {deriveSingleLivePartnerDatePatch}=await import("./tools/hosting/release-live-partner-one-line-date.mjs");
+          const old=execFileSync("git",["cat-file","blob",
+            "00d6d503f9061dba2b6113e52b99cb9c4ea3aedf"],{encoding:"utf8"});
+          const src=Buffer.from(deriveSingleLivePartnerDatePatch(old),"utf8");
+          let ok=false;
+          for(let n=0;n<10;n++){
+           const res=await fetch('https://nico-factory.web.app/partner-workspace.html?partner_html_verify='+process.env.GITHUB_SHA+'-'+n,
+             {redirect:'error',cache:'no-store'});
+           if(res.status===200&&Buffer.from(await res.arrayBuffer()).equals(src)){ok=true;break;}
+           await new Promise(r=>setTimeout(r,2000));
+          }
+          if(!ok)throw Error('STOP_PARTNER_ONE_LINE_PUBLIC_BYTES_UNVERIFIED');
+          const targets=[
+            ['https://nico-factory.web.app/owner-partner-setup.html','mountOwnerPartnerSetup'],
+            ['https://nico-factory.web.app/partner-workspace.html','partner'],
+            ['https://nico-factory.web.app/','ownerProductShareInline']
+          ];
+          for(const [url,marker] of targets){
+           const r=await fetch(url,{redirect:'error',cache:'no-store'});
+           if(r.status!==200||!(await r.text()).includes(marker))
+            throw Error('STOP_EXISTING_OWNER_PARTNER_PAGE_DRIFT');
+          }
+          console.log('PARTNER_ONE_LINE_HOSTING_LIVE_EXACT_VERIFIED');
+          NODE
+      - name: Erase temporary Hosting identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-partner-one-line.private.json"
