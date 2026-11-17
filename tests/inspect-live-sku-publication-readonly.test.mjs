@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {assessSkuPublication,inspectSkuPublication}
+import {assessSkuPublication,inspectSkuPublication,assessOwnerPublicationFunctions}
  from "../tools/production/inspect-live-sku-publication-readonly.mjs";
 const base=()=>{
  const relations=[{partnerCompanyId:"partner",hubCompanyId:"hub",active:true,
@@ -154,4 +154,71 @@ test("public release path is GET-only, no credential output and no deploy",()=>{
  assert.match(source,/GITHUB_REF!=="refs\/heads\/main"/);
  assert.match(source,/mode:"LIVE_READ_ONLY_NO_DEPLOY"/);
  assert.match(source,/safeToEnableNewRanking:false/);
+});
+
+const LIVE_FN_PREFIX="projects/sales-management-cc116/locations/asia-northeast1/functions/";
+function functionRows(){
+ const all=[
+  "getPartnerWorkspace","getOwnerProductVisibility","setOwnerProductVisibility",
+  "getOwnerReviewedSkuMapping","setOwnerReviewedSkuMapping",
+  "getRankingOwnerConsentStatus","setRankingOwnerConsent",
+  "getVerifiedJointCountRanking",
+  ...Array.from({length:12},(_,i)=>"otherExistingFunction"+i)
+ ];
+ return all.map(name=>({name:LIVE_FN_PREFIX+name,state:"ACTIVE",
+  buildConfig:{runtime:"nodejs22",entryPoint:name},
+  serviceConfig:{uri:"https://test.run.app",environmentVariables:{
+   NICO_OWNER_PRODUCT_VISIBILITY_ENABLED:"enabled",
+   NICO_OWNER_SKU_MAPPING_ENABLED:"enabled",
+   NICO_JOINT_COUNT_RANKING_ENABLED:"disabled",
+   NICO_PARTNER_SHARED_RANKING_ENABLED:"disabled"
+  }}}));
+}
+test("current real 20 function layout: four enabled Owner APIs coexist with legacy consent",()=>{
+ const p=assessOwnerPublicationFunctions(functionRows());
+ assert.deepEqual(p,{
+  ownerFourPresent:4,ownerFourEnabled:4,ownerPublicationAPIsReady:true,
+  legacyConsentPresent:2,rankingProductionFlagDisabled:true,
+  liveMetadataReadOnly:true
+ });
+});
+test("absence or disabled Owner APIs never reports setup ready",()=>{
+ const disabled=functionRows();
+ disabled.find(x=>x.name.endsWith("/setOwnerProductVisibility"))
+  .serviceConfig.environmentVariables.NICO_OWNER_PRODUCT_VISIBILITY_ENABLED="disabled";
+ const d=assessOwnerPublicationFunctions(disabled);
+ assert.equal(d.ownerFourPresent,4);
+ assert.equal(d.ownerFourEnabled,3);
+ assert.equal(d.ownerPublicationAPIsReady,false);
+ const without=functionRows().map(x=>structuredClone(x));
+ for(const row of without.filter(x=>x.name.includes("OwnerReviewedSkuMapping")))
+  row.name=row.name.replace("OwnerReviewedSkuMapping","UnrelatedWorker");
+ assert.throws(()=>assessOwnerPublicationFunctions(without),
+  /STOP_SKU_PUBLICATION_READONLY_PARTIAL_OWNER_APIS/);
+});
+test("unsafe ranking flag, extra function, inactive function or partial legacy consent stop",()=>{
+ for(const modify of [
+  rows=>{rows[7].serviceConfig.environmentVariables.NICO_JOINT_COUNT_RANKING_ENABLED="enabled";},
+  rows=>{rows[0].serviceConfig.environmentVariables.NICO_PARTNER_SHARED_RANKING_ENABLED="enabled";},
+  rows=>{rows[1].state="FAILED";},
+  rows=>{rows[5].name=LIVE_FN_PREFIX+"unreviewedConsent";},
+  rows=>{rows.push({...rows[0],name:LIVE_FN_PREFIX+"surpriseNew"});}
+ ]){
+  const rows=functionRows();modify(rows);
+  assert.throws(()=>assessOwnerPublicationFunctions(rows),
+   /STOP_SKU_PUBLICATION_READONLY_/);
+ }
+});
+test("publication report distinguishes unknown runtime status from confirmed enabled four APIs",async()=>{
+ const db=live();
+ const noMetadata=await inspectSkuPublication(db);
+ assert.equal(noMetadata.ownerPublicationWriteFeatureEnabledInProd,null);
+ assert.equal(noMetadata.ownerPublicationAPIFlagsConfirmedFromLiveMetadata,false);
+ const metadata=assessOwnerPublicationFunctions(functionRows());
+ const liveKnown=await inspectSkuPublication(db,{ownerApiStatus:metadata});
+ assert.equal(liveKnown.ownerPublicationWriteFeatureEnabledInProd,true);
+ assert.equal(liveKnown.ownerPublicationAPIFlagsConfirmedFromLiveMetadata,true);
+ assert.equal(liveKnown.productionDocumentWrites,0);
+ assert.equal(liveKnown.safeToEnableNewRanking,false);
+ assert(!db.reads.some(s=>/^(records|recordCorrections|revenueGoals|users)\//.test(s)));
 });

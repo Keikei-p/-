@@ -108,7 +108,52 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
  });
 }
 const read=x=>x?.exists===true&&typeof x.data==="function"?x.data():null;
-export async function inspectSkuPublication(db){
+/** Live Cloud Functions v2 GET metadata, never an Owner authentication claim. */
+export function assessOwnerPublicationFunctions(rows){
+ if(!Array.isArray(rows)||rows.length!==20)fail("FUNCTION_INVENTORY");
+ const prefix="projects/sales-management-cc116/locations/asia-northeast1/functions/";
+ const seen=new Set(),found=new Map();
+ for(const row of rows){
+  if(!obj(row)||typeof row.name!=="string"||
+     !row.name.startsWith(prefix)||seen.has(row.name)||
+     row.state!=="ACTIVE")fail("FUNCTION_INVENTORY");
+  seen.add(row.name);found.set(row.name.slice(prefix.length),row);
+ }
+ if(!found.has("getPartnerWorkspace"))fail("OWNER_WORKSPACE_MISSING");
+ const targets=[
+  ["getOwnerProductVisibility","NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"],
+  ["setOwnerProductVisibility","NICO_OWNER_PRODUCT_VISIBILITY_ENABLED"],
+  ["getOwnerReviewedSkuMapping","NICO_OWNER_SKU_MAPPING_ENABLED"],
+  ["setOwnerReviewedSkuMapping","NICO_OWNER_SKU_MAPPING_ENABLED"]
+ ];
+ const present=targets.filter(([name])=>found.has(name)).length;
+ if(present!==0&&present!==4)fail("PARTIAL_OWNER_APIS");
+ const consent=["getRankingOwnerConsentStatus","setRankingOwnerConsent"]
+  .filter(name=>found.has(name)).length;
+ if(consent!==0&&consent!==2)fail("PARTIAL_LEGACY_CONSENT");
+ let enabled=0;
+ for(const [name,flag] of targets){
+  const api=found.get(name);
+  if(!api)continue;
+  const env=api.serviceConfig?.environmentVariables||{};
+  if(api.buildConfig?.entryPoint!==name||
+     api.buildConfig?.runtime!=="nodejs22"||
+     typeof api.serviceConfig?.uri!=="string"||
+     !api.serviceConfig.uri.startsWith("https://")||
+     env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled")fail("OWNER_API_UNREVIEWED");
+  if(![undefined,"enabled","disabled"].includes(env[flag]))fail("OWNER_API_FLAG_UNKNOWN");
+  if(env[flag]==="enabled")enabled++;
+ }
+ const rank=found.get("getVerifiedJointCountRanking");
+ if(rank?.serviceConfig?.environmentVariables?.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"||
+    found.get("getPartnerWorkspace").serviceConfig?.environmentVariables?.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled")
+  fail("JOINT_RANKING_NOT_DISABLED");
+ return Object.freeze({ownerFourPresent:present,ownerFourEnabled:enabled,
+  ownerPublicationAPIsReady:present===4&&enabled===4,
+  legacyConsentPresent:consent,
+  rankingProductionFlagDisabled:true,liveMetadataReadOnly:true});
+}
+export async function inspectSkuPublication(db,{ownerApiStatus=null}={}){
  if(typeof db?.collection!=="function")fail("MISSING_DB");
  const hubs=await db.collection("companies").select("companyKind","ownerUid","active")
   .limit(201).get();
@@ -172,7 +217,10 @@ export async function inspectSkuPublication(db){
   mappedPartnerCount:mappedPartners,ownerPublicationCatalogReady:ready===count,
   allEnabledPartnerSkuMapped:mapping===count,
   reciprocalOwnerRankConsentReady:consent===count,
-  ownerPublicationWriteFeatureEnabledInProd:false,
+  // null means this unit-test/standalone call did not read live Functions.
+  ownerPublicationWriteFeatureEnabledInProd:ownerApiStatus===null?null:
+   ownerApiStatus.ownerPublicationAPIsReady===true,
+  ownerPublicationAPIFlagsConfirmedFromLiveMetadata:ownerApiStatus!==null,
   realAccountCountSaveVerified:false,
   realPartnerFinanceGetListDeniedVerified:false,
   safeToEnableNewRanking:false,productionDocumentWrites:0,
@@ -190,8 +238,19 @@ async function main(){
  const require=createRequire(new URL("../../functions/package.json",import.meta.url));
  const {initializeApp,applicationDefault}=require("firebase-admin/app");
  const {getFirestore}=require("firebase-admin/firestore");
- initializeApp({credential:applicationDefault(),projectId:PROJECT});
- const report=await inspectSkuPublication(getFirestore());
+ const cred=applicationDefault();
+ initializeApp({credential:cred,projectId:PROJECT});
+ const token=(await cred.getAccessToken())?.access_token;
+ if(typeof token!=="string"||token.length<30)fail("FUNCTION_TOKEN");
+ const uri="https://cloudfunctions.googleapis.com/v2/projects/"+
+  PROJECT+"/locations/asia-northeast1/functions?pageSize=1000";
+ const response=await fetch(uri,{method:"GET",cache:"no-store",
+  redirect:"error",headers:{Authorization:"Bearer "+token}});
+ if(response.status!==200)fail("FUNCTION_METADATA_HTTP");
+ const functions=await response.json();
+ if(!obj(functions)||functions.nextPageToken)fail("FUNCTION_LIST_INCOMPLETE");
+ const ownerApiStatus=assessOwnerPublicationFunctions(functions.functions);
+ const report=await inspectSkuPublication(getFirestore(),{ownerApiStatus});
  console.log("NICO_PARTNER_SKU_READINESS "+JSON.stringify(report));
  for(const reason of report.blockingReasons)console.log("BLOCK_"+reason);
 }
