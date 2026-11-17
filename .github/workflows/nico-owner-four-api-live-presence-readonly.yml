@@ -97,8 +97,9 @@ jobs:
           ];
           const present=target.filter(name=>rows.some(x=>x.name===prefix+name));
           const consent=['getRankingOwnerConsentStatus','setRankingOwnerConsent'];
-          if(consent.some(name=>rows.some(x=>x.name===prefix+name)))
-            throw Error('STOP_OWNER_FOUR_CONSENT_UNEXPECTED');
+          const legacyConsentPresent=consent.filter(name=>rows.some(x=>x.name===prefix+name));
+          if(legacyConsentPresent.length!==0&&legacyConsentPresent.length!==2)
+            throw Error('STOP_OWNER_FOUR_PARTIAL_LEGACY_CONSENT');
           const ranking=rows.find(x=>x.name===prefix+'getVerifiedJointCountRanking');
           if(ranking?.serviceConfig?.environmentVariables?.NICO_JOINT_COUNT_RANKING_ENABLED==='enabled')
             throw Error('STOP_OWNER_FOUR_JOINT_RANK_ACTIVE');
@@ -111,24 +112,34 @@ jobs:
               .some(key=>ownerOriginalFlags[key]==='enabled'))throw Error('STOP_OWNER_FOUR_OLD_RISK_FLAGS');
           if(present.length!==0&&present.length!==4)
             throw Error('STOP_OWNER_FOUR_PARTIAL_DEPLOY');
-          if(rows.length!==20+present.length)throw Error('STOP_OWNER_FOUR_OTHER_FUNCTION_DRIFT');
-          if(present.length){
-            for(const name of target){
-              const x=rows.find(row=>row.name===prefix+name);
-              const vars=x.serviceConfig?.environmentVariables||{};
-              if(x.buildConfig?.entryPoint!==name||x.buildConfig?.runtime!=='nodejs22'||
-                !x.serviceConfig?.uri?.startsWith('https://')||
-                vars.NICO_OWNER_PRODUCT_VISIBILITY_ENABLED!=='enabled'||
-                vars.NICO_OWNER_SKU_MAPPING_ENABLED!=='enabled'||
-                vars.NICO_JOINT_COUNT_RANKING_ENABLED!=='disabled')
-                throw Error('STOP_OWNER_FOUR_FLAGS_UNREVIEWED');
-            }
-          }
+          // 20 functions already existed before this audit; Owner callables may
+          // be among them. Never assume they would be additive to 20.
+          if(rows.length!==20)throw Error('STOP_OWNER_FOUR_OTHER_FUNCTION_DRIFT');
+          const statuses=Object.fromEntries(target.map(name=>{
+            const item=rows.find(row=>row.name===prefix+name);
+            const vars=item?.serviceConfig?.environmentVariables||{};
+            const key=name.includes('ProductVisibility')?
+              'NICO_OWNER_PRODUCT_VISIBILITY_ENABLED':'NICO_OWNER_SKU_MAPPING_ENABLED';
+            if(item&&(item.buildConfig?.entryPoint!==name||
+               item.buildConfig?.runtime!=='nodejs22'||
+               !item.serviceConfig?.uri?.startsWith('https://')))
+              throw Error('STOP_OWNER_FOUR_UNEXPECTED_TARGET_RUNTIME');
+            const state=vars[key];
+            const mode=state==='enabled'?'enabled':
+              state==='disabled'?'disabled':state===undefined?'unset':'unreviewed';
+            if(mode==='unreviewed'||vars.NICO_JOINT_COUNT_RANKING_ENABLED==='enabled')
+              throw Error('STOP_OWNER_FOUR_UNREVIEWED_FEATURE_FLAG');
+            return [name,{present:!!item,mode}];
+          }));
+          const ready=present.length===4&&
+            Object.values(statuses).every(x=>x.present&&x.mode==='enabled');
           console.log('OWNER_FOUR_LIVE_STATUS '+JSON.stringify({
             project:'sales-management-cc116',region:'asia-northeast1',
             totalActiveFunctions:rows.length,ownerFourPresent:present.length,
-            ownerOnOffAndSkuAPIsReady:present.length===4,
-            extraMutualConsentFunctionsPresent:false,
+            ownerFourByName:statuses,
+            ownerOnOffAndSkuAPIsReady:ready,
+            oldConsentFunctionsPresent:legacyConsentPresent.length,
+            oldConsentFunctionsNeededForCountLinking:false,
             jointRankingDisabled:true,existingCountWriteFlagDisabled:true,
             firebaseFunctionUpdatesInThisAudit:0,
             firestoreDocumentWrites:0,hostingChanges:0,
