@@ -37,7 +37,10 @@ test('boot and success overlay is passive and contains no auth operations', () =
   assert.match(html, /id="nfLoginFX" aria-hidden="true"/);
   assert.match(controller, /MutationObserver/);
   assert.match(controller, /getComputedStyle\(app\)/);
-  assert.match(controller, /sessionStorage/);
+  assert.doesNotMatch(controller, /sessionStorage/, 'repeated page loads must not suppress startup');
+  assert.match(controller, /flash\('boot',1200\)/, 'visible startup phase on every load');
+  assert.match(controller, /flash\('pending',1600\)/, 'visible login-in-progress phase');
+  assert.match(controller, /flash\('success',1500\)/, 'visible authenticated success phase');
   assert.doesNotMatch(controller, /signInWith|createUserWith|signOut|setDoc|updateDoc|deleteDoc|fetch\s*\(/);
   const css = extract('<style id="nfPremiumLogin">', '</style>');
   assert.match(css, /pointer-events:none/);
