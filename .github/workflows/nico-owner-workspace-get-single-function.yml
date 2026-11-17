@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' }}
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' }}
     runs-on: ubuntu-latest
     timeout-minutes: 13
     env:
@@ -67,8 +67,8 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
           test "$(git hash-object tests/partner-workspace.test.cjs)" = 94c7b76caaa7cf057c0bf8361d188d61ffe8a07d
           test "$(git hash-object tests/owner-workspace-get-only-release-safety.test.mjs)" = d2071e8dfed1a07386aaf1f34464df067a90a99e
-          test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = 33d0a2e20000b9320420d4fb521f708c00f604f2
-          test "$(git hash-object tests/owner-get-single-function-guard.test.mjs)" = fafe7c3d4cfb5f9835ab8a4d880f039a0404239d
+          test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = 5f7108a23ac9b72a45c795a299a5cc579dcd48ea
+          test "$(git hash-object tests/owner-get-single-function-guard.test.mjs)" = 9a483f8213d71de2ed2954ba90d82785932e95ab
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             git fetch --no-tags origin main
             while IFS= read -r file; do

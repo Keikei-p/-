@@ -74,3 +74,23 @@ test("live name-only diagnostic reports unfamiliar keys but never accepts them f
  assert.throws(()=>inspectOwnerGetEnvironmentKeyNames(records),
    /STOP_OWNER_GET_ONE_FUNCTION_KEY_AUDIT_UNVERIFIED/);
 });
+
+test("Firebase-managed Eventarc source is accepted but never copied into .env and must survive rollout",()=>{
+ const rows=base();
+ rows[0].serviceConfig.environmentVariables.EVENTARC_CLOUD_EVENT_SOURCE=
+  "projects/automatic/firebase-eventarc-source";
+ const before=inspectOwnerGetMetadata(rows);
+ assert.equal(before.safeToDeploy,false);
+ assert(!before.envText.includes("EVENTARC_CLOUD_EVENT_SOURCE"));
+ assert.equal(inspectOwnerGetEnvironmentKeyNames(rows).unrecognizedKeyCount,0);
+ const updated=structuredClone(rows);
+ updated[0].updateTime="2026-11-17T02:00:00Z";
+ assert.equal(compareSingleFunctionRollout(before,inspectOwnerGetMetadata(updated)).existingFlagsPreserved,true);
+ updated[0].serviceConfig.environmentVariables.EVENTARC_CLOUD_EVENT_SOURCE=
+  "projects/changed/source";
+ assert.throws(()=>compareSingleFunctionRollout(before,inspectOwnerGetMetadata(updated)),
+  /STOP_OWNER_GET_ONE_FUNCTION_PLATFORM_ENV_CHANGED/);
+ delete updated[0].serviceConfig.environmentVariables.EVENTARC_CLOUD_EVENT_SOURCE;
+ assert.throws(()=>compareSingleFunctionRollout(before,inspectOwnerGetMetadata(updated)),
+  /STOP_OWNER_GET_ONE_FUNCTION_PLATFORM_ENV_CHANGED/);
+});

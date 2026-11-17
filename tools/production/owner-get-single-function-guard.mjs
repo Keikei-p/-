@@ -13,8 +13,11 @@ export const FEATURE_FLAGS=Object.freeze([
  "NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED",
  "NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
 ]);
+// Firebase automatically provides EVENTARC_CLOUD_EVENT_SOURCE for custom
+// Cloud Events. It is platform-owned, never a user-set release toggle.
 const PLATFORM=new Set(["FIREBASE_CONFIG","GCLOUD_PROJECT","FUNCTION_TARGET",
- "FUNCTION_SIGNATURE_TYPE","FUNCTION_REGION","LOG_EXECUTION_ID"]);
+ "FUNCTION_SIGNATURE_TYPE","FUNCTION_REGION","LOG_EXECUTION_ID",
+ "EVENTARC_CLOUD_EVENT_SOURCE"]);
 const stop=reason=>{throw Error("STOP_OWNER_GET_ONE_FUNCTION_"+reason);};
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 // Diagnostic only. Strict release inspection below continues to reject all
@@ -114,6 +117,15 @@ export function compareSingleFunctionRollout(before,after){
   stop("TARGET_RUNTIME_CHANGED");
  if(next.updateTime===prior.updateTime)stop("TARGET_NOT_UPDATED");
  if(before.envText!==after.envText)stop("TARGET_FLAGS_CHANGED");
+ // Never silently remove or rewrite Firebase-managed Eventarc configuration.
+ // Do not copy its value into a dotenv file or print it in any CI output.
+ const eventarc="EVENTARC_CLOUD_EVENT_SOURCE";
+ const priorEnvironment=prior.serviceConfig?.environmentVariables||{};
+ const nextEnvironment=next.serviceConfig?.environmentVariables||{};
+ if(priorEnvironment[eventarc]!==nextEnvironment[eventarc]||
+    Object.hasOwn(priorEnvironment,eventarc)!==
+    Object.hasOwn(nextEnvironment,eventarc))
+  stop("PLATFORM_ENV_CHANGED");
  return Object.freeze({
   exactlyOneFunctionUpdated:true,otherFunctionsUnchanged:true,
   existingFlagsPreserved:true,productionDocumentWrites:0,
