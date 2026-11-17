@@ -1,0 +1,108 @@
+name: NICO actual ranking publication readiness (READ ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/classify-ranking-data-readiness.mjs'
+      - 'tests/classify-ranking-data-readiness.test.mjs'
+      - '.github/workflows/nico-ranking-data-readiness-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/classify-ranking-data-readiness.mjs'
+      - 'tests/classify-ranking-data-readiness.test.mjs'
+      - '.github/workflows/nico-ranking-data-readiness-no-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nico-ranking-data-readiness-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify immutable finance sources and missing-data refusal
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+          node --check tools/production/classify-ranking-data-readiness.mjs
+          node --test tests/classify-ranking-data-readiness.test.mjs
+  live:
+    needs: offline
+    if: >-
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Attach credential for READS ONLY (never log or commit)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-ranking-readonly-key.json"
+          chmod 600 "$RUNNER_TEMP/nico-ranking-readonly-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-ranking-readonly-key.json" >> "$GITHUB_ENV"
+      - name: Install existing Admin SDK only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Inspect only partner count relation and publication settings, output aggregates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {classifyRankingReadiness} from './tools/production/classify-ranking-data-readiness.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const {initializeApp,applicationDefault,deleteApp}=require('firebase-admin/app');
+          const {getFirestore}=require('firebase-admin/firestore');
+          const app=initializeApp({credential:applicationDefault(),projectId:'sales-management-cc116'},'ranking-readonly-audit');
+          const db=getFirestore(app);
+          try {
+            const data=await db.collection('partnerRelations').select('hubCompanyId','partnerCompanyId','active','countSharingApproved').limit(100).get();
+            const relations=data.docs.map(d=>({
+              hubCompanyId:d.get('hubCompanyId'),partnerCompanyId:d.get('partnerCompanyId'),
+              active:d.get('active')===true,countSharingApproved:d.get('countSharingApproved')===true
+            }));
+            const ids=[...new Set(relations.map(x=>x.hubCompanyId))];
+            if(ids.length>50)throw Error('STOP_RANKING_READINESS_TOO_MANY_HUBS');
+            const hubs=[];
+            for(const id of ids){
+              if(typeof id!=='string'||!/^[A-Za-z0-9_:-]{1,200}$/.test(id))
+                throw Error('STOP_RANKING_READINESS_INVALID_HUB');
+              const base=db.collection('companies').doc(id);
+              const [v,m,c]=await Promise.all([
+                base.collection('rankingProductVisibility').doc('shared').get(),
+                base.collection('rankingSkuMappings').doc('shared').get(),
+                base.collection('rankingCountPublicCatalog').doc('shared').get()
+              ]);
+              hubs.push({id,visibility:v.exists?v.data():null,
+                mapping:m.exists?m.data():null,catalog:c.exists?c.data():null});
+            }
+            const proof=classifyRankingReadiness({relations,hubs,sourceComplete:data.size<100});
+            console.log('RANKING_PUBLISHED_COUNT_DATA_READONLY '+JSON.stringify(proof));
+            console.log('NO_PRODUCTS_RECORDS_OR_FINANCE_READ_NO_FIRESTORE_WRITE_NO_DEPLOY');
+          } finally {await deleteApp(app);}
+          NODE
+      - name: Erase temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-ranking-readonly-key.json"
