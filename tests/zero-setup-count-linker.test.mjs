@@ -117,6 +117,21 @@ test("invalid source identities, amount-coded labels, private unknown partner SK
  }
 });
 
+test("canonical partner SKU must have an active server-owned catalog entry before joining any shared rank",()=>{
+ for(const invalid of [false,null,"true",undefined,1]){
+  const f=fixture();
+  const before=structuredClone(f);
+  if(invalid===undefined)delete f.partnerSources[0].products[0].active;
+  else f.partnerSources[0].products[0].active=invalid;
+  const corrupted=structuredClone(f);
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup(f),
+   /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/);
+  assert.deepEqual(f,corrupted,"rejection must not mutate saved original count inputs");
+  assert.deepEqual(f.hubSource,before.hubSource,
+   "a bad partner SKU must never rewrite the internal product catalog");
+ }
+});
+
 test("same actual 3-company ledger produces matching joint company, team, person and product rankings",async()=>{
  const {buildVerifiedCountDashboard}=await import(
   "../ranking/verified-dual-count-dashboards.mjs");

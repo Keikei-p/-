@@ -76,7 +76,7 @@ export function linkAllRegisteredCountsWithoutSetup({
   for(const p of partner.products){
    if(!p||p.companyId!==partner.companyId||
       !valid(p.sourceId)||!contract.has(p.sourceId)||
-      !label(p.name)||seenProducts.has(p.sourceId)||
+      !label(p.name)||p.active!==true||seenProducts.has(p.sourceId)||
       norm(p.name)!==norm(contract.get(p.sourceId)))stop();
    seenProducts.add(p.sourceId);
    // Restrict cross-company joining to the exact known category contract.
