@@ -1,0 +1,71 @@
+name: NICO Owner ON auto links partner count categories (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs'
+      - 'functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
+      - '.github/workflows/nico-owner-on-partner-automatic-count-map-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/owner-product-visibility-firestore.mjs'
+      - 'functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs'
+      - 'functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
+      - '.github/workflows/nico-owner-on-partner-automatic-count-map-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  owner-on-existing-partners:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: disabled
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: disabled
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Finance Rules and original submission/Source remain unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
+          test "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED" = disabled
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 8187d046661d91b7e497b8c7a802c8b402acd9a3
+          test "$(git hash-object ranking/owner-product-visibility-firestore.mjs)" = 498be6e047c7afe8f8a80a7b83bef64faee0f75c
+          cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs
+          cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
+          node --check ranking/owner-product-visibility-firestore.mjs
+          node --check functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs
+          node --check functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
+      - name: Real in-memory Owner ON -> three company mapping -> partner write guard -> OFF preserves history
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/owner-product-visibility-firestore.test.mjs \
+            tests/owner-product-visibility-rankings.test.mjs \
+            tests/partner-publication-write-ranking-consistency.test.cjs \
+            tests/owner-reviewed-sku-mapping-store.test.mjs \
+            tests/zero-setup-count-linker.test.mjs
+          echo 'OWNER_ON_TO_PARTNER_ENTRY_MAPPING_OFF_HISTORY_TESTS_PASS_NO_DEPLOY'
+      - name: Assert no production deployment, data migration or consent changes
+        run: |
+          echo 'FIREBASE_FUNCTIONS_DEPLOYED=NO'
+          echo 'FIRESTORE_DATA_WRITTEN=NO'
+          echo 'OWNER_SETTING_APPLIED_IN_PRODUCTION=NO'
+          echo 'RANKING_PRODUCTION_ENABLED=NO'
