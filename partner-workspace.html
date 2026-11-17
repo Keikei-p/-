@@ -1210,7 +1210,7 @@ function renderCountOnlyDashboard(summary,days){
  }
  const report=[
   "【"+String(data?.companyName||"協力店")+" 件数報告】",
-  dates[0]+" 〜 "+dates.at(-1),
+  days[0]+" 〜 "+days.at(-1),
   "合計："+count+"件",
   "稼働日数："+positive+"日",
   "担当者："+summary.people.filter(p=>p.count>0).length+"人",
