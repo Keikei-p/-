@@ -6,13 +6,18 @@ on:
       - 'ranking/zero-setup-count-linker.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
+      - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
+      - 'ranking/owner-visible-count-atomic-loader.mjs'
       - 'ranking/owner-visible-count-server-handler.mjs'
       - 'functions-ranking-approvals/index.js'
       - 'functions-ranking-approvals/ranking/zero-setup-count-linker.mjs'
       - 'functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs'
       - 'functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs'
+      - 'functions-ranking-approvals/ranking/owner-product-visibility-in-atomic-tx.mjs'
+      - 'functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs'
       - 'functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs'
       - 'tests/zero-setup-count-linker.test.mjs'
+      - 'tests/zero-setup-count-publication-read-gate.test.mjs'
       - 'tests/canonical-joint-count-sku-reader.test.mjs'
       - 'tests/owner-visible-count-server-handler.test.mjs'
       - '.github/workflows/nico-zero-setup-shared-count-rankings.yml'
@@ -22,10 +27,13 @@ on:
       - 'ranking/zero-setup-count-linker.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
+      - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
+      - 'ranking/owner-visible-count-atomic-loader.mjs'
       - 'ranking/owner-visible-count-server-handler.mjs'
       - 'functions-ranking-approvals/index.js'
       - 'functions-ranking-approvals/ranking/**'
       - 'tests/zero-setup-count-linker.test.mjs'
+      - 'tests/zero-setup-count-publication-read-gate.test.mjs'
       - 'tests/canonical-joint-count-sku-reader.test.mjs'
       - 'tests/owner-visible-count-server-handler.test.mjs'
       - '.github/workflows/nico-zero-setup-shared-count-rankings.yml'
@@ -55,7 +63,7 @@ jobs:
           test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
           grep -Fq 'process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
           grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js
-          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler; do
+          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx; do
             cmp "ranking/$f.mjs" "functions-ranking-approvals/ranking/$f.mjs"
             node --check "ranking/$f.mjs"
             node --check "functions-ranking-approvals/ranking/$f.mjs"
@@ -66,6 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/zero-setup-count-linker.test.mjs \
+            tests/zero-setup-count-publication-read-gate.test.mjs \
+            tests/owner-visible-count-atomic-loader.test.mjs \
+            tests/canonical-owner-count-server-factory.test.mjs \
             tests/canonical-joint-count-sku-reader.test.mjs \
             tests/owner-visible-count-server-handler.test.mjs \
             tests/verified-dual-count-dashboards.test.mjs \
