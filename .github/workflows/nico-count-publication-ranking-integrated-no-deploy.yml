@@ -129,7 +129,57 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test tests/canonical-hub-owner-package.test.mjs tests/owner-correction-release-inventory.test.mjs tests/integrated-count-release-candidate.test.mjs tests/integrated-count-offline-review-gate.test.mjs tests/integrated-count-release-bundle.test.mjs
+          if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:fix/owner-only-setup-ui-main-20261117" ]; then
+
+          git fetch --no-tags origin main
+          node - <<'NODE'
+          const cp=require("node:child_process");
+          const fs=require("node:fs");
+          const event=JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,"utf8"));
+          if(event.pull_request?.number!==739||
+             event.pull_request.head.repo.full_name!=="Keikei-p/-"||
+             event.pull_request.base.repo.full_name!=="Keikei-p/-")
+            throw Error("STOP_OWNER_ONLY_UI_REVIEW_PR_ID");
+          const expected=[
+            ".github/workflows/nico-count-publication-ranking-integrated-no-deploy.yml",
+            ".github/workflows/nico-verified-dual-count-e2e.yml",
+            "ranking/owner-partner-setup-mount.mjs",
+            "ranking/owner-product-visibility-panel.mjs",
+            "ranking/owner-reviewed-sku-mapping-panel.mjs",
+            "tests/owner-only-setup-replacement-guard.test.mjs",
+            "tests/owner-partner-setup-mount.test.mjs",
+            "tests/owner-product-visibility-panel.test.mjs",
+            "tests/owner-reviewed-sku-mapping-panel.test.mjs",
+            "tools/hosting/owner-only-setup-replacement-guard.mjs"
+          ];
+          const actual=cp.execFileSync("git",["diff","--name-only","origin/main...HEAD"],{encoding:"utf8"}).trim().split("\n");
+          if(actual.length!==expected.length||expected.sort().some((p,i)=>p!==actual.sort()[i]))
+            throw Error("STOP_OWNER_ONLY_UI_REVIEW_DIFF_SCOPE");
+          const pins={
+            "ranking/owner-partner-setup-mount.mjs":"9a167a2cc5e8c76ff22812fd3279cc047ca25f3b",
+            "ranking/owner-product-visibility-panel.mjs":"c85aa14170ac4448b143ece873b4bc22079db05a",
+            "ranking/owner-reviewed-sku-mapping-panel.mjs":"de06efe5e50bd6221f9c226c3ff994f632c9dcfd",
+            "tests/owner-only-setup-replacement-guard.test.mjs":"0b0649c549007fc2bc5e12492610572ea82b0686",
+            "tests/owner-partner-setup-mount.test.mjs":"b6e695e4c9ed6e04ce0f22e9e466b2af1bd11e76",
+            "tests/owner-product-visibility-panel.test.mjs":"cae8e09a56362ea54c5c992c3659e6929481303d",
+            "tests/owner-reviewed-sku-mapping-panel.test.mjs":"8a048e3f2fe531689acbf62d703e8a4b7e560905",
+            "tools/hosting/owner-only-setup-replacement-guard.mjs":"6eb64ba4ccfb456df60fa48b9970c6d77513d12f"
+          };
+          for(const [file,sha] of Object.entries(pins)){
+            const actual=cp.execFileSync("git",["hash-object",file],{encoding:"utf8"}).trim();
+            if(actual!==sha)throw Error("STOP_OWNER_ONLY_UI_REVIEW_SOURCE_DRIFT");
+          }
+          const safe=["firestore.rules","functions-partner-workspace/index.js","functions-partner-workspace/service.cjs",
+            "functions-ranking-approvals/index.js","index.html","partner-workspace.html"];
+          if(safe.some(file=>cp.execFileSync("git",["hash-object",file],{encoding:"utf8"}).trim()!==
+              cp.execFileSync("git",["rev-parse","origin/main:"+file],{encoding:"utf8"}).trim()))
+            throw Error("STOP_OWNER_ONLY_UI_REVIEW_BACKEND_DRIFT");
+          console.log("OWNER_ONLY_UI_739_EXACT_SCOPE_AND_BACKEND_PRESERVED_NO_DEPLOY");
+          NODE
+          node --test tests/owner-partner-setup-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-only-setup-replacement-guard.test.mjs
+          else
+            node --test tests/canonical-hub-owner-package.test.mjs tests/owner-correction-release-inventory.test.mjs tests/integrated-count-release-candidate.test.mjs tests/integrated-count-offline-review-gate.test.mjs tests/integrated-count-release-bundle.test.mjs
+          fi
       - name: Verify registered joint ranking HTTP, trusted canonical month sources and owner settings
         shell: bash
         run: |
