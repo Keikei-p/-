@@ -5,7 +5,9 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {createPartnerSubmissionPublicationGuard}=
  require("../functions-partner-workspace/submission-publication-guard.cjs");
-const {KEYS}=require("../functions-partner-workspace/approved-published-categories.cjs");
+const {KEYS,allowedPartnerCategories}=require("../functions-partner-workspace/approved-published-categories.cjs");
+const {buildApprovedPartnerCountStandings}=
+ require("../functions-partner-workspace/shared-count-standings.cjs");
 import {createOwnerProductVisibilityStore}
  from "../ranking/owner-product-visibility-firestore.mjs";
 import {buildOwnerVisibleCountRanking}
@@ -440,4 +442,126 @@ test("Owner ON -> existing partner input allowed -> OFF blocks new counts, histo
  assert.equal(map.version,1,"ON/OFF does not duplicate existing mappings");
  assert.equal(map.bindings.length,1);
  assert.equal(f.state.get("products/nuro").revenue,25000);
+});
+
+
+test("3-company Owner ON -> verified entry policy -> the same count-only company/team/person/product ranks; OFF retains history",async()=>{
+ // This is a synthetic in-memory release contract, not a claim of real
+ // Firebase Owner sign-in, a production save or a deployed ranking flag.
+ const f=fake(),date="2026-11-18",companies=["partner","partner2","partner3"];
+ for(const companyId of companies.slice(1)){
+  f.state.set("companies/"+companyId,{name:companyId,
+   ownerUid:companyId+"Owner",companyKind:"partner",
+   hubCompanyId:"hub",active:true});
+  f.state.set("partnerRelations/"+companyId,{partnerCompanyId:companyId,
+   hubCompanyId:"hub",active:true,countSharingApproved:true});
+ }
+ const productBefore=structuredClone(f.state.get("products/nuro"));
+ const saved=await f.store.saveSwitch({
+  principal,productId:"nuro",enabled:true,expectedVersion:0
+ });
+ assert.equal(saved.saved,true);
+ const visibilityRef="companies/hub/rankingProductVisibility/shared";
+ const catalogRef="companies/hub/rankingCountPublicCatalog/shared";
+ const mappingRef="companies/hub/rankingSkuMappings/shared";
+ const state=f.state;
+ assert.equal(state.get(visibilityRef).version,state.get(catalogRef).version);
+ assert.deepEqual(state.get(mappingRef).bindings.map(b=>b.companyId),companies);
+ const check=createPartnerSubmissionPublicationGuard({db:f.db});
+ const rows=new Map();
+ const inputCounts=[4,3,5],staff=["personA","personB","personC"];
+ for(let i=0;i<companies.length;i++){
+  const cid=companies[i],before=Object.fromEntries(KEYS.map(k=>[k,0]));
+  // An existing OFF category remains in the original ledger unchanged.
+  if(i===0)before.SBMNP=7;
+  const next={...before,NURO:inputCounts[i]};
+  const scope={verifiedByServer:true,kind:"partner",cid,
+   uid:staff[i],hubId:"hub"};
+  const policy=await check({tx:f.tx,scope,
+   previousCounts:before,nextCounts:next});
+  const categories=allowedPartnerCategories({
+   hubId:"hub",cid,ownerUid:"owner",
+   visibility:state.get(visibilityRef),mapping:state.get(mappingRef),
+   products:state.get(catalogRef).products
+  });
+  assert.deepEqual([...policy.enabledCategories],categories);
+  assert.deepEqual(categories,["NURO"]);
+  // The mock records represent an already server-verified save; no
+  // production count collections are ever written from this test.
+  rows.set(cid,{cid,teamId:"team"+i,staffId:staff[i],
+   name:"協力店"+(i+1),counts:next,
+   totalCount:KEYS.reduce((n,k)=>n+next[k],0),version:1});
+  assert.equal(state.get(catalogRef).products.some(p=>
+   "revenue" in p||"unitPrice" in p||"cashbackOptions" in p),false);
+ }
+ const rank=()=>{
+  const visible=state.get(visibilityRef);
+  const mapping=state.get(mappingRef);
+  const catalog=state.get(catalogRef).products;
+  return buildApprovedPartnerCountStandings({
+   hubId:"hub",start:date,end:date,
+   sources:companies.map(cid=>{
+    const row=rows.get(cid),allowedCategories=allowedPartnerCategories({
+     hubId:"hub",cid,ownerUid:"owner",visibility:visible,mapping,products:catalog
+    });
+    const report={hubCompanyId:"hub",partnerCompanyId:cid,date,
+     source:"staff-entries-v1",counts:row.counts,totalCount:row.totalCount};
+    const entry={companyId:cid,hubCompanyId:"hub",date,
+     staffId:row.staffId,staffNameSnapshot:row.staffId,
+     teamIdSnapshot:row.teamId,version:row.version,
+     counts:row.counts,totalCount:row.totalCount};
+    return {cid,name:row.name,approved:true,allowedCategories,
+     teams:[{id:row.teamId,name:"第"+(companies.indexOf(cid)+1)+"班"}],
+     entries:[{id:date+"__"+row.staffId,data:entry}],
+     reports:[{date,data:report}]};
+   })
+  });
+ };
+ let result=rank();
+ assert.equal(result.totalCount,12);
+ assert.deepEqual(result.companies.map(x=>x.totalCount),[5,4,3]);
+ assert.deepEqual(result.teams.map(x=>x.totalCount),[5,4,3]);
+ assert.deepEqual(result.people.map(x=>x.totalCount),[5,4,3]);
+ assert.equal(result.products.length,1);
+ assert.equal(result.products[0].name,"NURO");
+ assert.equal(result.products[0].totalCount,12);
+ assert(!/売上|単価|cashback|revenue|unitPrice|SBMNP/.test(JSON.stringify(result)));
+ assert.deepEqual(f.state.get("products/nuro"),productBefore);
+ const allSaved=structuredClone([...rows.values()]);
+ // Company-specific OFF blocks any new writes and masks only that company's
+ // published count. Saved rows and original financial products never change.
+ await f.store.saveSwitch({principal,productId:"nuro",
+  partnerCompanyId:"partner2",enabled:false,expectedVersion:1});
+ const second=rows.get("partner2"),scopeB={verifiedByServer:true,
+  kind:"partner",uid:second.staffId,cid:"partner2",hubId:"hub"};
+ await assert.rejects(check({tx:f.tx,scope:scopeB,
+  previousCounts:second.counts,
+  nextCounts:{...second.counts,NURO:second.counts.NURO+1}}),
+  /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
+ result=rank();
+ assert.equal(result.totalCount,9);
+ assert.equal(result.companies.length,2);
+ assert(!result.companies.some(x=>x.name==="協力店2"));
+ // Global OFF hides all published counts, but does not overwrite a single
+ // saved entry, ranking product, transaction audit or historical count.
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:false,expectedVersion:2});
+ result=rank();
+ assert.equal(result.totalCount,0);
+ assert.deepEqual(result.companies,[]);
+ assert.deepEqual(result.products,[]);
+ assert.deepEqual([...rows.values()],allSaved);
+ // Re-ON restores the original saved counts, respecting the company OFF.
+ await f.store.saveSwitch({principal,productId:"nuro",
+  enabled:true,expectedVersion:3});
+ result=rank();
+ assert.equal(result.totalCount,9);
+ await f.store.saveSwitch({principal,productId:"nuro",
+  partnerCompanyId:"partner2",enabled:true,expectedVersion:4});
+ result=rank();
+ assert.equal(result.totalCount,12);
+ assert.equal(result.products[0].totalCount,12);
+ assert.deepEqual([...rows.values()],allSaved);
+ assert.deepEqual(f.state.get("products/nuro"),productBefore);
+ assert.equal(state.get(catalogRef).version,state.get(visibilityRef).version);
 });
