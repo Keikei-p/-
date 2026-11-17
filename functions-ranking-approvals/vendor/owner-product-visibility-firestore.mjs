@@ -17,6 +17,53 @@ const ids=x=>Array.isArray(x)&&x.length<=1000&&
  x.every(id)&&new Set(x).size===x.length;
 const saneName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!MONEY.test(x.normalize("NFKC"));
+// An Owner's explicit ON action can authorize unambiguous EXISTING partner
+// count categories without a second form or any data migration. Never guess,
+// alter a reviewed mapping, or split the old combined 光/AIR category.
+const EXACT_CATEGORY_ALIASES=Object.freeze({
+ partnerSku01:["NURO","NURO光"],
+ partnerSku02:["SBMNP","SoftBank MNP","SoftBankMNP","ソフトバンクMNP"],
+ partnerSku03:["YMMNP","Y!mobile MNP","ワイモバイルMNP"],
+ partnerSku04:["YM純新規","ワイモバイル純新規"],
+ partnerSku05:["SB光・AIR","SB光・AIR（旧合算・未分類）",
+  "光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"],
+ partnerSku06:["ウォーター"],
+ partnerSku07:["つばさ・HTB"],
+ partnerSku08:["太陽光・蓄電池AP"],
+ partnerSku09:["U-NEXT"]
+});
+const skuNorm=x=>x.normalize("NFKC").trim().toLowerCase()
+ .replace(/[\s　・･\/／_－‐\-（()）!！]/g,"");
+function oneExactCategory(product,products){
+ if(!product?.active||!saneName(product.name))return null;
+ const key=skuNorm(product.name);
+ const categories=Object.entries(EXACT_CATEGORY_ALIASES)
+  .filter(([,aliases])=>aliases.some(name=>skuNorm(name)===key));
+ if(categories.length!==1)return null;
+ const [category,aliases]=categories[0],possible=new Set(aliases.map(skuNorm));
+ // Any second active hub master for the same canonical partner SKU is
+ // ambiguous. Do not bind either; let the Owner choose manually.
+ if(products.some(p=>p.id!==product.id&&p.active&&possible.has(skuNorm(p.name))))
+  return null;
+ return category;
+}
+function checkedMapping(saved,hub,ownerUid){
+ if(!saved)return {version:0,bindings:[]};
+ if(!obj(saved)||saved.hubCompanyId!==hub||saved.ownerUid!==ownerUid||
+    saved.reviewedByUid!==ownerUid||saved.active!==true||
+    !Number.isSafeInteger(saved.version)||saved.version<1||
+    !Array.isArray(saved.bindings)||saved.bindings.length>1000)stop();
+ const keys=new Set(),targets=new Set();
+ for(const b of saved.bindings){
+  if(!obj(b)||Object.keys(b).sort().join("|")!=="companyId|hubProductId|productId"||
+     !id(b.companyId)||b.companyId===hub||
+     !Object.hasOwn(EXACT_CATEGORY_ALIASES,b.productId)||!id(b.hubProductId))stop();
+  const key=b.companyId+":"+b.productId,ref=b.companyId+":"+b.hubProductId;
+  if(keys.has(key)||targets.has(ref))stop();
+  keys.add(key);targets.add(ref);
+ }
+ return {version:saved.version,bindings:saved.bindings.map(b=>({...b}))};
+}
 const normalize=(s,hubId,ownerUid)=>{
  if(!s)return {version:0,enabledHubProductIds:[],partnerOverrides:{}};
  if(s.hubCompanyId!==hubId||s.ownerUid!==ownerUid||
@@ -156,6 +203,54 @@ export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountView
    if(enabled)target.add(productId);else target.delete(productId);
    if(before===enabled)return {saved:false,version:state.version,
     productId,enabled,partnerCompanyId};
+   // All reads are resolved BEFORE any transaction write. A single Owner ON
+   // click can prepare the same reviewed count SKU for each already approved
+   // partner; only exact, unique labels are eligible. No hidden consent step.
+   let automatic=[],mappingSnapshot=null,mappingState=null;
+   if(enabled===true){
+    const category=oneExactCategory(product,products);
+    if(category){
+     const mappingRef=companies().doc(hub).collection("rankingSkuMappings").doc("shared");
+     const relationsRef=db.collection("partnerRelations");
+     const [existingMapping,relationList]=await Promise.all([
+      tx.get(mappingRef),
+      partnerCompanyId===null?
+       tx.get(relationsRef.where("hubCompanyId","==",hub).limit(31)):
+       Promise.resolve(null)
+     ]);
+     mappingSnapshot=existingMapping;
+     mappingState=checkedMapping(read(existingMapping),hub,ownerUid);
+     if(mappingState.version>=100000)stop();
+     if(relationList!==null&&(!Array.isArray(relationList?.docs)||
+        relationList.docs.length>30))stop();
+     const relationIds=partnerCompanyId!==null?[partnerCompanyId]:
+      relationList.docs.filter(s=>s.data()?.active===true&&
+       s.data()?.countSharingApproved===true).map(s=>{
+       const r=s.data();
+       if(!id(s.id)||r.partnerCompanyId!==s.id||r.hubCompanyId!==hub)stop();
+       return s.id;
+      });
+     if(new Set(relationIds).size!==relationIds.length)stop();
+     const liveCompanies=await Promise.all(relationIds.map(cid=>
+      tx.get(companies().doc(cid))));
+     for(let i=0;i<relationIds.length;i++){
+      const cid=relationIds[i],company=read(liveCompanies[i]);
+      if(!obj(company)||company.companyKind!=="partner"||
+         company.active!==true||company.hubCompanyId!==hub)stop();
+      if(partnerCompanyId===null&&
+         Object.hasOwn(state.partnerOverrides,cid)&&
+         !state.partnerOverrides[cid].includes(productId))continue;
+      const sameCategory=mappingState.bindings.some(b=>
+       b.companyId===cid&&b.productId===category);
+      const sameTarget=mappingState.bindings.some(b=>
+       b.companyId===cid&&b.hubProductId===productId);
+      // Never overwrite an Owner-reviewed manual choice.
+      if(sameCategory||sameTarget)continue;
+      automatic.push({companyId:cid,productId:category,hubProductId:productId});
+     }
+     if(mappingState.bindings.length+automatic.length>1000)stop();
+    }
+   }
    const next=Object.fromEntries(Object.entries(state.partnerOverrides)
     .map(([key,value])=>[key,value.slice()]));
    let global=state.enabledHubProductIds.slice();
@@ -176,6 +271,26 @@ export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountView
     products:products.map(p=>({id:p.id,companyId:hub,name:p.name,active:p.active}))};
    if(existingPublicCatalog.exists)tx.update(publicRef,published);
    else tx.create(publicRef,{...published,createdAt:at});
+   // Exact ON mapping and its audit are committed in this SAME transaction
+   // as visibility/catalog. No count or revenue documents are touched.
+   if(automatic.length){
+    const mapRef=companies().doc(hub).collection("rankingSkuMappings").doc("shared");
+    const mapVersion=mappingState.version+1;
+    const bindings=[...mappingState.bindings,...automatic].sort((a,b)=>
+     a.companyId.localeCompare(b.companyId)||a.productId.localeCompare(b.productId));
+    const updated={hubCompanyId:hub,ownerUid,reviewedByUid:ownerUid,
+     active:true,version:mapVersion,bindings,reviewedAt:at};
+    if(mappingSnapshot.exists)tx.update(mapRef,updated);
+    else tx.create(mapRef,{...updated,createdAt:at});
+    for(const entry of automatic)
+     tx.create(companies().doc(hub).collection("rankingSkuMappingAudit").doc(),{
+      hubCompanyId:hub,partnerCompanyId:entry.companyId,
+      partnerProductId:entry.productId,previousHubProductId:null,
+      hubProductId:entry.hubProductId,version:mapVersion,
+      reviewKind:"owner_enabled_exact_unique_count_category",
+      reviewedByUid:ownerUid,reviewedAt:at
+     });
+   }
    // Append-only audit, never delete a financial or count record.
    const audit=companies().doc(hub)
     .collection("rankingProductVisibilityAudit").doc();
