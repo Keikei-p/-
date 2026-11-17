@@ -4,6 +4,8 @@ import {composeCanonicalMonthlyRankingInput,createCanonicalCountTransactionReade
  from "../ranking/canonical-joint-count-sku-reader.mjs";
 import {buildOwnerVisibleCountRanking}
  from "../ranking/owner-product-visibility-rankings.mjs";
+import {buildVerifiedCountDashboard}
+ from "../ranking/verified-dual-count-dashboards.mjs";
 const TIME="2026-11-09T00:00:00.000Z";
 const context={serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",
  hubCompanyId:"hub",role:"hub_owner",approvedCompanyIds:["hub","partner"],
@@ -199,4 +201,35 @@ test("verified active partner roster preserves no-report staff and historic coun
    partnerSources:bad.partnerSources}),/CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED|FINANCIAL/,
    "untrusted current staff must not be promoted to ranking");
  }
+});
+
+
+test("zero-setup same month reconciles both companies and all counts without mappings or ON switches",()=>{
+ const input=compose({skuMap:null,zeroSetupLink:true}),snapshot=structuredClone(sources());
+ const group=input.productGroups.find(x=>x.companyId==="partner"&&
+  x.productId==="partnerSku01");
+ assert.deepEqual(group,{companyId:"partner",productId:"partnerSku01",
+  groupId:"nuro",groupName:"NURO光"});
+ const result=buildVerifiedCountDashboard({...input,context});
+ assert.equal(result.summary.own,3);
+ assert.equal(result.summary.partner,5);
+ assert.equal(result.summary.total,8);
+ assert.equal(result.productRanking.find(x=>x.name==="NURO光").count,7);
+ assert.equal(result.productRanking.find(x=>x.name==="SoftBank Air").count,1);
+ assert.equal(result.memberRanking.find(x=>x.id==="partner:p1").count,5);
+ assert.equal(result.memberRanking.find(x=>x.id==="hub:owner").count,3);
+ assert.deepEqual(sources(),snapshot,"source records and financial masters are never edited");
+ assert(!/(revenue|unitPrice|cashback|price|[¥￥])/.test(JSON.stringify(result)));
+});
+test("zero-setup mode never reads a mapping document even when it is absent",async()=>{
+ const f=fakeReader({noMapping:true});
+ const read=createCanonicalCountTransactionReader({db:f.db,zeroSetupLink:true});
+ await assert.rejects(read({tx:f.tx,context,month:"2026-11"}));
+ assert(!f.seen.includes("companies/hub/rankingSkuMappings/shared"),
+  "the user must not be required to open a SKU mapping setup page");
+});
+test("zero-setup mode rejects a mismatched role before any mapping or source reading",()=>{
+ const invalid={...context,serverVerified:false};
+ assert.throws(()=>compose({zeroSetupLink:true,skuMap:null,context:invalid}),
+  /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
 });
