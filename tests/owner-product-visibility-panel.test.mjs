@@ -137,3 +137,96 @@ test("company-specific control cannot switch globally OFF or malformed overrides
   root:new Node("main"),auth,partnerCompanyId:"__proto__",
   load:async()=>{},save:async()=>{}}));
 });
+
+test("global Owner sees one-click all-active-product option, never changes on load",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ const status=response(false,3);
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  load:async()=>status,save:async input=>{calls.push(input);throw Error("not called");}
+ });
+ assert.equal(await ctrl.refresh(),true);
+ assert.equal(calls.length,0);
+ assert(nodes(root).some(x=>x.tagName==="button"&&
+  x.textContent==="登録済みの有効商材をすべてランキング対象にする"));
+ ctrl.destroy();
+});
+test("one click ON saves every active OFF product using existing versioned, audited callable only",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ let v=response(false,5);
+ v.products.push({id:"legacy",name:"SB光・AIR（旧合算・未分類）",active:false,enabled:false});
+ v.partnerOverrides={partner:[]};
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  load:async()=>structuredClone(v),
+  save:async input=>{
+   calls.push(input);
+   assert.equal(input.expectedVersion,v.version);
+   assert.equal(input.partnerCompanyId,null);
+   const p=v.products.find(x=>x.id===input.productId);
+   assert(p&&p.active&&!p.enabled);
+   p.enabled=true;v.version++;
+   return {saved:true,productId:input.productId,enabled:true,
+    version:v.version,partnerCompanyId:null};
+  }
+ });
+ assert.equal(await ctrl.refresh(),true);
+ assert.equal(calls.length,0);
+ const button=nodes(root).find(x=>x.tagName==="button");
+ assert(button);
+ await button.fire("click");
+ assert.deepEqual(calls.map(x=>[x.productId,x.expectedVersion]),[
+  ["nuro",5],["air",6]]);
+ assert.equal(v.version,7);
+ assert.equal(v.products[2].enabled,false,"retired SKUs are NEVER reactivated");
+ assert.deepEqual(v.partnerOverrides,{partner:[]},"partner-specific OFF must be preserved");
+ assert.match(text(root),/対象商材2件のONを保存・再確認しました/);
+ ctrl.destroy();
+});
+test("one-click product ON stops on version conflict and shows only server-confirmed writes",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ let v=response(false,8);
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  load:async()=>structuredClone(v),
+  save:async input=>{
+   calls.push(input);
+   if(input.productId==="air")throw Error("permission-denied");
+   v.version++;v.products[0].enabled=true;
+   return {saved:true,productId:input.productId,enabled:true,
+    version:v.version,partnerCompanyId:null};
+  }
+ });
+ assert.equal(await ctrl.refresh(),true);
+ const button=nodes(root).find(x=>x.tagName==="button");
+ await button.fire("click");
+ assert.deepEqual(calls.map(x=>x.productId),["nuro","air"]);
+ assert.equal(v.version,9);
+ assert.equal(v.products[0].enabled,true);
+ assert.equal(v.products[1].enabled,false);
+ assert.match(text(root),/一括ONは途中で停止しました。保存確認済み1件/);
+ ctrl.destroy();
+});
+test("company-specific all-ON cannot change globally OFF products or other companies",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ let v=response(true,4);
+ v.partnerOverrides={partner:[],partner2:[]};
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  partnerCompanyId:"partner",load:async()=>structuredClone(v),
+  save:async input=>{
+   calls.push(input);
+   assert.equal(input.partnerCompanyId,"partner");
+   assert.equal(input.productId,"nuro");
+   assert.equal(input.expectedVersion,v.version);
+   v.version++;v.partnerOverrides.partner=["nuro"];
+   return {saved:true,version:v.version,productId:"nuro",
+    enabled:true,partnerCompanyId:"partner"};
+  }
+ });
+ assert.equal(await ctrl.refresh(),true);
+ const button=nodes(root).find(x=>x.tagName==="button");
+ await button.fire("click");
+ assert.equal(calls.length,1);
+ assert.deepEqual(v.partnerOverrides.partner,["nuro"]);
+ assert.deepEqual(v.partnerOverrides.partner2,[]);
+ assert.equal(v.products[1].enabled,false,"globally OFF product remains OFF");
+ assert.match(text(root),/対象商材1件のONを保存・再確認しました/);
+ ctrl.destroy();
+});

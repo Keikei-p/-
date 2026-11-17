@@ -109,6 +109,74 @@ export function createOwnerProductVisibilityPanel({
     });
     page.appendChild(label);
    }
+   // The Owner explicitly chose ALL registered active products for ranking.
+   // Do not bypass per-product, server-audited ON/OFF and version checks.
+   // Company-specific overrides are never silently changed by a global save.
+   const selectable=view.products.filter(p=>p.active&&(
+    scoped? p.enabled&&!partnerAllowed.has(p.id):!p.enabled));
+   if(selectable.length){
+    const all=el(document,"button",
+     scoped?"この協力店の公開可能商材をすべてON":
+      "登録済みの有効商材をすべてランキング対象にする",
+     "team-action-button");
+    all.type="button";
+    all.setAttribute?.("aria-label",scoped?
+     "選択した協力店の全公開可能商材をON":"有効な自社商材をすべて公開ON");
+    const hint=el(document,"p",scoped?
+     "この協力店のOFF商材だけをONにします。他社は変更しません。":
+     "全体でOFFの有効商材をONにします。会社別にOFFにした設定は保持されます。");
+    page.appendChild(hint);
+    page.appendChild(all);
+    all.addEventListener("click",async()=>{
+     if(closed||busy||auth.currentUser!==identity)return;
+     busy=true;all.disabled=true;
+     let saved=0,failed=false;
+     try{
+      let expected=view.version;
+      for(const product of selectable){
+       if(closed||token!==generation||auth.currentUser!==identity)fail();
+       const freshToken=await identity.getIdToken();
+       if(closed||token!==generation||auth.currentUser!==identity)fail();
+       const latest=validate(await load({token:freshToken}));
+       if(latest.version!==expected)fail();
+       const current=latest.products.find(p=>p.id===product.id);
+       const alreadyOn=scoped?
+        current?.enabled&&new Set(Object.hasOwn(latest.partnerOverrides||{},partnerCompanyId)?
+         latest.partnerOverrides[partnerCompanyId]:
+         latest.products.filter(p=>p.enabled).map(p=>p.id)).has(product.id):
+        current?.enabled;
+       if(!current||current.active!==true||alreadyOn||
+          scoped&&!current.enabled)fail();
+       const result=await save({token:freshToken,productId:product.id,
+        enabled:true,expectedVersion:expected,partnerCompanyId});
+       if(!result||result.saved!==true||
+          result.version!==expected+1||
+          result.productId!==product.id||result.enabled!==true||
+          result.partnerCompanyId!==partnerCompanyId)fail();
+       const checked=validate(await load({token:freshToken}));
+       const actual=checked.products.find(p=>p.id===product.id);
+       if(checked.version!==result.version||!actual||
+          (scoped?
+           !actual.enabled||!new Set(Object.hasOwn(checked.partnerOverrides||{},partnerCompanyId)?
+            checked.partnerOverrides[partnerCompanyId]:
+            checked.products.filter(p=>p.enabled).map(p=>p.id)).has(product.id):
+           !actual.enabled))fail();
+       expected=result.version;saved++;
+      }
+     }catch{failed=true;}
+     finally{
+      busy=false;
+      if(!closed&&auth.currentUser===identity){
+       const done=await refresh();
+       if(done&&!closed&&auth.currentUser===identity)
+        status(failed?
+         "一括ONは途中で停止しました。保存確認済み"+saved+
+          "件。残りは最新の状態から設定してください。":
+         "対象商材"+saved+"件のONを保存・再確認しました。");
+      }
+     }
+    });
+   }
    root.replaceChildren(page);rendered=view;
    return true;
   }catch{
