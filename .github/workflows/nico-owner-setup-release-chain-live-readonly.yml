@@ -44,6 +44,18 @@ jobs:
              { [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_REPOSITORY" = Keikei-p/- ] &&
                { [ "$GITHUB_EVENT_NAME" = push ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; }; }; then
             node tools/production/verify-integrated-count-release-candidate.mjs --offline . docs/integrated-count-release-candidate-20261115.json
+          elif { [ "$GITHUB_EVENT_NAME" = pull_request ] &&
+                 [ "$GITHUB_REPOSITORY" = Keikei-p/- ] &&
+                 [ "${GITHUB_HEAD_REF:-}" = fix/owner-only-name-publication-20261117 ] &&
+                 node -e "const e=require(process.env.GITHUB_EVENT_PATH);if(e.pull_request?.number!==731||e.pull_request.head.repo.full_name!=='Keikei-p/-'||e.pull_request.base.repo.full_name!=='Keikei-p/-')process.exit(1)"; }; then
+            # Independent exact source pins; no credentials and no live deployment.
+            # Do not replace the older pin used by main/other release workflows.
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = 361e41d2a1259c33a5479e22073c6da3599d1697
+            test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
+            test "$(git hash-object tools/production/inspect-live-sku-publication-readonly.mjs)" = c901bda9d1667139afd57ce1fda931c50881db12
+            test "$(git hash-object tools/production/inspect-owner-setup-release-chain-readonly.mjs)" = 876c6108c79399fa92d95e181cbab677fec22c7f
+            test "$(git hash-object tests/inspect-live-sku-publication-readonly.test.mjs)" = 24159d716f064798279c2ca0b49cc74c9a52c8a5
+            test "$(git hash-object tests/inspect-owner-setup-release-chain-readonly.test.mjs)" = 6c269e3e023cd575569710f2f3bf68bc47a68f4e
           else
             test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
             test "$(git hash-object functions-ranking-approvals/index.js)" = 54855609e372ee1056b5206e445f20c0a251b1ef
