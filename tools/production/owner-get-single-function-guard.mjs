@@ -17,6 +17,31 @@ const PLATFORM=new Set(["FIREBASE_CONFIG","GCLOUD_PROJECT","FUNCTION_TARGET",
  "FUNCTION_SIGNATURE_TYPE","FUNCTION_REGION","LOG_EXECUTION_ID"]);
 const stop=reason=>{throw Error("STOP_OWNER_GET_ONE_FUNCTION_"+reason);};
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
+// Diagnostic only. Strict release inspection below continues to reject all
+// unknown variables. Never print values, source configurations, tokens or UIDs.
+export function inspectOwnerGetEnvironmentKeyNames(rows){
+ if(!Array.isArray(rows)||rows.length<1||rows.length>1000)
+  stop("KEY_AUDIT_INVENTORY");
+ const matches=rows.filter(x=>x?.name===TARGET);
+ if(matches.length!==1)stop("KEY_AUDIT_TARGET");
+ const target=matches[0];
+ if(target.state!=="ACTIVE"||
+    target.buildConfig?.runtime!=="nodejs22"||
+    target.buildConfig?.entryPoint!=="getPartnerWorkspace"||
+    !obj(target.serviceConfig?.environmentVariables)||
+    Array.isArray(target.serviceConfig?.secretEnvironmentVariables)&&
+    target.serviceConfig.secretEnvironmentVariables.length>0)
+  stop("KEY_AUDIT_UNVERIFIED");
+ const names=Object.keys(target.serviceConfig.environmentVariables);
+ if(names.length>100||names.some(x=>!/^[A-Za-z_][A-Za-z0-9_]{0,95}$/.test(x)))
+  stop("KEY_AUDIT_UNTRUSTED_NAME");
+ const unknown=names.filter(x=>!FEATURE_FLAGS.includes(x)&&!PLATFORM.has(x)).sort();
+ return Object.freeze({
+  target:"getPartnerWorkspace",unrecognizedKeyNames:Object.freeze(unknown),
+  unrecognizedKeyCount:unknown.length,secretValuesPrinted:false,
+  releaseApproved:false,productionWrites:0
+ });
+}
 export function inspectOwnerGetMetadata(rows){
  if(!Array.isArray(rows)||rows.length<1||rows.length>1000)stop("INVENTORY");
  const result=new Map();
