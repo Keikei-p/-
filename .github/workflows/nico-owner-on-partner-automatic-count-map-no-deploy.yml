@@ -7,6 +7,7 @@ on:
       - 'functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs'
       - 'functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
+      - 'functions-ranking-approvals/index.js'
       - '.github/workflows/nico-owner-on-partner-automatic-count-map-no-deploy.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs'
       - 'functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs'
       - 'tests/owner-product-visibility-firestore.test.mjs'
+      - 'functions-ranking-approvals/index.js'
       - '.github/workflows/nico-owner-on-partner-automatic-count-map-no-deploy.yml'
 permissions:
   contents: read
@@ -46,8 +48,12 @@ jobs:
           test "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED" = disabled
           test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
-          test "$(git hash-object functions-ranking-approvals/index.js)" = 8187d046661d91b7e497b8c7a802c8b402acd9a3
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 31c96013df37d7d179ea9f2dcfa130d5393a2b19
           test "$(git hash-object ranking/owner-product-visibility-firestore.mjs)" = 498be6e047c7afe8f8a80a7b83bef64faee0f75c
+          grep -Fq 'zeroSetupLink:false' functions-ranking-approvals/index.js
+          if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
+            echo 'ERROR: ranking must not bypass Owner ON/OFF'; exit 1
+          fi
           cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs
           cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
           node --check ranking/owner-product-visibility-firestore.mjs
@@ -61,7 +67,9 @@ jobs:
             tests/owner-product-visibility-rankings.test.mjs \
             tests/partner-publication-write-ranking-consistency.test.cjs \
             tests/owner-reviewed-sku-mapping-store.test.mjs \
-            tests/zero-setup-count-linker.test.mjs
+            tests/zero-setup-count-linker.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/owner-product-visibility-in-atomic-tx.test.mjs
           echo 'OWNER_ON_TO_PARTNER_ENTRY_MAPPING_OFF_HISTORY_TESTS_PASS_NO_DEPLOY'
       - name: Assert no production deployment, data migration or consent changes
         run: |
