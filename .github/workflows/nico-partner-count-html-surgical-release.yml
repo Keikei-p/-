@@ -89,7 +89,9 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-partner-count-html.private.json"
           chmod 600 "$RUNNER_TEMP/nico-partner-count-html.private.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-partner-count-html.private.json" >> "$GITHUB_ENV"
-      - name: GET-only full previous Hosting manifest and exact old partner page hash
+      - name: GET-only current partner HTML SHA256 and full manifest without data reads
+        env:
+          NICO_PARTNER_HASH_DIAGNOSTIC_ONLY: 'true'
         run: node tools/hosting/release-partner-count-html-surgical.mjs --dry-run
       - name: Publish ONLY partner workspace HTML when full manifest and previous hash match
         run: node tools/hosting/release-partner-count-html-surgical.mjs --release
