@@ -83,12 +83,14 @@ export async function releaseOwnerEntryOneFile({request,historicalSources,candid
   stop("CREATED_VERSION_NOT_VERIFIED");
  const payloads=Object.fromEntries(plan.proposedManifest);
  const populated=await request("POST",API+"/"+created.name+":populateFiles",{files:payloads});
- if(!populated||!Array.isArray(populated.uploadRequiredHashes))
+ if(!populated||typeof populated!=="object"||
+    (populated.uploadRequiredHashes!=null&&
+     !Array.isArray(populated.uploadRequiredHashes)))
   stop("UPLOAD_REQUIREMENTS_UNVERIFIED");
- if(populated.uploadRequiredHashes.length>1||
-    populated.uploadRequiredHashes.some(sha=>sha!==plan.newHtmlHash))
+ const required=populated.uploadRequiredHashes||[];
+ if(required.length>1||required.some(sha=>sha!==plan.newHtmlHash))
   stop("UNREVIEWED_UPLOAD_REQUIRED");
- if(populated.uploadRequiredHashes.length){
+ if(required.length){
   const url=populated.uploadUrl;
   const prefix="https://upload-firebasehosting.googleapis.com/upload/sites/"+
    SITE+"/versions/"+created.name.split("/").at(-1)+"/";
