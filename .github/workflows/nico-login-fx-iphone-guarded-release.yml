@@ -1,0 +1,133 @@
+name: NICO iPhone login FX exact index-only production release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/login-fx-visible-on-iphone.test.cjs'
+      - 'tests/login-presentation-contract.test.cjs'
+      - '.github/workflows/nico-login-fx-iphone-guarded-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '.github/workflows/nico-login-fx-iphone-guarded-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact reviewed UI candidate, original auth and offline regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object index.html)" = ecdf523979e9adce6275b6d3f1e6383f14dc1f70
+          node --test tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-invite-mobile-layout.test.cjs tests/surgical-existing-index.test.mjs
+          node --check tools/hosting/surgical-existing-index.mjs
+          echo 'LOGIN_IPHONE_REVIEW_OFFLINE_PASS_NO_DEPLOY'
+  publish:
+    needs: review
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'Keikei-p/-' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message == 'release(sales): iPhone login FX visible index only' &&
+      needs.review.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin candidate, previous main HTML and only six reviewed changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object index.html)" = ecdf523979e9adce6275b6d3f1e6383f14dc1f70
+          git show HEAD^1:index.html > "$RUNNER_TEMP/old-index.html"
+          test "$(git hash-object "$RUNNER_TEMP/old-index.html")" = 9bc74a866860f0210ae4cb2c9f67a2470d37d220
+          git diff --name-only HEAD^1 HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+          printf '%s\n' '.github/workflows/nico-login-fx-visible-no-deploy.yml' '.github/workflows/nico-login-fx-iphone-guarded-release.yml' 'docs/SALES_RELEASE_SIGNOFF.md' 'index.html' 'tests/login-fx-visible-on-iphone.test.cjs' 'tests/login-presentation-contract.test.cjs' | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          echo 'LOGIN_INDEX_SOURCE_EXACT_MAIN_UNCHANGED'
+      - name: Verify current live HTML equals old reviewed source or already equals target (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 25 "https://nico-factory.web.app/?iphone_login_preflight=$GITHUB_SHA" > "$RUNNER_TEMP/live-before.html"
+          if cmp -s "$RUNNER_TEMP/live-before.html" index.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'IPHONE_LOGIN_ALREADY_LIVE_SKIP_DEPLOY'
+          elif cmp -s "$RUNNER_TEMP/live-before.html" "$RUNNER_TEMP/old-index.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'IPHONE_LOGIN_PREDEPLOY_BYTE_PARITY_PASS'
+          else
+            echo 'STOP_LIVE_LOGIN_CHANGED_NO_OVERWRITE'
+            exit 1
+          fi
+      - name: Set up hosting REST credential only
+        if: env.ALREADY_LIVE == 'false'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node -e "const f=require('node:fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/iphone-login-hosting.json"
+          chmod 600 "$RUNNER_TEMP/iphone-login-hosting.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/iphone-login-hosting.json" >> "$GITHUB_ENV"
+      - name: Install existing credential library only
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Read Hosting manifest, preserve all original non-index assets
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Release reviewed existing index only
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Verify live page equals target and original partner pages still work
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=false
+          for attempt in $(seq 1 12); do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/?iphone_login_check=$GITHUB_SHA-$attempt" > "$RUNNER_TEMP/live-after.html"
+            if cmp -s "$RUNNER_TEMP/live-after.html" index.html; then ok=true; break; fi
+            sleep 5
+          done
+          test "$ok" = true || { echo 'STOP_PUBLIC_NEW_LOGIN_BYTES_NOT_VERIFIED'; exit 1; }
+          for text in 'id="nfLoginFX"' 'id="nfLoginFXController"' 'ログイン認証中' 'ログイン成功' 'id="partnerInviteAtMain"'; do
+            grep -Fq "$text" "$RUNNER_TEMP/live-after.html"
+          done
+          for route in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            test "$(curl -fsSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = 200
+          done
+          echo 'NICO_IPHONE_LOGIN_FX_LIVE_VERIFIED_EXISTING_ASSETS_PRESERVED'
+      - name: Delete runner credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/iphone-login-hosting.json"

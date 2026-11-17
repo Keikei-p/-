@@ -4571,6 +4571,9 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 #authScreen #partnerInviteAtMain:not([hidden]){max-width:850px;margin:25px auto;padding:24px;border-radius:15px;background:#fff;color:#142b48}
 #nfLoginFX{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;pointer-events:none;visibility:hidden;opacity:0;background:radial-gradient(circle at 50% 45%,#1c447b,#061126 67%);color:#f4fbff;transition:opacity .22s,visibility .22s}
 #nfLoginFX.on{visibility:visible;opacity:1}
+#nfLoginFX[data-phase="pending"] .nf-ring{animation:nfLoginPulse 1s ease-in-out infinite}
+#nfLoginFX[data-phase="success"] .nf-ring{border-color:#78e5ff;box-shadow:0 0 56px #57ddff88}
+@keyframes nfLoginPulse{50%{box-shadow:0 0 74px #46bdff99;transform:translate(-50%,-50%) scale(1.06)}}
 #nfLoginFX .nf-fx-center{text-align:center;position:relative}
 #nfLoginFX .nf-ring{position:absolute;width:182px;height:182px;left:50%;top:50%;transform:translate(-50%,-50%);border:1px solid #72d8ff7d;border-radius:50%;box-shadow:0 0 45px #39aaff33}
 #nfLoginFX .nf-ring:after{content:"";position:absolute;inset:16px;border:1px dashed #7ae6ff9b;border-radius:50%;animation:nfOrbit 10s linear infinite}
@@ -4580,7 +4583,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 @keyframes nfOrbit{to{transform:rotate(360deg)}}@keyframes nfDraw{to{stroke-dashoffset:0}}
 @media(max-width:760px){#authScreen .auth-wrapper{grid-template-columns:minmax(0,1fr);gap:12px;max-width:520px;padding:18px 15px 28px}#authScreen .nf-brand{text-align:center;padding:4px 0}#authScreen .nf-kicker{font-size:9px}#authScreen .nf-headline{font-size:clamp(29px,8vw,42px);margin:7px 0 4px}#authScreen .nf-headline span{display:inline}#authScreen .nf-headline span+span{margin-left:.23em}#authScreen .nf-japanese{font-size:13px}#authScreen .nf-accent,#authScreen .nf-message,#authScreen .nf-support,#authScreen .nf-graph{display:none}#authScreen .auth-card{padding:23px 21px;border-radius:18px}#authScreen .nf-card-kicker{margin-top:10px}}
 @media(max-width:370px){#authScreen .auth-wrapper{padding:12px 9px 22px}#authScreen .auth-card{padding:17px 15px}}
-@media(prefers-reduced-motion:reduce){#authScreen .nf-graph .nf-curve,#nfLoginFX .nf-ring:after{animation:none!important}#nfLoginFX{transition:none!important}}
+@media(prefers-reduced-motion:reduce){#authScreen .nf-graph .nf-curve,#nfLoginFX .nf-ring:after,#nfLoginFX .nf-ring{animation:none!important}#nfLoginFX{transition:none!important}}
 </style>
 
 </head>
@@ -38723,31 +38726,63 @@ recordDate.value =
 <script type="module" src="./sales-archive.js"></script>
 
 <script id="nfLoginFXController">
-/* Independent visual layer. Never blocks or modifies Firebase/Auth/Firestore. */
+/* Visual-only login FX; never changes Firebase/Auth, navigation, finance or user data. */
 (function(){'use strict';try{
- const box=document.getElementById('nfLoginFX'),auth=document.getElementById('authScreen'),app=document.getElementById('appScreen');
- if(!box||!auth||!app)return;
- const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const box=document.getElementById('nfLoginFX');
+ const auth=document.getElementById('authScreen');
+ const app=document.getElementById('appScreen');
+ const button=document.getElementById('authButton');
+ const error=document.getElementById('errorMessage');
+ const email=document.getElementById('email');
+ const password=document.getElementById('password');
+ if(!box||!auth||!app||!button||!email||!password)return;
  let timer=0,visited=false,wasAuthVisible=true;
- function flash(success,duration){
-   if(reduced)return;
+ function flash(phase,duration){
    clearTimeout(timer);
-   document.getElementById('nfFXSymbol').textContent=success?'✓':'NF';
-   document.getElementById('nfFXName').textContent=success?'ログイン成功':'NICO FACTORY';
-   document.getElementById('nfFXDetail').textContent=success?'ダッシュボードを表示します':'SALES MANAGEMENT SYSTEM';
+   box.dataset.phase=phase;
+   const symbol=document.getElementById('nfFXSymbol');
+   const name=document.getElementById('nfFXName');
+   const detail=document.getElementById('nfFXDetail');
+   if(phase==='success'){
+     symbol.textContent='✓';name.textContent='ログイン成功';detail.textContent='ダッシュボードを表示します';
+   }else if(phase==='pending'){
+     symbol.textContent='NF';name.textContent='ログイン認証中';detail.textContent='安全に接続しています';
+   }else{
+     symbol.textContent='NF';name.textContent='NICO FACTORY';detail.textContent='SALES MANAGEMENT SYSTEM';
+   }
    box.classList.add('on');
    timer=setTimeout(()=>box.classList.remove('on'),duration);
  }
- if(!reduced){let first=false;try{first=sessionStorage.getItem('nf-login-intro-v1')!=='seen';sessionStorage.setItem('nf-login-intro-v1','seen')}catch(_e){}if(first&&auth.style.display!=='none')flash(false,1000);}
+ function dismiss(){clearTimeout(timer);box.classList.remove('on');}
+ // Show on EVERY actual page load, including repeat visits in the same iPhone tab.
+ // Reduced-motion users still get a STATIC status; CSS disables motion for them.
+ if(getComputedStyle(auth).display!=='none')flash('boot',1200);
+ // Capture fires before the existing authButton.onclick, without changing login().
+ button.addEventListener('click',()=>{
+   if(button.disabled||getComputedStyle(auth).display==='none')return;
+   if(button.textContent.trim()!=='ログイン')return;
+   if(!email.value.trim()||!password.value)return;
+   flash('pending',1600);
+ },true);
  const check=()=>{
-   const showingAuth=getComputedStyle(auth).display!=='none',showingApp=getComputedStyle(app).display!=='none';
-   if(showingAuth){wasAuthVisible=true;if(!showingApp)visited=false}
-   else if(showingApp&&wasAuthVisible&&!visited){visited=true;wasAuthVisible=false;flash(true,600)}
+   const showingAuth=getComputedStyle(auth).display!=='none';
+   const showingApp=getComputedStyle(app).display!=='none';
+   if(showingAuth){wasAuthVisible=true;if(!showingApp)visited=false;}
+   else if(showingApp&&wasAuthVisible&&!visited){
+     visited=true;wasAuthVisible=false;flash('success',1500);
+   }
  };
- const ob=new MutationObserver(check);
- ob.observe(auth,{attributes:true,attributeFilter:['style']});
- ob.observe(app,{attributes:true,attributeFilter:['style']});
-}catch(_e){/* original login remains fully functional */}})();
+ const observer=new MutationObserver(check);
+ observer.observe(auth,{attributes:true,attributeFilter:['style']});
+ observer.observe(app,{attributes:true,attributeFilter:['style']});
+ if(error){
+   const errorObserver=new MutationObserver(()=>{
+     if(error.textContent.trim()&&getComputedStyle(app).display==='none'
+       &&getComputedStyle(auth).display!=='none')dismiss();
+   });
+   errorObserver.observe(error,{childList:true,characterData:true,subtree:true});
+ }
+}catch(_e){/* Presentation failure must never block the original login. */}})();
 </script>
 </body>
 </html>

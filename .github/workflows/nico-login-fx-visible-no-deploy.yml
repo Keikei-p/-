@@ -1,0 +1,46 @@
+name: NICO iPhone login FX visibility regression (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/login-fx-visible-on-iphone.test.cjs'
+      - '.github/workflows/nico-login-fx-visible-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  login-fx-visual-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reject credentials and live modification during visual-only testing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+      - name: Simulate iPhone login tap, startup, reduced motion, failure and success
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/login-fx-visible-on-iphone.test.cjs
+          node --test tests/sales-regressions.cjs tests/partner-invite-mobile-layout.test.cjs tests/internal-owner-finance-visibility.test.cjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const s=fs.readFileSync('index.html','utf8');
+          const start=s.indexOf('<script id="nfLoginFXController">');
+          const end=s.indexOf('</script>',start);
+          if(start<0||end<0)throw Error('MISSING_LOGIN_FX_SCRIPT');
+          fs.writeFileSync('/tmp/nico-login-visual-only.js',s.slice(s.indexOf('>',start)+1,end));
+          NODE
+          node --check /tmp/nico-login-visual-only.js
+          echo 'IPHONE_LOGIN_FX_VISUAL_TESTS_PASS_NO_DEPLOY'
