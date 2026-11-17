@@ -67,6 +67,25 @@ test("owner sees all nine categories, only count-only hub product labels",async(
  panel.destroy();
  assert.equal(root.children.length,0);
 });
+test("Owner UI offers the existing combined 光/AIR ranking product but never individual 光, Air or solar",async()=>{
+ const root=new Node("main"),auth={currentUser:user},queries=[];
+ const combinedCatalog=catalog();
+ combinedCatalog.products[2].name="光/AIR";
+ combinedCatalog.products.push(
+  {id:"light",name:"SB光",active:true,enabled:true},
+  {id:"solar",name:"太陽光/AIR",active:true,enabled:true});
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>combinedCatalog,
+  saveMapping:async x=>{queries.push(x);throw Error("should not save")}
+ });
+ assert.equal(await panel.refresh(),true);
+ const legacy=selects(root)[4];
+ assert.deepEqual(legacy.children.map(x=>x.value),["","combined"]);
+ assert.equal(queries.length,0,"no automatic mapping or count rewrite");
+ assert(displayed(root).includes("光/AIR"));
+ panel.destroy();
+});
 test("changing category calls exact scoped owner mapping API and reloads confirmed state",async()=>{
  const root=new Node("main"),auth={currentUser:user},calls=[];
  let version=0,bindings=[];
