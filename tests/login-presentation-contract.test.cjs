@@ -42,3 +42,82 @@ test('boot and success overlay is passive and contains no auth operations', () =
   const css = extract('<style id="nfPremiumLogin">', '</style>');
   assert.match(css, /pointer-events:none/);
 });
+
+const vm = require('node:vm');
+function createVisualHarness({ reduced = false, seen = false } = {}) {
+  const visible = new Set();
+  const elements = {
+    authScreen: { style: { display: '' } },
+    appScreen: { style: { display: 'none' } },
+    nfLoginFX: { classList: {
+      add: value => visible.add(value),
+      remove: value => visible.delete(value),
+      contains: value => visible.has(value)
+    } },
+    nfFXSymbol: { textContent: '' },
+    nfFXName: { textContent: '' },
+    nfFXDetail: { textContent: '' }
+  };
+  const scheduled = [];
+  const storage = new Map(seen ? [['nf-login-intro-v1', 'seen']] : []);
+  let notify;
+  const context = {
+    document: { getElementById: id => elements[id] || null },
+    window: { matchMedia: () => ({ matches: reduced }) },
+    sessionStorage: {
+      getItem: key => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, value)
+    },
+    getComputedStyle: node => ({ display: node.style.display }),
+    clearTimeout: () => {},
+    setTimeout: (cb, duration) => {
+      scheduled.push({ cb, duration });
+      return scheduled.length;
+    },
+    MutationObserver: class {
+      constructor(cb) { notify = cb; }
+      observe() {}
+    }
+  };
+  const script = extract('<script id="nfLoginFXController">', '</script>');
+  vm.runInNewContext(script, context, { timeout: 500 });
+  assert.equal(typeof notify, 'function', 'controller attaches a passive visual observer');
+  return {
+    elements, visible, scheduled,
+    transition(authDisplay, appDisplay) {
+      elements.authScreen.style.display = authDisplay;
+      elements.appScreen.style.display = appDisplay;
+      notify();
+    }
+  };
+}
+test('first launch overlay is non-blocking and a success badge requires app visibility', () => {
+  const h = createVisualHarness();
+  assert.ok(h.visible.has('on'));
+  assert.equal(h.elements.nfFXName.textContent, 'NICO FACTORY');
+  assert.equal(h.scheduled.at(-1).duration, 1000);
+  h.transition('none', 'none');
+  assert.equal(h.elements.nfFXName.textContent, 'NICO FACTORY', 'do not celebrate a hidden/error screen');
+  h.transition('none', 'block');
+  assert.equal(h.elements.nfFXName.textContent, 'ログイン成功');
+  assert.equal(h.elements.nfFXDetail.textContent, 'ダッシュボードを表示します');
+  assert.equal(h.scheduled.at(-1).duration, 600);
+  const count = h.scheduled.length;
+  h.transition('none', 'block');
+  assert.equal(h.scheduled.length, count, 'same authenticated view must not replay success');
+});
+test('subsequent session has no first-launch splash and a logout/login resets success', () => {
+  const h = createVisualHarness({ seen: true });
+  assert.equal(h.scheduled.length, 0);
+  h.transition('none', 'block');
+  assert.equal(h.elements.nfFXName.textContent, 'ログイン成功');
+  h.transition('block', 'none');
+  h.transition('none', 'block');
+  assert.equal(h.scheduled.length, 2, 'new login shows success once');
+});
+test('reduced-motion users never get blocking overlays', () => {
+  const h = createVisualHarness({ reduced: true });
+  h.transition('none', 'block');
+  assert.equal(h.scheduled.length, 0);
+  assert.equal(h.visible.has('on'), false);
+});
