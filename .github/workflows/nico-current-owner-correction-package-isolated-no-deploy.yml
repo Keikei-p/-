@@ -60,7 +60,7 @@ jobs:
             test "$(git hash-object tests/canonical-hub-owner-package.test.mjs)" = cdb26803c3533a32e60c6f17ebdfa63b42fc2a3b
             node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
             test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = 48e3b6ccaf783161ea1565eb530b54b7a25f6bff
-            test "$(git hash-object tests/owner-partner-setup-mount.test.mjs)" = 6c8df060f961469ee3c6c3968a1609ef37267e3e
+            test "$(git hash-object tests/owner-partner-setup-mount.test.mjs)" = bd43969a6c1ebb065c15ec2330a46badee7f4551
             test "$(git hash-object tests/partner-workspace.test.cjs)" = 9c2021a7c6ed68fa08eaf4767ca1f07c7794457e
             node --test tests/canonical-hub-owner-package.test.mjs tests/partner-workspace.test.cjs tests/owner-partner-setup-mount.test.mjs
           else
