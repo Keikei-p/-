@@ -1072,10 +1072,14 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 ## PR763_LOGIN_PRESENTATION_TECH_REVIEW_20261118
 
 - 対象: PR #763（起動/ログイン装飾のみ）。2026-11-18の利用者「よろしく」は、ログイン画面の安全な公開に向けた続行依頼であり、本人署名を代筆するものではない。
-- 変更範囲: `index.html` のログイン画面HTML/CSSと表示専用 `nfLoginFXController`、`tests/login-presentation-contract.test.cjs`、資格情報・デプロイ機能なしの `.github/workflows/nico-login-presentation-no-deploy.yml`、本レビュー記録。認証処理・Firebase設定・Firestore Rules/Functions・商材・実績・ランキング・協力店画面・サービスワーカーには変更を加えない。
+- 変更範囲: `index.html` のログイン画面HTML/CSSと表示専用 `nfLoginFXController`、`tests/login-presentation-contract.test.cjs`、資格情報・デプロイ機能なしの `.github/workflows/nico-login-presentation-no-deploy.yml`、限定公開専用 `.github/workflows/nico-login-visual-index-release.yml`、本レビュー記録。認証処理・Firebase設定・Firestore Rules/Functions・商材・実績・ランキング・協力店画面・サービスワーカーには変更を加えない。
 - 新規専用GitHub CI: `NICO login presentation regression (NO DEPLOY)` https://github.com/Keikei-p/-/actions/runs/44128465103 **SUCCESS**。既存ログインDOM ID、モバイル/動作抑制、アニメーションJSの構文、従来の営業実績/招待/金額表示の回帰を確認。これは実機での見た目確認や実アカウントログイン成功を保証しない。
 - 同headの `NICO current production public smoke (NO DEPLOY)` https://github.com/Keikei-p/-/actions/runs/44128465072 **SUCCESS**。本番への書込みは行っていない。
 - `protected-change-guard` はリリース記録と `sales-production-reviewed` ラベルの不足でFAILしていた。これは重要な安全ゲートであり、署名不要と見なしてバイパスしない。管理者接続でのラベル付与は技術レビューの履歴であって、本人署名や本番公開完了の証明ではない。
 - 未完了: 最新mainとの差分再検証、最新HEADのSales App Validationと保護ゲート再実行、iPhone/Android実機ログイン、既存公開中indexの生バイト照合、Firebase Hostingの明示的な最小範囲公開と公開後のAuth/招待/パスワード再設定・金額遮断確認。
 - 公開上の注意: `index.html` をmainに反映すると古い基準SHA固定の自動Hosting公開ワークフローが起動し得る。現在の本番ソースと厳密一致を確認する前にPRをマージしない。本記録によるFirebaseデータ書込み、公開、認証変更はゼロ。
+
+- 2026-11-18 追加の本番GET-only照合: https://github.com/Keikei-p/-/actions/runs/44129469452 **SUCCESS**。本番 index 879476 bytes, SHA256 `c35261358e63f70e6360dac8ec5094cbfd18e2f505a838981a40e96dc4bbba85` が現行mainのindexと生バイトで一致。会員/売上情報へのアクセスや本番書込みなし。
+- 限定公開ゲート: 新規releaseワークフローは認可されたmain push時に限り実行。旧 `index.html` Git blob `f6d4815ecb09d4db0ba34144e6705926bdc7503c`、新候補 `9bc74a866860f0210ae4cb2c9f67a2470d37d220`、main head競合なし、差分5ファイル固定、実本番GETで旧版完全一致をすべて要求。既存のHosting REST単一HTML置換スクリプトで他ファイル全保持し、公開後HTML完全一致と協力店関連URLのHTTP200を検証。1条件でも不一致なら本番への書込み前に停止。Rules/Functions/Firestoreには触れない。
+- 新ワークフローが本番公開可能なのは技術上の条件を満たした場合のみで、未実行・未検証の段階でデプロイ済みとは扱わない。実アカウント/スマホ表示は公開後も個別の確認項目として残す。
 - 本人の独立署名: **未取得**。本番公開: **未実施**。
