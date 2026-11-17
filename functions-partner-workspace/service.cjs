@@ -533,23 +533,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // Never treat that as permission to impersonate an owner; the caller's
    // identity and company membership were already checked by scope().
    if(company.active!==true)continue;
-   // Old public-name approvals are optional display evidence, never a new
-   // condition for count sharing. Unconfirmed foreign names stay private.
+   // The managing hub Owner's optional name publication is display-only.
+   // No partner Owner approval is needed for counts or names. When absent,
+   // other-company names remain anonymous; finance fields stay inaccessible.
    let publicNamesVerified=false;
-   if(rel.individualNamesApprovedByHub===true&&rel.individualNamesApprovedByPartner===true&&
-      ID.test(company.ownerUid||"")){
-    const [left,right]=await Promise.all([
-     collection(hubId,"rankingApprovals").doc(cid).get(),
-     collection(cid,"rankingApprovals").doc(hubId).get()
-    ]);
-    const named=(snap,sourceCompany,owner)=>{
-     const value=snap.exists?snap.data():null;
-     return value?.companyId===sourceCompany&&value.hubCompanyId===hubId&&
-      value.partnerCompanyId===cid&&value.approvedByUid===owner&&value.active===true&&
-      value.scope==="combined_rank_only"&&value.individualNamesApproved===true&&
-      Number.isSafeInteger(value.version)&&value.version>=1&&value.version<=999;
-    };
-    publicNamesVerified=named(left,hubId,ownerUid)&&named(right,cid,company.ownerUid);
+   if(rel.individualNamesApprovedByHub===true){
+    const hubApprovalSnap=await collection(hubId,"rankingApprovals").doc(cid).get();
+    const value=hubApprovalSnap.exists?hubApprovalSnap.data():null;
+    publicNamesVerified=value?.companyId===hubId&&value?.hubCompanyId===hubId&&
+     value?.partnerCompanyId===cid&&value?.approvedByUid===ownerUid&&
+     value?.active===true&&value?.scope==="combined_rank_only"&&
+     value?.individualNamesApproved===true&&
+     Number.isSafeInteger(value?.version)&&value.version>=1&&value.version<=999;
    }
    approved.push({cid,name:company.name,publicNamesVerified});
   }
