@@ -6,6 +6,8 @@ import {buildOwnerVisibleCountRanking}
  from "../ranking/owner-product-visibility-rankings.mjs";
 import {buildVerifiedCountDashboard}
  from "../ranking/verified-dual-count-dashboards.mjs";
+import {PARTNER_RANK_SKUS}
+ from "../ranking/partner-workspace-count-source.mjs";
 const TIME="2026-11-09T00:00:00.000Z";
 const context={serverVerified:true,viewerUid:"owner",viewerCompanyId:"hub",
  hubCompanyId:"hub",role:"hub_owner",approvedCompanyIds:["hub","partner"],
@@ -205,7 +207,12 @@ test("verified active partner roster preserves no-report staff and historic coun
 
 
 test("zero-setup same month reconciles both companies and all counts without mappings or ON switches",()=>{
- const input=compose({skuMap:null,zeroSetupLink:true}),snapshot=structuredClone(sources());
+ const source=sources();
+ source.partnerSources[0].products=PARTNER_RANK_SKUS.map((p,i)=>({
+  companyId:"partner",sourceId:p.id,name:p.name,active:true,sortOrder:i
+ }));
+ const snapshot=structuredClone(source);
+ const input=compose({...source,skuMap:null,zeroSetupLink:true});
  const group=input.productGroups.find(x=>x.companyId==="partner"&&
   x.productId==="partnerSku01");
  assert.deepEqual(group,{companyId:"partner",productId:"partnerSku01",
@@ -218,7 +225,7 @@ test("zero-setup same month reconciles both companies and all counts without map
  assert.equal(result.productRanking.find(x=>x.name==="SoftBank Air").count,1);
  assert.equal(result.memberRanking.find(x=>x.id==="partner:p1").count,5);
  assert.equal(result.memberRanking.find(x=>x.id==="hub:owner").count,3);
- assert.deepEqual(sources(),snapshot,"source records and financial masters are never edited");
+ assert.deepEqual(source,snapshot,"source records and financial masters are never edited");
  assert(!/(revenue|unitPrice|cashback|price|[¥￥])/.test(JSON.stringify(result)));
 });
 test("zero-setup mode never reads a mapping document even when it is absent",async()=>{

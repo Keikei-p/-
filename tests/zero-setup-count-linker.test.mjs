@@ -98,6 +98,24 @@ test("active products with nonmatching names remain separate, not suppressed by 
  assert(result.some(x=>x.companyId==="hub"&&x.productId==="new-2026"));
  assert(result.filter(x=>x.companyId==="partner1").length===9);
 });
+test("every registered partner category must be present or the joint ranking fails closed without losing saved counts",()=>{
+ for(const remaining of [0,1,5,8]){
+  const f=fixture();
+  const originalPartner=structuredClone(f.partnerSources[0]);
+  f.partnerSources[0].products=f.partnerSources[0].products.slice(0,remaining);
+  const before=structuredClone(f);
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup(f),
+   /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/,
+   "an incomplete catalog must never publish a lower total under a complete-source claim");
+  assert.deepEqual(f,before,"ranking validation must not alter source data");
+  assert.equal(originalPartner.products.length,9,
+   "original complete nine-category ledger is retained");
+ }
+ const full=fixture();
+ assert.equal(linkAllRegisteredCountsWithoutSetup(full).length,
+  full.hubSource.products.length+full.partnerSources.length*9);
+});
+
 test("invalid source identities, amount-coded labels, private unknown partner SKUs are refused",()=>{
  const mutators=[
   x=>{x.partnerSources[0].readTime="2026-11-17T09:01:00.000Z"},

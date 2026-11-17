@@ -70,7 +70,7 @@ export function linkAllRegisteredCountsWithoutSetup({
      seenCompanies.has(partner.companyId)||partner.kind!=="partner"||
      partner.consentVerified!==true||partner.isComplete!==true||
      partner.readTime!==hubSource.readTime||
-     !Array.isArray(partner.products)||partner.products.length>9)stop();
+     !Array.isArray(partner.products)||partner.products.length!==contract.size)stop();
   seenCompanies.add(partner.companyId);
   const seenProducts=new Set(),mappedHub=new Set();
   for(const p of partner.products){
