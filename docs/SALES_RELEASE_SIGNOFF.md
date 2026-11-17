@@ -1108,3 +1108,16 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 
 - 2026-11-18 GitHub PR #781 初回CI: 専用 `NICO iPhone login FX visibility regression (NO DEPLOY)` https://github.com/Keikei-p/-/actions/runs/44131791879 はSUCCESS。Owner金額分離 https://github.com/Keikei-p/-/actions/runs/44131792115 と本番公開GET-only https://github.com/Keikei-p/-/actions/runs/44131792090 もSUCCESS。既存ランキングUI CI https://github.com/Keikei-p/-/actions/runs/44131791941 はSUCCESS。
 - 初回protected-change-guard https://github.com/Keikei-p/-/actions/runs/44131792109 は `sales-production-reviewed` がPRイベントにまだなかったため安全停止。管理者GitHub接続でPR #781へレビューラベルを付与済みであり、これは技術レビューの記録であって実機確認・独立署名・本番公開を意味しない。この追記後の新headで保護ゲートを再評価する。
+
+---
+
+## PR_LOGIN_FX_2S_LOADING_20261118
+
+- 依頼: 2026-11-18「起動時2秒／ログイン成功時2秒／ログイン後に長時間真っ白になる状態の改善」。GitHub管理者本人の署名を代理作成しない。
+- 再現原因: `enterApplication(user)` は認証後、authScreen、appScreen、verificationScreen、companySetupScreenを一時的に非表示にしたまま、`getIdToken` → `loadUserData` 内のFirestoreサーバー読取・会社情報・班・商材・スタッフ取得を順にawaitする。ネットワーク遅延中は全画面が隠れ、現行ログイン演出は最長1.2/1.6秒で自動消灯していた。
+- 表示限定の対策: `index.html` の既存 `nfLoginFXController` とCSS、および同エフェクトのHTMLだけを変更。起動 `flash('boot',2000)`・成功 `flash('success',2000)`、認証中は従来の1600msを保持。すべての正規画面が非表示の場合は演出後も読み込み中オーバーレイを維持。12秒後に状況とユーザー操作による再読み込みを表示するが、自動ログアウト、自動再読み込み、本番再送、データ初期化を行わない。検証/会社設定画面が現れた時は読み込み表示を解除し、成功は実際に `appScreen` が表示されたときだけ。
+- 保持: `onAuthStateChanged`、`login()`、`enterApplication()`、`loadUserData()`、`checkLegacyEntryAgainstServer()`、会社/協力店の権限、売上・単価・CB、ランキング・件数、Firestore Rules/Functions、Auth・PWA、他のHostingファイル、Firestore全既存データは変更なし。データの自動書込み/移行なし。
+- テスト: `tests/login-fx-visible-on-iphone.test.cjs` で起動2秒、成功2秒、認証エラー、読み込み中の白画面防止、12秒後の手動再読込、検証/会社設定遷移、無操作時の再読込なしを検証。既存 `tests/login-presentation-contract.test.cjs` も更新。専用 `nico-login-fx-two-seconds-release.yml` は旧HTML Git blob `ecdf523979e9adce6275b6d3f1e6383f14dc1f70` と新HTML Git blob `18ba11afd3735faee67fc0e5a90b6643988f54a1` をピン止め、差分5ファイル固定。対象環境の既存HTMLを公開前に生バイト比較、他の既存Hostingファイルを全保持して `index.html` だけ公開する。公開後も生バイト一致と協力店関連URLを確認。どれか不一致なら安全停止。
+- 限界: 通信やFirebaseのサーバー読み取りそのものが遅い場合、今回のUI変更は処理時間の短縮や通信障害の修復を保証しない。真っ白状態を可視化し、ユーザーの手動回復操作を提供する。実端末ログインや長時間停止の再現は別途検証が必要。
+- GitHubの保護ラベル `sales-production-reviewed` は技術レビューの事実記録であり、本人の署名や本番GOを意味しない。リリース成功・本番確認はActionsログで実際に確認後に報告する。
+- 管理者本人の独立署名: **未取得**。この文書時点の公開状態: **未実施**。
