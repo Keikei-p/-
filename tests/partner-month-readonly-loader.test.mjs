@@ -344,8 +344,16 @@ test("optional name approval is revalidated inside the same count transaction",a
   assert.equal(out.lines.reduce((n,r)=>n+r.count,0),4,"name expiry cannot erase counts");
   assert.deepEqual([...changed.documents],snapshot);
  }
+ // The managing Owner's approval is sufficient; no partner-side consent.
  const missing=existingNameApprovals(fake());missing.documents.delete("companies/partner/rankingApprovals/own");
  out=await createPartnerMonthReadOnlyLoader({db:missing.db})(request());
+ assert.equal(out.publicNamesVerified,true);
+ assert.equal(out.records.reduce((n,r)=>n+r.totalCount,0),4);
+ assert(!missing.events.some(e=>e.path==="companies/partner/rankingApprovals/own"));
+ // Owner withdrawal still hides names without deleting any saved count.
+ const withheld=existingNameApprovals(fake());
+ withheld.documents.delete("companies/own/rankingApprovals/partner");
+ out=await createPartnerMonthReadOnlyLoader({db:withheld.db})(request());
  assert.equal(out.publicNamesVerified,false);
  assert.equal(out.records.reduce((n,r)=>n+r.totalCount,0),4);
 });
