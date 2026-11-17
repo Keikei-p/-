@@ -25,7 +25,7 @@ const {makeWorkspaceIdentity}=createRequire(import.meta.url)(
 );
 
 export function createCanonicalOwnerCountSnapshot({
- db,FieldValue,clock,verifyCountViewer
+ db,FieldValue,clock,verifyCountViewer,zeroSetupLink=false
 }={}){
  if(!db||!FieldValue||
     typeof db.collection!=="function"||
@@ -34,7 +34,7 @@ export function createCanonicalOwnerCountSnapshot({
   throw Error("CANONICAL_OWNER_COUNT_DEPENDENCY_MISSING");
  return createStagedAtomicOwnerCountLoader({
   db,
-  loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock}),
+  loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink}),
   loadPublicationInTransaction:createAtomicOwnerPublicationReader({
    db,FieldValue,verifyCountViewer
   })
@@ -46,7 +46,7 @@ export function createCanonicalOwnerCountSnapshot({
  * as a route until the live finance, backing store and rollback proofs pass.
  */
 export function createCanonicalOwnerCountHandler({
- enabled=false,auth,db,FieldValue,clock=()=>new Date()
+ enabled=false,auth,db,FieldValue,clock=()=>new Date(),zeroSetupLink=false
 }={}){
  if(enabled!==true)return createStagedOwnerVisibleCountHandler({
   enabled:false
@@ -56,7 +56,7 @@ export function createCanonicalOwnerCountHandler({
   throw Error("CANONICAL_OWNER_COUNT_AUTH_MISSING");
  // Validate every dependency before constructing any request authorizer.
  createCanonicalOwnerCountSnapshot({
-  db,FieldValue,clock
+  db,FieldValue,clock,zeroSetupLink
  });
  class CountIdentityError extends Error{}
  const {readCountViewer}=makeWorkspaceIdentity({
@@ -68,7 +68,7 @@ export function createCanonicalOwnerCountHandler({
    loadCountViewer:tx=>readCountViewer({token,workspaceCompanyId,tx})
   })({});
  const loadAtomicVerifiedCountSnapshot=({token,workspaceCompanyId,...args})=>
-  createCanonicalOwnerCountSnapshot({db,FieldValue,clock,
+  createCanonicalOwnerCountSnapshot({db,FieldValue,clock,zeroSetupLink,
    verifyCountViewer:async({tx,context})=>{
     // Re-authorize the exact selected membership/session IN the same
     // transaction as counts and publication; never trust an earlier flag.
@@ -80,6 +80,7 @@ export function createCanonicalOwnerCountHandler({
    }
   })(args);
  return createStagedOwnerVisibleCountHandler({
-  enabled:true,auth,db,FieldValue,loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext
+  enabled:true,auth,db,FieldValue,loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext,
+  zeroSetupLink
  });
 }

@@ -57,7 +57,11 @@ exports.getVerifiedJointCountRanking=onRequest({
    "./ranking/canonical-owner-count-server-factory.mjs"
   );
   return createCanonicalOwnerCountHandler({
-   enabled:true,auth:getAuth(),db:getFirestore(),FieldValue
+   enabled:true,auth:getAuth(),db:getFirestore(),FieldValue,
+   // No Owner SKU binding screen or per-product ON/OFF setup required for
+   // the common count leaderboard. The outer production flag remains OFF
+   // until authenticated finance-denial and backup release gates pass.
+   zeroSetupLink:true
   });
  }
 }));
