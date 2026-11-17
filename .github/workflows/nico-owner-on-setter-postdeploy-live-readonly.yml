@@ -1,0 +1,124 @@
+name: NICO Owner ON setter postdeploy proof (READ ONLY / NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-on-setter-postdeploy-live-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-on-setter-postdeploy-live-readonly.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-owner-on-setter-postdeploy-live-get
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source proof + existing count and financial security tests, no remote writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 31c96013df37d7d179ea9f2dcfa130d5393a2b19
+          test "$(git hash-object tools/production/release-owner-on-setter-single-guard.mjs)" = 6ec92a44bdf058d4c8a83e8f4f1db0195bb8eabb
+          test "$(git hash-object ranking/owner-product-visibility-firestore.mjs)" = 498be6e047c7afe8f8a80a7b83bef64faee0f75c
+          cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs
+          cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
+          node --test tests/release-owner-on-setter-single-guard.test.mjs tests/owner-product-visibility-firestore.test.mjs
+          echo 'OWNER_ON_SETTER_POSTDEPLOY_SOURCE_PROOF_OFFLINE_PASS_NO_DEPLOY'
+  live-readonly:
+    needs: offline
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.offline.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify main is exact, no original Function deploy is triggered
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$(git hash-object tools/production/release-owner-on-setter-single-guard.mjs)" = 6ec92a44bdf058d4c8a83e8f4f1db0195bb8eabb
+      - name: Install existing Cloud metadata client without build scripts
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Load existing read identity privately and delete on exit
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-on-live-get.json"
+          chmod 600 "$RUNNER_TEMP/owner-on-live-get.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-on-live-get.json" >> "$GITHUB_ENV"
+      - name: Read Cloud Functions v2 live metadata ONLY; attest observed rollout time and safety flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {inspectOwnerOnSetterMetadata,TARGET,PREFIX}
+           from './tools/production/release-owner-on-setter-single-guard.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_ON_LIVE_GET_AUTH');
+          const uri='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const reply=await fetch(uri,{method:'GET',cache:'no-store',redirect:'error',
+           headers:{Authorization:'Bearer '+token}});
+          if(reply.status!==200)throw Error('STOP_OWNER_ON_LIVE_GET_HTTP');
+          const body=await reply.json();
+          if(!Array.isArray(body.functions)||body.nextPageToken)
+           throw Error('STOP_OWNER_ON_LIVE_GET_INCOMPLETE');
+          const state=inspectOwnerOnSetterMetadata(body.functions);
+          const item=state.snapshot.get(TARGET);
+          if(!item||item.state!=='ACTIVE')throw Error('STOP_OWNER_ON_LIVE_GET_TARGET_STATE');
+          const observed=Date.parse(item.updateTime||'');
+          const lower=Date.parse('2026-11-17T17:30:50.000Z');
+          const upper=Date.parse('2026-11-17T17:32:30.000Z');
+          if(!Number.isFinite(observed)||observed<lower||observed>upper)
+           throw Error('STOP_OWNER_ON_LIVE_GET_NOT_THE_REVIEWED_RELEASE');
+          const changedOthers=[...state.snapshot].filter(([name,record])=>
+            name!==TARGET&&Date.parse(record.updateTime||'')>=lower);
+          if(changedOthers.length)throw Error('STOP_OWNER_ON_LIVE_GET_OTHER_FUNCTION_CHANGE_NOT_EXCLUDED');
+          const list=body.functions.filter(x=>x.name===PREFIX+'getVerifiedJointCountRanking'||
+            x.name===PREFIX+'submitPartnerWorkspaceCounts');
+          if(list.length!==2)throw Error('STOP_OWNER_ON_LIVE_GET_WRITERS_MISSING');
+          console.log('OWNER_ON_SETTER_POSTDEPLOY_LIVE_METADATA_PASS '+JSON.stringify({
+            project:'sales-management-cc116',region:'asia-northeast1',
+            exactOneSetterUpdatedInReviewedReleaseWindow:true,
+            target:'setOwnerProductVisibility',targetActive:true,
+            allOtherNineteenNotUpdatedSinceReleaseStart:true,
+            functionCount:state.inventoryCount,
+            existingOwnerPublicationFlagEnabled:true,
+            countWriteAndJointRankingFlagsRemainOFF:true,
+            originalFinanceRulesPinned:true,
+            noFunctionsDeployInThisReadOnlyCheck:true,
+            noFirestoreDocumentsWrittenInThisAudit:true,
+            realOwnerSaveAndPartnerSubmitStillUnverified:true,
+            priorDeploymentCLIExitedNonzeroAfterSuccessDueToArtifactCleanupPolicy:true
+          }));
+          NODE
+      - name: Erase credential on success and on failure
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/owner-on-live-get.json"
