@@ -1,0 +1,105 @@
+name: NICO reviewed login FX live-only release
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'docs/SALES_RELEASE_SIGNOFF.md'
+      - 'tools/hosting/release-live-login-fx-transplant.mjs'
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: "Reviewed main commit SHA (40 characters)"
+        required: true
+        type: string
+      confirm_index_only:
+        description: "Must be PR786_APPROVED_INDEX_ONLY"
+        required: true
+        type: string
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  reviewed-live-index-only:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+       startsWith(github.event.head_commit.message, 'release(sales): reviewed login FX PR786'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NICO_LOGIN_FX_REVIEWED: PR786_APPROVED_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refuse missing reviewed PR approval, drift and wrong main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.expected_main_sha || github.sha }}
+          INPUT_CONFIRMATION: ${{ inputs.confirm_index_only || 'PR786_APPROVED_INDEX_ONLY' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$INPUT_CONFIRMATION" = PR786_APPROVED_INDEX_ONLY
+          test "$INPUT_SHA" = "$GITHUB_SHA"
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # A signed, reviewed PR #786 merge is the only automatic publish candidate.
+            git diff --name-only HEAD^ HEAD | sort > "$RUNNER_TEMP/release-files.txt"
+            printf '%s\n'               '.github/workflows/nico-login-fx-live-transplant-audit.yml'               '.github/workflows/nico-reviewed-login-fx-live-only-release.yml'               'docs/SALES_RELEASE_SIGNOFF.md'               'index.html'               'tests/login-fx-no-finance-or-count-mutation.test.mjs'               'tests/login-fx-passkey-stability.test.cjs'               'tests/login-fx-visible-on-iphone.test.cjs'               'tests/login-presentation-contract.test.cjs'               'tools/hosting/audit-live-login-fx-transplant.mjs'               'tools/hosting/release-live-login-fx-transplant.mjs' | sort > "$RUNNER_TEMP/approved-files.txt"
+            cmp -s "$RUNNER_TEMP/release-files.txt" "$RUNNER_TEMP/approved-files.txt" || {
+              echo STOP_UNREVIEWED_MERGE_CHANGESET; exit 1;
+            }
+          fi
+          test "$(gh api repos/Keikei-p/-/git/ref/heads/main --jq .object.sha)" = "$GITHUB_SHA"
+          test "$(gh api repos/Keikei-p/-/pulls/786 --jq .merged)" = true
+          gh api repos/Keikei-p/-/issues/786/labels --jq '.[].name' | grep -Fxq sales-production-reviewed
+          node --input-type=module - <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const doc=readFileSync('docs/SALES_RELEASE_SIGNOFF.md','utf8');
+          const marker='## NICO login FX PR #786 signoff';
+          const start=doc.indexOf(marker);
+          if(start<0)throw Error('PR786_SIGNOFF_SECTION_MISSING');
+          const section=doc.slice(start,start+2200);
+          // A user's explicit release instruction is recorded as authorization,
+          // never impersonate a handwritten/cryptographic owner signature.
+          if(!section.includes('ユーザーから「よし本番」「よろしく」'))
+            throw Error('PR786_USER_RELEASE_REQUEST_NOT_RECORDED');
+          if(!section.includes('sales-production-reviewed ラベル：適用済み'))
+            throw Error('PR786_ADMIN_REVIEW_NOT_DOCUMENTED');
+          if(!section.includes('担当者署名（本人記入）: 未記入'))
+            throw Error('PR786_OWNER_SIGNATURE_STATUS_MUST_BE_TRUTHFUL');
+          NODE
+          node --check tools/hosting/audit-live-login-fx-transplant.mjs
+          node --check tools/hosting/release-live-login-fx-transplant.mjs
+          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs tests/surgical-existing-index.test.mjs tests/partner-invite-mobile-layout.test.cjs
+          node tools/hosting/audit-live-login-fx-transplant.mjs --audit
+          echo 'LOGIN_FX_RELEASE_SCOPE_APPROVAL_AND_LIVE_READ_ONLY_PRECHECK_PASS'
+      - name: Prepare protected Hosting service account only after release gates
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-login-fx-sa.json"
+          chmod 600 "$RUNNER_TEMP/nico-login-fx-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login-fx-sa.json" >> "$GITHUB_ENV"
+      - name: Install existing Firebase credential package without scripts
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Inspect current Hosting manifest and source index without writes
+        run: node tools/hosting/release-live-login-fx-transplant.mjs --dry-run
+      - name: Publish only the index file using immutable reviewed live revision
+        run: node tools/hosting/release-live-login-fx-transplant.mjs --release
+      - name: Delete temporary protected identity
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-login-fx-sa.json" || true

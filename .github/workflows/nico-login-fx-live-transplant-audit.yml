@@ -1,0 +1,48 @@
+name: NICO login FX live-source safe transplant (READ ONLY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/login-*'
+      - 'tests/internal-owner-finance-visibility.test.cjs'
+      - 'tools/hosting/audit-live-login-fx-transplant.mjs'
+      - '.github/workflows/nico-login-fx-live-transplant-audit.yml'
+  push:
+    branches:
+      - 'fix/sales-login-fx-passkey-stable-20261118'
+    paths:
+      - 'index.html'
+      - 'tools/hosting/audit-live-login-fx-transplant.mjs'
+      - '.github/workflows/nico-login-fx-live-transplant-audit.yml'
+permissions:
+  contents: read
+jobs:
+  inspect-live-html-no-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate the existing login-only patch and login behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/audit-live-login-fx-transplant.mjs
+          node --check tools/hosting/release-live-login-fx-transplant.mjs
+          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs
+      - name: Compare live index visual slots without reading credentials or changing Hosting
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ''
+          GOOGLE_APPLICATION_CREDENTIALS: ''
+          FIREBASE_TOKEN: ''
+        run: |
+          set -euo pipefail
+          node tools/hosting/audit-live-login-fx-transplant.mjs --audit
+          echo 'LIVE_FX_SURGICAL_READONLY_PASS_NO_DEPLOY'
