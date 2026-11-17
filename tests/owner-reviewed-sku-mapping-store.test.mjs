@@ -77,6 +77,33 @@ test("old combined 光・AIR cannot map to independent Air, stays intact; explic
  assert.deepEqual(f.state.get("companies/hub/rankingSkuMappings/shared").bindings,
   [{companyId:"partner",productId:"partnerSku05",hubProductId:"legacy"}]);
 });
+test("approved combined 光/AIR product aliases preserve old counts; individual 光, Air and solar labels fail closed",async()=>{
+ const accepted=["光/AIR","光／AIR","光・Air","SB光/AIR","ソフトバンク光/Air",
+  "光/AIR（合算）","光／エアー"];
+ for(const name of accepted){
+  const f=fake();
+  f.state.set("products/legacy",{...f.state.get("products/legacy"),name});
+  const beforeProduct=structuredClone(f.state.get("products/legacy"));
+  const saved=await f.store.change({principal:owner,partnerCompanyId:"partner",
+   partnerProductId:"partnerSku05",hubProductId:"legacy",expectedVersion:0});
+  assert.equal(saved.saved,true,name);
+  assert.equal(f.writes,2,"one reviewed mapping + append-only audit: "+name);
+  assert.deepEqual(f.state.get("products/legacy"),beforeProduct,name);
+  assert.deepEqual(f.state.get("companies/hub/rankingSkuMappings/shared").bindings,
+   [{companyId:"partner",productId:"partnerSku05",hubProductId:"legacy"}]);
+ }
+ for(const name of ["光","SoftBank Air","NURO光","太陽光/AIR","光/AIRMNP"]){
+  const f=fake();
+  f.state.set("products/legacy",{...f.state.get("products/legacy"),name});
+  const before=structuredClone([...f.state]);
+  await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",
+   partnerProductId:"partnerSku05",hubProductId:"legacy",expectedVersion:0}),
+   /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/,name);
+  assert.equal(f.writes,0,name);
+  assert.deepEqual([...f.state],before,name);
+ }
+});
+
 test("removal is an audited mapping change, never deletes any count or product master",async()=>{
  const f=fake(),orig=structuredClone([...f.state.entries()].filter(([p])=>
   p.startsWith("products/")));
