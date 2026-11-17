@@ -664,6 +664,53 @@ test('partner private product and count documents cannot be read or mutated thro
 });
 
 
+test('inactive, broken and unrecognized secondary markers block all raw finance GET and LIST without changing historical originals',async()=>{
+ assert.equal(exactPhase1SecondaryFence,true,
+  'this safety case must run against the exact Phase-1 Rules, never old live Rules');
+ const finance=[
+  ['products','held-product',{companyId:company,name:'existing',active:true,
+   revenue:15000,pricingOptions:[{cashback:200,revenuePerUnit:15000}]}],
+  ['records','held-record',payload('owner','owner','a')],
+  ['recordCorrections','held-correction',{companyId:company,
+   recordId:'held-record',recordUid:'owner',before:{totalRevenue:1000},
+   after:{totalRevenue:1500},changedByUid:'owner'}],
+  ['revenueGoals','held-goal',{companyId:company,teamId:'a',month:'2026-11',
+   targetRevenue:800000}]
+ ];
+ await env.withSecurityRulesDisabled(async ctx=>{
+  for(const [coll,id,value] of finance)
+   await setDoc(doc(ctx.firestore(),coll,id),value);
+ });
+ const original=await env.withSecurityRulesDisabled(async ctx=>
+  Promise.all(finance.map(async([coll,id])=>
+   (await getDoc(doc(ctx.firestore(),coll,id))).data())));
+ const contexts=[
+  {uid:'owner',kind:'partner_secondary',active:false},
+  {uid:'owner',kind:'unexpected_legacy',active:true},
+  {uid:'owner',kind:'partner_secondary',active:true,
+   primaryCompanyId:company,partnerCompanyId:'unknown-partner'}
+ ];
+ const db=dbFor('owner');
+ for(const context of contexts){
+  await env.withSecurityRulesDisabled(async ctx=>
+   setDoc(doc(ctx.firestore(),'partnerWorkspaceContexts','owner'),context));
+  for(const [coll,id] of finance){
+   await assertFails(getDoc(doc(db,coll,id)),
+    'retained secondary context cannot GET '+coll);
+   await assertFails(getDocsFromServer(query(collection(db,coll),
+    where('companyId','==',company))),
+    'retained secondary context cannot LIST '+coll);
+  }
+  await assertFails(deleteDoc(doc(db,'partnerWorkspaceContexts','owner')),
+   'client must not remove its server-owned context to reopen finances');
+ }
+ const after=await env.withSecurityRulesDisabled(async ctx=>
+  Promise.all(finance.map(async([coll,id])=>
+   (await getDoc(doc(ctx.firestore(),coll,id))).data())));
+ assert.deepEqual(after,original,
+  'financial originals and correction histories survive all denied requests');
+});
+
 test('existing-email secondary partner: active server context blocks four financial originals in candidate while legacy primary remains intact',async()=>{
  // Mirrors the non-destructive invited-secondary flow: users/{uid} and their
  // primary company Owner membership remain intact; a separate server-owned
