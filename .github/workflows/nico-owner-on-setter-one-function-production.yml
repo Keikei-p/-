@@ -1,0 +1,192 @@
+name: NICO Owner ON single setter live rollout (EXACT ONE FUNCTION)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-on-setter-one-function-production.yml'
+      - 'tools/production/release-owner-on-setter-single-guard.mjs'
+      - 'tests/release-owner-on-setter-single-guard.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-on-setter-one-function-production.yml'
+      - 'tools/production/release-owner-on-setter-single-guard.mjs'
+      - 'tests/release-owner-on-setter-single-guard.test.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: nico-one-owner-on-setter-production
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate EXACT current reviewed backend source and finance walls
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 31c96013df37d7d179ea9f2dcfa130d5393a2b19
+          test "$(git hash-object functions-ranking-approvals/product-visibility-controller.cjs)" = 87a9381d9efce485b4edbe6ce7ed56a6b1c9d9d7
+          test "$(git hash-object functions-ranking-approvals/owner-sku-mapping-controller.cjs)" = fb32c016f647d01e90cbc82ec9ae823ab1df720d
+          test "$(git hash-object firebase.ranking-approvals.json)" = 35a8b4ab4b39b16927e0e7235b048d7052497632
+          test "$(git hash-object functions-ranking-approvals/package.json)" = 4903ccc2bb8159c987fdb8f228805a880348480b
+          test "$(git hash-object functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs)" = 498be6e047c7afe8f8a80a7b83bef64faee0f75c
+          cmp functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/vendor/owner-product-visibility-firestore.mjs
+          cmp ranking/owner-product-visibility-firestore.mjs functions-ranking-approvals/ranking/owner-product-visibility-firestore.mjs
+          grep -Fq 'zeroSetupLink:false' functions-ranking-approvals/index.js
+          grep -Fq 'NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          node --check tools/production/release-owner-on-setter-single-guard.mjs
+          node --test tests/release-owner-on-setter-single-guard.test.mjs
+          node --test tests/owner-product-visibility-firestore.test.mjs tests/partner-publication-write-ranking-consistency.test.cjs
+          echo 'OWNER_ONE_SETTER_SCOPE_AND_COUNT_FINANCE_GATES_PASS_NO_DEPLOY'
+  release-only-existing-setter:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.event.before == 'feb7b0b2da38fa41ae336e99f400a5902350da26' &&
+          github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Approve exactly reviewed parent, commit subject, files and current main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
+          test "$(git rev-parse HEAD^1)" = feb7b0b2da38fa41ae336e99f400a5902350da26
+          test "$(git show -s --format=%s HEAD)" = 'release(sales): deploy exactly one existing Owner ON setter'
+          python3 - <<'PY'
+          import subprocess
+          changed=set(subprocess.check_output(
+           ['git','diff-tree','--no-commit-id','--name-only','-r','HEAD'],text=True).splitlines())
+          exact={
+           '.github/workflows/nico-owner-on-setter-one-function-production.yml',
+           'tools/production/release-owner-on-setter-single-guard.mjs',
+           'tests/release-owner-on-setter-single-guard.test.mjs'
+          }
+          if changed!=exact:raise SystemExit('STOP_UNREVIEWED_OWNER_ON_RELEASE_SCOPE')
+          PY
+      - name: Install existing Cloud Functions Admin client
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Set up existing deployment identity without logging secrets
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-on-setter.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-on-setter.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-on-setter.private.json" >> "$GITHUB_ENV"
+      - name: READ ONLY live 20-function inventory and preserve exact target environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {writeFileSync,existsSync} from 'node:fs';
+          import {createRequire} from 'node:module';
+          import {inspectOwnerOnSetterMetadata} from './tools/production/release-owner-on-setter-single-guard.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_ON_SETTER_PRE_AUTH');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const reply=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+token}});
+          if(reply.status!==200)throw Error('STOP_OWNER_ON_SETTER_PRE_HTTP');
+          const data=await reply.json();
+          if(!Array.isArray(data.functions)||data.nextPageToken)throw Error('STOP_OWNER_ON_SETTER_PRE_INVENTORY');
+          const before=inspectOwnerOnSetterMetadata(data.functions);
+          writeFileSync(process.env.RUNNER_TEMP+'/owner-on-setter-before.json',
+            JSON.stringify(data.functions),{mode:0o600,flag:'wx'});
+          const name='functions-ranking-approvals/.env.sales-management-cc116';
+          if(existsSync(name))throw Error('STOP_OWNER_ON_SETTER_EXISTING_ENV');
+          writeFileSync(name,before.envText,{mode:0o600,flag:'wx'});
+          console.log('OWNER_ON_SETTER_LIVE_PREFLIGHT_PASS '+JSON.stringify({
+            inventoryCount:before.inventoryCount,
+            exactTarget:'setOwnerProductVisibility',
+            ownerFourActive:true,
+            countPublicationAndRankingStillOFF:true,
+            preservingExistingFlags:true,
+            firebaseWritesSoFar:0
+          }));
+          NODE
+      - name: Deploy ONLY existing Owner setter - CLI exit audited separately
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions-ranking-approvals --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install -g firebase-tools@15.34.1
+          set +e
+          firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+            --config firebase.ranking-approvals.json \
+            --only functions:ranking-owner-approvals:setOwnerProductVisibility
+          code=$?
+          set -e
+          # Firebase CLI sometimes returns 1 after a successfully updated
+          # Function if its Artifact Registry cleanup policy cannot be set.
+          # This is NOT acceptance: the next step must prove exact live state.
+          if [ "$code" -ne 0 ]; then
+            echo 'OWNER_ON_SETTER_FIREBASE_CLI_NONZERO_REQUIRE_POST_METADATA_PROOF'
+          fi
+          echo "OWNER_ON_SETTER_CLI_STATUS=$code" >> "$GITHUB_ENV"
+      - name: PROVE exactly one Function changed, other 19 and all flags unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createRequire} from 'node:module';
+          import {inspectOwnerOnSetterMetadata,compareOwnerOnSetterUpdate}
+            from './tools/production/release-owner-on-setter-single-guard.mjs';
+          const before=inspectOwnerOnSetterMetadata(JSON.parse(
+           readFileSync(process.env.RUNNER_TEMP+'/owner-on-setter-before.json','utf8')));
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_ON_SETTER_POST_AUTH');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const reply=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+token}});
+          if(reply.status!==200)throw Error('STOP_OWNER_ON_SETTER_POST_HTTP');
+          const data=await reply.json();
+          if(!Array.isArray(data.functions)||data.nextPageToken)
+            throw Error('STOP_OWNER_ON_SETTER_POST_INVENTORY');
+          const after=inspectOwnerOnSetterMetadata(data.functions);
+          const proof=compareOwnerOnSetterUpdate(before,after);
+          if(!proof.exactlyOneOwnerSetterUpdated||!proof.otherNineteenUnchanged)
+            throw Error('STOP_OWNER_ON_SETTER_POST_PROOF');
+          console.log('OWNER_ON_SINGLE_SETTER_LIVE_UPDATE_PASS '+JSON.stringify({
+           exactlyOneSetterUpdated:true,other19Unchanged:true,
+           oldFlagsPreserved:true,countWriteAndRankingFlagRemainOFF:true,
+           firebaseCLIExit:process.env.OWNER_ON_SETTER_CLI_STATUS||'unknown',
+           productionDataWritesByThisRelease:0,
+           realOwnerButtonAndPartnerInputNotYetVerified:true
+          }));
+          NODE
+      - name: Always remove private runtime identity, snapshots and environment
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/owner-on-setter.private.json" "$RUNNER_TEMP/owner-on-setter-before.json"
+          rm -f functions-ranking-approvals/.env.sales-management-cc116
