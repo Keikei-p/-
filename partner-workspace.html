@@ -1283,6 +1283,8 @@ function renderCountOnlyDashboard(summary,days){
  renderProductRankMode();renderCountGoal();
 }
 function clearCountOnlyDashboard(){
+ jointInlineVerified=false;
+ $("countProductMode").disabled=false;
  countExportRows=null;
  $("countInlineJointCompanies").hidden=true;
  $("countCompanyRank").replaceChildren();$("countGoalBox").hidden=true;
@@ -1300,16 +1302,20 @@ function clearCountOnlyDashboard(){
 }
 function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
 // The server-verified count contract is the ONLY authority for a public
-// combined rank. Old local-only ranks are erased before this network read.
+// combined rank. Existing signed-in partner ranks remain a safe fallback
+// while the joint endpoint is OFF/unavailable; they are not joint ranks.
 // Neither a financial collection nor a browser-supplied role is consulted.
-async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
+let jointInlineVerified=false;
+async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates,summary}){
  if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||
     !["owner","leader","member"].includes(data?.role))return;
  const identity=auth.currentUser,session=activeCodeSession,company=workspaceCompanyId;
  const roots={companies:$("countCompanyRank"),teams:$("countTeamRank"),
   people:$("countStaffRank"),products:$("countProductRank")};
- const clear=()=>{
-  for(const target of Object.values(roots))target.replaceChildren();
+ const clearJointOnly=()=>{
+  // Leave original partner-ranked rows in their existing cards until a
+  // complete, authenticated joint response has been validated and rendered.
+  $("countCompanyRank").replaceChildren();
   $("countInlineJointCompanies").hidden=true;
  };
  const valid=()=>gen===countLoadId&&currentCountIdentity()===uid&&
@@ -1317,12 +1323,11 @@ async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
   (session?true:identity?.emailVerified===true)&&
   ["owner","leader","member"].includes(data?.role)&&!$("dashboardBox").hidden&&
   window.location.origin==="https://nico-factory.web.app";
- clear();
+ clearJointOnly();
  if(!valid()){
   $("countDashboardStatus").textContent="合同ランキングの認証を確認できません。";
   return;
  }
- $("countProductMode").disabled=true;
  $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
   "｜自社・協力店の合同順位を照合中…";
  try{
@@ -1347,14 +1352,22 @@ async function refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates}){
    document,roots,payload,expectedRole:"partner_owner",
    period:countPeriod,start:dates[0],end:dates.at(-1)
   });
+  jointInlineVerified=true;
+  $("countProductMode").disabled=true;
   $("countInlineJointCompanies").hidden=false;
   $("countDashboardStatus").textContent=dates[0]+" 〜 "+dates.at(-1)+
    "｜自社・協力店の合同件数・順位を照合済み";
  }catch(error){
   if(!valid())return;
-  clear();
+  // The shared API is disabled during a protected release or can return a
+  // temporary 503. In either case, restore only the existing verified
+  // partner-only ranking without misrepresenting it as a joint leaderboard.
+  jointInlineVerified=false;
+  $("countProductMode").disabled=false;
+  clearJointOnly();
+  if(summary)renderCountOnlyDashboard(summary,dates);
   $("countDashboardStatus").textContent=
-   "合同ランキングが未照合のため順位を非表示にしました。件数の保存内容は変更していません。";
+   "協力店の件数ランキングを表示中。合同順位は照合できたときに自動表示します。";
   console.error("joint_inline_count_unverified",error?.code||"unverified");
  }
 }
@@ -1396,7 +1409,7 @@ async function loadCountDashboard(){
     " の集計完了（"+dates.length+"日分・件数のみ）";
   $("countCsv").disabled=false;
   if(NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)
-   await refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates});
+   await refreshVerifiedJointInlineForPartner({gen,uid,day,today,dates,summary});
  }catch(error){
   if(gen!==countLoadId)return;
   clearCountOnlyDashboard();
@@ -1405,7 +1418,7 @@ async function loadCountDashboard(){
  }
 }
 $("countProductMode").onchange=()=>{
- if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED)renderProductRankMode();
+ if(!NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED||!jointInlineVerified)renderProductRankMode();
 };
 $("countTeamSelect").onchange=renderTeamCountDetail;
 $("countGoalDays").addEventListener("input",renderCountGoalDailyEstimate);
