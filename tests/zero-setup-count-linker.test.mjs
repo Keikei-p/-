@@ -49,6 +49,39 @@ test("ambiguous same-named hub products do not guess a master product",()=>{
   .every(x=>x.groupId==="partnerUnmatched:partnerSku01"),
   "two legitimate hub products are never merged by a guess");
 });
+test("all reviewed historical 光/AIR combined aliases join only an exact unique hub combined SKU",()=>{
+ for(const name of ["光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
+  const f=fixture();
+  f.hubSource.products=f.hubSource.products.map(p=>
+   p.sourceId==="combined"?{...p,name}:p);
+  const actual=linkAllRegisteredCountsWithoutSetup(f);
+  const mapped=actual.filter(p=>p.companyId!=="hub"&&p.productId==="partnerSku05");
+  assert.equal(mapped.length,3,name+" must retain three original company rows");
+  assert(mapped.every(p=>p.groupId==="combined"&&p.groupName===name),
+   name+" must share the existing exact verified combined product");
+  assert(!mapped.some(p=>p.groupId==="air"),
+   "legacy combined counts may never be split into Air");
+ }
+});
+test("two different combined-looking hub SKUs stay separate until uniquely identified",()=>{
+ const f=fixture();
+ f.hubSource.products.push({companyId:"hub",sourceId:"combined-old",
+  name:"光/AIR",active:true,sortOrder:5});
+ const actual=linkAllRegisteredCountsWithoutSetup(f);
+ assert(actual.filter(p=>p.companyId!=="hub"&&p.productId==="partnerSku05")
+  .every(p=>p.groupId==="partnerUnmatched:partnerSku05"),
+  "ambiguous combined product must not be assigned by a guess");
+});
+test("standalone 光 and Air never impersonate an old combined optical/AIR SKU",()=>{
+ const f=fixture();
+ f.hubSource.products=f.hubSource.products.filter(p=>p.sourceId!=="combined");
+ f.hubSource.products.push({companyId:"hub",sourceId:"hikari",
+  name:"光",active:true,sortOrder:5});
+ const actual=linkAllRegisteredCountsWithoutSetup(f);
+ assert(actual.filter(p=>p.companyId!=="hub"&&p.productId==="partnerSku05")
+  .every(p=>p.groupId==="partnerUnmatched:partnerSku05"));
+});
+
 test("legacy combined 光/AIR never silently splits into separate Hikari or Air",()=>{
  const f=fixture();
  f.hubSource.products=f.hubSource.products.filter(p=>p.sourceId!=="combined");
