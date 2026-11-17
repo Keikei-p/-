@@ -1053,3 +1053,16 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - 今回ラベル`sales-production-reviewed`を管理者接続で付与したが、これは差分の技術レビュー段階を記録するものであり、署名の代替・CI成功・本番GO判定ではない。
 - **未完了**：旧SHA固定検査を無効化せず新しい厳密な差分を再審査してCI修復、実Owner認証GET、secondary協力店UIDによる金額原票GET/LIST拒否、管理バックアップの隔離復元、Functions/Hosting限定デプロイと公開後検証。
 - **本番状態**：PR #745は未マージ、Firebase Hosting未反映。本記録の追加およびラベル付与はFirestoreの読み書き、Hosting、Functions、Rulesを変更しない。署名欄：管理者本人の独立署名は取得していない。
+
+---
+
+## OWNER_INLINE_SKU_MAPPING_SHORTCUT_20261117
+
+- 目的: 実本番GETのみの設定監査 #747（main 03bd65843de580a7ba67d2bd0946678749d5e02a）により、協力店関係3件が有効、ON商材ID2件、公開カタログ商材18件、承認済みSKU対応文書0件を確認。合同件数に未登録のSKUを推測で混ぜると誤集計のため、Owner既存設定への到達性を最小修正する。
+- 変更: 既存`index.html`内、Owner専用「商材管理 → 協力店へ連携」開閉パネルに、以前から存在する`./owner-partner-setup.html`へのショートカットを追加。`tests/owner-product-share-in-management.test.mjs`に既存ページへの参照チェックを追加。旧Owner用画面や旧タブは維持し、二重商材登録を要求しない。
+- 不変更: Firebase Rules、Auth、Functions、商材/価格/CB/売上/件数/履歴、会社権限、公開フラグ、既存保存処理、PWA、Hostingの他のファイル。リンク表示自体によるAPI呼出・Firestore書込なし。
+- 公開条件: 必須Sales App Validationとprotected-change-guard成功、実公開対象index以外のファイル保持、公開後HTTPでショートカットと既存ログイン修正の保持を確認。レガシーSHA固定の無関係な失敗は無効化せず別検査として扱う。
+- 未実施/未保証: Owner本人によるSKU紐付け、ランキング有効化、二重所属実UIDの財務GET/LIST拒否、本番件数送信・訂正。今回これらを「完了」とは扱わない。**本番Firestore書込み・設定の自動作成を行わない。**
+- ユーザーのチャット内での継続指示に基づく技術レビューであり、本人自筆の署名を代筆しない。ランキング全面公開の承認や安全性証明ではない。
+
+PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed` を適用済み。初回PRイベントの保護ゲートはラベル適用前のイベントスナップショットのため拒否された。ラベルを含む新HEADのCIで再確認する。既存データ・Functions・Rulesの変更や本番承認の偽装はない。

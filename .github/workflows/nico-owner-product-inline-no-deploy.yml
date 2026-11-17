@@ -40,5 +40,20 @@ jobs:
           set -euo pipefail
           node --test tests/owner-product-share-in-management.test.mjs tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs
           echo 'OWNER_PRODUCT_SHARE_INLINE_OFFLINE_PASS'
+      - name: Check preexisting Owner mapping page on live Firebase Hosting (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const response=await fetch('https://nico-factory.web.app/owner-partner-setup.html',
+           {method:'GET',redirect:'error',cache:'no-store',
+            signal:AbortSignal.timeout(15000)});
+          if(response.status!==200)throw Error('STOP_OWNER_SETUP_LINK_TARGET_NOT_PUBLISHED_'+response.status);
+          const html=await response.text();
+          if(html.length>100000||!html.includes('ownerSetupApp')||
+             !html.includes('mountOwnerPartnerSetup'))
+            throw Error('STOP_OWNER_SETUP_LINK_TARGET_WRONG_PAGE');
+          console.log('OWNER_SKU_MAPPING_LINK_TARGET_ALREADY_PUBLIC_GET_OK');
+          NODE
           echo 'PRODUCTION_DEPLOYED=false'
           echo 'ORIGINAL_SALES_DATA_WRITES=0'
