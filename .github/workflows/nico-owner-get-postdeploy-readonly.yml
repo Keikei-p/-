@@ -39,8 +39,8 @@ jobs:
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
           test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
           test "$(git hash-object tools/production/owner-get-single-function-guard.mjs)" = 5f7108a23ac9b72a45c795a299a5cc579dcd48ea
-          test "$(git hash-object tools/production/inspect-owner-get-postdeploy-readonly.mjs)" = a1183fb52da2fdf7602c1a7bb133b3f1c6a7454d
-          test "$(git hash-object tests/inspect-owner-get-postdeploy-readonly.test.mjs)" = 9bd2dd72c5409d296db852cb106dedbd707c8f4a
+          test "$(git hash-object tools/production/inspect-owner-get-postdeploy-readonly.mjs)" = fe69c54e95f75dc7aa4efd4176db8cb7238027f2
+          test "$(git hash-object tests/inspect-owner-get-postdeploy-readonly.test.mjs)" = 13309388d29f5e1be7db7aa9e39a937a450a9348
           node --check tools/production/inspect-owner-get-postdeploy-readonly.mjs
           node --test tests/inspect-owner-get-postdeploy-readonly.test.mjs tests/owner-get-single-function-guard.test.mjs
           echo 'OWNER_GET_POSTDEPLOY_OFFLINE_PASS_NO_DEPLOY'
