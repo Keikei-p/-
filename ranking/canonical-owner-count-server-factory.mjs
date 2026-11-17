@@ -16,7 +16,7 @@ import {createStagedAtomicOwnerCountLoader}
  from "./owner-visible-count-atomic-loader.mjs";
 import {createCanonicalCountTransactionReader}
  from "./canonical-joint-count-sku-reader.mjs";
-import {createAtomicOwnerPublicationReader}
+import {createAtomicOwnerPublicationReader,createZeroSetupCountPublicationReader}
  from "./owner-product-visibility-in-atomic-tx.mjs";
 import {createFreshCombinedRankingContext} from "./trusted-combined-ranking-context.mjs";
 import {createRequire} from "node:module";
@@ -35,9 +35,10 @@ export function createCanonicalOwnerCountSnapshot({
  return createStagedAtomicOwnerCountLoader({
   db,
   loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink}),
-  loadPublicationInTransaction:createAtomicOwnerPublicationReader({
-   db,FieldValue,verifyCountViewer
-  })
+  loadPublicationInTransaction:zeroSetupLink===true?
+   createZeroSetupCountPublicationReader({db,verifyCountViewer}):
+   createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}),
+  zeroSetupLink
  });
 }
 
