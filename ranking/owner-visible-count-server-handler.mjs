@@ -19,6 +19,8 @@ import {createOwnerProductVisibilityStore}
  from "./owner-product-visibility-firestore.mjs";
 import {buildOwnerVisibleCountRanking}
  from "./owner-product-visibility-rankings.mjs";
+import {buildVerifiedCountDashboard}
+ from "./verified-dual-count-dashboards.mjs";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const ORIGIN="https://nico-factory.web.app";
@@ -76,7 +78,7 @@ function sameSet(a,b){
  */
 export function createStagedOwnerVisibleCountHandler({
  enabled=false,auth,db,FieldValue,loadCompleteVerifiedCountInput,
- loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext
+ loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext,zeroSetupLink=false
 }={}){
  if(enabled!==true)return async request=>reply(503,
   {error:"service_disabled"},request?.headers?.get?.("Origin")??"");
@@ -159,11 +161,21 @@ export function createStagedOwnerVisibleCountHandler({
     context,mappingsReviewed:true
    });
    if(day>input.period.asOf)throw new Block(400);
-   const result=buildOwnerVisibleCountRanking({
-    input:{...countInput,context,period:{kind,day,asOf:input.period.asOf},
-     ...(scope!=="joint"?{filters:{scope}}:{})},
-    publication
-   });
+   const rankingInput={...countInput,context,
+    period:{kind,day,asOf:input.period.asOf},
+    ...(scope!=="joint"?{filters:{scope}}:{})};
+   // The simplified ranking is a trusted SERVER mode, never a query option.
+   // Reuse all canonical full-ledger, session, company and snapshot checks.
+   // A reported count is not silently removed by an obsolete ON/OFF switch.
+   if(zeroSetupLink===true&&
+      (!atomic||publication?.serverVerified!==true||
+       publication.ownerSettingsRead!==true||
+       publication.ownerUidVerified!==true||
+       publication.snapshotReadTime!==input.snapshotReadTime))
+    throw new Block();
+   const result=zeroSetupLink===true?
+    buildVerifiedCountDashboard(rankingInput):
+    buildOwnerVisibleCountRanking({input:rankingInput,publication});
    auditNoFinancialKeys(result);
    const json=JSON.stringify(result);
    if(/"(?:records|lines|rawProducts|revenue|unitPrice|cashback|price|amount)"\s*:/i.test(json))
