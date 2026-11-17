@@ -58,6 +58,8 @@ jobs:
             test "$(git hash-object tools/production/prepare-hub-owner-correction-v3-package.mjs)" = ea1f36aa9576e1d88921dbf5915a777a90bcca06
             test "$(git hash-object tools/production/inspect-live-sku-publication-readonly.mjs)" = 5a00ab68acd1a09c1727992a6ac13b56e363a0f2
             test "$(git hash-object tests/inspect-live-sku-publication-readonly.test.mjs)" = 218bb967fc5ef82c4ec769b44cf7c1244c1b9504
+            test "$(git hash-object tools/production/inspect-owner-setup-release-chain-readonly.mjs)" = 4504449f997b1727f69f00d052c019671c2578bb
+            test "$(git hash-object tests/inspect-owner-setup-release-chain-readonly.test.mjs)" = 97b5db26c3ba3930f768842ff08f513876701633
             test "$(git hash-object tools/production/prepare-canonical-hub-owner-correction-package.mjs)" = 2aca732471dbcc23b985791c67c7a34122df3aee
             test "$(git hash-object tests/canonical-hub-owner-package.test.mjs)" = cdb26803c3533a32e60c6f17ebdfa63b42fc2a3b
             node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
@@ -80,7 +82,7 @@ jobs:
             test "$(git hash-object tests/partner-submission-publication-guard.test.mjs)" = 441540ea21b2d3baebae05d6fafe6c16f4ee99d4
             test "$(git hash-object tests/approved-partner-count-standings.test.cjs)" = 2b412597401671701e241e5a048123293dc7a35b
             cmp -s ranking/owner-reviewed-sku-mapping-store.mjs functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs
-            node --test tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/partner-submission-publication-guard.test.mjs tests/approved-partner-count-standings.test.cjs
+            node --test tests/inspect-owner-setup-release-chain-readonly.test.mjs tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/partner-submission-publication-guard.test.mjs tests/approved-partner-count-standings.test.cjs
             node --test tests/canonical-hub-owner-package.test.mjs tests/partner-workspace.test.cjs tests/owner-partner-setup-mount.test.mjs
           else
             set -euo pipefail

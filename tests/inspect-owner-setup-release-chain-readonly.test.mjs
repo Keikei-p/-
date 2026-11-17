@@ -81,6 +81,7 @@ test("published Hosting must exactly match all 11 reviewed SHA256 gzipped files"
   name:version,status:"FINALIZED",fileCount:hosted().length,config:{headers:[]}
  },hosted(),sourced());
  assert.equal(h.ownerSetupPageReady,true);
+ assert.equal(h.legacyBilateralSetupPresent,true);
  assert.equal(h.ownerSetupHostingAssetsExactMatch,11);
  const partial=hosted().slice(0,-1);
  const r=classifyHosting(release,{
@@ -126,7 +127,9 @@ test("current count configuration readiness does not require additional bilatera
  assert.equal(board.partnerCompaniesWithMappedRankCategories,3);
  assert.equal(Object.hasOwn(board,"reciprocalOwnerRankConsentReady"),false);
  assert(!board.blockingReasons.includes("RECIPROCAL_RANK_CONSENT_INCOMPLETE"));
- assert.equal(board.nextStep,"REAL_ACCOUNT_FINANCE_DENY_AND_COUNT_SAVE_TEST");
+ assert.equal(board.nextStep,"PUBLISH_OWNER_ONLY_SETUP_REVISION");
+ assert.equal(board.ownerSetupLegacyBilateralDetected,true);
+ assert(board.blockingReasons.includes("PUBLISHED_OWNER_SETUP_REQUIRES_OWNER_ONLY_REVISION"));
  assert.equal(board.currentCandidateSourceVerified,false);
  assert.equal(board.safeToEnableJointRanking,false);
  assert.equal(board.productionDocumentWrites,0);
@@ -136,12 +139,12 @@ test("account finance proof remains explicitly blocked even when all config setu
  const h=classifyHosting(release,{name:version,status:"FINALIZED",
   fileCount:hosted().length,config:{}},hosted(),sourced());
  let b=readinessBoard({functions:f,hosting:h,publication:pub()});
- assert.equal(b.nextStep,"OWNER_CONFIGURE_PUBLICATION_AND_SKU_BINDINGS");
+ assert.equal(b.nextStep,"PUBLISH_OWNER_ONLY_SETUP_REVISION");
  b=readinessBoard({functions:f,hosting:h,publication:pub({
   ownerPublicationCatalogReady:true,allEnabledPartnerSkuMapped:true,
   blockingReasons:[],mappedPartnerCount:3
  })});
- assert.equal(b.nextStep,"REAL_ACCOUNT_FINANCE_DENY_AND_COUNT_SAVE_TEST");
+ assert.equal(b.nextStep,"PUBLISH_OWNER_ONLY_SETUP_REVISION");
  assert.equal(b.realPartnerFinanceGetListDeniedVerified,false);
  assert.equal(b.realPartnerCountSaveVerified,false);
  assert.equal(b.safeToEnableJointRanking,false);

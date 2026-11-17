@@ -128,6 +128,10 @@ export function classifyHosting(releases,version,files,sources,financeSource=nul
   ownerSetupHostingAssetsPresent:present,
   ownerSetupHostingAssetsExactMatch:matched,
   ownerSetupPageReady:present===11&&matched===11,
+  // The 11 SHA-pinned files still mount the old bilateral consent panel.
+  // Their successful Hosting match is NOT proof of the revised Owner-only UI.
+  legacyBilateralSetupPresent:present===11&&matched===11&&
+   sources["ranking/owner-partner-setup-mount.mjs"].includes("createOwnerRankingConsentPanel"),
   ownerSetupAssetsAllAbsent:present===0,
   liveHostingConfigRead:true,
   originalCanonicalAssetsPresent:true
@@ -149,6 +153,8 @@ export function readinessBoard({functions,hosting,publication}={}){
   blockers.push(hosting.ownerSetupAssetsAllAbsent?
    "PUBLISH_OWNER_SETUP_ELEVEN":"HOSTING_PARTIAL_OR_MISMATCH");
  }
+ if(hosting.legacyBilateralSetupPresent===true)
+  blockers.push("PUBLISHED_OWNER_SETUP_REQUIRES_OWNER_ONLY_REVISION");
  for(const b of publication.blockingReasons){
   if(!/^[A-Z0-9_]{3,90}$/.test(b))STOP("BLOCKER_UNTRUSTED");
   if(b==="RECIPROCAL_RANK_CONSENT_INCOMPLETE")continue;
@@ -160,6 +166,8 @@ export function readinessBoard({functions,hosting,publication}={}){
    (functions.sixOwnerFunctionsAbsent?"DISPATCH_OWNER_SIX_MANUAL":"STOP_RECONCILE_OWNER_FUNCTIONS"):
    !hosting.ownerSetupPageReady?
    (hosting.ownerSetupAssetsAllAbsent?"DISPATCH_OWNER_ELEVEN_MANUAL":"STOP_RECONCILE_HOSTING"):
+   hosting.legacyBilateralSetupPresent===true?
+   "PUBLISH_OWNER_ONLY_SETUP_REVISION":
    !publication.ownerPublicationCatalogReady||
      !publication.allEnabledPartnerSkuMapped?
      "OWNER_CONFIGURE_PUBLICATION_AND_SKU_BINDINGS":
@@ -173,6 +181,7 @@ export function readinessBoard({functions,hosting,publication}={}){
   ownerSetupHostingAssetsPresent:hosting.ownerSetupHostingAssetsPresent,
   ownerSetupHostingAssetsExactMatch:hosting.ownerSetupHostingAssetsExactMatch,
   ownerSetupPageReady:hosting.ownerSetupPageReady,
+  ownerSetupLegacyBilateralDetected:hosting.legacyBilateralSetupPresent===true,
   ownerSetupSourceBasis:hosting.ownerSetupSourceBasis,
   currentCandidateSourceVerified:false,
   financeBoundaryDiagnosticInspected:hosting.financeBoundaryDiagnosticInspected===true,
