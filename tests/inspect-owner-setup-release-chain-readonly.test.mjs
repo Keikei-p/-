@@ -29,9 +29,8 @@ const pub=(changes={})=>({
  project:"sales-management-cc116",mode:"LIVE_READ_ONLY_NO_DEPLOY",
  activeApprovedPartnerCount:3,mappedPartnerCount:0,
  ownerPublicationCatalogReady:false,allEnabledPartnerSkuMapped:false,
- reciprocalOwnerRankConsentReady:false,
  blockingReasons:["OWNER_PUBLIC_CATALOG_MISSING",
-  "PARTNER_SKU_MAPPING_INCOMPLETE","RECIPROCAL_RANK_CONSENT_INCOMPLETE"],
+  "PARTNER_SKU_MAPPING_INCOMPLETE"],
  productionDocumentWrites:0,safeToEnableNewRanking:false,...changes
 });
 test("missing six Owner Functions: safe read-only board recommends exactly first deployment",()=>{
@@ -121,12 +120,11 @@ test("current count configuration readiness does not require additional bilatera
   fileCount:hosted().length,config:{}},hosted(),sourced());
  const board=readinessBoard({functions:classifyFunctions(funcs()),hosting,
   publication:pub({ownerPublicationCatalogReady:true,allEnabledPartnerSkuMapped:true,
-   mappedPartnerCount:3,reciprocalOwnerRankConsentReady:false,
-   blockingReasons:["RECIPROCAL_RANK_CONSENT_INCOMPLETE"]})});
+   mappedPartnerCount:3,blockingReasons:["RECIPROCAL_RANK_CONSENT_INCOMPLETE"]})});
  assert.equal(board.ownerPublicCatalogReady,true);
  assert.equal(board.allEnabledPartnerSkuMapped,true);
  assert.equal(board.partnerCompaniesWithMappedRankCategories,3);
- assert.equal(board.reciprocalOwnerRankConsentReady,false);
+ assert.equal(Object.hasOwn(board,"reciprocalOwnerRankConsentReady"),false);
  assert(!board.blockingReasons.includes("RECIPROCAL_RANK_CONSENT_INCOMPLETE"));
  assert.equal(board.nextStep,"REAL_ACCOUNT_FINANCE_DENY_AND_COUNT_SAVE_TEST");
  assert.equal(board.currentCandidateSourceVerified,false);
@@ -141,7 +139,7 @@ test("account finance proof remains explicitly blocked even when all config setu
  assert.equal(b.nextStep,"OWNER_CONFIGURE_PUBLICATION_AND_SKU_BINDINGS");
  b=readinessBoard({functions:f,hosting:h,publication:pub({
   ownerPublicationCatalogReady:true,allEnabledPartnerSkuMapped:true,
-  reciprocalOwnerRankConsentReady:true,blockingReasons:[],mappedPartnerCount:3
+  blockingReasons:[],mappedPartnerCount:3
  })});
  assert.equal(b.nextStep,"REAL_ACCOUNT_FINANCE_DENY_AND_COUNT_SAVE_TEST");
  assert.equal(b.realPartnerFinanceGetListDeniedVerified,false);
