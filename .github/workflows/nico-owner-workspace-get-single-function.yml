@@ -18,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       reviewed_main_sha:
-        description: Exact reviewed main SHA
+        description: Optional exact main SHA; the workflow verifies the current main itself
         type: string
-        required: true
+        required: false
       mode:
         description: Inspect, or release only the existing getPartnerWorkspace callable
         type: choice
@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' || github.head_ref == 'audit/owner-get-strict-preflight-20261117' }}
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' || github.head_ref == 'audit/owner-get-strict-preflight-20261117' || github.head_ref == 'fix/owner-get-dispatch-skip-20261117' }}
     runs-on: ubuntu-latest
     timeout-minutes: 13
     env:
@@ -52,6 +52,37 @@ jobs:
         with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Validate dispatch mode, optional SHA and approval before any remote access
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          INPUT_SHA: ${{ inputs.reviewed_main_sha }}
+          MODE: ${{ inputs.mode }}
+          DEPLOY_APPROVAL: ${{ inputs.deployment_approval }}
+          COST_APPROVAL: ${{ inputs.cost_approval }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'STOP_OWNER_GET_SELECT_MAIN'; exit 1; }
+          if [ -n "$INPUT_SHA" ] && [ "$INPUT_SHA" != "$GITHUB_SHA" ]; then
+            echo 'STOP_OWNER_GET_REVIEWED_SHA_MISMATCH_USE_CURRENT_MAIN'
+            exit 1
+          fi
+          case "$MODE" in
+            inspect) echo 'OWNER_GET_INSPECT_ONLY_NO_DEPLOY' ;;
+            release)
+              test "$DEPLOY_APPROVAL" = APPROVE_EXISTING_GET_PARTNER_WORKSPACE_ONLY || {
+                echo 'STOP_OWNER_GET_RELEASE_APPROVAL_MISSING'
+                exit 1
+              }
+              test "$COST_APPROVAL" = APPROVE_ONE_FIREBASE_FUNCTION_BUILD || {
+                echo 'STOP_OWNER_GET_COST_APPROVAL_MISSING'
+                exit 1
+              }
+              echo 'OWNER_GET_RELEASE_REQUEST_VALIDATED_NO_REMOTE_CHANGES'
+              ;;
+            *) echo 'STOP_OWNER_GET_MODE_UNSELECTED'; exit 1 ;;
+          esac
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Pin exact read-only changes and preserve every unrelated backend and financial Rule
         shell: bash
         run: |
@@ -89,7 +120,14 @@ jobs:
   manually-inspect-or-release:
     needs: offline
     if: >-
-      ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == '81943e778eed430fee46573d912de92a6b7f1a42' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): exact Owner GET predeployment inventory')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+      ${{ (github.event_name == 'workflow_dispatch' ||
+            github.event_name == 'push' &&
+            github.event.before == '81943e778eed430fee46573d912de92a6b7f1a42' &&
+            github.actor == 'Keikei-p' &&
+            startsWith(github.event.head_commit.message, 'audit(sales): exact Owner GET predeployment inventory')) &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -111,7 +149,9 @@ jobs:
             test "$(git show -s --format=%s HEAD)" = 'audit(sales): exact Owner GET predeployment inventory'
             test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = '.github/workflows/nico-owner-workspace-get-single-function.yml'
           else
-            test "$GITHUB_SHA" = "${{ inputs.reviewed_main_sha }}"
+            # The current immutable checkout and GitHub main are checked above.
+            # A supplied optional SHA is already verified in the offline job.
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
           fi
       - name: Install existing Admin SDK for read-only Cloud Functions metadata
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
