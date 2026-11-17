@@ -56,6 +56,7 @@ async function run(){
  const require=createRequire(new URL('../../functions/package.json',import.meta.url));
  const {applicationDefault}=require('firebase-admin/app');
  const credential=applicationDefault();
+ let pinnedSourceVersion=null;
  const request=async(method,url,body=null,type='application/json')=>{
   if(!url.startsWith(BASE+'/sites/'+SITE+'/')&&
      !url.startsWith('https://upload-firebasehosting.googleapis.com/upload/sites/'+SITE+'/versions/'))
@@ -66,12 +67,17 @@ async function run(){
   if(body!==null)headers['Content-Type']=type;
   const response=await fetch(url,{method,headers,body:body===null?undefined:type==='application/octet-stream'?body:JSON.stringify(body)});
   if(!response.ok)throw Error('HOSTING_API_'+method+'_HTTP_'+response.status);
-  const raw=await response.text();return raw?JSON.parse(raw):{};
+  const raw=await response.text();const result=raw?JSON.parse(raw):{};
+  if(pinnedSourceVersion&&method==='GET'&&url===BASE+'/sites/'+SITE+'/releases?pageSize=1'&&
+     result?.releases?.[0]?.version?.name!==pinnedSourceVersion)
+    throw Error('LIVE_VERSION_DRIFT_BEFORE_INDEX_ONLY_RELEASE');
+  return result;
  };
  // Independent preflight: live served bytes must match the live Hosting manifest.
  const releases=await request('GET',BASE+'/sites/'+SITE+'/releases?pageSize=1');
  const version=releases?.releases?.[0]?.version?.name;
  if(!versionPattern.test(version||''))throw Error('UNKNOWN_LIVE_VERSION');
+ pinnedSourceVersion=version;
  let token='',indexHash=null,seen=new Set(),count=0;
  do{
   if(seen.has(token))throw Error('MANIFEST_PAGINATION_LOOP');
