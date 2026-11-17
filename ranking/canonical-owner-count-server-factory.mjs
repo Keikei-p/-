@@ -57,7 +57,13 @@ export function createCanonicalOwnerCountHandler({
   throw Error("CANONICAL_OWNER_COUNT_AUTH_MISSING");
  // Validate every dependency before constructing any request authorizer.
  createCanonicalOwnerCountSnapshot({
-  db,FieldValue,clock,zeroSetupLink
+  db,FieldValue,clock,zeroSetupLink,
+  // Construction-only dependency check, before Firebase Auth is initialized.
+  // This callback can NEVER authorize a request. The real in-transaction
+  // workspace identity gate is installed below for every actual invocation.
+  ...(zeroSetupLink===true?{verifyCountViewer:async()=>{
+   throw Error("COUNT_SESSION_NOT_AUTHORIZED");
+  }}:{})
  });
  class CountIdentityError extends Error{}
  const {readCountViewer}=makeWorkspaceIdentity({
