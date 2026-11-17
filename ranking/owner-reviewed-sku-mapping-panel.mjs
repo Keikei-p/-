@@ -29,7 +29,7 @@ const name=x=>typeof x==="string"&&x.trim().length>0&&
  x.length<=80&&!CASH.test(x);
 const keys=(x,expected)=>obj(x)&&
  Object.keys(x).sort().join("|")===expected.slice().sort().join("|");
-const combined=x=>/SB光・AIR|旧合算|未分類/.test(x);
+const combined=x=>/(?:SB光・AIR|旧合算|未分類|(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(x);
 const el=(doc,tag,text)=>{
  const n=doc.createElement(tag);
  if(text!==undefined)n.textContent=text;
@@ -141,6 +141,7 @@ export function createOwnerReviewedSkuMappingPanel({
      if(proposed===old)return;
      saving=true;
      for(const x of selects)x.disabled=true;
+     let saveFailed=false;
      try{
       const fresh=await user.getIdToken();
       if(auth.currentUser!==user||closed)return;
@@ -157,11 +158,18 @@ export function createOwnerReviewedSkuMappingPanel({
          result.version<view.version)fail();
       // A confirmed write still requires a fresh canonical server read.
      }catch{
-      if(auth.currentUser===user&&!closed)
-       status("対応設定の保存を確認できません。再読込して確認してください。");
+      saveFailed=true;
      }finally{
       saving=false;
-      if(!closed&&auth.currentUser===user)await refresh();
+      if(!closed&&auth.currentUser===user){
+       const fresh=await refresh();
+       if(saveFailed&&fresh&&!closed&&auth.currentUser===user){
+        const notice=el(document,"p",
+         "対応設定の保存を確認できません。表示はサーバーの最新状態です。");
+        notice.setAttribute?.("role","status");
+        root.appendChild(notice);
+       }
+      }
      }
     });
     selects.push(select);row.appendChild(select);section.appendChild(row);

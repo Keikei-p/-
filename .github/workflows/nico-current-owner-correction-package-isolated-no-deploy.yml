@@ -32,6 +32,60 @@ jobs:
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
             node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+          elif [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:fix/owner-only-name-publication-20261117" ] &&
+               [ "${GITHUB_REPOSITORY:-}" = "Keikei-p/-" ] &&
+               node -e "const e=require(process.env.GITHUB_EVENT_PATH);if(e.pull_request?.number!==731||e.pull_request.head.repo.full_name!=='Keikei-p/-'||e.pull_request.base.repo.full_name!=='Keikei-p/-')process.exit(1)"; then
+            # This path reviews one exact Owner-only candidate and does not run a release.
+            # Keep historical main/other PR pins unchanged; reject unreviewed edits.
+            test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+            test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+            test -z "$FIREBASE_TOKEN"
+            test -z "$HUB_OWNER_COUNT_CORRECTION_V3_ENABLED"
+            git fetch --no-tags origin main
+            while IFS= read -r file; do
+              case "$file" in
+                .github/workflows/nico-current-owner-correction-package-isolated-no-deploy.yml|.github/workflows/nico-owner-setup-release-chain-live-readonly.yml|.github/workflows/nico-verified-partner-count-standings-no-deploy.yml|functions-partner-workspace/approved-published-categories.cjs|functions-partner-workspace/service.cjs|functions-partner-workspace/submission-publication-guard.cjs|functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs|functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs|functions-ranking-approvals/ranking/trusted-combined-ranking-context.mjs|functions-ranking-approvals/vendor/trusted-combined-ranking-context.mjs|ranking/approved-published-categories.mjs|ranking/owner-partner-setup-mount.mjs|ranking/owner-product-visibility-panel.mjs|ranking/owner-reviewed-sku-mapping-panel.mjs|ranking/owner-reviewed-sku-mapping-store.mjs|ranking/partner-month-readonly-loader.mjs|ranking/partner-submission-publication-guard.mjs|ranking/trusted-combined-ranking-context.mjs|tests/approved-partner-count-standings.test.cjs|tests/canonical-hub-owner-package.test.mjs|tests/inspect-live-sku-publication-readonly.test.mjs|tests/inspect-owner-setup-release-chain-readonly.test.mjs|tests/owner-only-setup-replacement-guard.test.mjs|tests/owner-partner-setup-mount.test.mjs|tests/owner-product-visibility-panel.test.mjs|tests/owner-reviewed-sku-mapping-panel.test.mjs|tests/owner-reviewed-sku-mapping-store.test.mjs|tests/partner-month-readonly-loader.test.mjs|tests/partner-submission-publication-guard.test.mjs|tests/partner-workspace.test.cjs|tests/ranking-owner-consent-service.test.mjs|tests/trusted-combined-ranking-context-emulator.test.mjs|tests/trusted-combined-ranking-context.test.mjs|tools/production/inspect-live-sku-publication-readonly.mjs|tools/hosting/owner-only-setup-replacement-guard.mjs|tools/production/inspect-owner-setup-release-chain-readonly.mjs|tools/production/prepare-canonical-hub-owner-correction-package.mjs|tools/production/prepare-hub-owner-correction-v3-package.mjs) ;;
+                *) echo "STOP_UNREVIEWED_OWNER_ONLY_SCOPE: $file"; exit 1;;
+              esac
+            done < <(git diff --name-only origin/main...HEAD)
+            test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+            test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+            test "$(git hash-object index.html)" = 03e213565a2037c73913602701363476ae0db9fd
+            test "$(git hash-object partner-workspace.html)" = d8262633f35cf0f015de44c9a223c4289f8d2a6b
+            test "$(git hash-object staging/partner-owner-correction-v3/service.cjs)" = 13079c29d6b88167fbaec22361636215fea52764
+            test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
+            test "$(git hash-object functions-partner-workspace/service.cjs)" = f78b1fa16f71848b20579ad220f82b703fe7f209
+            test "$(git hash-object tools/production/prepare-hub-owner-correction-v3-package.mjs)" = ea1f36aa9576e1d88921dbf5915a777a90bcca06
+            test "$(git hash-object tools/production/inspect-live-sku-publication-readonly.mjs)" = 5a00ab68acd1a09c1727992a6ac13b56e363a0f2
+            test "$(git hash-object tests/inspect-live-sku-publication-readonly.test.mjs)" = 218bb967fc5ef82c4ec769b44cf7c1244c1b9504
+            test "$(git hash-object tools/production/inspect-owner-setup-release-chain-readonly.mjs)" = 4504449f997b1727f69f00d052c019671c2578bb
+            test "$(git hash-object tests/inspect-owner-setup-release-chain-readonly.test.mjs)" = 97b5db26c3ba3930f768842ff08f513876701633
+            test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = 6eb64ba4ccfb456df60fa48b9970c6d77513d12f
+            test "$(git hash-object tests/owner-only-setup-replacement-guard.test.mjs)" = 0b0649c549007fc2bc5e12492610572ea82b0686
+            test "$(git hash-object tools/production/prepare-canonical-hub-owner-correction-package.mjs)" = 2aca732471dbcc23b985791c67c7a34122df3aee
+            test "$(git hash-object tests/canonical-hub-owner-package.test.mjs)" = cdb26803c3533a32e60c6f17ebdfa63b42fc2a3b
+            node --check tools/production/prepare-hub-owner-correction-v3-package.mjs
+            test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = 9a167a2cc5e8c76ff22812fd3279cc047ca25f3b
+            test "$(git hash-object tests/owner-partner-setup-mount.test.mjs)" = b6e695e4c9ed6e04ce0f22e9e466b2af1bd11e76
+            test "$(git hash-object tests/partner-workspace.test.cjs)" = 9c2021a7c6ed68fa08eaf4767ca1f07c7794457e
+            # Reviewed combined legacy 光/AIR mapping: exact source/test pins, no
+            # sales-schema edits and no AI-inferred light/Air split.
+            test "$(git hash-object functions-partner-workspace/approved-published-categories.cjs)" = aa15d09ec443a0c44155f8288784341a9b60810e
+            test "$(git hash-object functions-partner-workspace/submission-publication-guard.cjs)" = 3784abc3c179fd5e2b1736351be82a35d3034ef1
+            test "$(git hash-object functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs)" = cdefbf76269901888645c3b881d30727fa4dab4f
+            test "$(git hash-object ranking/approved-published-categories.mjs)" = 551b31c1ebce1e4203f808a936cec438889863bc
+            test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = c85aa14170ac4448b143ece873b4bc22079db05a
+            test "$(git hash-object ranking/owner-reviewed-sku-mapping-panel.mjs)" = de06efe5e50bd6221f9c226c3ff994f632c9dcfd
+            test "$(git hash-object ranking/owner-reviewed-sku-mapping-store.mjs)" = cdefbf76269901888645c3b881d30727fa4dab4f
+            test "$(git hash-object ranking/partner-submission-publication-guard.mjs)" = 5b46743e0245c0a03447b8f11a4e59970b983b67
+            test "$(git hash-object tests/owner-product-visibility-panel.test.mjs)" = cae8e09a56362ea54c5c992c3659e6929481303d
+            test "$(git hash-object tests/owner-reviewed-sku-mapping-panel.test.mjs)" = 8a048e3f2fe531689acbf62d703e8a4b7e560905
+            test "$(git hash-object tests/owner-reviewed-sku-mapping-store.test.mjs)" = 19982fd2280e3756740908e57d1d25a48c5861b3
+            test "$(git hash-object tests/partner-submission-publication-guard.test.mjs)" = 441540ea21b2d3baebae05d6fafe6c16f4ee99d4
+            test "$(git hash-object tests/approved-partner-count-standings.test.cjs)" = 2b412597401671701e241e5a048123293dc7a35b
+            cmp -s ranking/owner-reviewed-sku-mapping-store.mjs functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs
+            node --test tests/owner-only-setup-replacement-guard.test.mjs tests/inspect-owner-setup-release-chain-readonly.test.mjs tests/inspect-live-sku-publication-readonly.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/partner-submission-publication-guard.test.mjs tests/approved-partner-count-standings.test.cjs
+            node --test tests/canonical-hub-owner-package.test.mjs tests/partner-workspace.test.cjs tests/owner-partner-setup-mount.test.mjs
           else
             set -euo pipefail
             test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
@@ -68,6 +122,9 @@ jobs:
           test ! -e "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
           if [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:integration/nico-sales-count-publication-rank-ready-20261113" ]; then
             node scripts/ci/review-integrated-count-candidate.cjs --sources-only
+            node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          elif [ "${GITHUB_EVENT_NAME:-}:${GITHUB_HEAD_REF:-}" = "pull_request:fix/owner-only-name-publication-20261117" ] &&
+               [ "${GITHUB_REPOSITORY:-}" = "Keikei-p/-" ]; then
             node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
           else
             node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare-candidate

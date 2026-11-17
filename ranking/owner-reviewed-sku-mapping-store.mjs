@@ -120,7 +120,7 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
     // The old combined SB光・AIR value may ONLY map to a distinct combined
     // hub product, NEVER infer any separate Hikari or Air counts.
     if(partnerProductId==="partnerSku05"&&
-       !/SB光・AIR|旧合算|未分類/.test(name))stop();
+       !/(?:SB光・AIR|旧合算|未分類|(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(name))stop();
    }
    if(prevId===hubProductId)return {
     saved:false,version:previous.version,partnerCompanyId,

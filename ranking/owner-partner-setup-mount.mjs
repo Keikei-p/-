@@ -48,7 +48,10 @@ export function mountOwnerPartnerSetup({
    const date=new Intl.DateTimeFormat("sv-SE",{
     timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
    }).format(new Date());
-   const answer=(await workspace({date})).data;
+   // Read the registered partner companies even while general partner
+   // workspace and count publication are disabled. The server restricts this
+   // request to an authenticated internal Owner and returns company IDs only.
+   const answer=(await workspace({date,ownerSetupCompaniesOnly:true})).data;
    if(!answer||!["hub","owner","leader","member"].includes(answer.role))fail();
    if(answer.role==="hub"){
     if(!Array.isArray(answer.registeredCompanies)||
@@ -69,9 +72,16 @@ export function mountOwnerPartnerSetup({
     }
     status={role:"hub_owner",partners};
    }else status={role:"partner_user",partners:[]};
-  }catch{
-   if(!closed&&generation===token&&auth.currentUser===user)
-    message("協力店の連携状況を確認できません。自社Ownerでログインしてください。");
+  }catch(error){
+   if(!closed&&generation===token&&auth.currentUser===user){
+    // The new Owner setup route deliberately denies partner accounts. This
+    // is expected authorization behavior, not a partner count/login outage.
+    const denied=["permission-denied","functions/permission-denied"]
+     .includes(error?.code);
+    message(denied?
+     "商材ON/OFFと合同件数の設定は自社Owner専用です。協力店側での追加承認は不要です。":
+     "協力店の連携状況を確認できません。自社Ownerでログインしてください。");
+   }
    return false;
   }
   if(closed||generation!==token||auth.currentUser!==user)return false;
@@ -94,7 +104,17 @@ export function mountOwnerPartnerSetup({
   const globalPanel=createOwnerProductVisibilityPanel({
    document,root:globalBox,auth,
    load:args=>visibilityBridge.load(args),
-   save:args=>visibilityBridge.save(args)
+   save:async args=>{
+    const result=await visibilityBridge.save(args);
+    // Both panels share one server revision. Refresh the selected partner
+    // after a confirmed global write, or its switches stay stale/disabled.
+    if(result?.saved===true&&!closed&&generation===token&&
+       auth.currentUser===user){
+     const activePartner=partnerViews[0];
+     if(activePartner)await activePartner.refresh();
+    }
+    return result;
+   }
   });
   views.push(globalPanel);
   await globalPanel.refresh();
@@ -126,7 +146,14 @@ export function mountOwnerPartnerSetup({
    const switchPanel=createOwnerProductVisibilityPanel({
     document,root:partnerBox,auth,partnerCompanyId:companyId,
     load:args=>visibilityBridge.load(args),
-    save:args=>visibilityBridge.save(args)
+    save:async args=>{
+     const result=await visibilityBridge.save(args);
+     // A partner override also increments the same global visibility version.
+     if(result?.saved===true&&!closed&&generation===token&&
+        partnerGeneration===scope&&auth.currentUser===user)
+      await globalPanel.refresh();
+     return result;
+    }
    });
    const mappingPanel=createOwnerReviewedSkuMappingPanel({
     enabled:true,document,root:mapBox,auth,partnerCompanyId:companyId,

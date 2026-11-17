@@ -61,7 +61,7 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
      seenHubSku.has(b.hubProductId))stop();
   seenHubSku.add(b.hubProductId);
   if(b.productId==="partnerSku05"&&
-   !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))stop();
+   !/(?:SB光・AIR|旧合算|未分類|(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(catalog.get(b.hubProductId).name))stop();
   binding.set(b.productId,b.hubProductId);
  }
  return Object.freeze(KEYS.filter((category,i)=>{

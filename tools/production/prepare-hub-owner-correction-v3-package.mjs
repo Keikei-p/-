@@ -59,13 +59,22 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
   "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e"
 });
+// PR #731: reviewed Owner-only optional name display. Exactly one source
+// in the already reviewed integrated Owner package changed. Keep its older
+// immutable baseline separately available and never auto-publish this candidate.
+export const OWNER_ONLY_CANDIDATE=Object.freeze({
+ ...INTEGRATED_CANDIDATE,
+ "functions-partner-workspace/service.cjs":"f78b1fa16f71848b20579ad220f82b703fe7f209"
+});
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
  const data=Buffer.isBuffer(s)?s:Buffer.from(s,"utf8");
  return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
 }
 export function makeOwnerPackage(files,sourcePins=REVIEWED){
- if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE&&sourcePins!==INTEGRATED_CANDIDATE)stop("UNREVIEWED_BASELINE");
+ if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE&&
+    sourcePins!==INTEGRATED_CANDIDATE&&sourcePins!==OWNER_ONLY_CANDIDATE)
+   stop("UNREVIEWED_BASELINE");
  if(!files||typeof files!=="object"||Array.isArray(files))stop("SOURCE_SHAPE");
  for(const [name,digest] of Object.entries(sourcePins)){
   if(typeof files[name]!=="string"||gitBlob(files[name])!==digest)
@@ -183,3 +192,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
 }
 
 export function makeIntegratedCandidateOwnerPackage(files){return makeOwnerPackage(files,INTEGRATED_CANDIDATE);}
+export function makeOwnerOnlyCandidateOwnerPackage(files){
+ return makeOwnerPackage(files,OWNER_ONLY_CANDIDATE);
+}
+

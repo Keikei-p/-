@@ -2,7 +2,7 @@
  * STAGING / NOT DEPLOYED — authenticated, server-owned ranking context.
  *
  * Existing active count-sharing relations authorize linked-company counts.
- * Existing individual-name approvals are optional display permissions; their
+ * Hub Owner individual-name publication is optional display permission; its
  * absence never blocks counts and never turns a saved name into a public name.
  *
  * All Firestore reads are in a read-only server Admin transaction.
@@ -56,29 +56,28 @@ function publicNameApprovalOk(row,{companyId,hub,partner,owner}){
   Number.isSafeInteger(row.version)&&row.version>=1&&row.version<=999&&
   row.individualNamesApproved===true;
 }
-// Reused by the same-snapshot count reader. Missing/stale name approval is a
-// false display permission, not a count-authorization or transaction failure.
-export function existingPublicNameApprovalPairVerified({
+// The managing hub Owner alone controls whether another company's individual
+// names may be published. This optional display decision never gates counts.
+// Preserve the old export name for other read-only callers; its partnerApproval
+// input is intentionally ignored, not required or fetched.
+export function existingHubOwnerNamePublicationVerified({
  relation,hubCompany,partnerCompany,hubCompanyId,partnerCompanyId,
- hubApproval,partnerApproval
+ hubApproval
 }={}){
  if(!id(hubCompanyId)||!id(partnerCompanyId)||hubCompanyId===partnerCompanyId||
     !relationApproved(relation,hubCompanyId,partnerCompanyId)||
     relation.individualNamesApprovedByHub!==true||
-    relation.individualNamesApprovedByPartner!==true||
     !isObj(hubCompany)||!isObj(partnerCompany)||
-    !id(hubCompany.ownerUid)||!id(partnerCompany.ownerUid)||
-    hubCompany.active===false||!kindInternal(hubCompany.companyKind)||
+    !id(hubCompany.ownerUid)||hubCompany.active===false||
+    !kindInternal(hubCompany.companyKind)||
     partnerCompany.active!==true||partnerCompany.companyKind!=="partner"||
     partnerCompany.hubCompanyId!==hubCompanyId)return false;
  return publicNameApprovalOk(hubApproval,{
   companyId:hubCompanyId,hub:hubCompanyId,partner:partnerCompanyId,
   owner:hubCompany.ownerUid
- })&&publicNameApprovalOk(partnerApproval,{
-  companyId:partnerCompanyId,hub:hubCompanyId,partner:partnerCompanyId,
-  owner:partnerCompany.ownerUid
  });
 }
+export const existingPublicNameApprovalPairVerified=existingHubOwnerNamePublicationVerified;
 /**
  * Wrap a real Firebase Admin Auth instance. Each request checks revoked tokens,
  * current Auth profile and exact verified email; never accept request claims.
@@ -196,16 +195,14 @@ export function createFreshCombinedRankingContext({db,loadCountViewer}={}){
         !id(partner.ownerUid)))blocked();
     let publicNamesVerified=false;
     const relation=relations.get(partnerId);
-    if(relation.individualNamesApprovedByHub===true&&
-       relation.individualNamesApprovedByPartner===true&&id(partner.ownerUid)){
-     const [hubApprovalSnap,partnerApprovalSnap]=await Promise.all([
-      tx.get(company(hubId).collection("rankingApprovals").doc(partnerId)),
-      tx.get(company(partnerId).collection("rankingApprovals").doc(hubId))
-     ]);
-     publicNamesVerified=existingPublicNameApprovalPairVerified({
+    if(relation.individualNamesApprovedByHub===true){
+     const hubApprovalSnap=await tx.get(
+      company(hubId).collection("rankingApprovals").doc(partnerId)
+     );
+     publicNamesVerified=existingHubOwnerNamePublicationVerified({
       relation,hubCompany:hub,partnerCompany:partner,
       hubCompanyId:hubId,partnerCompanyId:partnerId,
-      hubApproval:read(hubApprovalSnap),partnerApproval:read(partnerApprovalSnap)
+      hubApproval:read(hubApprovalSnap)
      });
     }
     nameApprovals.set(partnerId,publicNamesVerified);

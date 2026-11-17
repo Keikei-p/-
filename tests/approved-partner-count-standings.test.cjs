@@ -125,6 +125,22 @@ test("only exact Owner-reviewed active mapped and partner-enabled SKUs publish",
  ])assert.throws(()=>allowedPartnerCategories(changed),/UNVERIFIED/);
 });
 
+test("only genuinely combined 光/AIR catalog IDs can publish legacy counts; do not infer Air or solar",()=>{
+ const visibility={hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["combined"],partnerOverrides:{}};
+ const mapping={hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",
+  active:true,version:1,bindings:[
+   {companyId:"a",productId:"partnerSku05",hubProductId:"combined"}]};
+ const original={hubId:"hub",cid:"a",ownerUid:"h",visibility,mapping};
+ for(const name of ["光/AIR","光／AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
+  const products=[{id:"combined",companyId:"hub",name,active:true}];
+  assert.deepEqual(allowedPartnerCategories({...original,products}),["SB光・AIR"],name);
+ }
+ for(const name of ["光","SoftBank Air","太陽光/AIR","光/AIRMNP"]){
+  const products=[{id:"combined",companyId:"hub",name,active:true}];
+  assert.throws(()=>allowedPartnerCategories({...original,products}),/UNVERIFIED/,name);
+ }
+});
 test("mapped public catalog rejects financial labels, extra fields and duplicate hub SKU",()=>{
  const products=[{id:"nuro",companyId:"hub",name:"NURO",active:true}];
  const visibility={hubCompanyId:"hub",ownerUid:"h",version:1,

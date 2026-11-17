@@ -32,8 +32,30 @@ function fixture(role="hub"){
  let observer=()=>{};
  const httpsCallable=(_fn,name)=>async payload=>{
   calls.push({name,payload});
-  if(name==="getPartnerWorkspace")return {data:status};
+  if(name==="getPartnerWorkspace"){
+   if(role==="partnerDenied")throw Object.assign(new Error("server denied"),
+    {code:"functions/permission-denied"});
+   return {data:status};
+  }
   if(name==="getOwnerProductVisibility")return {data:products};
+  if(name==="setOwnerProductVisibility"){
+   assert.equal(payload.expectedVersion,products.version,
+    "shared visibility revision must be refreshed before another switch");
+   if(payload.partnerCompanyId===null){
+    const row=products.products.find(p=>p.id===payload.productId);
+    assert(row);row.enabled=payload.enabled;
+   }else{
+    assert.equal(payload.partnerCompanyId,"partner");
+    const current=products.partnerOverrides.partner||[];
+    products.partnerOverrides.partner=payload.enabled?
+     [...new Set([...current,payload.productId])]:
+     current.filter(id=>id!==payload.productId);
+   }
+   products.version++;
+   return {data:{saved:true,version:products.version,
+    productId:payload.productId,enabled:payload.enabled,
+    partnerCompanyId:payload.partnerCompanyId}};
+  }
   if(name==="getOwnerReviewedSkuMapping")return {data:mapping};
   throw Error("Unexpected callable: "+name);
  };
@@ -52,7 +74,8 @@ test("hub owner sees existing active partner, global switches and nine mappings 
  const selections=walk(f.root).filter(x=>x.tagName==="select");
  assert(selections.length>=10);
  assert.equal(selections[0].value,"partner");
- assert(f.calls.some(x=>x.name==="getPartnerWorkspace"));
+ assert(f.calls.some(x=>x.name==="getPartnerWorkspace"&&
+  x.payload?.ownerSetupCompaniesOnly===true&&/^\d{4}-\d{2}-\d{2}$/.test(x.payload.date)));
  assert(f.calls.every(x=>x.name!=="getRankingOwnerConsentStatus"&&x.name!=="setRankingOwnerConsent"));
  assert(f.calls.some(x=>x.name==="getOwnerProductVisibility"));
  assert(f.calls.some(x=>x.name==="getOwnerReviewedSkuMapping"));
@@ -67,6 +90,16 @@ test("partner owner is informed hub Owner manages ON/OFF and cannot view hub SKU
  assert(!f.calls.some(x=>x.name==="getOwnerProductVisibility"||
   x.name==="getOwnerReviewedSkuMapping"));
  controller.destroy();
+});
+test("real server Owner-only denial gives partner guidance and never opens SKU controls",async()=>{
+ const f=fixture("partnerDenied"),ctl=f.mount();
+ assert.equal(await ctl.refresh(),false);
+ assert.match(content(f.root),/自社Owner専用/);
+ assert.match(content(f.root),/追加承認は不要/);
+ assert.doesNotMatch(content(f.root),/連携状況を確認できません/);
+ assert.deepEqual(f.calls.map(x=>x.name),["getPartnerWorkspace"]);
+ assert.equal(f.calls[0].payload.ownerSetupCompaniesOnly,true);
+ ctl.destroy();
 });
 test("signed-out user has no server reads, no cached owner details and auth is reversible",async()=>{
  const f=fixture(),controller=f.mount();f.auth.currentUser=null;
@@ -127,4 +160,35 @@ test("non-hub workspace roles never mount hub Owner product controls",async()=>{
   assert.doesNotMatch(content(f.root),/自社の全体商材|選択した協力店の商材ON\/OFF/);
   ctl.destroy();
  }
+});
+
+test("global and partner ON/OFF keep the same fresh revision without reloading the whole page",async()=>{
+ const f=fixture(),controller=f.mount();
+ assert.equal(await controller.refresh(),true);
+ const switches=label=>walk(f.root).filter(x=>x.tagName==="label"&&
+  x.children.some(y=>y.tagName==="span"&&y.textContent===label))
+  .map(x=>x.children.find(y=>y.tagName==="input"));
+ let [globalAir,partnerAir]=switches("SoftBank Air");
+ assert.equal(globalAir.checked,false);
+ assert.equal(partnerAir.disabled,true,"globally OFF SKU stays disabled");
+ globalAir.checked=true;
+ await globalAir.fire("change");
+ [globalAir,partnerAir]=switches("SoftBank Air");
+ assert.equal(globalAir.checked,true);
+ assert.equal(partnerAir.disabled,false,
+  "newly ON SKU becomes selectable for partner without page reload");
+ assert.equal(partnerAir.checked,false,"existing company override stays OFF");
+ const [,partnerNuro]=switches("NURO光");
+ partnerNuro.checked=true;
+ await partnerNuro.fire("change");
+ [globalAir]=switches("SoftBank Air");
+ globalAir.checked=false;
+ await globalAir.fire("change");
+ const saves=f.calls.filter(x=>x.name==="setOwnerProductVisibility");
+ assert.deepEqual(saves.map(x=>x.payload.expectedVersion),[1,2,3],
+  "each write must use the revision returned after the previous save");
+ assert.deepEqual(saves.map(x=>x.payload.partnerCompanyId),[null,"partner",null]);
+ assert.equal(f.calls.some(x=>/RankingOwnerConsent/.test(x.name)),false);
+ assert(f.calls.every(x=>!/records|unitPrice|revenue|cashback/i.test(x.name)));
+ controller.destroy();
 });
