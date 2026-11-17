@@ -15,7 +15,7 @@ const sha=x=>createHash('sha256').update(x).digest('hex');
 
 const slots=[
   {key:'ios-input',start:'#authScreen .form-group input:not([type="checkbox"]):not([type="radio"])',end:'\n'},
-  {key:'fx-style',start:'#nfLoginFX{',end:'@media(max-width:760px)'},
+  {key:'fx-style',start:'\n#nfLoginFX{',end:'@media(max-width:760px)'},
   {key:'reduced-motion',start:'@media(prefers-reduced-motion:reduce)',end:'\n'},
   {key:'fx-controller',start:'<script id="nfLoginFXController">',end:'</script>',includeEnd:true}
 ];
