@@ -1,0 +1,128 @@
+name: NICO one Owner entry HTML protected release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/owner-entry-one-file-guard.mjs'
+      - 'tools/hosting/release-owner-entry-one-file.mjs'
+      - 'tests/owner-entry-one-file-guard.test.mjs'
+      - 'tests/owner-entry-one-html-release.test.mjs'
+      - '.github/workflows/nico-owner-entry-one-file-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/owner-entry-one-file-guard.mjs'
+      - 'tools/hosting/release-owner-entry-one-file.mjs'
+      - 'tests/owner-entry-one-file-guard.test.mjs'
+      - 'tests/owner-entry-one-html-release.test.mjs'
+      - '.github/workflows/nico-owner-entry-one-file-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-one-owner-html-hosting-release
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Preserve exact original finance, Owner GET, current three JS and historical guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object owner-partner-setup.html)" = 8cb4ad80c3c03658d1fb070339614cf2f5617d7b
+          test "$(git hash-object ranking/owner-partner-setup-mount.mjs)" = c6cec9b2ed46870277073911192a45114fea6a3b
+          test "$(git hash-object ranking/owner-product-visibility-panel.mjs)" = d36ab386b4979d2e5ba4b66ac2b0821a8c123b51
+          test "$(git hash-object ranking/owner-reviewed-sku-mapping-panel.mjs)" = 1ee2861ce2dd4144d900097b67037ef252717060
+          test "$(git hash-object tools/hosting/owner-only-setup-replacement-guard.mjs)" = c7eab608a3fe031f5841b79895eb1fff4056bbf6
+          node --check tools/hosting/owner-entry-one-file-guard.mjs
+          node --check tools/hosting/release-owner-entry-one-file.mjs
+          node --test tests/owner-entry-one-file-guard.test.mjs tests/owner-entry-one-html-release.test.mjs tests/owner-only-setup-replacement-guard.test.mjs tests/owner-partner-setup-mount.test.mjs
+          echo 'OWNER_ONE_HTML_OFFLINE_SCOPE_PASS_NO_DEPLOY'
+  one-html-live:
+    needs: offline
+    if: github.event_name == 'push' && github.event.before == 'dcabd2a0ebf9cfd4e407f095248a56f36cac4d36' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-' && needs.offline.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prove exactly reviewed one-time main change and no concurrent main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git rev-parse HEAD^)" = dcabd2a0ebf9cfd4e407f095248a56f36cac4d36
+          test "$(git show -s --format=%s HEAD)" = 'release(sales): one reviewed Owner entry HTML only'
+          python3 - <<'PY'
+          import subprocess
+          files=set(subprocess.check_output(['git','diff-tree','--no-commit-id','--name-only','-r','HEAD'],text=True).splitlines())
+          required={
+           'tools/hosting/owner-entry-one-file-guard.mjs',
+           'tools/hosting/release-owner-entry-one-file.mjs',
+           'tests/owner-entry-one-file-guard.test.mjs',
+           'tests/owner-entry-one-html-release.test.mjs',
+           '.github/workflows/nico-owner-entry-one-file-release.yml'
+          }
+          if files!=required:raise SystemExit('STOP_OWNER_ONE_HTML_UNREVIEWED_COMMIT_SCOPE')
+          PY
+      - name: Install existing Admin SDK only
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Use existing service identity privately in runner
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-one-html.private.json"
+          chmod 600 "$RUNNER_TEMP/owner-one-html.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-one-html.private.json" >> "$GITHUB_ENV"
+      - name: Verify original GET is LIVE, 20 Functions ACTIVE and all risky flags OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {inspectOwnerGetPostDeploy} from './tools/production/inspect-owner-get-postdeploy-readonly.mjs';
+          const require=createRequire(new URL('./functions/package.json',import.meta.url));
+          const token=(await require('firebase-admin/app').applicationDefault().getAccessToken())?.access_token;
+          if(!token)throw Error('STOP_OWNER_ONE_HTML_LIVE_FUNCTION_TOKEN');
+          const url='https://cloudfunctions.googleapis.com/v2/projects/sales-management-cc116/locations/asia-northeast1/functions?pageSize=1000';
+          const res=await fetch(url,{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+token}});
+          if(res.status!==200)throw Error('STOP_OWNER_ONE_HTML_LIVE_FUNCTION_HTTP');
+          const x=await res.json();
+          if(!Array.isArray(x.functions)||x.nextPageToken)throw Error('STOP_OWNER_ONE_HTML_FUNCTION_LIST_INCOMPLETE');
+          const p=inspectOwnerGetPostDeploy(x.functions,{now:new Date().toISOString()});
+          if(!p.liveTargetActive||!p.highRiskCountAndRankingModesDisabled||
+             p.liveFunctionsFound!==20||p.unknownEnvKeys!==0)
+            throw Error('STOP_OWNER_ONE_HTML_BACKEND_NOT_REVIEWED');
+          console.log('OWNER_ONE_HTML_FUNCTION_FLAGS_STILL_SAFE_NO_WRITES');
+          NODE
+      - name: Re-inspect live Hosting 33 files and 3 already-published current Owner modules
+        run: node tools/hosting/release-owner-entry-one-file.mjs --inspect
+      - name: Publish exactly one reviewed Owner entry HTML and verify public bytes
+        env:
+          NICO_OWNER_ONE_HTML_APPROVAL: APPROVE_ONE_REVIEWED_OWNER_HTML_ONLY
+        run: node tools/hosting/release-owner-entry-one-file.mjs --release
+      - name: Always remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/owner-one-html.private.json"
