@@ -1038,3 +1038,18 @@ GitHub所有者として認証済みの接続から、本番影響をindex.html�
 - Workflowのpermissionsはcontents:read、pull_request/push対象とpathsは変更なし。秘密値・デプロイ手順・新しいトリガー・権限追加はない。前段のexact manifest検証を省略しない。
 - 該当の失敗stepをそのままローカル実行し、機能試験45/45 PASSと末尾のsource照合まで成功。アプリ・Functions・Rules・manifestの配備対象ソースは前commitから変更なし。
 - 実ログインの安全な入力受付はタイムアウト。本番URLの新しいタブでログイン前の状態を再確認した。実Owner/協力店認証とスマホの本番入力確認は未完了。
+
+---
+
+## PR745_OWNER_PRODUCT_INLINE_TECH_REVIEW_20261117
+
+区分：ユーザーの2026-11-17「商材管理から協力店へ連携」と「続き本番して」に対する、GitHub管理者接続での技術レビュー記録。本人署名の代筆ではなく、Firebase本番公開の承認証明でもない。
+
+- 対象：PR #745 `feat/owner-product-inline-share-20261117`、reviewed head `f078548b1c0c49b405aea924787ab4657ba9367d`、main `785e6690c17e8f46587ef9422bfe4469c5f28798`。
+- 変更：既存`index.html`の商材管理内にOwner限定の「協力店へ連携」開閉UIを追加。登録済み商材一覧と既存の`ranking/owner-product-visibility-dashboard-mount.mjs`、既存Firebase Auth/Functionsを利用する。商材の二重登録、Firestore直書込、新規Functionsは追加しない。旧「協力店商材」メニューは保持。
+- 対象パスは`index.html`、`tests/owner-product-share-in-management.test.mjs`、非公開ワークフロー`.github/workflows/nico-owner-product-inline-no-deploy.yml`、および本記録のみ。Firestore Rules、金額原票、商材単価、実績、元の保存ロジック、PWA強制更新、Firebase Hostingデプロイ設定は変更しない。
+- 2026-11-17 10:32 UTCのPR CI：専用「NICO Owner existing products to partner inline (NO DEPLOY)」SUCCESS、Sales App Validation SUCCESS、既存ランキング保護（surgical index-only）SUCCESS。歴史的index SHAや旧branch固定による6 workflow FAILを確認しており、全CI合格と誤報しない。保護ゲートはレビューラベルと本記録がなかったためFAIL。
+- 同日10:07 UTCのmain GET-only auditは、20 Functions ACTIVE / 高リスクフラグOFF / getPartnerWorkspace更新済みを確認。ただし`otherFunctionsByteForByteUnchangedVerified:false`、`realOwnerAuthenticatedGetVerified:false`、`ownerFinanceReadDeniedVerified:false`。この実証が揃うまではランキング/件数の全面有効化は保留する。
+- 今回ラベル`sales-production-reviewed`を管理者接続で付与したが、これは差分の技術レビュー段階を記録するものであり、署名の代替・CI成功・本番GO判定ではない。
+- **未完了**：旧SHA固定検査を無効化せず新しい厳密な差分を再審査してCI修復、実Owner認証GET、secondary協力店UIDによる金額原票GET/LIST拒否、管理バックアップの隔離復元、Functions/Hosting限定デプロイと公開後検証。
+- **本番状態**：PR #745は未マージ、Firebase Hosting未反映。本記録の追加およびラベル付与はFirestoreの読み書き、Hosting、Functions、Rulesを変更しない。署名欄：管理者本人の独立署名は取得していない。
