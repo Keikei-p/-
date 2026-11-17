@@ -100,3 +100,41 @@ test("when joint server is unavailable the already verified partner rank stays v
  assert.equal(item("countProductMode").disabled,false);
  assert.equal(item("countInlineJointCompanies").hidden,true);
 });
+
+test("the real partner count dashboard renders the report date from the parameter, never a missing outer variable",()=>{
+ const head=source.indexOf("function renderCountOnlyDashboard(summary,days){");
+ const tail=source.indexOf("function clearCountOnlyDashboard(){",head);
+ assert(head>=0&&tail>head);
+ const code=source.slice(head,tail);
+ assert(!/\bdates\b/.test(code),"dashboard body must only use its days parameter");
+ const nodes=new Map();
+ const create=tag=>({
+  tagName:tag,children:[],style:{},value:"",disabled:false,
+  textContent:"",dataset:{},
+  append(...items){this.children.push(...items)},
+  replaceChildren(...items){this.children=[...items]},
+  setAttribute(){}
+ });
+ const $=id=>{if(!nodes.has(id))nodes.set(id,create(id));return nodes.get(id)};
+ const summary={
+  total:3,
+  days:[{date:"2026-11-17",count:3,people:1}],
+  people:[{id:"p1",name:"協力店担当",count:3}],
+  products:{"NURO":3},groups:[],hasUnverifiedTeams:false
+ };
+ const context={
+  $,document:{createElement:create},
+  data:{companyName:"協力店A"},
+  countExportRows:null,
+  countTable:()=>create("table"),countRankingCards:()=>create("div"),
+  renderCountAnalysisScopeCards:()=>{},renderProductRankMode:()=>{},
+  renderCountGoal:()=>{},competitionRanks:()=>[]
+ };
+ vm.runInNewContext(code+"\nglobalThis.runPartnerDashboard=renderCountOnlyDashboard;",
+  context);
+ assert.doesNotThrow(()=>context.runPartnerDashboard(summary,["2026-11-17"]));
+ assert.match($("countReportBody").value,/2026-11-17 〜 2026-11-17/);
+ assert.match($("countReportBody").value,/合計：3件/);
+ assert.equal($("countReportCopy").disabled,false);
+ assert.equal(context.countExportRows.summary,summary);
+});
