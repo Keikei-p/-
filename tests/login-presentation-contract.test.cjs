@@ -1,0 +1,44 @@
+'use strict';
+/*
+ * Login visual-only regression contract.
+ * Uses built-in Node modules; does not access Firebase or production.
+ */
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const extract = (start, end) => {
+  const from = html.indexOf(start);
+  const to = html.indexOf(end, from + start.length);
+  assert.ok(from >= 0 && to > from, 'visual block must be present');
+  return html.slice(from, to);
+};
+test('visual layer is confined to login; no existing auth form identifiers removed', () => {
+  for (const id of ['authScreen', 'authButton', 'authTitle', 'email', 'password',
+                    'nameGroup', 'switchButton', 'forgotPasswordButton',
+                    'partnerEmailLinkVerifyPanel', 'appScreen']) {
+    assert.match(html, new RegExp('id="' + id + '"'), 'required original element missing: '+id);
+  }
+  assert.equal((html.match(/id="authButton"/g) || []).length, 1);
+  assert.equal((html.match(/id="nfLoginFX"/g) || []).length, 1);
+  assert.match(html, /async function login\(\)/);
+  assert.match(html, /onAuthStateChanged\(\s*auth,/);
+});
+test('login design includes mobile and reduced-motion fallbacks', () => {
+  const css = extract('<style id="nfPremiumLogin">', '</style>');
+  assert.match(css, /@media\(max-width:760px\)/);
+  assert.match(css, /prefers-reduced-motion:reduce/);
+  assert.match(css, /#authScreen \.auth-card/);
+  assert.match(css, /#authScreen \.auth-wrapper/);
+});
+test('boot and success overlay is passive and contains no auth operations', () => {
+  const controller = extract('<script id="nfLoginFXController">', '</script>');
+  assert.match(html, /id="nfLoginFX" aria-hidden="true"/);
+  assert.match(controller, /MutationObserver/);
+  assert.match(controller, /getComputedStyle\(app\)/);
+  assert.match(controller, /sessionStorage/);
+  assert.doesNotMatch(controller, /signInWith|createUserWith|signOut|setDoc|updateDoc|deleteDoc|fetch\s*\(/);
+  const css = extract('<style id="nfPremiumLogin">', '</style>');
+  assert.match(css, /pointer-events:none/);
+});
