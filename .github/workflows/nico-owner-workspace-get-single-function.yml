@@ -22,10 +22,10 @@ on:
         type: string
         required: false
       mode:
-        description: Inspect, or release only the existing getPartnerWorkspace callable
+        description: Release exactly one existing getPartnerWorkspace Function; choose inspect for audit only
         type: choice
         options: [inspect, release]
-        default: inspect
+        default: release
         required: true
       deployment_approval:
         type: string
@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' || github.head_ref == 'audit/owner-get-strict-preflight-20261117' || github.head_ref == 'fix/owner-get-dispatch-skip-20261117' }}
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' || github.head_ref == 'audit/owner-get-strict-preflight-20261117' || github.head_ref == 'fix/owner-get-dispatch-skip-20261117' || github.head_ref == 'fix/owner-get-release-default-20261117' }}
     runs-on: ubuntu-latest
     timeout-minutes: 13
     env:
