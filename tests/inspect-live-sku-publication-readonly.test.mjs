@@ -126,6 +126,20 @@ test("bounded live metadata reader checks only approved count-only paths, never 
  assert(!db.reads.some(s=>/^(products|records|recordCorrections|revenueGoals|users)\//.test(s)));
  assert.doesNotMatch(JSON.stringify(r),/secret|price|token|salary|50000/);
 });
+test("both obsolete ranking approval documents may be absent without blocking mapped counts",async()=>{
+ const db=live();
+ db.docs.delete("companies/hub/rankingApprovals/partner");
+ db.docs.delete("companies/partner/rankingApprovals/hub");
+ const before=structuredClone([...db.docs]);
+ const result=await inspectSkuPublication(db);
+ assert.equal(result.ownerPublicationCatalogReady,true);
+ assert.equal(result.allEnabledPartnerSkuMapped,true);
+ assert.equal(result.activeApprovedPartnerCount,1);
+ assert.deepEqual(result.blockingReasons,[]);
+ assert.equal(result.productionDocumentWrites,0);
+ assert(!db.reads.some(path=>path.includes("/rankingApprovals/")));
+ assert.deepEqual([...db.docs],before,"audit must never modify existing counts or approvals");
+});
 test("missing live catalog reports blockers without requiring another company's approval",async()=>{
  const db=live();
  db.docs.delete("companies/hub/rankingCountPublicCatalog/shared");
