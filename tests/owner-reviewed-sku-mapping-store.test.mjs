@@ -136,3 +136,29 @@ test("same partner cannot reuse a hub SKU across categories; audit removal remai
   [{companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}]);
  assert.equal(f.writes,6,"only successful mapping revisions create audits");
 });
+
+test("Owner can explicitly review exact 光/AIR variants, never independent 光 or Air",async()=>{
+ for(const label of ["光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
+  const f=fake(),previous=structuredClone(f.state.get("products/legacy"));
+  f.state.set("products/legacy",{...previous,name:label});
+  const saved=await f.store.change({
+   principal:owner,partnerCompanyId:"partner",
+   partnerProductId:"partnerSku05",hubProductId:"legacy",expectedVersion:0
+  });
+  assert.equal(saved.saved,true,label);
+  assert.deepEqual(f.state.get("companies/hub/rankingSkuMappings/shared").bindings,[
+   {companyId:"partner",productId:"partnerSku05",hubProductId:"legacy"}
+  ]);
+  assert.equal(f.state.get("products/legacy").name,label);
+  assert.equal(f.writes,2);
+ }
+ for(const label of ["光","Air"]){
+  const f=fake(),previous=f.state.get("products/legacy");
+  f.state.set("products/legacy",{...previous,name:label});
+  await assert.rejects(f.store.change({
+   principal:owner,partnerCompanyId:"partner",
+   partnerProductId:"partnerSku05",hubProductId:"legacy",expectedVersion:0
+  }),/OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+  assert.equal(f.writes,0);
+ }
+});

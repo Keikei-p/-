@@ -565,3 +565,43 @@ test("3-company Owner ON -> verified entry policy -> the same count-only company
  assert.deepEqual(f.state.get("products/nuro"),productBefore);
  assert.equal(state.get(catalogRef).version,state.get(visibilityRef).version);
 });
+
+test("exact 光/AIR aliases stay one combined SKU from Owner ON through verified partner save and ranking",async()=>{
+ for(const label of ["SB光・AIR","光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
+  const f=fake(),before=product("combined",label);
+  f.state.set("products/combined",before);
+  const result=await f.store.saveSwitch({
+   principal,productId:"combined",enabled:true,expectedVersion:0
+  });
+  assert.equal(result.saved,true,label);
+  const mapping=f.state.get("companies/hub/rankingSkuMappings/shared");
+  assert.deepEqual(mapping.bindings,[{
+   companyId:"partner",productId:"partnerSku05",hubProductId:"combined"
+  }],label);
+  const visibility=f.state.get("companies/hub/rankingProductVisibility/shared");
+  const publicCatalog=f.state.get("companies/hub/rankingCountPublicCatalog/shared");
+  assert.deepEqual(allowedPartnerCategories({
+   hubId:"hub",cid:"partner",ownerUid:"owner",
+   visibility,mapping,products:publicCatalog.products
+  }),["SB光・AIR"],label);
+  const guard=createPartnerSubmissionPublicationGuard({db:f.db});
+  const blank=Object.fromEntries(KEYS.map(k=>[k,0]));
+  const scope={verifiedByServer:true,kind:"partner",uid:"partner-worker",
+   cid:"partner",hubId:"hub"};
+  const verdict=await guard({tx:f.tx,scope,previousCounts:blank,
+   nextCounts:{...blank,"SB光・AIR":3}});
+  assert.deepEqual([...verdict.enabledCategories],["SB光・AIR"],label);
+  assert.deepEqual(f.state.get("products/combined"),before);
+  assert.doesNotMatch(JSON.stringify(mapping),/revenue|cashback|unitPrice/);
+ }
+ for(const label of ["光","Air"]){
+  const f=fake();
+  f.state.set("products/combined",product("combined",label));
+  const saved=await f.store.saveSwitch({
+   principal,productId:"combined",enabled:true,expectedVersion:0
+  });
+  assert.equal(saved.saved,true);
+  assert.equal(f.state.has("companies/hub/rankingSkuMappings/shared"),false,
+   "standalone 光 or Air must never be auto-mapped to the historic combined SKU");
+ }
+});

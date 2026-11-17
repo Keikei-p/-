@@ -222,3 +222,20 @@ test("publication report distinguishes unknown runtime status from confirmed ena
  assert.equal(liveKnown.safeToEnableNewRanking,false);
  assert(!db.reads.some(s=>/^(records|recordCorrections|revenueGoals|users)\//.test(s)));
 });
+
+test("read-only readiness accepts combined 光/AIR aliases, rejects independent Air",()=>{
+ for(const label of ["SB光・AIR","光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
+  const input=base();
+  input.catalog.products.find(x=>x.id==="air").name=label;
+  const check=assessSkuPublication(input);
+  assert.equal(check.publishedCatalogReady,true,label);
+  assert.equal(check.enabledCategoriesMappedToAllPartners,true,label);
+  assert.equal(check.partnerCompaniesMapped,1,label);
+ }
+ for(const label of ["光","Air"]){
+  const input=base();
+  input.catalog.products.find(x=>x.id==="air").name=label;
+  assert.throws(()=>assessSkuPublication(input),
+   /STOP_SKU_PUBLICATION_READONLY_LEGACY_LIGHT_AIR_MAPPING/);
+ }
+});
