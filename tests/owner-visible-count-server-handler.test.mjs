@@ -275,3 +275,52 @@ test("opt-in atomic snapshot path serves count-only ranking without legacy publi
  });
  assert.equal((await bad(request())).status,503);
 });
+
+test("zero-setup server ranking uses the same count-only result for hub and partner, ignores stale per-SKU settings",async()=>{
+ const f=fake(),before=copy([...f.state]);
+ // The previous Owner settings disabled every product. No UI setting or
+ // mutation should be required to read the already saved count ledger.
+ f.state.get("companies/hub/rankingProductVisibility/shared")
+  .enabledHubProductIds=[];
+ const publication={serverVerified:true,ownerSettingsRead:true,
+  ownerUidVerified:true,productMappingsReviewed:true,revision:2,
+  hubCompanyId:"hub",snapshotReadTime:TIME,
+  enabledHubProductIds:[],partnerOverrides:[]};
+ const run=createStagedOwnerVisibleCountHandler({
+  enabled:true,zeroSetupLink:true,db:f.db,auth:f.auth,
+  FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async({month,context})=>{
+   assert.equal(month,MONTH);
+   return {input:{...countInput(context),snapshotReadTime:TIME},publication};
+  }
+ });
+ for(const [role,expectedOwn] of [["hub",null],["partner",5]]){
+  const response=await run(request(role));
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.equal(body.role,role==="hub"?"hub_owner":"partner_owner");
+  if(role==="hub")assert.deepEqual(body.summary,
+   {own:2,partner:5,total:7,unidentified:0});
+  else assert.equal(body.own.count,expectedOwn);
+  const ranks=role==="hub"?body.productRanking:body.publicRanking.products;
+  assert.equal(ranks[0].count,7);
+  assert(!/revenue|unitPrice|cashback|10000|20000|[¥￥]/.test(JSON.stringify(body)));
+ }
+ assert(!f.ops.some(x=>/write|delete|update|create/.test(x.kind)));
+ assert.equal(f.state.get("companies/hub/rankingProductVisibility/shared")
+  .enabledHubProductIds.length,0);
+ assert.equal(before.length,[...f.state].length);
+});
+test("zero-setup rank returns no data if finance-bound publication snapshot cannot be verified",async()=>{
+ const f=fake();
+ const run=createStagedOwnerVisibleCountHandler({
+  enabled:true,zeroSetupLink:true,db:f.db,auth:f.auth,
+  FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async({context})=>({
+   input:{...countInput(context),snapshotReadTime:TIME},
+   publication:{serverVerified:false,ownerSettingsRead:true,
+    ownerUidVerified:true,snapshotReadTime:TIME}
+  })
+ });
+ assert.equal((await run(request())).status,503);
+});
