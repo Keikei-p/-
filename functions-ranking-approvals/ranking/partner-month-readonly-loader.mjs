@@ -12,7 +12,7 @@
  */
 import {buildPartnerCountRankingSource} from "./partner-workspace-count-source.mjs";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
-import {existingPublicNameApprovalPairVerified}
+import {existingHubOwnerNamePublicationVerified}
  from "./trusted-combined-ranking-context.mjs";
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
@@ -130,21 +130,18 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
       partnerCompany.hubCompanyId!==hubCompanyId)halt();
    verifiedRelation(relation,hubCompanyId,partnerCompanyId);
    let publicNamesVerified=false;
-   if(relation.individualNamesApprovedByHub===true&&
-      relation.individualNamesApprovedByPartner===true&&
-      id(hubCompany.ownerUid)&&id(partnerCompany.ownerUid)){
-    const [hubApprovalSnap,partnerApprovalSnap]=await Promise.all([
-     tx.get(hub.collection("rankingApprovals").doc(partnerCompanyId)),
-     tx.get(partner.collection("rankingApprovals").doc(hubCompanyId))
-    ]);
-    // Approval expiry or malformed optional evidence suppresses names only.
-    // Count/entry/summary snapshot validation remains mandatory above/below.
+   if(relation.individualNamesApprovedByHub===true&&id(hubCompany.ownerUid)){
+    const hubApprovalSnap=await tx.get(
+     hub.collection("rankingApprovals").doc(partnerCompanyId)
+    );
+    // A hub Owner's optional display decision is verified inside the same
+    // read-only count transaction; the partner's signature is not a gate.
+    // Missing or inconsistent Owner evidence hides names, never count totals.
     try{
-     requireSameTime(hubApprovalSnap,key);requireSameTime(partnerApprovalSnap,key);
-     publicNamesVerified=existingPublicNameApprovalPairVerified({
+     requireSameTime(hubApprovalSnap,key);
+     publicNamesVerified=existingHubOwnerNamePublicationVerified({
       relation,hubCompany,partnerCompany,hubCompanyId,partnerCompanyId,
-      hubApproval:hubApprovalSnap.exists?doc(hubApprovalSnap):null,
-      partnerApproval:partnerApprovalSnap.exists?doc(partnerApprovalSnap):null
+      hubApproval:hubApprovalSnap.exists?doc(hubApprovalSnap):null
      });
     }catch{publicNamesVerified=false;}
    }
