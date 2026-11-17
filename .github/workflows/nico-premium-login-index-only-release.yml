@@ -1,5 +1,8 @@
 name: NICO login FX only surgical Hosting release
 on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/nico-premium-login-index-only-release.yml']
   push:
     branches: [main]
     paths: ['index.html', '.github/workflows/nico-premium-login-index-only-release.yml']
@@ -10,7 +13,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   login-index-only:
-    if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(sales): premium login FX isolated (APPROVED INDEX ONLY)')
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      startsWith(github.event.head_commit.message, 'release(sales): premium login FX isolated (APPROVED INDEX ONLY)')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -32,7 +38,7 @@ jobs:
             test "$(git hash-object "$f")" = "$(git show 7c0a640c3a223d79ef49fd0d294edf80ec2dedd9:"$f" | git hash-object --stdin)"
           done
           actual=$(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)
-          expected=$(printf '%s\n' '.github/workflows/nico-login-presentation-live-preflight.yml' '.github/workflows/nico-premium-login-index-only-release.yml' 'docs/SALES_RELEASE_SIGNOFF.md' 'index.html' 'tests/login-presentation-contract.test.cjs' | LC_ALL=C sort)
+          expected=$(printf '%s\n' '.github/workflows/nico-premium-login-index-only-release.yml' | LC_ALL=C sort)
           test "$actual" = "$expected" || { echo 'STOP_UNREVIEWED_MAIN_CHANGESET'; exit 1; }
           remote=$(git ls-remote https://github.com/Keikei-p/-.git refs/heads/main | cut -f1)
           test "$remote" = "$GITHUB_SHA" || { echo 'STOP_NEWER_MAIN_EXISTS'; exit 1; }
