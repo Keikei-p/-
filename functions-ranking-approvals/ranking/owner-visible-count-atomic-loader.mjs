@@ -18,7 +18,7 @@ const sameSet=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&
  a.length===b.length&&new Set(a).size===a.length&&
  a.every(x=>id(x)&&b.includes(x));
 export function createStagedAtomicOwnerCountLoader({
- db,loadCountsInTransaction,loadPublicationInTransaction
+ db,loadCountsInTransaction,loadPublicationInTransaction,zeroSetupLink=false
 }={}){
  if(!db||typeof db.runTransaction!=="function"||
     typeof loadCountsInTransaction!=="function"||
@@ -57,9 +57,14 @@ export function createStagedAtomicOwnerCountLoader({
        input.period.asOf.slice(0,7)!==month:
        ![month,secondMonth].includes(input.period.asOf.slice(0,7)))||
       publication.serverVerified!==true||
-      publication.ownerSettingsRead!==true||
+      (zeroSetupLink===true?
+       (publication.zeroSetupVerified!==true||
+        publication.ownerSettingsRead!==false||
+        publication.productMappingsReviewed!==false):
+       (publication.zeroSetupVerified===true||
+        publication.ownerSettingsRead!==true||
+        publication.productMappingsReviewed!==true))||
       publication.ownerUidVerified!==true||
-      publication.productMappingsReviewed!==true||
       publication.hubCompanyId!==context.hubCompanyId||
       !Number.isSafeInteger(publication.revision)||publication.revision<1)
     fail();
