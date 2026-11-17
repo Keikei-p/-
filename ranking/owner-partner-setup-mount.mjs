@@ -48,7 +48,10 @@ export function mountOwnerPartnerSetup({
    const date=new Intl.DateTimeFormat("sv-SE",{
     timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"
    }).format(new Date());
-   const answer=(await workspace({date})).data;
+   // Read the registered partner companies even while general partner
+   // workspace and count publication are disabled. The server restricts this
+   // request to an authenticated internal Owner and returns company IDs only.
+   const answer=(await workspace({date,ownerSetupCompaniesOnly:true})).data;
    if(!answer||!["hub","owner","leader","member"].includes(answer.role))fail();
    if(answer.role==="hub"){
     if(!Array.isArray(answer.registeredCompanies)||
