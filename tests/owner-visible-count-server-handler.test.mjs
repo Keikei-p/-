@@ -282,10 +282,9 @@ test("zero-setup server ranking uses the same count-only result for hub and part
  // mutation should be required to read the already saved count ledger.
  f.state.get("companies/hub/rankingProductVisibility/shared")
   .enabledHubProductIds=[];
- const publication={serverVerified:true,ownerSettingsRead:true,
-  ownerUidVerified:true,productMappingsReviewed:true,revision:2,
-  hubCompanyId:"hub",snapshotReadTime:TIME,
-  enabledHubProductIds:[],partnerOverrides:[]};
+ const publication={serverVerified:true,zeroSetupVerified:true,
+  ownerSettingsRead:false,ownerUidVerified:true,productMappingsReviewed:false,
+  revision:1,hubCompanyId:"hub",snapshotReadTime:TIME};
  const run=createStagedOwnerVisibleCountHandler({
   enabled:true,zeroSetupLink:true,db:f.db,auth:f.auth,
   FieldValue:f.FieldValue,
@@ -318,9 +317,37 @@ test("zero-setup rank returns no data if finance-bound publication snapshot cann
   FieldValue:f.FieldValue,
   loadAtomicVerifiedCountSnapshot:async({context})=>({
    input:{...countInput(context),snapshotReadTime:TIME},
-   publication:{serverVerified:false,ownerSettingsRead:true,
+   publication:{serverVerified:false,zeroSetupVerified:false,
+    ownerSettingsRead:false,productMappingsReviewed:false,
     ownerUidVerified:true,snapshotReadTime:TIME}
   })
  });
  assert.equal((await run(request())).status,503);
+});
+
+test("zero-setup response requires a genuine no-settings publication witness, not a fake old setting",async()=>{
+ const f=fake();
+ for(const override of [
+  {zeroSetupVerified:false},
+  {ownerSettingsRead:true},
+  {productMappingsReviewed:true},
+  {ownerUidVerified:false},
+  {snapshotReadTime:"2026-11-08T13:00:00Z"}
+ ]){
+  const publication={
+   serverVerified:true,zeroSetupVerified:true,ownerSettingsRead:false,
+   productMappingsReviewed:false,ownerUidVerified:true,
+   revision:1,hubCompanyId:"hub",snapshotReadTime:TIME,...override
+  };
+  const run=createStagedOwnerVisibleCountHandler({
+   enabled:true,zeroSetupLink:true,db:f.db,auth:f.auth,
+   FieldValue:f.FieldValue,
+   loadAtomicVerifiedCountSnapshot:async({context})=>({
+    input:{...countInput(context),snapshotReadTime:TIME},
+    publication
+   })
+  });
+  assert.equal((await run(request())).status,503,
+   "invalid or stale zero-settings witness never emits counts");
+ }
 });
