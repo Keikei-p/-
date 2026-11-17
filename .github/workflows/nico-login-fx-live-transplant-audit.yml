@@ -33,6 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/hosting/audit-live-login-fx-transplant.mjs
+          node --check tools/hosting/release-live-login-fx-transplant.mjs
           node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs
       - name: Compare live index visual slots without reading credentials or changing Hosting
         shell: bash
