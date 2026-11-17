@@ -8,7 +8,7 @@ import {readFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import {fileURLToPath} from "node:url";
 import path from "node:path";
-import {SOURCES,uploadSha} from "./owner-setup-additive-guard.mjs";
+import {SOURCES,uploadSha,uploadBytes} from "./owner-setup-additive-guard.mjs";
 import {OWNER_ONLY_REPLACEMENTS} from "./owner-only-setup-replacement-guard.mjs";
 import {planOwnerEntryOneFile} from "./owner-entry-one-file-guard.mjs";
 import {readPublishedOwnerSetupSources} from "../production/inspect-owner-setup-release-chain-readonly.mjs";
@@ -95,7 +95,7 @@ export async function releaseOwnerEntryOneFile({request,historicalSources,candid
   if(typeof url!=="string"||!url.startsWith(prefix))
    stop("UPLOAD_ORIGIN_UNVERIFIED");
   await request("POST",url.replace(/\/$/,"")+"/"+plan.newHtmlHash,
-   null,"application/octet-stream",candidateSources["owner-partner-setup.html"]);
+   null,"application/octet-stream",uploadBytes(candidateSources["owner-partner-setup.html"]));
  }
  const finalized=await request("PATCH",API+"/"+created.name+"?update_mask=status",{
   status:"FINALIZED"
@@ -187,7 +187,7 @@ async function main(){
   const init={method,headers,redirect:"error",cache:"no-store"};
   if(body!==null||raw!==null){
    headers["Content-Type"]=type;
-   init.body=raw!==null?Buffer.from(raw,"utf8"):JSON.stringify(body);
+   init.body=raw!==null?raw:JSON.stringify(body);
   }
   const resp=await fetch(target,init);
   if(!resp.ok)stop("HOSTING_HTTP_"+resp.status);
