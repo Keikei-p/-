@@ -273,7 +273,7 @@ async function main(){
   readFileSync(path.join(sourceRoot,"finance-boundary-check.html"),"utf8"),
   currentSources);
  const ownerApiStatus=assessOwnerPublicationFunctions(fn.functions??[]);
- const published=await inspectSkuPublication(getFirestore(),ownerApiStatus);
+ const published=await inspectSkuPublication(getFirestore(),{ownerApiStatus});
  const report=readinessBoard({functions:f,hosting:h,publication:published});
  console.log("NICO_OWNER_SETUP_CHAIN_READINESS "+JSON.stringify(report));
  for(const b of report.blockingReasons)console.log("BLOCK_"+b);
