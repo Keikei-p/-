@@ -22,6 +22,7 @@ import {mergeVerifiedTwoMonthInputs}
  from "./verified-two-month-count-input.mjs";
 import {linkAllRegisteredCountsWithoutSetup}
  from "./zero-setup-count-linker.mjs";
+const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -160,8 +161,8 @@ export function composeCanonicalMonthlyRankingInput({
   const target=hubProducts.get(b.hubProductId);
   // Legacy combined SB光・AIR may ONLY map to a distinct legacy-combined
   // hub SKU. Never silently split or claim it is 光 or Air.
-  if(/旧合算|未分類|SB光・AIR/.test(originalProduct.name)&&
-     !/旧合算|未分類|SB光・AIR/.test(target.name))STOP();
+  if(LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC"))&&
+     !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
   groups.push({
    companyId:b.companyId,productId:b.productId,
    groupId:b.hubProductId,groupName:target.name

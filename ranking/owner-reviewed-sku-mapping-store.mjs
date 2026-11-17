@@ -9,6 +9,7 @@
  */
 import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
 
+const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９,.，]*\s*(?:円|万円))/i;
 const SKU=new Set(PARTNER_RANK_SKUS.map(p=>p.id));
@@ -120,7 +121,7 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
     // The old combined SB光・AIR value may ONLY map to a distinct combined
     // hub product, NEVER infer any separate Hikari or Air counts.
     if(partnerProductId==="partnerSku05"&&
-       !/SB光・AIR|旧合算|未分類/.test(name))stop();
+       !LEGACY_COMBINED_LIGHT_AIR.test(name.normalize("NFKC")))stop();
    }
    if(prevId===hubProductId)return {
     saved:false,version:previous.version,partnerCompanyId,
