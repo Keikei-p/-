@@ -83,6 +83,7 @@ jobs:
           import {readFileSync} from 'node:fs';
           import {createRequire} from 'node:module';
           import {planOwnerOnlySetupReplacement,OWNER_ONLY_REPLACEMENTS} from './tools/hosting/owner-only-setup-replacement-guard.mjs';
+          import {SOURCES,uploadSha} from './tools/hosting/owner-setup-additive-guard.mjs';
           import {readPublishedOwnerSetupSources} from './tools/production/inspect-owner-setup-release-chain-readonly.mjs';
           import {inspectOwnerGetPostDeploy} from './tools/production/inspect-owner-get-postdeploy-readonly.mjs';
           const require=createRequire(new URL('./functions/package.json',import.meta.url));
@@ -126,9 +127,25 @@ jobs:
           if(v.fileCount!=null&&Number(v.fileCount)!==files.length)
             throw Error('STOP_OWNER_FOUR_LIVE_FILECOUNT_DRIFT');
           const root=Object.fromEntries(Object.keys(OWNER_ONLY_REPLACEMENTS).map(x=>[x,readFileSync(x,'utf8')]));
+          const historical=readPublishedOwnerSetupSources();
+          // Diagnostic reports only approved public path names, never UIDs, tokens, values or document content.
+          // A difference MUST still fail closed; do not relax the original protection.
+          const liveMap=new Map(files.map(x=>[x.path,x.hash]));
+          const driftPaths=Object.keys(SOURCES).filter(path=>
+            liveMap.get('/'+path)!==uploadSha(historical[path]));
+          const alreadyCurrentPaths=Object.keys(OWNER_ONLY_REPLACEMENTS).filter(path=>
+            liveMap.get('/'+path)===uploadSha(root[path]));
+          console.log('OWNER_FOUR_PUBLIC_ASSET_PARITY '+JSON.stringify({
+            historicalSourceCount:Object.keys(SOURCES).length,
+            historicalSourcesMatching:Object.keys(SOURCES).length-driftPaths.length,
+            historicalDriftPaths:driftPaths,
+            ownerCandidatePathsAlreadyCurrent:alreadyCurrentPaths,
+            liveAssetCount:files.length,readOnly:true,documentWrites:0
+          }));
+          if(driftPaths.length)throw Error('STOP_OWNER_FOUR_LIVE_SOURCE_DRIFT');
           const result=planOwnerOnlySetupReplacement({
             liveFiles:files,
-            historicalSources:readPublishedOwnerSetupSources(),
+            historicalSources:historical,
             candidateSources:root
           });
           if(result.changedPaths.length!==4||!result.allOtherAssetsPreserved||
