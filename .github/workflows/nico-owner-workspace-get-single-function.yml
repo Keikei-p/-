@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' }}
+    if: ${{ github.event_name != 'pull_request' || github.head_ref == 'fix/owner-workspace-get-readonly-20261117' || github.head_ref == 'release/owner-get-live-inventory-once-20261117' || github.head_ref == 'release/owner-get-live-inventory-retry-20261117' || github.head_ref == 'release/owner-get-env-key-audit-20261117' || github.head_ref == 'fix/owner-get-eventarc-runtime-20261117' || github.head_ref == 'audit/owner-get-strict-preflight-20261117' }}
     runs-on: ubuntu-latest
     timeout-minutes: 13
     env:
@@ -89,7 +89,7 @@ jobs:
   manually-inspect-or-release:
     needs: offline
     if: >-
-      ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == 'aecca88526f51c5f47d0bdcc4d06bc8be5dc060c' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): verify unknown Owner GET env keys read only')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == '81943e778eed430fee46573d912de92a6b7f1a42' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): exact Owner GET predeployment inventory')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -107,9 +107,9 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
-            test "$(git rev-parse HEAD^1)" = aecca88526f51c5f47d0bdcc4d06bc8be5dc060c
-            test "$(git show -s --format=%s HEAD)" = 'audit(sales): verify unknown Owner GET env keys read only'
-            test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = "$(printf '%s\n' '.github/workflows/nico-owner-workspace-get-single-function.yml' 'tests/owner-get-single-function-guard.test.mjs' 'tools/production/owner-get-single-function-guard.mjs')"
+            test "$(git rev-parse HEAD^1)" = 81943e778eed430fee46573d912de92a6b7f1a42
+            test "$(git show -s --format=%s HEAD)" = 'audit(sales): exact Owner GET predeployment inventory'
+            test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = '.github/workflows/nico-owner-workspace-get-single-function.yml'
           else
             test "$GITHUB_SHA" = "${{ inputs.reviewed_main_sha }}"
           fi
@@ -144,8 +144,17 @@ jobs:
           const names=inspectOwnerGetEnvironmentKeyNames(payload.functions);
           // Names ONLY, not environment values, Auth, UID, finance or secrets.
           console.log('OWNER_GET_UNKNOWN_ENV_KEYS '+JSON.stringify(names));
+          // Always run the original STRICT release preflight on live metadata,
+          // including name allowlist, active target, and all disabled risky
+          // publication/ranking/correction flags. No secrets are logged.
+          const before=inspectOwnerGetMetadata(payload.functions);
+          if(names.unrecognizedKeyCount!==0||before.safeToDeploy!==false)
+           throw Error('STOP_OWNER_GET_RELEASE_PREFLIGHT_NOT_PROVEN');
+          console.log('OWNER_GET_STRICT_LIVE_PREFLIGHT_PASS '+
+           JSON.stringify({count:before.count,targetActive:true,
+            reviewedVariablesOnly:true,highRiskFlagsDisabled:true,
+            releaseApproved:false,productionWrites:0}));
           if(process.env.RELEASE_MODE==='release'){
-           const before=inspectOwnerGetMetadata(payload.functions);
            writeFileSync(process.env.RUNNER_TEMP+'/owner-get-before.json',
             JSON.stringify(payload.functions),{mode:0o600,flag:'wx'});
            const file='functions-partner-workspace/.env.sales-management-cc116';
