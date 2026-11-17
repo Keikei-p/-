@@ -1,0 +1,54 @@
+name: NICO existing partner count ranking fallback & date render (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'partner-workspace.html'
+      - 'tests/partner-inline-joint-staging-wiring.test.mjs'
+      - 'tests/partner-inline-joint-original-preservation.test.mjs'
+      - '.github/workflows/nico-partner-count-ranking-fallback-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-workspace.html'
+      - 'tests/partner-inline-joint-staging-wiring.test.mjs'
+      - 'tests/partner-inline-joint-original-preservation.test.mjs'
+      - '.github/workflows/nico-partner-count-ranking-fallback-regression.yml'
+permissions:
+  contents: read
+jobs:
+  partner-count-display-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prove no finance, original sales functions or Firestore rules edited
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = f6d4815ecb09d4db0ba34144e6705926bdc7503c
+          grep -Fq 'const NICO_PARTNER_JOINT_INLINE_CARDS_RELEASED=false;' partner-workspace.html
+          grep -Fq 'days[0]+" 〜 "+days.at(-1),' partner-workspace.html
+          grep -Fq 'if(summary)renderCountOnlyDashboard(summary,dates);' partner-workspace.html
+          node --check sales-archive.js
+          echo 'RANK_FALLBACK_NO_DEPLOY_NO_PRODUCTION_ORIGINAL_CHANGE'
+      - name: Exact partner date render, fallback, login and ledger regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-inline-joint-staging-wiring.test.mjs \
+            tests/partner-inline-joint-original-preservation.test.mjs \
+            tests/partner-original-team-card-parity.test.mjs \
+            tests/partner-workspace.test.cjs
+          echo 'PARTNER_RANKING_RENDER_AND_FALLBACK_TESTS_PASSED'
