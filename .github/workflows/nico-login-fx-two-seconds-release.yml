@@ -1,0 +1,142 @@
+name: NICO two-second login FX and safe-loading index release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/login-fx-visible-on-iphone.test.cjs'
+      - 'tests/login-presentation-contract.test.cjs'
+      - '.github/workflows/nico-login-fx-two-seconds-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '.github/workflows/nico-login-fx-two-seconds-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate exact 2s source and non-financial login display
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object index.html)" = 18ba11afd3735faee67fc0e5a90b6643988f54a1
+          node --test tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/internal-owner-finance-visibility.test.cjs tests/partner-invite-mobile-layout.test.cjs tests/sales-regressions.cjs tests/surgical-existing-index.test.mjs
+          node --check tools/hosting/surgical-existing-index.mjs
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const s=fs.readFileSync('index.html','utf8');
+          const at=s.indexOf('<script id="nfLoginFXController">');
+          const end=s.indexOf('</script>',at);
+          if(at<0||end<at)throw Error('STOP_LOGIN_VISUAL_SCRIPT_MISSING');
+          fs.writeFileSync('/tmp/nico-login-fx2s.js',s.slice(s.indexOf('>',at)+1,end));
+          NODE
+          node --check /tmp/nico-login-fx2s.js
+          echo 'LOGIN_TWO_SECONDS_LOADING_OFFLINE_PASS_NO_DEPLOY'
+  publish:
+    needs: review
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'Keikei-p/-' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message == 'release(sales): 2s login FX and safe loading display' &&
+      needs.review.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Refuse concurrent main changes, unreviewed index or any other files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object index.html)" = 18ba11afd3735faee67fc0e5a90b6643988f54a1
+          git show HEAD^1:index.html > "$RUNNER_TEMP/previous-index.html"
+          test "$(git hash-object "$RUNNER_TEMP/previous-index.html")" = ecdf523979e9adce6275b6d3f1e6383f14dc1f70
+          git diff --name-only HEAD^1 HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+          printf '%s\n' '.github/workflows/nico-login-fx-two-seconds-release.yml' 'docs/SALES_RELEASE_SIGNOFF.md' 'index.html' 'tests/login-fx-visible-on-iphone.test.cjs' 'tests/login-presentation-contract.test.cjs' | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          echo 'LOGIN_2S_EXACT_MAIN_REVIEWED_SCOPE_PASS'
+      - name: Confirm live HTML matches reviewed old bytes or is already identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 25 "https://nico-factory.web.app/?login2s_preflight=$GITHUB_SHA" > "$RUNNER_TEMP/live-before.html"
+          if cmp -s "$RUNNER_TEMP/live-before.html" index.html; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'LOGIN_2S_ALREADY_LIVE_SKIP_WRITE'
+          elif cmp -s "$RUNNER_TEMP/live-before.html" "$RUNNER_TEMP/previous-index.html"; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'LOGIN_2S_EXACT_LIVE_PREVIOUS_BYTES_PASS'
+          else
+            echo 'STOP_LOGIN_2S_LIVE_DRIFT_NO_WRITE'
+            exit 1
+          fi
+      - name: Configure protected identity for Firebase Hosting only
+        if: env.ALREADY_LIVE == 'false'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          node -e "const fs=require('node:fs');if(JSON.parse(fs.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-login2s-hosting.json"
+          chmod 600 "$RUNNER_TEMP/nico-login2s-hosting.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login2s-hosting.json" >> "$GITHUB_ENV"
+      - name: Install existing Hosting REST dependencies only
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Verify unchanged full live Hosting manifest
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Publish one reviewed index only; preserve every other existing asset
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Validate public byte parity and original partner routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=false
+          for attempt in $(seq 1 12); do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/?login2s_after=$GITHUB_SHA-$attempt" > "$RUNNER_TEMP/live-after.html"
+            if cmp -s "$RUNNER_TEMP/live-after.html" index.html; then ok=true; break; fi
+            sleep 5
+          done
+          test "$ok" = true || { echo 'STOP_LOGIN_2S_POST_RELEASE_PARITY'; exit 1; }
+          for text in 'id="nfLoginFXController"' "flash('boot',2000)" "flash('success',2000)" 'id="nfFXLoadingHelp"' 'id="nfFXRetry"' 'id="partnerInviteAtMain"'; do
+            grep -Fq "$text" "$RUNNER_TEMP/live-after.html"
+          done
+          for route in /partner-invite.html /partner-counts.html /partner-workspace.html; do
+            test "$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = 200
+          done
+          echo 'LOGIN_2S_PUBLIC_HTML_BYTES_PASS_OTHER_ASSETS_PRESERVED'
+      - name: Delete temporary runner credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-login2s-hosting.json"
