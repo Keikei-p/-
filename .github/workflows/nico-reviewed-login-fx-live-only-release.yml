@@ -76,7 +76,7 @@ jobs:
           NODE
           node --check tools/hosting/audit-live-login-fx-transplant.mjs
           node --check tools/hosting/release-live-login-fx-transplant.mjs
-          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs
+          node --test tests/login-fx-passkey-stability.test.cjs tests/login-fx-visible-on-iphone.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-no-finance-or-count-mutation.test.mjs tests/internal-owner-finance-visibility.test.cjs tests/sales-regressions.cjs tests/internal-owner-finance-visibility.test.cjs tests/surgical-existing-index.test.mjs tests/partner-invite-mobile-layout.test.cjs
           node tools/hosting/audit-live-login-fx-transplant.mjs --audit
           echo 'LOGIN_FX_RELEASE_SCOPE_APPROVAL_AND_LIVE_READ_ONLY_PRECHECK_PASS'
       - name: Prepare protected Hosting service account only after release gates
