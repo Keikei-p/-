@@ -78,64 +78,62 @@ test('every page load shows the NF startup screen, not just first session', () =
     assert.equal(h.timers.at(-1).delay, 2000);
   }
 });
-test('valid login button touch immediately shows login-in-progress; blank fields do not', () => {
+test('passkey, autofill and login button do not restart the 2-second startup overlay', () => {
   const h = harness();
-  assert.equal(typeof h.handler.click, 'function');
-  h.timers.at(-1).cb();
-  h.handler.click();
+  assert.equal(h.handler.click, undefined, 'visual FX must not listen to credential-button presses');
+  h.elements.email.value = 'example@invalid.test';
+  h.elements.password.value = 'fake-password';
+  assert.equal(h.elements.nfLoginFX.dataset.phase, 'boot');
+  h.timers[0].cb();
   assert.equal(h.on.has('on'), false);
-  h.elements.email.value = 'example@invalid.test';
-  h.elements.password.value = 'fake-password';
-  h.handler.click();
-  assert.equal(h.on.has('on'), true);
-  assert.equal(h.elements.nfLoginFX.dataset.phase, 'pending');
-  assert.equal(h.elements.nfFXName.textContent, 'ログイン認証中');
-  assert.equal(h.timers.at(-1).delay, 1600);
+  assert.notEqual(h.elements.nfLoginFX.dataset.phase, 'pending');
 });
-test('failed login hides pending effect without incorrectly displaying success', () => {
+test('failed login hides the opening effect without incorrectly displaying success', () => {
   const h = harness();
   h.elements.email.value = 'example@invalid.test';
   h.elements.password.value = 'fake-password';
-  h.handler.click();
   h.fail('認証エラー');
   assert.equal(h.on.has('on'), false);
-  assert.equal(h.elements.nfLoginFX.dataset.phase, 'pending');
+  assert.notEqual(h.elements.nfLoginFX.dataset.phase, 'success');
 });
-test('success only after real app screen becomes visible; one success per login', () => {
+test('success only follows real dashboard display, even if Auth loads during the startup FX', () => {
   const h = harness();
   h.elements.authScreen.style.display = 'none';
   h.update(); // verification screen: not a successful login
   assert.notEqual(h.elements.nfLoginFX.dataset.phase, 'success');
   h.elements.appScreen.style.display = 'block';
   h.update();
+  assert.equal(h.elements.nfLoginFX.dataset.phase, 'boot', 'keep opening fixed for full 2s');
+  h.timers[0].cb();
   assert.equal(h.elements.nfLoginFX.dataset.phase, 'success');
   assert.equal(h.elements.nfFXName.textContent, 'ログイン成功');
   assert.equal(h.timers.at(-1).delay, 2000);
   const before = h.timers.length;
   h.update();
-  assert.equal(h.timers.length, before);
+  assert.equal(h.timers.length, before, 'screen mutations never duplicate success');
   h.elements.authScreen.style.display = 'block';
   h.elements.appScreen.style.display = 'none';
   h.update();
   h.elements.authScreen.style.display = 'none';
   h.elements.appScreen.style.display = 'block';
   h.update();
-  assert.equal(h.timers.length, before + 1);
+  assert.equal(h.timers.length, before + 1, 'a separate new login can animate once');
 });
-test('registration does not show login-in-progress', () => {
+test('registration never shows a synthetic login-in-progress overlay', () => {
   const h = harness();
-  h.timers.at(-1).cb();
+  h.timers[0].cb();
   h.elements.email.value = 'example@invalid.test';
   h.elements.password.value = 'fake-password';
   h.elements.authButton.textContent = 'アカウントを作成';
-  h.handler.click();
+  assert.equal(h.handler.click, undefined);
   assert.equal(h.on.has('on'), false);
 });
-test('reduced-motion CSS disables spinning but retains static visible status', () => {
+test('reduced-motion CSS disables rotation while retaining static status', () => {
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
-  assert.match(css, /#nfLoginFX \.nf-ring\{animation:none!important\}/);
+  assert.match(css, /#nfLoginFX \.nf-ring,#nfLoginFX \.nf-ring:before/);
+  assert.match(css, /#nfLoginFX \.nf-fx-symbol,#nfLoginFX \.nf-fx-center:before\{animation:none!important\}/);
   assert.match(controller, /flash\('boot',2000\)/);
-  assert.doesNotMatch(controller, /if\(reduced\)return|sessionStorage\.getItem/);
+  assert.doesNotMatch(controller, /flash\('pending'|if\(reduced\)return|sessionStorage\.getItem/);
   assert.match(css, /#nfLoginFX\.on\{visibility:visible;opacity:1\}/);
 });
 test('presentation controller contains no Firebase/network/data mutations', () => {
