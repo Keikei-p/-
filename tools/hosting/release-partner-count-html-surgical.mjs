@@ -90,6 +90,17 @@ async function execute({request,oldText,newText,indexText,release}={}){
     (currentVersion!=="sites/nico-factory/versions/5858ba2ccd51ef74"||
      originalFiles.length!==33))
   stop("UNKNOWN_VERSION_WITHOUT_FILECOUNT");
+ const liveAsset=originalFiles.find(row=>row?.path===ASSET);
+ if(process.env.NICO_PARTNER_HASH_DIAGNOSTIC_ONLY==="true"){
+  if(!liveAsset||typeof liveAsset.hash!=="string"||
+     !/^[0-9a-f]{64}$/i.test(liveAsset.hash))
+   stop("LIVE_PARTNER_HASH_INVALID");
+  console.log("PARTNER_COUNT_HTML_READONLY_CURRENT "+JSON.stringify({
+   version:currentVersion,path:ASSET,
+   sha256:liveAsset.hash.toLowerCase(),fileCount:originalFiles.length,
+   writeScope:"NONE"
+  }));
+ }
  const planned=planSinglePartnerCountHtmlRelease({files:originalFiles,
   oldHashes:oldText.map(uploadSha),newHash:uploadSha(newText),
   indexHash:uploadSha(indexText)});
