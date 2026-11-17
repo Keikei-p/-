@@ -69,9 +69,9 @@ for(const path of paths){
   "No code may change beyond the exact reviewed combined-only matcher: "+path);
 }
 const namedTests=[
+ /read-only readiness accepts combined 光\/AIR aliases/,
  /exact 光\/AIR aliases stay one combined SKU/,
- /Owner can explicitly review exact 光\/AIR variants/,
- /read-only readiness accepts combined 光\/AIR aliases/
+ /Owner can explicitly review exact 光\/AIR variants/
 ];
 for(let i=0;i<tests.length;i++){
  const path=tests[i],old=execFileSync("git",["show","origin/main:"+path],{encoding:"utf8"});
