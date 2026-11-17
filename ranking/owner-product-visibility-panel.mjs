@@ -83,6 +83,7 @@ export function createOwnerProductVisibilityPanel({
      if(closed||busy||auth.currentUser!==identity)return;
      busy=true;checkbox.disabled=true;
      flag.textContent="保存中";
+     let saveFailed=false;
      try{
       const authToken=await identity.getIdToken();
       if(closed||auth.currentUser!==identity)return;
@@ -95,10 +96,15 @@ export function createOwnerProductVisibilityPanel({
          result.enabled!==checkbox.checked)fail();
       // Never show success before server confirms. Reload from server.
      }catch{
-      clear();status("保存を確認できませんでした。再読み込みして確認してください。");
+      // Do not erase a failed-save warning while reloading canonical state.
+      saveFailed=true;
      }finally{
       busy=false;
-      if(!closed&&auth.currentUser===identity)await refresh();
+      if(!closed&&auth.currentUser===identity){
+       const fresh=await refresh();
+       if(saveFailed&&fresh&&!closed&&auth.currentUser===identity)
+        status("保存を確認できませんでした。表示はサーバーの最新状態です。");
+      }
      }
     });
     page.appendChild(label);

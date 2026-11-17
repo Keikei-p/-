@@ -88,6 +88,10 @@ test("failed save refreshes server state; never confirms unsaved toggle",async()
  await check.fire("change");
  assert.equal(getCheckbox(root).checked,false);
  assert.equal(ctrl.getVersion(),1);
+ assert.match(text(root),/保存を確認できません/,
+  "failed-save message must survive the fresh server read");
+ assert.equal(nodes(root).filter(x=>x.tagName==="input").length,2,
+  "failed save must not leave the existing Owner controls blank");
 });
 
 test("company-specific ON/OFF uses server override, not global settings writes",async()=>{
