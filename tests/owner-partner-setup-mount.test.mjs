@@ -32,7 +32,11 @@ function fixture(role="hub"){
  let observer=()=>{};
  const httpsCallable=(_fn,name)=>async payload=>{
   calls.push({name,payload});
-  if(name==="getPartnerWorkspace")return {data:status};
+  if(name==="getPartnerWorkspace"){
+   if(role==="partnerDenied")throw Object.assign(new Error("server denied"),
+    {code:"functions/permission-denied"});
+   return {data:status};
+  }
   if(name==="getOwnerProductVisibility")return {data:products};
   if(name==="getOwnerReviewedSkuMapping")return {data:mapping};
   throw Error("Unexpected callable: "+name);
@@ -68,6 +72,16 @@ test("partner owner is informed hub Owner manages ON/OFF and cannot view hub SKU
  assert(!f.calls.some(x=>x.name==="getOwnerProductVisibility"||
   x.name==="getOwnerReviewedSkuMapping"));
  controller.destroy();
+});
+test("real server Owner-only denial gives partner guidance and never opens SKU controls",async()=>{
+ const f=fixture("partnerDenied"),ctl=f.mount();
+ assert.equal(await ctl.refresh(),false);
+ assert.match(content(f.root),/自社Owner専用/);
+ assert.match(content(f.root),/追加承認は不要/);
+ assert.doesNotMatch(content(f.root),/連携状況を確認できません/);
+ assert.deepEqual(f.calls.map(x=>x.name),["getPartnerWorkspace"]);
+ assert.equal(f.calls[0].payload.ownerSetupCompaniesOnly,true);
+ ctl.destroy();
 });
 test("signed-out user has no server reads, no cached owner details and auth is reversible",async()=>{
  const f=fixture(),controller=f.mount();f.auth.currentUser=null;
