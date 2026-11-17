@@ -92,7 +92,14 @@ test("REAL isolated Firestore emulator: optional name approvals stay Admin-only 
    await assertFails(getDocsFromServer(collection(browser,
     "companies",hub,"rankingApprovals")));
   }
+  // Partner-side approval is legacy display metadata, not a publication gate.
   await db.doc(partnerConsent).update({active:false});
+  const partnerDeclined=await fresh({uid:partnerOwner,
+   email:(partnerOwner+"@example.test").toLowerCase(),emailVerified:true});
+  assert.deepEqual(partnerDeclined.approvedCompanyIds,[hub,partner]);
+  assert.deepEqual(partnerDeclined.publicNameCompanyIds,[hub,partner]);
+  // Only the managing hub Owner can revoke cross-company name publication.
+  await db.doc(hubConsent).update({active:false});
   const namesRevoked=await fresh({uid:partnerOwner,
    email:(partnerOwner+"@example.test").toLowerCase(),emailVerified:true});
   assert.deepEqual(namesRevoked.approvedCompanyIds,[hub,partner]);
@@ -100,7 +107,7 @@ test("REAL isolated Firestore emulator: optional name approvals stay Admin-only 
   await db.doc("partnerRelations/"+partner).update({countSharingApproved:false});
   await assert.rejects(fresh({uid:partnerOwner,
    email:(partnerOwner+"@example.test").toLowerCase(),emailVerified:true}),/UNVERIFIED/);
-  assert.equal((await db.doc(hubConsent).get()).data().active,true);
+  assert.equal((await db.doc(hubConsent).get()).data().active,false);
  }finally{
   await env.cleanup();
   await deleteApp(app);
