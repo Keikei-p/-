@@ -36,6 +36,7 @@ on:
       - 'tests/verified-dual-count-dashboards.test.mjs'
       - 'tests/verified-dual-count-live-ledger-emulator.test.mjs'
       - 'scripts/ci/review-approved-partner-count-rank.cjs'
+      - 'scripts/ci/review-current-main-partner-count-rank.cjs'
       - '.github/workflows/nico-verified-dual-count-e2e.yml'
   push:
     branches: [main]
@@ -126,10 +127,36 @@ jobs:
           # Separate, precisely source-pinned PR/main NO-DEPLOY ranking review.
           # Historical production release and workflow_dispatch paths below
           # remain pinned to their prior reviewed artifacts.
+          # Current main has an approved Owner-only GET source, not the old
+          # 2026-11-10 Function hash. Preserve the historical reviewer for its
+          # original PR; run a separate, exact source-pinned NO-DEPLOY suite.
           if { [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
-               [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; } ||
+               [ "${GITHUB_HEAD_REF:-}" = "fix/main-count-rank-review-current-main-20261117" ]; } ||
              { [ "$GITHUB_EVENT_NAME" = "push" ] &&
                [ "$GITHUB_REF" = "refs/heads/main" ]; }; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              node - <<'NODE'
+          const e=JSON.parse(require('node:fs').readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+          if(e.pull_request?.head.repo.full_name!=='Keikei-p/-'||
+             e.pull_request?.base.repo.full_name!=='Keikei-p/-')
+            throw Error('STOP_CURRENT_MAIN_REVIEW_UNTRUSTED_PR');
+          const got=require('node:child_process').execFileSync('git',[
+            'diff','--name-only','origin/main...HEAD'],{encoding:'utf8'}).trim().split('\n').sort();
+          const expected=[
+            '.github/workflows/nico-verified-dual-count-e2e.yml',
+            'scripts/ci/review-current-main-partner-count-rank.cjs'
+          ].sort();
+          if(JSON.stringify(got)!==JSON.stringify(expected))
+            throw Error('STOP_CURRENT_MAIN_REVIEW_DIFF_UNREVIEWED');
+          NODE
+            fi
+            test "$(git hash-object scripts/ci/review-current-main-partner-count-rank.cjs)" = 7ec1dfc11e7ea1cd20f18c6c684af8669d3bd042
+            node scripts/ci/review-current-main-partner-count-rank.cjs
+            echo 'CURRENT_MAIN_COUNT_RANKING_REVIEWED_NO_DEPLOY'
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] &&
+             [ "${GITHUB_HEAD_REF:-}" = "feat/verified-partner-daily-month-count-ranking-main-20261110" ]; then
             test "$(git hash-object scripts/ci/review-approved-partner-count-rank.cjs)" = '2ee6cfe39964074496cfb4a4aadf662687f52636'
             node scripts/ci/review-approved-partner-count-rank.cjs
             echo 'REVIEWED_NO_DEPLOY_RANK_CANDIDATE_VALIDATED'
