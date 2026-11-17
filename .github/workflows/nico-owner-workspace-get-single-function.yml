@@ -88,7 +88,8 @@ jobs:
           echo 'OWNER_GET_SOURCE_AND_LEDGER_TESTS_PASS_NO_DEPLOY'
   manually-inspect-or-release:
     needs: offline
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == '8ccbab54b620c91056fab5d8533bf57dfcbc21a9' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): one-time live GET owner workspace inventory')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.reviewed_main_sha == github.sha || github.event_name == 'push' && github.event.before == '8ccbab54b620c91056fab5d8533bf57dfcbc21a9' && github.actor == 'Keikei-p' && startsWith(github.event.head_commit.message, 'audit(sales): one-time live GET owner workspace inventory')) && github.repository == 'Keikei-p/-' && github.ref == 'refs/heads/main' && needs.offline.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
