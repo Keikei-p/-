@@ -36,6 +36,8 @@ test("exactly three additions to the existing product tab; all original sales an
  assert.equal(reconstructed,original,"original 823KB sales page must remain byte identical");
  assert.match(html,/id="ownerProductShareInline"/);
  assert.match(html,/id="ownerProductShareInlineRoot"/);
+ assert.match(html,/href="\.\/owner-partner-setup\.html"/);
+ assert.match(html,/商材の再登録は不要です/);
  assert.match(index,/id="productList"/);
  assert.match(index,/id="productNameInput"/);
  assert.match(index,/id="addProductButton"/);
