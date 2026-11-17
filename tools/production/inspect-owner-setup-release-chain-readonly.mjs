@@ -16,7 +16,7 @@ import {SOURCES,uploadSha,blobSha}
  from "../hosting/owner-setup-additive-guard.mjs";
 import {OWNER_ONLY_REPLACEMENTS}
  from "../hosting/owner-only-setup-replacement-guard.mjs";
-import {inspectSkuPublication}
+import {inspectSkuPublication,assessOwnerPublicationFunctions}
  from "./inspect-live-sku-publication-readonly.mjs";
 
 const STOP=code=>{throw Error("STOP_OWNER_SETUP_CHAIN_"+code);};
@@ -198,6 +198,7 @@ export function readinessBoard({functions,hosting,publication}={}){
   financeBoundaryDiagnosticExactMatch:hosting.financeBoundaryDiagnosticExactMatch===true,
   partnerCompaniesApprovedForCountSharing:publication.activeApprovedPartnerCount,
   partnerCompaniesWithMappedRankCategories:publication.mappedPartnerCount,
+  ownerPublicationAPIsEnabledInProd:publication.ownerPublicationWriteFeatureEnabledInProd===true,
   ownerPublicCatalogReady:publication.ownerPublicationCatalogReady,
   allEnabledPartnerSkuMapped:publication.allEnabledPartnerSkuMapped,
   reciprocalOwnerRankConsentReady:publication.reciprocalOwnerRankConsentReady,
@@ -271,7 +272,8 @@ async function main(){
  const h=classifyHosting(release,version,files,sources,
   readFileSync(path.join(sourceRoot,"finance-boundary-check.html"),"utf8"),
   currentSources);
- const published=await inspectSkuPublication(getFirestore());
+ const ownerApiStatus=assessOwnerPublicationFunctions(fn.functions??[]);
+ const published=await inspectSkuPublication(getFirestore(),ownerApiStatus);
  const report=readinessBoard({functions:f,hosting:h,publication:published});
  console.log("NICO_OWNER_SETUP_CHAIN_READINESS "+JSON.stringify(report));
  for(const b of report.blockingReasons)console.log("BLOCK_"+b);
