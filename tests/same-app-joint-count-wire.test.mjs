@@ -156,7 +156,7 @@ test("wire-up must fail closed on 200 contract drift and 401/403, not silently r
  assert(source.includes('if(error?.message!=="SAME_APP_JOINT_NOT_RELEASED"){'));
  assert(!source.includes('httpStatus=reply?.status??null;'));
  assert(source.includes('date!==pInline(field).value'));
- assert(source.includes('if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;'));
+ assert(source.includes('if(!sharedDailyRankingIsCurrent(where,epoch,seq)||auth.currentUser?.uid!==uid)return;'));
 });
 
 test("offline +1 partner count reaches BOTH company dashboards with no old-count mutation",()=>{
@@ -396,7 +396,8 @@ test("actual unpublished joint ranking panel does not call incompatible legacy A
  const run=new Function("NICO_SAME_APP_JOINT_HTTP_ENABLED",
   "pInline","auth","getTodayString","canReadSharedCountOnlyRanks",
   "tryLoadVerifiedSameAppJointCount","readPartnerWorkDay",
-  "let sharedDailyRankingGeneration=0; return ("+method+");"
+  "let sharedDailyRankingGeneration=0; const sharedDailyRankingViewNonce=new Map();"+
+  "return ("+method+");"
  )(false,key=>nodes[key],{currentUser:{uid:"p1"}},
   ()=>"2026-11-18",()=>true,
   async()=>{throw Error("CANONICAL_MUST_STAY_OFF");},
