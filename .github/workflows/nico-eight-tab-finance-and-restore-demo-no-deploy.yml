@@ -46,8 +46,8 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_TOKEN"
           test -z "$NICO_RULES_APPROVAL"
-          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 614f3216e008642ddf5eda6b93c35cc0469557c3
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(node -p "require('./firebase.json').firestore.rules")" = firestore.rules
           node --check security/secondary-finance-read-fence.mjs
