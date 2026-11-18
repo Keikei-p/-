@@ -4,7 +4,12 @@ on:
   pull_request:
     paths:
       - 'ranking/partner-tab-visibility-policy.mjs'
+      - 'functions-ranking-approvals/index.js'
+      - 'functions-ranking-approvals/partner-tab-publication-controller.cjs'
+      - 'functions-ranking-approvals/ranking/partner-tab-publication-store.mjs'
       - 'tests/partner-tab-visibility-policy.test.mjs'
+      - 'tests/partner-tab-publication-firestore.test.mjs'
+      - 'tests/partner-tab-publication-callables.test.mjs'
       - '.github/workflows/nico-partner-shared-tab-policy-no-deploy.yml'
   workflow_dispatch:
 
@@ -13,7 +18,7 @@ permissions:
 
 jobs:
   protect-count-history:
-    name: Count history unchanged - pure policy test
+    name: Shared partner tab contract, Owner Auth and ledger no-write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -24,14 +29,26 @@ jobs:
       - name: JavaScript syntax check
         run: |
           node --check ranking/partner-tab-visibility-policy.mjs
+          node --check functions-ranking-approvals/index.js
+          node --check functions-ranking-approvals/partner-tab-publication-controller.cjs
+          node --check functions-ranking-approvals/ranking/partner-tab-publication-store.mjs
           node --check tests/partner-tab-visibility-policy.test.mjs
-      - name: Eight count-only tabs with server-default deny
-        run: node --test tests/partner-tab-visibility-policy.test.mjs
-      - name: No live deployment or Firebase writes in these files
+          node --check tests/partner-tab-publication-firestore.test.mjs
+          node --check tests/partner-tab-publication-callables.test.mjs
+      - name: Eight count-only tabs, Owner permission, partner read and historical preservation
+        run: |
+          node --test tests/partner-tab-visibility-policy.test.mjs \
+            tests/partner-tab-publication-firestore.test.mjs \
+            tests/partner-tab-publication-callables.test.mjs
+      - name: No live deployment, unchanged original ledgers and finance Rules
         shell: bash
         run: |
-          if grep -En 'firebase deploy|firebase-admin|setDoc\\(|updateDoc\\(|deleteDoc\\(|httpsCallable\\(' ranking/partner-tab-visibility-policy.mjs tests/partner-tab-visibility-policy.test.mjs; then
-            echo 'UNSAFE_LIVE_WRITE_OR_DEPLOY_REFERENCE'
+          if grep -En 'firebase deploy|httpsCallable\\(' ranking/partner-tab-visibility-policy.mjs tests/partner-tab-visibility-policy.test.mjs; then
+            echo 'UNSAFE_LIVE_DEPLOY_REFERENCE'
+            exit 1
+          fi
+          if grep -En 'collection\\("(products|records|recordCorrections|revenueGoals|partnerWorkEntries|partnerWorkCountDays)"\\)|\.delete\\(' functions-ranking-approvals/ranking/partner-tab-publication-store.mjs; then
+            echo 'RECORD_OR_FINANCE_MUTATION_REFERENCE'
             exit 1
           fi
           echo 'NO_DEPLOY_NO_RECORD_WRITE_IN_POLICY'
