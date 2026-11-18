@@ -1,0 +1,37 @@
+name: NICO Partner Shared Tab Publication Policy - NO DEPLOY
+
+on:
+  pull_request:
+    paths:
+      - 'ranking/partner-tab-visibility-policy.mjs'
+      - 'tests/partner-tab-visibility-policy.test.mjs'
+      - '.github/workflows/nico-partner-shared-tab-policy-no-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protect-count-history:
+    name: Count history unchanged - pure policy test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax check
+        run: |
+          node --check ranking/partner-tab-visibility-policy.mjs
+          node --check tests/partner-tab-visibility-policy.test.mjs
+      - name: Eight count-only tabs with server-default deny
+        run: node --test tests/partner-tab-visibility-policy.test.mjs
+      - name: No live deployment or Firebase writes in these files
+        shell: bash
+        run: |
+          if grep -En 'firebase deploy|firebase-admin|setDoc\\(|updateDoc\\(|deleteDoc\\(|httpsCallable\\(' ranking/partner-tab-visibility-policy.mjs tests/partner-tab-visibility-policy.test.mjs; then
+            echo 'UNSAFE_LIVE_WRITE_OR_DEPLOY_REFERENCE'
+            exit 1
+          fi
+          echo 'NO_DEPLOY_NO_RECORD_WRITE_IN_POLICY'
