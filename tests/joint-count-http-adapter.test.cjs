@@ -446,3 +446,53 @@ test("partner-only team details cannot smuggle other company or miscount",async(
   assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
  }
 });
+
+test("strict published-only HTTP accepts exactly the selected count-only tab resource",async()=>{
+ const published={schema:"nico-published-partner-count-tab-v1",
+  role:"partner_owner",unit:"件",period:"month",
+  range:{start:"2026-11-01",end:"2026-11-18"},
+  readTime:"2026-11-18T09:00:00.000Z",tab:"individual",
+  rows:[{rank:1,name:"担当A",company:"協力店A",count:3}]
+ };
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>make(200,published)});
+ const out=response();
+ await adapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=individual"),out);
+ assert.equal(out.statusCode,200);
+ assert.deepEqual(JSON.parse(out.body),published);
+ assert(!out.body.includes("products"));
+ assert(!out.body.includes("teamDetails"));
+ assert(!out.body.includes("unitPrice"));
+});
+test("published-only refuses legacy full dashboards even if their fields are individually approved",async()=>{
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>make(200,data())});
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,503);
+ assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+});
+test("published-only HTTP rejects other tab keys, cross-scope details and monetary labels",async()=>{
+ const published={schema:"nico-published-partner-count-tab-v1",
+  role:"partner_owner",unit:"件",period:"month",
+  range:{start:"2026-11-01",end:"2026-11-18"},
+  readTime:"2026-11-18T09:00:00.000Z",tab:"team",
+  rows:[{rank:1,name:"1班",company:"協力店A",count:3,own:true}]
+ };
+ const mutations=[
+  p=>p.rows[0].uid="foreignUid",
+  p=>p.rows[0].unitPrice=20000,
+  p=>p.rows[0].name="1班 売上5万円",
+  p=>p.tab="report",
+  p=>p.teamDetails=[],
+  p=>p.rows[0].own="true",
+  p=>p.rows[0].rank=0
+ ];
+ for(const mutate of mutations){
+  const p=structuredClone(published);mutate(p);
+  const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+   loadHandler:()=>make(200,p)});
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
