@@ -118,3 +118,55 @@ test("no Firebase writes, no ranking calculation, no automatic SKU aliases",()=>
  assert.equal(r.publicInputs.length,2);
  assert.equal(r.publicInputs.some(x=>x.name==="つばさ電気"),false);
 });
+
+test("partner team detail uses exact self leader headings but no revenue, price or cashback",()=>{
+ const source=fixture();
+ const before=structuredClone(source);
+ const r=view(source);
+ const first=r.teamDetails.find(t=>t.id==="team1");
+ assert.equal(first.title,"1班");
+ assert.equal(first.headerClassName,"team-detail-header");
+ assert.equal(first.titleClassName,"team-detail-title");
+ assert.equal(first.totalClassName,"team-detail-total");
+ assert.equal(first.memberMeta,"現在の所属 2人");
+ assert.equal(first.totalLabel,"5件");
+ assert.equal(first.productsTitle,"商材別件数");
+ assert.equal(first.peopleTitle,"班員別詳細");
+ assert.equal(first.goalLabel,"目標未設定");
+ assert.equal(first.productRows.find(p=>p.name==="NURO").count,2);
+ assert.equal(first.productRows.find(p=>p.name==="SB光・AIR").count,3);
+ // A transferred colleague's old sale stays on saved team1, not current team2.
+ const moved=first.peopleRows.find(p=>p.staffId==="staff1");
+ assert.equal(moved.countLabel,"5件");
+ assert.equal(moved.submitted,true);
+ const missing=first.peopleRows.find(p=>p.staffId==="staff3");
+ assert.equal(missing.countLabel,"未報告");
+ assert.equal(missing.totalCount,null);
+ assert.equal(first.moneySectionIncluded,false);
+ assert.equal(first.financeLabelsIncluded,false);
+ assert.equal(r.teamDetails.find(t=>t.id==="team2").totalCount,0);
+ assert.equal(JSON.stringify(r.teamDetails).includes("旧配属先"),false);
+ for(const s of ["売上","単価","キャッシュバック","￥","¥","revenue","cashback","workLocation","uid"])
+  assert.equal(JSON.stringify(r.teamDetails).includes(s),false,s);
+ assert.deepEqual(source,before);
+});
+test("unknown historical team remains unallocated; no fabricated member or team totals",()=>{
+ const source=fixture();source.records[0].teamIdSnapshot="formerTeam";
+ const r=view(source);
+ assert.equal(r.unknownHistoricalTeamCount,5);
+ assert.equal(r.teamDetails.reduce((n,t)=>n+t.totalCount,0),0);
+ assert.equal(r.dayCount,5);
+ assert.equal(r.teamDetails.find(t=>t.id==="team1").peopleRows.some(p=>p.staffId==="staff1"),false);
+});
+test("OFF products are never shown as editable partner products, and saved count remains in source",()=>{
+ const source=fixture();
+ source.enabledCategories=["NURO"];
+ source.records[0].counts["SB光・AIR"]=0;
+ source.records[0].totalCount=2;
+ const oldCount=source.records[0].privateTotalCount;
+ const r=view(source);
+ assert.deepEqual(r.teamDetails[0].productRows.map(p=>p.name),["NURO"]);
+ assert.equal(r.teamDetails[0].totalCount,2);
+ assert.equal(r.oldPrivateCount,oldCount);
+ assert.equal(source.records[0].privateTotalCount,4);
+});
