@@ -4,6 +4,7 @@ const crypto=require("node:crypto");
 const {buildApprovedPartnerCountStandings}=require("./shared-count-standings.cjs");
 const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
 const {createPartnerSubmissionPublicationGuard}=require("./submission-publication-guard.cjs");
+const {START:SB_SPLIT_START,validateBreakdown,planSplitWrite}=require("./light-air-split.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -14,7 +15,8 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
+ submissionPublicationEnabled=()=>false,separateLightAirEnabled=()=>false,
+ ownerCorrectionReadEnabled=()=>false,
  ownerCorrectionWriteEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
@@ -877,7 +879,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(typeof workLocation!=="string"||workLocation.length>100||
       /[\x00-\x1f\x7f]/.test(workLocation)||money.test(workLocation))
     fail("data-loss");
+   const splitVisible=separateLightAirEnabled()===true&&
+     submissionPublicationEnabled()===true&&date>=SB_SPLIT_START;
+   const split=splitVisible?validateBreakdown(
+     x.sbBreakdown,counts["SB光・AIR"],date):null;
    rows.push({staffId:x.staffId,counts,totalCount:total,version:x.version,
+     ...(splitVisible?{sbBreakdown:split}:{}),
      teamIdSnapshot,workLocation,
      privateCounts:privateCounts.counts,privateTotalCount:privateCounts.total});
   }
@@ -902,11 +909,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const on=new Set(enabledCategories);
    const visible=Object.fromEntries(KEYS.map(k=>[k,on.has(k)?row.counts[k]:0]));
    return {...row,counts:visible,
+    ...(row.sbBreakdown&&!on.has("SB光・AIR")?
+      {sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":0}}:{}),
     totalCount:KEYS.reduce((n,k)=>n+visible[k],0)};
   });
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:safeRecords,categories:KEYS,
     ...(enabledCategories===undefined?{}:{enabledCategories}),
+    ...(separateLightAirEnabled()===true&&submissionPublicationEnabled()===true&&
+       date>=SB_SPLIT_START?{sbSeparateInputEnabled:true}:{}),
     privateProducts:productList};
  }
 
@@ -1112,6 +1123,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // within this SAME authenticated count transaction. This permits ON-only
    // edits without deleting OFF history or altering the old company sum.
    let effectiveCounts=counts,effectiveTotal=total;
+   let combinedAllowed=true;
    if(submissionPublicationEnabled()===true){
     try{
      const policy=await verifySubmissionPublication({tx,
@@ -1119,6 +1131,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       previousCounts:prior,nextCounts:prior});
      if(policy.enabledCategories.length===0)fail("failed-precondition");
      const on=new Set(policy.enabledCategories);
+     combinedAllowed=on.has("SB光・AIR");
      effectiveCounts={...counts};
      for(const key of KEYS)if(!on.has(key)){
       if(counts[key]!==0)fail("failed-precondition");
@@ -1127,6 +1140,14 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      effectiveTotal=KEYS.reduce((sum,key)=>sum+effectiveCounts[key],0);
     }catch{fail("failed-precondition");}
    }
+   // The only new persisted per-entry field is sbBreakdown. The canonical
+   // nine-key counts ledger still contains the ONE combined category, so all
+   // existing ranking and company summary readers remain byte-identical.
+   const splitPlan=planSplitWrite({date,
+     splitEnabled:separateLightAirEnabled()===true&&submissionPublicationEnabled()===true,
+     priorCount:prior["SB光・AIR"],priorBreakdown:old.sbBreakdown,
+     combinedCount:effectiveCounts["SB光・AIR"],
+     requestedBreakdown:d.sbBreakdown,categoryEnabled:combinedAllowed});
    const aggregate={};let aggregateTotal=0;
    for(const key of KEYS){
     const n=previous[key]+effectiveCounts[key]-prior[key];
@@ -1164,6 +1185,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
      counts:effectiveCounts,totalCount:effectiveTotal,
+     ...(splitPlan.useSplit?{sbBreakdown:splitPlan.breakdown}:{}),
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,workLocation,
      updatedByUid:a.uid,updatedAt:nowStamp};
