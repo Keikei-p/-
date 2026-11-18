@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=31,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=44,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -88,6 +88,18 @@ assert(changed.every(file=>[
  "tests/partner-tab-visibility-policy.test.mjs",
  "ranking/owner-partner-tab-settings-panel.mjs",
  "tests/owner-partner-eight-tab-settings-panel.test.mjs",
+ "ranking/published-partner-tab-server.mjs",
+ "ranking/published-partner-tab-client.mjs",
+ "tests/published-partner-tab-client.test.mjs",
+ "functions-ranking-approvals/ranking/published-partner-tab-server.mjs",
+ "ranking/owner-visible-count-atomic-loader.mjs",
+ "functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs",
+ "ranking/canonical-owner-count-server-factory.mjs",
+ "functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs",
+ "ranking/owner-visible-count-server-handler.mjs",
+ "functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs",
+ "tests/published-partner-tab-server.test.mjs",
+ "tests/isolated-joint-count-function-package.test.mjs",
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
  "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
@@ -153,6 +165,40 @@ assert(ownerUI.includes("readVerifiedPartnerTabPolicy") &&
        ownerUI.includes("prepareOwnerTabPublication") &&
        !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\s*\(/.test(ownerUI),
  "Owner UI must use server-authenticated CAS callable, never direct datastore writes");
+const publishedClient=fs.readFileSync(
+ "ranking/published-partner-tab-client.mjs","utf8");
+assert(publishedClient.includes('verifyPublishedPartnerCountResponse')&&
+       publishedClient.includes('createPublishedPartnerCountBridge')&&
+       publishedClient.includes('getWorkspaceCompanyId')&&
+       publishedClient.includes('PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED'),
+ "No unverified or mixed-tab browser rank projection");
+assert(!/\b(?:getDocs|setDoc|addDoc|updateDoc|deleteDoc|runTransaction|localStorage|httpsCallable)\s*\(/.test(publishedClient),
+ "Client tab bridge must never read Firestore or mutate originals");
+assert(here.includes('import("./ranking/published-partner-tab-client.mjs")')&&
+       here.includes('await bridge.load({tab,day:date})'),
+ "The partner's shared dashboard must use published-only rank GET");
+const serverTab=fs.readFileSync("ranking/published-partner-tab-server.mjs","utf8");
+const vendorTab=fs.readFileSync(
+ "functions-ranking-approvals/ranking/published-partner-tab-server.mjs","utf8");
+assert.equal(serverTab,vendorTab,"Published tab server vendored source mismatch");
+for(const path of [
+ "ranking/published-partner-tab-server.mjs",
+ "ranking/owner-visible-count-atomic-loader.mjs",
+ "ranking/canonical-owner-count-server-factory.mjs",
+ "ranking/owner-visible-count-server-handler.mjs",
+ "functions-ranking-approvals/ranking/published-partner-tab-server.mjs",
+ "functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs",
+ "functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs",
+ "functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs"
+]){
+ const src=fs.readFileSync(path,"utf8");
+ assert(!/\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch|tx\.create|tx\.update|tx\.set|tx\.delete)\s*\(/.test(src),
+  "Read-only count publication guard must never write originals: "+path);
+}
+assert(serverTab.includes('projectPublishedPartnerCountTab')&&
+       serverTab.includes('createPartnerPublishedTabPolicyReader')&&
+       serverTab.includes('PARTNER_PUBLISHED_TAB_ACCESS_DENIED'),
+ "The read-only server fence must use authoritative Owner publication");
 const privateReader=fs.readFileSync(
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
 assert(privateReader.includes('partner.collection("partnerPrivateProducts").limit(MAX_PRIVATE+1)'),
@@ -162,10 +208,13 @@ assert(privateReader.includes('...(includePrivateCounts?[tx.get(privateQuery)]:[
 assert(privateReader.includes('readOnly:true'),
  "Standalone private history reader can only run a read-only transaction");
 const joint=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
-assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"'),
- "Both flags are required to enable the direct joint HTTP route");
+assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&\n  process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled"'),
+ "All three flags are required to enable the direct joint HTTP route");
 assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"'),
  "Outer production GET gate must remain OFF by default");
+assert(joint.includes('publishedOnly:true')&&
+       joint.includes('enforcePartnerTabPublication:true'),
+ "Partner ranking must not return unrestricted combined HTTP data");
 assert(joint.includes('zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"'),
  "Unreviewed published counts must remain OFF by default");
 assert(here.includes('tryLoadVerifiedSameAppJointCount({'),

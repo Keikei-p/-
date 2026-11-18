@@ -18,11 +18,14 @@ const sameSet=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&
  a.length===b.length&&new Set(a).size===a.length&&
  a.every(x=>id(x)&&b.includes(x));
 export function createStagedAtomicOwnerCountLoader({
- db,loadCountsInTransaction,loadPublicationInTransaction,zeroSetupLink=false
+ db,loadCountsInTransaction,loadPublicationInTransaction,zeroSetupLink=false,
+ loadPartnerTabPolicyInTransaction,enforcePartnerTabPublication=false
 }={}){
  if(!db||typeof db.runTransaction!=="function"||
     typeof loadCountsInTransaction!=="function"||
-    typeof loadPublicationInTransaction!=="function")fail();
+    typeof loadPublicationInTransaction!=="function"||
+    (enforcePartnerTabPublication===true&&
+     typeof loadPartnerTabPolicyInTransaction!=="function"))fail();
  return async function loadAtomic({month,context,secondMonth}={}){
   if(secondMonth!==undefined){
    if(!MONTH.test(secondMonth||"")||secondMonth===month)fail();
@@ -42,9 +45,13 @@ export function createStagedAtomicOwnerCountLoader({
      context.approvedCompanyIds.length>30)fail();
   return db.runTransaction(async tx=>{
    // Both callbacks are trusted backend implementations and MUST use tx.
-   const [input,publication]=await Promise.all([
+   // The policy and counts are read under EXACTLY the same verified
+   // read-only transaction. A later policy lookup would be a TOCTOU leak.
+   const [input,publication,partnerTabPolicy]=await Promise.all([
     loadCountsInTransaction({tx,month,context,secondMonth}),
-    loadPublicationInTransaction({tx,context})
+    loadPublicationInTransaction({tx,context}),
+    enforcePartnerTabPublication===true&&context.role==="partner_owner"?
+     loadPartnerTabPolicyInTransaction({tx,context}):undefined
    ]);
    if(!input||!publication||input.hubCompanyId!==context.hubCompanyId||
       !sameSet(input.approvedCompanyIds,context.approvedCompanyIds)||
@@ -82,9 +89,16 @@ export function createStagedAtomicOwnerCountLoader({
        input.verifiedMonths[1]!==secondMonth||
        input.sources.some(source=>source.completeWindows?.previous!==true))
      )fail();
-   // Never cache the transaction result. No raw counts are returned to a
-   // client by this loader; the separate handler builds a count-only view.
-   return {input,publication};
+   if(enforcePartnerTabPublication===true&&context.role==="partner_owner"&&
+      (!partnerTabPolicy||partnerTabPolicy.serverVerified!==true||
+       partnerTabPolicy.ownerUidVerified!==true||
+       partnerTabPolicy.hubCompanyId!==context.hubCompanyId||
+       partnerTabPolicy.viewerCompanyId!==context.viewerCompanyId||
+       partnerTabPolicy.snapshotReadTime!==time))fail();
+   // Never cache the transaction result. Policy is a proven authorization
+   // fact, not a replacement for immutable original count ledgers.
+   return {...{input,publication},
+    ...(partnerTabPolicy?{partnerTabPolicy}:{})};
   },{readOnly:true});
  };
 }

@@ -54,7 +54,9 @@ exports.getVerifiedJointCountRanking=onRequest({
  // Both release proofs MUST be enabled before any Auth/Firestore read.
  // Do not silently fall back to old owner-product publication settings.
  enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&
-  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled",
+  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&
+  process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled",
+ publishedOnly:true,
  loadHandler:async()=>{
   const {createCanonicalOwnerCountHandler}=await import(
    "./ranking/canonical-owner-count-server-factory.mjs"
@@ -68,7 +70,9 @@ exports.getVerifiedJointCountRanking=onRequest({
    // Double release gate: BOTH env vars must explicitly be "enabled".
    // No new Fn endpoint, financial access path or Firestore write is added.
    // DO NOT enable until live finance denial, isolated restore and E2E pass.
-   zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"
+   zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled",
+   // New partner rank route never returns an unrestricted dashboard.
+   enforcePartnerTabPublication:true
   });
  }
 }));

@@ -13760,6 +13760,29 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
  // callable without initiating a cross-origin request that will 503/404.
  if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)
   throw Error("SAME_APP_JOINT_NOT_RELEASED");
+ // Partner rank/detail data uses ONLY one server-authorized tab resource.
+ // Never fetch the legacy full partner ranking payload once released.
+ if(partner){
+  const tab=detail?"detail":partnerSameAppSelectedPanel;
+  if(!["individual","product","team","detail"].includes(tab))
+   throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
+  const {createPublishedPartnerCountBridge,renderPublishedPartnerCountTab}=
+   await import("./ranking/published-partner-tab-client.mjs");
+  const bridge=createPublishedPartnerCountBridge({
+   featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
+   getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
+  });
+  let published;
+  try{published=await bridge.load({tab,day:date});}
+  catch{throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");}
+  if(!sharedDailyRankingIsCurrent(where,epoch,seq)||
+     auth.currentUser?.uid!==uid||date!==pInline("pInlineDate").value||
+     tab!==(detail?"detail":partnerSameAppSelectedPanel))return true;
+  renderPublishedPartnerCountTab({
+   document,root:content,status,payload:published
+  });
+  return true;
+ }
  const [bridgeModule,projectionModule,panelModule]=await Promise.all([
   import("./ranking/verified-joint-month-http-bridge.mjs"),
   import("./ranking/same-app-joint-count-projection.mjs"),

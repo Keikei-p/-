@@ -19,13 +19,16 @@ import {createCanonicalCountTransactionReader}
 import {createAtomicOwnerPublicationReader,createZeroSetupCountPublicationReader}
  from "./owner-product-visibility-in-atomic-tx.mjs";
 import {createFreshCombinedRankingContext} from "./trusted-combined-ranking-context.mjs";
+import {createPartnerPublishedTabPolicyReader}
+ from "./published-partner-tab-server.mjs";
 import {createRequire} from "node:module";
 const {makeWorkspaceIdentity}=createRequire(import.meta.url)(
  "../functions-partner-workspace/workspace-identity.cjs"
 );
 
 export function createCanonicalOwnerCountSnapshot({
- db,FieldValue,clock,verifyCountViewer,zeroSetupLink=false
+ db,FieldValue,clock,verifyCountViewer,zeroSetupLink=false,
+ enforcePartnerTabPublication=false
 }={}){
  if(!db||!FieldValue||
     typeof db.collection!=="function"||
@@ -38,7 +41,10 @@ export function createCanonicalOwnerCountSnapshot({
   loadPublicationInTransaction:zeroSetupLink===true?
    createZeroSetupCountPublicationReader({db,verifyCountViewer}):
    createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}),
-  zeroSetupLink
+  zeroSetupLink,enforcePartnerTabPublication,
+  ...(enforcePartnerTabPublication===true?{
+   loadPartnerTabPolicyInTransaction:createPartnerPublishedTabPolicyReader({db})
+  }:{})
  });
 }
 
@@ -47,7 +53,8 @@ export function createCanonicalOwnerCountSnapshot({
  * as a route until the live finance, backing store and rollback proofs pass.
  */
 export function createCanonicalOwnerCountHandler({
- enabled=false,auth,db,FieldValue,clock=()=>new Date(),zeroSetupLink=false
+ enabled=false,auth,db,FieldValue,clock=()=>new Date(),zeroSetupLink=false,
+ enforcePartnerTabPublication=false
 }={}){
  if(enabled!==true)return createStagedOwnerVisibleCountHandler({
   enabled:false
@@ -57,7 +64,7 @@ export function createCanonicalOwnerCountHandler({
   throw Error("CANONICAL_OWNER_COUNT_AUTH_MISSING");
  // Validate every dependency before constructing any request authorizer.
  createCanonicalOwnerCountSnapshot({
-  db,FieldValue,clock,zeroSetupLink,
+  db,FieldValue,clock,zeroSetupLink,enforcePartnerTabPublication,
   // Construction-only dependency check, before Firebase Auth is initialized.
   // This callback can NEVER authorize a request. The real in-transaction
   // workspace identity gate is installed below for every actual invocation.
@@ -76,6 +83,7 @@ export function createCanonicalOwnerCountHandler({
   })({});
  const loadAtomicVerifiedCountSnapshot=({token,workspaceCompanyId,...args})=>
   createCanonicalOwnerCountSnapshot({db,FieldValue,clock,zeroSetupLink,
+   enforcePartnerTabPublication,
    verifyCountViewer:async({tx,context})=>{
     // Re-authorize the exact selected membership/session IN the same
     // transaction as counts and publication; never trust an earlier flag.
@@ -88,6 +96,6 @@ export function createCanonicalOwnerCountHandler({
   })(args);
  return createStagedOwnerVisibleCountHandler({
   enabled:true,auth,db,FieldValue,loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext,
-  zeroSetupLink
+  zeroSetupLink,enforcePartnerTabPublication
  });
 }

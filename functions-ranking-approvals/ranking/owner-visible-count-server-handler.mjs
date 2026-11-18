@@ -22,6 +22,8 @@ import {buildOwnerVisibleCountRanking}
 import {buildVerifiedCountDashboard}
  from "./verified-dual-count-dashboards.mjs";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
+import {projectPublishedPartnerCountTab}
+ from "./published-partner-tab-server.mjs";
 
 const ORIGIN="https://nico-factory.web.app";
 const PATH="/v1/owner-visible-counts";
@@ -78,7 +80,8 @@ function sameSet(a,b){
  */
 export function createStagedOwnerVisibleCountHandler({
  enabled=false,auth,db,FieldValue,loadCompleteVerifiedCountInput,
- loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext,zeroSetupLink=false
+ loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext,zeroSetupLink=false,
+ enforcePartnerTabPublication=false
 }={}){
  if(enabled!==true)return async request=>reply(503,
   {error:"service_disabled"},request?.headers?.get?.("Origin")??"");
@@ -107,6 +110,10 @@ export function createStagedOwnerVisibleCountHandler({
       !["joint","direct","partner"].includes(scopes[0]))throw new Block(400);
    const scope=scopes[0]??"joint";
    params.delete("scope");
+   const selectedTab=params.getAll("tab");
+   if(selectedTab.length>1)throw new Block(400);
+   const tab=selectedTab[0]??"";
+   params.delete("tab");
    if(workspaceCompanyId&&!loadVerifiedCountContext)throw new Block(400);
    const {kind,month,day,secondMonth}=requestedPeriod(params);
    const token=request.headers.get("Authorization")?.match(TOKEN)?.[1];
@@ -120,15 +127,24 @@ export function createStagedOwnerVisibleCountHandler({
     try{principal=await verify(token);}catch{throw new Block(401);}
     context=await contextReader(principal);
    }
+   // No partner audience can request an unrestricted multi-tab payload once
+   // the server-side Owner publication fence is enforced.
+   if(enforcePartnerTabPublication===true){
+    if(context.role==="partner_owner"&&
+       !["product","team","individual","detail"].includes(tab))
+     throw new Block(403);
+    if(context.role==="hub_owner"&&tab!=="")throw new Block(400);
+   }else if(tab!=="")throw new Block(400);
    // The optional atomic path requires a single read-only transaction
    // spanning canonical counts and owner publication. The legacy staged
    // loader remains for offline tests, but is NOT production-release ready.
-   let input,publication;
+   let input,publication,partnerTabPolicy;
    if(secondMonth&&!atomic)throw new Block(503);
    if(atomic){
     const pair=await loadAtomicVerifiedCountSnapshot({month,context,secondMonth,
      ...(loadVerifiedCountContext?{token,workspaceCompanyId}:{})});
     input=pair?.input;publication=pair?.publication;
+    partnerTabPolicy=pair?.partnerTabPolicy;
     if(typeof input?.snapshotReadTime!=="string"||
        publication?.snapshotReadTime!==input.snapshotReadTime||
        !Array.isArray(input.sources)||
@@ -178,11 +194,24 @@ export function createStagedOwnerVisibleCountHandler({
    const result=zeroSetupLink===true?
     buildVerifiedCountDashboard(rankingInput):
     buildOwnerVisibleCountRanking({input:rankingInput,publication});
-   auditNoFinancialKeys(result);
-   const json=JSON.stringify(result);
+   // The input remains the SAME verified full ledger. The response contains
+   // only one Owner-published partner tab, never the unrestricted dashboard.
+   if(enforcePartnerTabPublication===true&&context.role==="partner_owner"&&
+      (!atomic||partnerTabPolicy?.serverVerified!==true||
+       partnerTabPolicy?.published!==true||
+       !Array.isArray(partnerTabPolicy?.tabs)||
+       !partnerTabPolicy.tabs.includes(tab)))throw new Block(403);
+   const output=enforcePartnerTabPublication===true&&
+     context.role==="partner_owner"?
+      projectPublishedPartnerCountTab({
+       verifiedContext:context,policy:partnerTabPolicy,
+       requestedTab:tab,response:result
+      }):result;
+   auditNoFinancialKeys(output);
+   const json=JSON.stringify(output);
    if(/"(?:records|lines|rawProducts|revenue|unitPrice|cashback|price|amount)"\s*:/i.test(json))
     throw new Block();
-   return reply(200,result,origin);
+   return reply(200,output,origin);
   }catch(error){
    return reply(error instanceof Block?error.status:503,
     {error:"request_blocked"},origin);
