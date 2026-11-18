@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createPartnerTabPublicationStore} from "../functions-partner-tabs/partner-tab-publication-store.mjs";
@@ -94,7 +95,40 @@ function env({selection=["report","daily","history","goal"],published=true,asMem
  const get=(tab,uid=principal)=>store.readPublishedOptional({
   actor:actor(uid),tab,date:DATE,reader:readPublishedPartnerOptionalTab
  });
- return {get,reads,data,writes:()=>writes};
+ const codeSessionToken="Z".repeat(43);
+ const code="NICO-"+"A".repeat(24);
+ const sessionHash=createHash("sha256").update(codeSessionToken).digest("hex");
+ const configureCode=()=>{
+  data.set("partnerCodeSessions/"+sessionHash,{
+   active:true,principalUid:paths.owner,companyId:PARTNER,
+   version:3,companyCode:code,expiresAt:{toMillis:()=>Date.now()+60000}
+  });
+  data.set("partnerCodeCredentials/"+PARTNER,{
+   active:true,companyId:PARTNER,principalUid:paths.owner,
+   companyCode:code,version:3
+  });
+  data.set("partnerCodeLogins/"+code,{
+   status:"active",principalUid:paths.owner,partnerCompanyId:PARTNER,
+   version:3
+  });
+  data.set("users/"+paths.owner,{
+   ...data.get("users/"+paths.owner),authKind:"partner_code_shared"
+  });
+  data.set(paths.company+"/members/"+paths.owner,{
+   ...data.get(paths.company+"/members/"+paths.owner),
+   authKind:"partner_code_shared"
+  });
+  data.set(paths.company,{
+   ...data.get(paths.company),companyCodePrincipalUid:paths.owner
+  });
+  return {sessionHash,code};
+ };
+ const getCode=tab=>store.readPublishedOptional({
+  codeSessionToken,tab,date:DATE,reader:readPublishedPartnerOptionalTab
+ });
+ const readCodePolicy=()=>store.readPartnerCodeSession(codeSessionToken);
+ return {get,reads,data,writes:()=>writes,configureCode,getCode,
+  readCodePolicy,codeSessionToken};
 }
 test("all 4 tabs are read from same trusted Owner policy transaction and existing partner counts",async()=>{
  const f=env();
@@ -211,5 +245,72 @@ test("a standard verified partner owner never becomes a code-principal through a
  f.data.set(path,{...f.data.get(path),authKind:"partner_code_shared"});
  await blocked(()=>f.get("daily"));
  assert.equal(f.reads.some(p=>p.includes("partnerWorkEntries")),false);
+ assert.equal(f.writes(),0);
+});
+
+test("existing opaque company-code session reads Owner-published tabs without an email login",async()=>{
+ const f=env(),meta=f.configureCode();
+ const status=await f.readCodePolicy();
+ assert.deepEqual(status.tabs,["report","daily","history","goal"]);
+ assert.equal(status.published,true);
+ const details=await f.getCode("history");
+ assert.equal(details.totalCount,8);
+ assert.deepEqual(details.audits.map(x=>x.totalCount),[5,3]);
+ assert.equal((await f.getCode("daily")).totalCount,8);
+ assert.equal((await f.getCode("goal")).actualCount,8);
+ assert.equal((await f.getCode("report")).lines[2],"総件数：8件");
+ assert(f.reads.includes("partnerCodeSessions/"+meta.sessionHash));
+ assert(f.reads.includes("partnerCodeCredentials/"+PARTNER));
+ assert(f.reads.includes("partnerCodeLogins/"+meta.code));
+ assert.equal(f.writes(),0);
+ assert(!JSON.stringify(details).includes(f.codeSessionToken));
+});
+test("revoked, expired and mismatched company-code session fail before any original count or audit reads",async()=>{
+ for(const mutate of [
+  (f,paths)=>f.data.set("partnerCodeSessions/"+paths.sessionHash,{
+   ...f.data.get("partnerCodeSessions/"+paths.sessionHash),active:false}),
+  (f,paths)=>f.data.set("partnerCodeSessions/"+paths.sessionHash,{
+   ...f.data.get("partnerCodeSessions/"+paths.sessionHash),
+   expiresAt:{toMillis:()=>Date.now()-1000}}),
+  (f,paths)=>f.data.set("partnerCodeSessions/"+paths.sessionHash,{
+   ...f.data.get("partnerCodeSessions/"+paths.sessionHash),version:4}),
+  (f,paths)=>f.data.set("partnerCodeCredentials/"+PARTNER,{
+   ...f.data.get("partnerCodeCredentials/"+PARTNER),active:false}),
+  (f,paths)=>f.data.set("partnerCodeCredentials/"+PARTNER,{
+   ...f.data.get("partnerCodeCredentials/"+PARTNER),companyId:"other"}),
+  (f,paths)=>f.data.set("partnerCodeLogins/"+paths.code,{
+   ...f.data.get("partnerCodeLogins/"+paths.code),status:"revoked"}),
+  (f,paths)=>f.data.set("partnerCodeLogins/"+paths.code,{
+   ...f.data.get("partnerCodeLogins/"+paths.code),version:2}),
+  (f,paths)=>f.data.set("users/pOwner",{
+   ...f.data.get("users/pOwner"),canViewRevenue:true}),
+  (f,paths)=>f.data.set("partnerRelations/"+PARTNER,{
+   ...f.data.get("partnerRelations/"+PARTNER),countSharingApproved:false}),
+  (f,paths)=>f.data.set(paths.policy,{
+   ...f.data.get(paths.policy),published:false})
+ ]){
+  const f=env(),refs=f.configureCode();mutate(f,refs);
+  await blocked(()=>f.getCode("history"));
+  assert(!f.reads.some(x=>x.includes("partnerWorkEntries")));
+  assert(!f.reads.some(x=>x.includes("partnerWorkAudits")));
+  assert.equal(f.writes(),0);
+ }
+});
+test("opaque code-token format and cross-company selection cannot bypass company owner policy",async()=>{
+ const f=env();f.configureCode();
+ await blocked(()=>createPartnerTabPublicationStore({db:{
+  collection(){throw Error("UNSAFE_COLLECTION");},
+  runTransaction(){throw Error("UNSAFE_TRANSACTION")}
+ },FieldValue:{serverTimestamp:()=>({})}}).readPublishedOptional({
+  codeSessionToken:"invalid",tab:"history",date:DATE,
+  reader:readPublishedPartnerOptionalTab
+ }));
+ await blocked(()=>createPartnerTabPublicationStore({db:{
+  collection(){throw Error("UNSAFE_COLLECTION");},
+  runTransaction(){throw Error("UNSAFE_TRANSACTION")}
+ },FieldValue:{serverTimestamp:()=>({})}}).readPublishedOptional({
+  codeSessionToken:f.codeSessionToken,workspaceCompanyId:"foreign",
+  tab:"history",date:DATE,reader:readPublishedPartnerOptionalTab
+ }));
  assert.equal(f.writes(),0);
 });
