@@ -469,7 +469,14 @@ export function buildVerifiedCountDashboard({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
  const publicProducts=rankedProducts.map(x=>({
-  rank:x.rank,name:x.name,count:x.count
+  rank:x.rank,
+  // The viewer's own saved custom product name is authorized, but a
+  // different partner must not learn another company's private SKU label.
+  // Counts/ranks remain unchanged. A matched hub SKU uses the hub label.
+  name:x.id.startsWith("partnerPrivateUnmatched:")&&
+   !x.companies.some(c=>c.companyId===ownCompany)?
+    "他社の追加商材（名称非公開）":x.name,
+  count:x.count
  }));
  // Publish ranked, aggregate-only organization comparisons. This is the
  // same already-verified set of ON-only source lines as member/SKU ranks.
