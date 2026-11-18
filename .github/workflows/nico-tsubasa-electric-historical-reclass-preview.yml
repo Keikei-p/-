@@ -1,0 +1,114 @@
+name: NICO Tsubasa Electric historical reclassification preview (NO WRITES)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/plan-tsubasa-electric-reclassification.mjs'
+      - 'tools/production/inspect-tsubasa-electric-reclassification-readonly.mjs'
+      - 'tests/plan-tsubasa-electric-reclassification.test.mjs'
+      - '.github/workflows/nico-tsubasa-electric-historical-reclass-preview.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/plan-tsubasa-electric-reclassification.mjs'
+      - 'tools/production/inspect-tsubasa-electric-reclassification-readonly.mjs'
+      - 'tests/plan-tsubasa-electric-reclassification.test.mjs'
+      - '.github/workflows/nico-tsubasa-electric-historical-reclass-preview.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-tsubasa-safe-preview-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      NICO_TSUBASA_RECLASS_APPLY: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin existing finance and exact four-file change scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$NICO_TSUBASA_RECLASS_APPLY"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object index.html)" = f5ceecf35d22ca88edb886b679dbc6dfc6c25f81
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --no-tags origin main
+            git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+            printf '%s\n' '.github/workflows/nico-tsubasa-electric-historical-reclass-preview.yml' \
+              'tests/plan-tsubasa-electric-reclassification.test.mjs' \
+              'tools/production/inspect-tsubasa-electric-reclassification-readonly.mjs' \
+              'tools/production/plan-tsubasa-electric-reclassification.mjs' \
+              | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+            diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          fi
+      - name: Syntax and complete safety regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/production/plan-tsubasa-electric-reclassification.mjs
+          node --check tools/production/inspect-tsubasa-electric-reclassification-readonly.mjs
+          node --test tests/plan-tsubasa-electric-reclassification.test.mjs
+          echo 'TSUBASA_OFFLINE_PASS_NO_RECORD_OR_PRODUCT_WRITES'
+  production-preview-read-only:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' && needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_TSUBASA_RECLASS_MODE: READ_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Protect live finance and run dry run tests before touching credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = f5ceecf35d22ca88edb886b679dbc6dfc6c25f81
+          test -z "${NICO_TSUBASA_RECLASS_APPLY:-}"
+          node --test tests/plan-tsubasa-electric-reclassification.test.mjs
+      - name: Install original Admin SDK only (no deployment tools)
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Keep existing Firebase read identity in temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/tsubasa-readonly.json"
+          chmod 600 "$RUNNER_TEMP/tsubasa-readonly.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/tsubasa-readonly.json" >> "$GITHUB_ENV"
+      - name: Read-only full history preview with zero data mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/inspect-tsubasa-electric-reclassification-readonly.mjs > "$RUNNER_TEMP/tsubasa-private.log" 2>&1 || {
+            grep -E '^STOP_(TSUBASA_READONLY|TSUBASA_RECLASS)_[A-Z_]+$' "$RUNNER_TEMP/tsubasa-private.log" || true
+            exit 1
+          }
+          grep '^NICO_TSUBASA_READONLY ' "$RUNNER_TEMP/tsubasa-private.log"
+          grep -q '"productionWrites":0' "$RUNNER_TEMP/tsubasa-private.log"
+          grep -q '"productionDeletes":0' "$RUNNER_TEMP/tsubasa-private.log"
+          grep -q '"readyForApply":false' "$RUNNER_TEMP/tsubasa-private.log"
+      - name: Erase credentials and logs always
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/tsubasa-readonly.json" "$RUNNER_TEMP/tsubasa-private.log"
