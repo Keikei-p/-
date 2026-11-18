@@ -1139,11 +1139,26 @@ service cloud.firestore {
         && request.resource.data.revenue >= 0
         && validProductExtras(request.resource.data)
         && request.resource.data.updatedAt == request.time
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly([
-            'name', 'revenue', 'cashbackOptions', 'pricingOptions',
-            'sortOrder', 'updatedAt'
-          ]);
+        && (
+          // Existing edit grants remain unchanged, including finance controls.
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'name', 'revenue', 'cashbackOptions', 'pricingOptions',
+              'sortOrder', 'updatedAt'
+            ])
+          ||
+          // Reversible archive only: Owner/master may change active and
+          // updatedAt. Price, product IDs and all historical records are
+          // immutable through this branch. Physical delete stays prohibited.
+          (
+            (isCompanyOwner(resource.data.companyId)
+              || isCompanyMaster(resource.data.companyId))
+            && request.resource.data.active is bool
+            && request.resource.data.active != resource.data.get('active', true)
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['active', 'updatedAt'])
+          )
+        );
 
       // Historical business documents are retained: client hard-delete is forbidden.
       allow delete: if false;
