@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=15,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=17,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -72,6 +72,8 @@ assert(changed.every(file=>[
  "ranking/same-app-joint-count-panel.mjs",
  "tests/same-app-joint-count-wire.test.mjs",
  "functions-ranking-approvals/index.js",
+ "functions-ranking-approvals/joint-count-http-adapter.cjs",
+ "tests/joint-count-http-adapter.test.cjs",
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
  "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
@@ -94,6 +96,19 @@ for(const path of [
  assert(!/\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch)\s*\(/.test(src),
   "No client datastore writes: "+path);
 }
+// Permit only the explicitly reviewed read-only HTTP adapter update, without
+// relaxing the original count-save or finance source protections above.
+const http=fs.readFileSync(
+ "functions-ranking-approvals/joint-count-http-adapter.cjs","utf8");
+assert(http.includes('const PARTNER_OWN_FIELDS=new Set([') &&
+       http.includes('function safeOwnDetails(ownData)') &&
+       http.includes('function partnerTeamRankingSafe(ownData,rows)') &&
+       http.includes('const PARTNER_ENVELOPE=['),
+ "Partner own-team fields need an independently guarded HTTP envelope");
+assert(!/\\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction)\\s*\\(/.test(http),
+ "HTTP adapter must never write to Firestore");
+assert(!/\\b(?:firebase-admin|finance|revenue|cashback)\\s*\\(.*\\)/.test(http),
+ "HTTP adapter must not initialize financial data reads");
 const privateReader=fs.readFileSync(
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
 assert(privateReader.includes('partner.collection("partnerPrivateProducts").limit(MAX_PRIVATE+1)'),
