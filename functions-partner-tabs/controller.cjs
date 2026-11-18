@@ -73,10 +73,19 @@ function makePartnerTabPublicationCallables({
   }catch{denied();}
  };
  const loadPartner=async request=>{
-  const actor=await identity(request,[]);
+  // An existing authenticated account can select ONLY a server-verified
+  // secondary partner workspace. Other caller-supplied fields are forbidden.
+  const d=request?.data;
+  const keys=d&&Object.hasOwn(d,"workspaceCompanyId")?
+   ["workspaceCompanyId"]:[];
+  const actor=await identity(request,keys);
+  if(keys.length&&(!ID.test(d.workspaceCompanyId)||
+     ["__proto__","constructor","prototype"].includes(d.workspaceCompanyId)))
+   invalid();
   try{
    const [,store]=await imports();
-   const res=await store.createPartnerTabPublicationStore({db,FieldValue}).readPartner(actor);
+   const res=await store.createPartnerTabPublicationStore({db,FieldValue})
+    .readPartner(actor,keys.length?d.workspaceCompanyId:"");
    return confirm(res);
   }catch{denied();}
  };
