@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=20,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=31,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -77,6 +77,17 @@ assert(changed.every(file=>[
  "ranking/partner-tab-visibility-policy.mjs",
  "ranking/partner-tab-navigation-gate.mjs",
  "tests/partner-eight-tab-navigation-bridge.test.mjs",
+ "functions-partner-tabs/controller.cjs",
+ "functions-partner-tabs/index.js",
+ "functions-partner-tabs/package.json",
+ "functions-partner-tabs/partner-tab-publication-store.mjs",
+ "functions-partner-tabs/trusted-token-reader.mjs",
+ "tests/partner-tab-publication-callables.test.mjs",
+ "tests/partner-tab-publication-firestore.test.mjs",
+ "tests/partner-tab-publication-token.test.mjs",
+ "tests/partner-tab-visibility-policy.test.mjs",
+ "ranking/owner-partner-tab-settings-panel.mjs",
+ "tests/owner-partner-eight-tab-settings-panel.test.mjs",
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
  "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
@@ -122,6 +133,26 @@ assert(!/\b(?:firebase|Firestore|httpsCallable|fetch|setDoc|addDoc|updateDoc|del
 assert(here.includes("const NICO_PARTNER_TAB_UI_ENABLED = false;") &&
        here.includes("const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;"),
  "Both independent publication rollout switches must default OFF");
+// Standalone #802 settings backend may write ONLY versioned shared policy and
+// append-only audit, NEVER input counts, finance ledgers or client Firestore.
+const tabStore=fs.readFileSync("functions-partner-tabs/partner-tab-publication-store.mjs","utf8");
+assert(tabStore.includes('collection("partnerTabPublication").doc("shared")')&&
+       tabStore.includes('collection("partnerTabPublicationAudits").doc()')&&
+       tabStore.includes("before.version !== expectedRevision")&&
+       tabStore.includes("verifiedHubOwner(tx,actor)"),
+ "Owner config CAS, canonical company scope and append-only audit required");
+assert(!/\b(?:sales|revenue|recordCorrections|partnerWorkEntries|partnerWorkCountDays)\s*\)/i.test(tabStore),
+ "Owner tab store must not query original financial/count documents");
+const tabServer=fs.readFileSync("functions-partner-tabs/index.js","utf8");
+assert(tabServer.includes('process.env.NICO_PARTNER_TAB_PUBLICATION_ENABLED==="enabled"')&&
+       tabServer.includes("exports.setOwnerPartnerTabPublication=onCall")&&
+       tabServer.includes("exports.getPartnerPublishedTabs=onCall"),
+ "Owner and partner callables require independent server OFF switch");
+const ownerUI=fs.readFileSync("ranking/owner-partner-tab-settings-panel.mjs","utf8");
+assert(ownerUI.includes("readVerifiedPartnerTabPolicy") &&
+       ownerUI.includes("prepareOwnerTabPublication") &&
+       !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\s*\(/.test(ownerUI),
+ "Owner UI must use server-authenticated CAS callable, never direct datastore writes");
 const privateReader=fs.readFileSync(
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
 assert(privateReader.includes('partner.collection("partnerPrivateProducts").limit(MAX_PRIVATE+1)'),

@@ -5319,6 +5319,10 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
       </p>
       <p id="partnerProductsStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--sub);"></p>
       <div id="partnerProductsPanelRoot"></div>
+      <details id="ownerPartnerTabPublicationPanel" class="p-inline-card" hidden>
+        <summary>📋 協力店へのタブ公開設定（全社一括）</summary>
+        <div id="ownerPartnerTabPublicationRoot"></div>
+      </details>
     </section>
   </div>
 
@@ -10050,6 +10054,36 @@ quickPartnerButton.onclick=()=>{
 // The menu is a convenience only: the callable independently enforces Owner.
 let partnerProductsMountedPanel=null;
 let partnerProductsOpenGeneration=0;
+let ownerPartnerTabPublicationUI=null;
+async function refreshOwnerPartnerTabPublicationUI(stillOwner){
+ // #802's callable is STAGING only. Never initialize or read before
+ // *both* Owner-UI and server-side unpublished-data deny are reviewed.
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true||
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true)return false;
+ const pane=document.getElementById("ownerPartnerTabPublicationPanel");
+ const root=document.getElementById("ownerPartnerTabPublicationRoot");
+ if(!pane||!root||!stillOwner()||!canLoadPartnerRanking())return false;
+ try{
+  if(!ownerPartnerTabPublicationUI){
+   const {mountOwnerPartnerTabSettingsPanel}=await import(
+    "./ranking/owner-partner-tab-settings-panel.mjs");
+   if(!stillOwner())return false;
+   ownerPartnerTabPublicationUI=mountOwnerPartnerTabSettingsPanel({
+    enabled:true,serverGuardVerified:true,root,auth,
+    functions:partnerCountFunctions,httpsCallable,
+    canOwner:()=>canLoadPartnerRanking()
+   });
+  }
+  if(!stillOwner())return false;
+  pane.hidden=false;
+  const verified=await ownerPartnerTabPublicationUI.refresh();
+  if(!stillOwner())return false;
+  return verified;
+ }catch{
+  if(stillOwner())pane.hidden=true;
+  return false;
+ }
+}
 quickPartnerProductsButton.onclick=async()=>{
   if(!canLoadPartnerRanking())return;
   const ownerUid=currentUser.uid;
@@ -10063,6 +10097,7 @@ quickPartnerProductsButton.onclick=async()=>{
     currentUser?.uid===ownerUid && canLoadPartnerRanking() &&
     partnerProductsWorkspace.style.display!=="none";
   try{
+    void refreshOwnerPartnerTabPublicationUI(stillOpen);
     if(!partnerProductsMountedPanel){
       const {mountOwnerProductVisibilityDashboard}=await import(
         "./ranking/owner-product-visibility-dashboard-mount.mjs"
