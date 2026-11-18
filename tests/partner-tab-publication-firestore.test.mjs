@@ -187,3 +187,63 @@ test("bad policy, unauthorized fields, invalid revision and foreign document fai
  await fail(()=>s.readOwner(actor()));
  assert.equal(f.writes.length,0);
 });
+
+test("verified secondary partner workspace reads the same Owner-wide eight tabs without changing primary identity",async()=>{
+ const f=seeded(),s=store(f);
+ await s.saveOwner({actor:actor(),expectedRevision:0,
+  published:true,selectedTabs:["individual","team","detail"]});
+ const originalUser=structuredClone(f.data.get("users/"+UID));
+ f.data.set("partnerWorkspaceContexts/"+UID,{
+  active:true,kind:"partner_secondary",uid:UID,
+  primaryCompanyId:HUB,partnerCompanyId:PARTNER_COMPANY,
+  hubCompanyId:HUB,emailLower:"owner@example.com",role:"owner"
+ });
+ f.data.set("companies/"+PARTNER_COMPANY,{
+  ownerUid:UID,masterUid:UID,companyKind:"partner",hubCompanyId:HUB,active:true
+ });
+ f.data.set("companies/"+PARTNER_COMPANY+"/members/"+UID,{
+  uid:UID,companyId:PARTNER_COMPANY,active:true,companyRole:"owner",
+  role:"leader",teamId:null,accessKind:"partner",memberType:"cooperator",
+  canViewRevenue:false,canViewUnitPrice:false
+ });
+ const before=f.writes.length;
+ const result=await s.readPartner(actor(),PARTNER_COMPANY);
+ assert.deepEqual(result.tabs,["team","individual","detail"]);
+ assert.equal(f.writes.length,before,"read never edits count or membership");
+ assert.deepEqual(f.data.get("users/"+UID),originalUser);
+ await fail(()=>s.readPartner(actor())); // requires explicit active secondary selection
+ await fail(()=>s.readPartner(actor(),"otherPartner")); // cannot forge company
+});
+test("secondary publication lookup rejects revoked memberships and finance paths",async()=>{
+ const secondaryContext={
+  active:true,kind:"partner_secondary",uid:UID,
+  primaryCompanyId:HUB,partnerCompanyId:PARTNER_COMPANY,
+  hubCompanyId:HUB,emailLower:"owner@example.com",role:"owner"
+ };
+ const secondaryCompany={ownerUid:UID,masterUid:UID,
+  companyKind:"partner",hubCompanyId:HUB,active:true};
+ const secondaryMember={
+  uid:UID,companyId:PARTNER_COMPANY,active:true,companyRole:"owner",
+  role:"leader",teamId:null,accessKind:"partner",memberType:"cooperator",
+  canViewRevenue:false,canViewUnitPrice:false
+ };
+ for(const [path,mutate] of [
+  ["partnerWorkspaceContexts/"+UID,v=>({...v,partnerCompanyId:"other"})],
+  ["partnerWorkspaceContexts/"+UID,v=>({...v,active:false})],
+  ["companies/"+PARTNER_COMPANY,v=>({...v,hubCompanyId:"other"})],
+  ["companies/"+PARTNER_COMPANY,v=>({...v,ownerUid:"other"})],
+  ["companies/"+PARTNER_COMPANY+"/members/"+UID,v=>({...v,canViewRevenue:true})],
+  ["companies/"+PARTNER_COMPANY+"/members/"+UID,v=>({...v,canViewUnitPrice:true})],
+  ["companies/"+HUB+"/members/"+UID,v=>({...v,active:false})],
+  ["partnerRelations/"+PARTNER_COMPANY,v=>({...v,countSharingApproved:false})]
+ ]){
+  const f=seeded();
+  f.data.set("partnerWorkspaceContexts/"+UID,structuredClone(secondaryContext));
+  f.data.set("companies/"+PARTNER_COMPANY,structuredClone(secondaryCompany));
+  f.data.set("companies/"+PARTNER_COMPANY+"/members/"+UID,structuredClone(secondaryMember));
+  f.data.set(path,mutate(f.data.get(path)));
+  await fail(()=>store(f).readPartner(actor(),PARTNER_COMPANY));
+  assert.equal(f.writes.length,0);
+  assert.equal(f.reads.some(k=>/^(records|products|revenueGoals|partnerWorkEntries)/.test(k)),false);
+ }
+});
