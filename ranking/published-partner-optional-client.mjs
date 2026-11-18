@@ -4,6 +4,8 @@
  * fields in the SAME read-only Firestore transaction. The browser never
  * fetches audit history via getPartnerWorkspace or uses cached day totals.
  */
+import {readVerifiedPartnerTabPolicy} from "./partner-tab-visibility-policy.mjs";
+const CODE_SESSION=/^[A-Za-z0-9_-]{43}$/;
 const SCHEMA="nico-published-partner-optional-v1";
 const TABS=new Set(["report","daily","history","goal"]);
 const DAY=/^20\d\d-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/;
@@ -84,6 +86,52 @@ export function createPartnerPublishedOptionalTabClient({
    }catch{stop();}
    if(auth.currentUser!==user||getWorkspaceCompanyId()!==company)stop();
    return verifyPartnerOptionalTabData(result?.data,{tab,date});
+  }
+ });
+}
+
+/**
+ * STAGING / OFF. Legacy partner code login is NOT an email identity.
+ * Each view fetches the current Owner-wide policy with its opaque signed
+ * session and then loads ONLY that allowed count-only optional tab.
+ * The backend independently rechecks both proofs in the SAME count tx.
+ * Do not add ranking tab support here: the joint rank HTTP endpoint
+ * separately requires a verified Firebase ID token.
+ */
+export function createPartnerCodeSessionOptionalTabClient({
+ enabled=false,serverGuardVerified=false,getCodeSessionToken,
+ functions,httpsCallable
+}={}){
+ if(enabled!==true||serverGuardVerified!==true||
+    typeof getCodeSessionToken!=="function"||
+    typeof httpsCallable!=="function")stop();
+ const active=()=>getCodeSessionToken();
+ return Object.freeze({
+  async load({tab,date}={}){
+   if(!TABS.has(tab)||!validDate(date))stop();
+   const session=active();
+   if(typeof session!=="string"||!CODE_SESSION.test(session))stop();
+   const safe=()=>active()===session;
+   let authorized;
+   try{
+    const res=await httpsCallable(functions,"getPartnerPublishedTabs")({
+     codeSessionToken:session
+    });
+    if(!safe())stop();
+    authorized=readVerifiedPartnerTabPolicy(res?.data);
+   }catch{stop();}
+   if(authorized.published!==true||!authorized.tabs.includes(tab))stop();
+   let value;
+   try{
+    const res=await httpsCallable(functions,"getPartnerPublishedOptionalTab")({
+     tab,date,codeSessionToken:session
+    });
+    if(!safe())stop();
+    value=verifyPartnerOptionalTabData(res?.data,{tab,date});
+   }catch{stop();}
+   if(!safe())stop();
+   // Return only the count projection. Never reveal/copy the opaque secret.
+   return value;
   }
  });
 }
