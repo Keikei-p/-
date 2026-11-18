@@ -113,9 +113,10 @@ test("Rules still forbid hard deletes and archive is Owner-only with exactly two
   assert.match(productBlock,/request\.resource\.data\.active is bool/);
 });
 test("Archived products excluded from fresh count and goal inputs; historical records kept",()=>{
-  assert.match(html,/products\.filter\(product => product\.active !== false\)\.forEach/);
-  assert.match(html,/typeof editingRecordId === "undefined" \|\| !editingRecordId/);
-  assert.match(html,/product\.active === false\) \{\s*return "使用停止した商材には新しい実績を登録できません/);
+  assert.match(html,/const inputGroups = buildProductInputGroups\(existingResults\)/);
+  assert.match(html,/archivedHistory\[resultVariantKey\(plan\.productId, plan\.cashback\)\]/);
+  assert.match(html,/function validateArchivedProductCountChange/);
+  assert.match(html,/const archiveProblem=validateArchivedProductCountChange/);
   assert.match(html,/Object\.values\(\s*existingMap\s*\)\.forEach/);
   assert.match(html,/input\.dataset\.resultKey/);
 });
@@ -125,3 +126,26 @@ test("Product management has accessible Delete and Restore controls without docu
   assert.match(html,/削除しても|実績・件数・売上・単価・ランキング履歴は削除しません/);
   assert.doesNotMatch(archiveSource,/\bdeleteDoc\(|\btransaction\.delete\(/);
 });
+
+
+test("archive save guard refuses any new/increased archived counts and preserves historical corrections",()=>{
+  const at=html.indexOf("function validateArchivedProductCountChange(");
+  const end=html.indexOf("\n}\n",at);
+  assert.ok(at>0&&end>at);
+  const source=html.slice(at,end+2);
+  const ctx={
+    Object,Number,
+    normalizeExistingResultMap:rows=>rows||{},
+    resultVariantKey:(id,cb)=>id+"__cb_"+cb
+  };
+  runInNewContext(source+";globalThis.archiveCountGate=validateArchivedProductCountChange;",ctx);
+  const blocked=ctx.archiveCountGate;
+  const productCatalog=[{id:"off",active:false},{id:"on",active:true}];
+  const prior={off__cb_0:{productId:"off",count:3,cashback:0}};
+  assert.match(blocked({off__cb_0:{productId:"off",count:4,cashback:0}},prior,productCatalog),/使用停止中/);
+  assert.match(blocked({off__cb_0:{productId:"off",count:1,cashback:0}},null,productCatalog),/使用停止中/);
+  assert.equal(blocked({off__cb_0:{productId:"off",count:3,cashback:0}},prior,productCatalog),"");
+  assert.equal(blocked({off__cb_0:{productId:"off",count:2,cashback:0}},prior,productCatalog),"");
+  assert.equal(blocked({on__cb_0:{productId:"on",count:5,cashback:0}},prior,productCatalog),"");
+});
+
