@@ -102,7 +102,11 @@ test("unknown historical team stays unallocated, never assigned to current roste
  assert.equal(out.companyTotalCount,12);
 });
 test("missing backend allowlist and malformed counts must fail closed",()=>{
- const x=fixture();delete x.enabledCategories;reject(()=>view(x));
+ const x=fixture();delete x.enabledCategories;
+ const all=view(x);
+ assert.deepEqual(all.activeInputCategories,PRODUCTS);
+ assert.equal(all.companyTotalCount,12);
+ assert.equal(all.teamDetails.find(t=>t.id==="t1").totalCount,5);
  const y=fixture();y.records[0].totalCount=6;reject(()=>view(y));
  const z=fixture();z.records.push({...z.records[0]});reject(()=>view(z));
  const bad=fixture();bad.records[0].counts={NURO:5};reject(()=>view(bad));
@@ -122,4 +126,22 @@ test("all three public aggregate invariants must match, no sum of old private SK
  assert.equal(out.companyTotalCount,teamSum+unknownSum);
  assert.equal(out.companyTotalCount,12);
  assert.equal(JSON.stringify(out).includes("privateTotalCount"),false);
+});
+
+test("no ON OFF setup: normal partner uses the exact original nine count categories",()=>{
+ const x=fixture();delete x.enabledCategories;
+ x.records[0].counts.SBMNP=2;x.records[0].totalCount=7;
+ const old=structuredClone(x),out=view(x);
+ assert.equal(out.companyTotalCount,14);
+ assert.deepEqual(out.activeInputCategories,PRODUCTS);
+ assert.equal(out.teamDetails.find(t=>t.id==="t1").counts.SBMNP,2);
+ assert.deepEqual(x,old);
+});
+test("legacy server-side gate still cannot be bypassed by a no-toggle frontend",()=>{
+ const x=fixture();x.enabledCategories=["NURO"];
+ x.records[2].counts["SB光・AIR"]=0;x.records[2].totalCount=0;
+ const out=view(x);
+ assert.deepEqual(out.activeInputCategories,["NURO"]);
+ x.records[2].counts["SB光・AIR"]=1;x.records[2].totalCount=1;
+ reject(()=>view(x)); // never accept a hidden positive value
 });
