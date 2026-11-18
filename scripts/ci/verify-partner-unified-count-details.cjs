@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=44,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=47,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -90,6 +90,10 @@ assert(changed.every(file=>[
  "tests/owner-partner-eight-tab-settings-panel.test.mjs",
  "ranking/published-partner-tab-server.mjs",
  "ranking/published-partner-tab-client.mjs",
+ "ranking/published-partner-optional-client.mjs",
+ "tests/partner-optional-client.test.mjs",
+ "tests/partner-optional-four-tab-read.test.mjs",
+ "functions-partner-tabs/partner-optional-tab-reader.mjs",
  "tests/published-partner-tab-client.test.mjs",
  "functions-ranking-approvals/ranking/published-partner-tab-server.mjs",
  "ranking/owner-visible-count-atomic-loader.mjs",
@@ -157,6 +161,8 @@ assert(!/\b(?:sales|revenue|recordCorrections|partnerWorkEntries|partnerWorkCoun
  "Owner tab store must not query original financial/count documents");
 const tabServer=fs.readFileSync("functions-partner-tabs/index.js","utf8");
 assert(tabServer.includes('process.env.NICO_PARTNER_TAB_PUBLICATION_ENABLED==="enabled"')&&
+       tabServer.includes('process.env.NICO_PARTNER_OPTIONAL_TAB_DATA_VERIFIED==="enabled"')&&
+       tabServer.includes("exports.getPartnerPublishedOptionalTab=onCall")&&
        tabServer.includes("exports.setOwnerPartnerTabPublication=onCall")&&
        tabServer.includes("exports.getPartnerPublishedTabs=onCall"),
  "Owner and partner callables require independent server OFF switch");
@@ -165,6 +171,29 @@ assert(ownerUI.includes("readVerifiedPartnerTabPolicy") &&
        ownerUI.includes("prepareOwnerTabPublication") &&
        !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\s*\(/.test(ownerUI),
  "Owner UI must use server-authenticated CAS callable, never direct datastore writes");
+const optionalStore=fs.readFileSync(
+ "functions-partner-tabs/partner-tab-publication-store.mjs","utf8");
+assert(optionalStore.includes("async function readPublishedOptional(")&&
+       optionalStore.includes("verifiedPartnerViewer(tx,actor,workspaceCompanyId,true)")&&
+       optionalStore.includes("}, {readOnly:true}")===false&&
+       optionalStore.includes("},{readOnly:true});"),
+ "Optional reads require fresh scope+Owner policy within ONE read-only tx");
+const optionalReader=fs.readFileSync(
+ "functions-partner-tabs/partner-optional-tab-reader.mjs","utf8");
+assert(optionalReader.includes('collection("partnerWorkEntries").where("date","==",date)')&&
+       optionalReader.includes('collection("partnerWorkAudits")')&&
+       !/\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch|tx\.create|tx\.update|tx\.set|tx\.delete)\s*\(/.test(optionalReader),
+ "Optional report/daily/history/goal data reader must not write originals");
+const optionalClient=fs.readFileSync(
+ "ranking/published-partner-optional-client.mjs","utf8");
+assert(optionalClient.includes("createPartnerPublishedOptionalTabClient")&&
+       optionalClient.includes("verifyPartnerOptionalTabData")&&
+       !/\b(?:getDocs|setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction)\s*\(/.test(optionalClient),
+ "Client must never read or write Firestore directly for optional data");
+assert(here.includes('loadPartnerPublishedOptionalPanel(name)')&&
+       here.includes('getPartnerPublishedOptionalTab')===false&&
+       here.includes('partnerOptionalPublicationProtectionActive()'),
+ "Optional tabs must use strictly verified data and leave original count input intact");
 const publishedClient=fs.readFileSync(
  "ranking/published-partner-tab-client.mjs","utf8");
 assert(publishedClient.includes('verifyPublishedPartnerCountResponse')&&
