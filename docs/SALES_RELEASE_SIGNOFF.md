@@ -1153,3 +1153,27 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 公開後の本人iPhone表示・ログイン確認：未実施
 
 未署名・未承認の状態を公開承認完了とみなさず、本番デプロイは行わない。
+
+---
+
+## OWNER_PRODUCT_ARCHIVE_20261118_PR793 — 自社追加商材の可逆的削除
+
+### 依頼・変更範囲
+- 2026-11-18、依頼者から「追加した商材とかを消せるような設定も欲しい今消せない」と明示された。
+- 同一会話の直前に「他は消さないでね」と指示あり。データ・他商材・過去実績・売上・単価・CB・訂正履歴を絶対に消さない方針を引き継ぐ。
+- Firebase sales-management-cc116、GitHub PR #793。index.htmlの商材管理UI、firestore.rulesのproducts更新条件、関連契約・Emulatorテストだけを変更する。
+- UIの「削除」は商材 active=false の使用停止。商材のFirestore文書は保持、物理削除は禁止、元に戻す操作でactive=true。既存の記録や金額は更新しない。
+- Owner／会社Masterにだけ商材状態切替を追加、Leaderに非表示権限は追加しない。変更可能なフィールドはactive/updatedAtだけ。金融項目・他Rulesはバイト単位で従来どおり。
+- 未保存の件数が残っている場合はアーカイブを中止。過去実績の訂正フォームでは既存の非表示商材を保持。新規登録・目標からは非表示。
+
+### 検証記録
+- 専用CI: NICO reversible Owner product archive (NO DEPLOY until audited release)、UI/権限回帰とFirestore Emulatorの全既存Rulesテストを通してから公開検討する。
+- 課題: 初回のテスト正規表現が処理中Setのdelete()をFirestore削除と誤判定したため、Firestoreのtransaction.delete()/deleteDoc()だけを禁止として修正。
+- 次の課題: 既存価格修正用固定関数に変更を入れるとSales App Validationが停止するため、元の価格/履歴関数をバイト単位で維持し、非表示商材入力防止を別ガードに移した。
+- アプリ/Rules/Functions/PWA/Hosting全体の再配備は、この技術記録だけでは許可せず、専用CIと現行本番の再監査および対象限定リリースを条件とする。
+
+### 承認の事実（署名は代筆しない）
+- チャットでの追加商材整理機能の実装指示あり。本文章はその依頼範囲を固定する技術レビュー。
+- GitHubのsales-production-reviewedラベルは保護CIでの差分レビュー用。本番デプロイや管理者自筆署名を代替しない。
+- 管理者本人の署名・実端末確認: 未取得。
+- この文章を更新した時点で本番商材データの変更、物理削除、本番Rules/Hostingの配備: 実施していない。
