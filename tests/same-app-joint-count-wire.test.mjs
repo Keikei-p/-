@@ -1,4 +1,7 @@
 import {readFileSync} from "node:fs";
+import {createVerifiedJointMonthHttpBridge} from "../ranking/verified-joint-month-http-bridge.mjs";
+import {PARTNER_RANK_SKUS} from "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs";
+import {linkAllRegisteredCountsWithoutSetup} from "../functions-ranking-approvals/ranking/zero-setup-count-linker.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {buildSameAppJointCountProjection as project}
@@ -196,4 +199,94 @@ test("rank parity is maintained for an additional zero/one-count tie",()=>{
  const corrupted=structuredClone(hub);
  corrupted.memberRanking[1].rank=2;
  assert.throws(()=>project(corrupted));
+});
+
+const verifiedHttpResponse=body=>({
+ status:200,headers:{get:key=>key==="Content-Type"?"application/json":null},
+ text:async()=>JSON.stringify(body)
+});
+function verifiedFixture(body,{role="hub_owner",uid="owner1",workspace=""}={}){
+ const user={uid,emailVerified:true,getIdToken:async()=>("A".repeat(50))};
+ const auth={currentUser:user},requests=[],writes=[];
+ const bridge=createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,expectedRole:role,
+  endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+  getWorkspaceCompanyId:()=>workspace,
+  fetcher:async(url,options)=>{
+   requests.push({url,method:options.method,cache:options.cache,
+    authorization:options.headers?.Authorization});
+   return verifiedHttpResponse(body);
+  }
+ });
+ return {bridge,auth,user,requests,writes};
+}
+test("real read-only HTTP bridge → same owner UI counts, exactly one authenticated GET",async()=>{
+ const f=verifiedFixture(owner());
+ const payload=await f.bridge.load({period:{
+  kind:"day",day:"2026-11-18",asOf:"2026-11-18"
+ },filters:{}});
+ const model=project(payload);
+ assert.equal(model.ownCount,5);
+ assert.equal(model.partnerCount,3);
+ assert.equal(model.total,8);
+ assert.equal(model.financeIncluded,false);
+ assert.equal(f.requests.length,1);
+ assert.equal(f.requests[0].method,"GET");
+ assert.equal(f.requests[0].cache,"no-store");
+ assert.equal(f.requests[0].authorization,"Bearer "+"A".repeat(50));
+ assert.match(f.requests[0].url,/getVerifiedJointCountRanking\?day=2026-11-18$/);
+ assert.equal(f.writes.length,0);
+});
+test("partner workspace HTTP identity only receives public count envelope",async()=>{
+ const f=verifiedFixture(partner(),{
+  role:"partner_owner",uid:"partnerOwner1",workspace:"partner1"
+ });
+ const raw=await f.bridge.load({period:{
+  kind:"day",day:"2026-11-18",asOf:"2026-11-18"
+ },filters:{}});
+ const projection=project(raw,{partner:true});
+ assert.equal(projection.ownCount,3);
+ assert.equal(projection.teamDetails[0].members.length,0);
+ assert.equal(projection.personRows.length,2);
+ assert.match(f.requests[0].url,/workspaceCompanyId=partner1/);
+ assert.equal("summary" in raw,false);
+ assert.equal("revenue" in projection,false);
+});
+test("Auth switch or invalid verified contract never reaches the ranking renderer",async()=>{
+ const f=verifiedFixture(owner());
+ f.user.getIdToken=async()=>{
+  f.auth.currentUser={uid:"different",emailVerified:true,getIdToken:async()=>("A".repeat(50))};
+  return "A".repeat(50);
+ };
+ await assert.rejects(()=>f.bridge.load({
+  period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"},filters:{}
+ }));
+ assert.equal(f.requests.length,0);
+ const bad=verifiedFixture({...owner(),role:"partner_owner"});
+ await assert.rejects(()=>bad.bridge.load({
+  period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"},filters:{}
+ }));
+ assert.equal(bad.requests.length,1);
+});
+test("no ON OFF mapping joins exact self SKU, preserves legacy combined, never changes source",()=>{
+ const hubSource={companyId:"hub1",kind:"own",consentVerified:true,isComplete:true,
+  readTime:"2026-11-18T09:00:00.000Z",
+  products:[{companyId:"hub1",sourceId:"nuro",name:"NURO光",active:true},
+   {companyId:"hub1",sourceId:"light",name:"ソフトバンク光",active:true}]};
+ const partnerSource={companyId:"partner1",kind:"partner",consentVerified:true,
+  isComplete:true,readTime:hubSource.readTime,
+  products:PARTNER_RANK_SKUS.map(s=>({
+   companyId:"partner1",sourceId:s.id,name:s.name,active:true
+  }))};
+ const original=structuredClone({hubSource,partnerSource});
+ const rows=linkAllRegisteredCountsWithoutSetup({
+  hubCompanyId:"hub1",hubSource,partnerSources:[partnerSource]
+ });
+ const match=rows.find(s=>s.companyId==="partner1"&&s.productId==="partnerSku01");
+ const combined=rows.find(s=>s.companyId==="partner1"&&s.productId==="partnerSku05");
+ assert.equal(match.groupId,"nuro");
+ assert.equal(combined.groupId,"partnerUnmatched:partnerSku05");
+ assert.equal(rows.filter(s=>s.companyId==="partner1").length,9);
+ assert.deepEqual({hubSource,partnerSource},original);
+ assert.equal(JSON.stringify(rows).includes("unitPrice"),false);
 });
