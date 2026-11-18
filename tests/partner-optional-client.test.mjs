@@ -46,6 +46,18 @@ test("each optional response rejects extra financial fields, wrong company or fo
   }
  }
 });
+test("the partner browser rejects a CB cash-tier in company and historical staff labels",()=>{
+ for(const original of fixtures){
+  const changed=structuredClone(original);
+  changed.companyName="協力店A CB40000";
+  assert.throws(()=>verifyPartnerOptionalTabData(changed,{tab:original.tab,date:day}),
+   /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+ }
+ const history=structuredClone(fixtures[2]);
+ history.audits[0].staffName="担当A CB:40000";
+ assert.throws(()=>verifyPartnerOptionalTabData(history,{tab:"history",date:day}),
+  /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+});
 test("history cannot carry private original, audit emails, or forged count delta",()=>{
  const item=structuredClone(fixtures[2]);
  item.audits[0].privateCounts={p1:100};
