@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=42,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=44,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -89,6 +89,8 @@ assert(changed.every(file=>[
  "ranking/owner-partner-tab-settings-panel.mjs",
  "tests/owner-partner-eight-tab-settings-panel.test.mjs",
  "ranking/published-partner-tab-server.mjs",
+ "ranking/published-partner-tab-client.mjs",
+ "tests/published-partner-tab-client.test.mjs",
  "functions-ranking-approvals/ranking/published-partner-tab-server.mjs",
  "ranking/owner-visible-count-atomic-loader.mjs",
  "functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs",
@@ -163,6 +165,18 @@ assert(ownerUI.includes("readVerifiedPartnerTabPolicy") &&
        ownerUI.includes("prepareOwnerTabPublication") &&
        !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\s*\(/.test(ownerUI),
  "Owner UI must use server-authenticated CAS callable, never direct datastore writes");
+const publishedClient=fs.readFileSync(
+ "ranking/published-partner-tab-client.mjs","utf8");
+assert(publishedClient.includes('verifyPublishedPartnerCountResponse')&&
+       publishedClient.includes('createPublishedPartnerCountBridge')&&
+       publishedClient.includes('getWorkspaceCompanyId')&&
+       publishedClient.includes('PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED'),
+ "No unverified or mixed-tab browser rank projection");
+assert(!/\b(?:getDocs|setDoc|addDoc|updateDoc|deleteDoc|runTransaction|localStorage|httpsCallable)\s*\(/.test(publishedClient),
+ "Client tab bridge must never read Firestore or mutate originals");
+assert(here.includes('import("./ranking/published-partner-tab-client.mjs")')&&
+       here.includes('await bridge.load({tab,day:date})'),
+ "The partner's shared dashboard must use published-only rank GET");
 const serverTab=fs.readFileSync("ranking/published-partner-tab-server.mjs","utf8");
 const vendorTab=fs.readFileSync(
  "functions-ranking-approvals/ranking/published-partner-tab-server.mjs","utf8");
