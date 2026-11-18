@@ -1,0 +1,51 @@
+name: NICO emergency login public-only audit (NO DEPLOY, NO COUNTS)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/nico-live-login-anonymous-audit.mjs'
+      - 'tests/nico-live-login-anonymous-audit.test.mjs'
+      - '.github/workflows/nico-emergency-login-public-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert no counts, source, auth, Functions, Rules, Hosting or production data changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-emergency-login-public-readonly.yml' \
+            'tests/nico-live-login-anonymous-audit.test.mjs' \
+            'tools/production/nico-live-login-anonymous-audit.mjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/approved.txt"
+          diff -u "$RUNNER_TEMP/approved.txt" "$RUNNER_TEMP/changed.txt"
+          node --check tools/production/nico-live-login-anonymous-audit.mjs
+          node --test tests/nico-live-login-anonymous-audit.test.mjs
+          node --test tests/legacy-finance-entry-guard.test.mjs
+          echo 'EXISTING_LOGIN_FINANCE_BOUNDARY_PRESERVED'
+      - name: GET public login and diagnostic pages anonymously, NO account/record access
+        run: |
+          set -euo pipefail
+          node tools/production/nico-live-login-anonymous-audit.mjs --read-only
+          echo 'PUBLIC_LOGIN_READ_ONLY_AUDIT_COMPLETE'
