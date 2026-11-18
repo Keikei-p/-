@@ -135,7 +135,10 @@ export function buildPartnerSharedLeaderCountView(workspace){
  const teams=Object.freeze([...teamMap.values()].map(t=>Object.freeze({
   id:t.id,name:t.name,active:t.active,totalCount:t.totalCount,
   submittedStaffCount:t.submittedStaffCount,
-  missingStaffCount:Math.max(0,t.expectedStaffCount-t.submittedStaffCount),
+  // Staff who changed teams must not make an unreported CURRENT member
+  // appear reported. Compare roster IDs, not counts from saved team snapshots.
+  missingStaffCount:[...staffMap.values()].filter(s=>s.active&&
+   s.teamId===t.id&&!seen.has(s.id)).length,
   reportStatus:t.submittedStaffCount>0?"submitted":
    t.expectedStaffCount>0?"not_reported":"not_expected"
  })));
