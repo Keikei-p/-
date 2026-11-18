@@ -13650,15 +13650,28 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
   import("./ranking/same-app-joint-count-projection.mjs"),
   import("./ranking/same-app-joint-count-panel.mjs")
  ]);
+ let httpStatus=null;
  const bridge=bridgeModule.createVerifiedJointMonthHttpBridge({
-  featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
+  featureEnabled:true,auth,fetcher:async(...args)=>{
+   const reply=await fetch(...args);
+   httpStatus=reply?.status??null;
+   return reply;
+  },
   endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
   expectedRole:partner?"partner_owner":"hub_owner",
   getWorkspaceCompanyId:()=>partner?partnerInlineWorkspaceCompany:""
  });
- const response=await bridge.load({
-  period:{kind:"day",day:date,asOf:getTodayString()},filters:{}
- });
+ let response;
+ try{
+  response=await bridge.load({
+   period:{kind:"day",day:date,asOf:getTodayString()},filters:{}
+  });
+ }catch{
+  // Only explicit server 503 can use the historical count-only fallback.
+  // A bad 200, 401/403, Auth drift or network error blocks other totals.
+  throw Error(httpStatus===503?"SAME_APP_JOINT_NOT_RELEASED":
+   "SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
+ }
  const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
  const field=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
@@ -13696,9 +13709,14 @@ async function loadSharedDailyStandings(where,force=false){
   }))return;
  }catch(error){
   if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
-  // New HTTP release may be OFF (503). Keep legacy count-only UI unchanged;
-  // never retry a write or silently show a fake 0-count ranking.
-  console.info("same_app_joint_count_not_available",error?.code||"not_released");
+  if(error?.message!=="SAME_APP_JOINT_NOT_RELEASED"){
+   content.replaceChildren();
+   status.textContent="合同ランキングの認証または件数を照合できません。公開状態・所属・通信を確認してください。";
+   console.error("same_app_joint_count_unverified",error?.code||"blocked");
+   return;
+  }
+  // Explicit server 503: preserve ONLY the verified legacy count-only path.
+  console.info("same_app_joint_count_not_released");
  }
  try{
   const payload={date,sharedRankings:true};
