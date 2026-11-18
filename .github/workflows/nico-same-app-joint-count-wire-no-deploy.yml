@@ -24,6 +24,8 @@ on:
       - ranking/published-partner-optional-client.mjs
       - tests/partner-optional-client.test.mjs
       - tests/partner-optional-four-tab-read.test.mjs
+      - tests/nico-eight-tab-release-preflight.test.mjs
+      - firebase.partner-tabs.json
       - functions-ranking-approvals/ranking/published-partner-tab-server.mjs
       - ranking/owner-visible-count-atomic-loader.mjs
       - functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
@@ -65,6 +67,7 @@ jobs:
           node --check ranking/published-partner-tab-client.mjs
           node --check functions-partner-tabs/partner-optional-tab-reader.mjs
           node --check ranking/published-partner-optional-client.mjs
+          node --check tests/nico-eight-tab-release-preflight.test.mjs
           node --check functions-ranking-approvals/ranking/published-partner-tab-server.mjs
           node --check ranking/owner-visible-count-atomic-loader.mjs
           node --check functions-ranking-approvals/ranking/owner-visible-count-atomic-loader.mjs
@@ -81,7 +84,7 @@ jobs:
           node --check functions-ranking-approvals/ranking/zero-setup-count-linker.mjs
           node --check functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
           node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
-          node --test tests/same-app-joint-count-wire.test.mjs tests/partner-unified-count-team-view.test.mjs tests/joint-count-http-adapter.test.cjs tests/partner-eight-tab-navigation-bridge.test.mjs tests/partner-tab-publication-callables.test.mjs tests/partner-tab-publication-firestore.test.mjs tests/partner-tab-publication-token.test.mjs tests/partner-tab-visibility-policy.test.mjs tests/owner-partner-eight-tab-settings-panel.test.mjs tests/published-partner-tab-server.test.mjs tests/zero-setup-count-publication-read-gate.test.mjs tests/published-partner-tab-client.test.mjs tests/partner-optional-client.test.mjs tests/partner-optional-four-tab-read.test.mjs
+          node --test tests/same-app-joint-count-wire.test.mjs tests/partner-unified-count-team-view.test.mjs tests/joint-count-http-adapter.test.cjs tests/partner-eight-tab-navigation-bridge.test.mjs tests/partner-tab-publication-callables.test.mjs tests/partner-tab-publication-firestore.test.mjs tests/partner-tab-publication-token.test.mjs tests/partner-tab-visibility-policy.test.mjs tests/owner-partner-eight-tab-settings-panel.test.mjs tests/published-partner-tab-server.test.mjs tests/zero-setup-count-publication-read-gate.test.mjs tests/published-partner-tab-client.test.mjs tests/partner-optional-client.test.mjs tests/partner-optional-four-tab-read.test.mjs tests/nico-eight-tab-release-preflight.test.mjs
       - name: Existing count save and self finance remain byte-identical
         run: |
           git fetch --no-tags --depth=1 origin main
