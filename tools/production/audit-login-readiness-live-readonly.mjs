@@ -17,6 +17,18 @@ const increment=(counts,key)=>{counts[key]=(counts[key]||0)+1};
 export function classifyLoginReadiness({uid,user,company,member,auth,companyExists,memberExists}={}){
  if(!validId(uid)||!user||typeof user!=="object"||user.uid!==uid)
   return "USER_UID_MISMATCH";
+ // Company-code principals authenticate with revocable opaque sessions, not
+ // Firebase email/password. Do not flag a missing Firebase Auth user as a
+ // password-login failure or claim this audit verifies the code session.
+ if(user.authKind==="partner_code_shared"){
+  if(user.active===false)return "USER_DISABLED";
+  if(!validId(user.companyId))return "COMPANY_SETUP_OR_INVITE_REQUIRED";
+  if(user.accessKind!=="partner"||user.memberType!=="cooperator"||
+   user.companyRole!=="owner"||user.canViewRevenue!==false||
+   user.canViewUnitPrice!==false)
+   return "SHARED_CODE_PROFILE_FLAGS_INCONSISTENT";
+  return "SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT";
+ }
  if(!auth)return "AUTH_USER_NOT_FOUND";
  if(auth.uid!==uid)return "AUTH_UID_MISMATCH";
  if(auth.disabled===true)return "AUTH_DISABLED";
@@ -25,8 +37,6 @@ export function classifyLoginReadiness({uid,user,company,member,auth,companyExis
  if(!validId(user.companyId))return "COMPANY_SETUP_OR_INVITE_REQUIRED";
  if(!companyExists)return "COMPANY_DOCUMENT_MISSING";
  if(company?.active===false)return "COMPANY_DISABLED";
- if(user.authKind==="partner_code_shared")
-  return "SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT";
  const routeIsPartner=user.accessKind==="partner"||
   ["partner","cooperator"].includes(user.memberType);
  if(routeIsPartner){
@@ -67,11 +77,15 @@ export async function auditLoginReadiness({db,auth}={}){
   if(!snap.exists||user.uid!==uid){
    increment(stats,"USER_UID_MISMATCH");continue;
   }
-  let record;
-  try{record=await auth.getUser(uid);scope.firebaseAccountsLookedUp++}
-  catch(err){
-   if(err?.code!=="auth/user-not-found")STOP("FIREBASE_AUTH_METADATA_UNAVAILABLE");
-   record=null;scope.firebaseAccountsLookedUp++;
+  let record=null;
+  // This is an email-account audit; avoid asking Firebase Auth for a
+  // company-code principal whose existing login is an opaque code session.
+  if(user.authKind!=="partner_code_shared"){
+   try{record=await auth.getUser(uid);scope.firebaseAccountsLookedUp++}
+   catch(err){
+    if(err?.code!=="auth/user-not-found")STOP("FIREBASE_AUTH_METADATA_UNAVAILABLE");
+    scope.firebaseAccountsLookedUp++;
+   }
   }
   let cs=null,ms=null;
   if(validId(user.companyId)&&user.authKind!=="partner_code_shared"){
