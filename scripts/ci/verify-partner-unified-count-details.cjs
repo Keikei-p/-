@@ -151,7 +151,7 @@ assert(tabServer.includes('process.env.NICO_PARTNER_TAB_PUBLICATION_ENABLED==="e
 const ownerUI=fs.readFileSync("ranking/owner-partner-tab-settings-panel.mjs","utf8");
 assert(ownerUI.includes("readVerifiedPartnerTabPolicy") &&
        ownerUI.includes("prepareOwnerTabPublication") &&
-       !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\\s*\\(/.test(ownerUI),
+       !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\s*\(/.test(ownerUI),
  "Owner UI must use server-authenticated CAS callable, never direct datastore writes");
 const privateReader=fs.readFileSync(
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
