@@ -81,6 +81,14 @@ assert(joint.includes('zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LIN
  "Unreviewed published counts must remain OFF by default");
 assert(here.includes('tryLoadVerifiedSameAppJointCount({'),
  "Both company views must actually use the canonical count GET");
+assert(here.includes('const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;'),
+ "The new HTTP route must be explicitly OFF in this unreviewed UI");
+assert(here.includes('if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)'),
+ "The client must refuse a disabled cross-origin endpoint before fetch");
+assert(here.includes('throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");'),
+ "Any error once enabled must refuse bad data, not show stale counts");
+assert(!here.includes("httpStatus===503?"),
+ "403/503 and malformed backend responses must not trigger a stale fallback");
 assert(here.includes('getWorkspaceCompanyId:()=>partner?partnerInlineWorkspaceCompany:""'),
  "Partner-secondary company context must stay server verified");
 assert(here.includes('if(await tryLoadVerifiedSameAppJointCount({'),
