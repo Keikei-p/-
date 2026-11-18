@@ -212,6 +212,22 @@ test("corrupt raw count sum or forged financial label causes fail-closed, no sou
   assert.notDeepEqual([...f.data.entries()],before); // test fault injection only
  }
 });
+test("a historical label containing CB payout tiers cannot appear in partner reports or history",async()=>{
+ for(const [path,patch] of [
+  [paths.company+"/partnerWorkStaff/s1",old=>({...old,name:"担当A CB40000"})],
+  [paths.company,old=>({...old,name:"協力店A CB:40000"})],
+  [paths.company+"/partnerWorkAudits/"+DATE+"__s1__v1",old=>({
+   ...old,staffNameSnapshot:"担当A CB 40000"
+  })]
+ ]){
+  const f=env();const previous=structuredClone(f.data.get(path));
+  f.data.set(path,patch(f.data.get(path)));
+  await blocked(()=>f.get("history"));
+  assert.deepEqual(f.data.get(path),patch(previous),
+   "read must never edit the financial label or any historical original");
+  assert.equal(f.writes(),0);
+ }
+});
 test("unknown data tabs and malformed dates never query Firestore",async()=>{
  const f=env();
  for(const [tab,date] of [["revenue",DATE],["history","2026-02-30"],
