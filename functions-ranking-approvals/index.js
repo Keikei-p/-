@@ -51,7 +51,10 @@ exports.setOwnerReviewedSkuMapping=onCall(options,skuMapping.save);
 exports.getVerifiedJointCountRanking=onRequest({
  region:"asia-northeast1",maxInstances:2,concurrency:10,cors:false
 },createJointCountHttpAdapter({
- enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled",
+ // Both release proofs MUST be enabled before any Auth/Firestore read.
+ // Do not silently fall back to old owner-product publication settings.
+ enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&
+  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled",
  loadHandler:async()=>{
   const {createCanonicalOwnerCountHandler}=await import(
    "./ranking/canonical-owner-count-server-factory.mjs"
