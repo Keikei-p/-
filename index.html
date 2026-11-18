@@ -24632,7 +24632,7 @@ function buildProductInputGroups(
 
   const currentProductIds =
     new Set(
-      products.filter(product => product.active !== false).map(
+      products.map(
         product =>
           product.id
       )
@@ -24671,7 +24671,7 @@ function buildProductInputGroups(
   }
 
 
-  products.filter(product => product.active !== false).forEach(
+  products.forEach(
     (
       product,
       productIndex
@@ -24908,10 +24908,6 @@ function buildProductInputGroups(
     existingMap
   ).forEach(
     result => {
-      // Archived products remain visible only while correcting their original
-      // historic record; a new day cannot acquire new archived counts.
-      if ((typeof editingRecordId === "undefined" || !editingRecordId) && products.some(product =>
-        product.id === result.productId && product.active === false)) return;
 
       if (
         currentProductIds.has(
@@ -25032,10 +25028,21 @@ function prepareProductInputList(
     "";
 
 
-  const inputGroups =
-    buildProductInputGroups(
-      existingResults
-    );
+  // Archive is presentation-only: pricing and historical save functions stay
+  // byte-identical to the reviewed production count/price hotfix.
+  const archivedHistory = normalizeExistingResultMap(existingResults);
+  const inputGroups = buildProductInputGroups(existingResults)
+    .map(group => ({
+      ...group,
+      plans: group.plans.filter(plan => {
+        const product = products.find(item => item.id === plan.productId);
+        if (product?.active !== false) return true;
+        // Historical lines remain visible for original-record corrections only.
+        return Boolean(editingRecordId &&
+          archivedHistory[resultVariantKey(plan.productId, plan.cashback)]);
+      })
+    }))
+    .filter(group => group.plans.length > 0);
 
 
   if (
@@ -25611,9 +25618,6 @@ function verifyNewRecordPricing(results, productCatalog) {
       return "商材が更新・削除されています。再読み込みして管理者に確認してください。";
     }
     const product = catalog.get(row.productId);
-    if (product.active === false) {
-      return "使用停止した商材には新しい実績を登録できません。必要ならオーナーが商材管理から元に戻してください。";
-    }
     // Old records may legitimately use a legacy CB rule, but new sales must
     // never confuse the customer's cashback amount with our earned revenue.
     const explicit = Array.isArray(product.pricingOptions) && product.pricingOptions.length > 0;
@@ -25687,6 +25691,24 @@ function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) 
     if (Object.prototype.hasOwnProperty.call(oldMap,key)) continue;
     const problem = verifyNewRecordPricing({[key]:row},productCatalog);
     if (problem) return problem;
+  }
+  return "";
+}
+
+// Additional archive-only gate. Existing price calculation/validation is
+// unchanged; archived product lines can be corrected historically, but no
+// archived product can gain new counts while inactive.
+function validateArchivedProductCountChange(nextResults,previousResults,catalog) {
+  const previous=normalizeExistingResultMap(previousResults);
+  for (const row of Object.values(nextResults || {})) {
+    const product=(catalog||[]).find(p=>p.id===row?.productId);
+    if (product?.active !== false) continue;
+    const key=resultVariantKey(row.productId,row.cashback||0);
+    const prior=Number(previous[key]?.count||0);
+    const next=Number(row.count||0);
+    if (!Number.isSafeInteger(next)||next>prior) {
+      return "使用停止中の商材は新しく件数を追加できません。商材管理から元に戻してください。";
+    }
   }
   return "";
 }
@@ -26283,6 +26305,14 @@ saveRecordButton.onclick =
 
 
     const existingDailyRecord = findDailyRecord(targetUid, date);
+    if (!zeroResultSubmission) {
+      const archiveProblem=validateArchivedProductCountChange(
+        results,existingDailyRecord?.results,products);
+      if (archiveProblem) {
+        showError(archiveProblem);
+        return;
+      }
+    }
     // CB is a selector only; sales are quantity * approved revenuePerUnit.
     // Never overwrite unchanged historical rates, but block new/incremented counts
     // whose unit rate no longer matches the catalog.
