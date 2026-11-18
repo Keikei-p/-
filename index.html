@@ -7575,6 +7575,10 @@ const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;
  // Switch this only in a separately reviewed release AFTER actual Auth,
  // finance-denial, isolated restore and count-parity E2E prove it is safe.
  const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;
+ // Two independent OFF defaults: browser navigation and verified server
+ // refusal of unpublished data. UI masking alone is NEVER a release proof.
+ const NICO_PARTNER_TAB_UI_ENABLED = false;
+ const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -12896,6 +12900,57 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+let partnerPublishedTabGeneration=0,partnerPublishedTabIds=null;
+function partnerPublishedTabAllowed(name){
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true)return true; // existing released UI untouched
+ if(["record","invite","teams","members","catalog","account"].includes(name))return true;
+ return partnerPublishedTabIds?.has(name)===true;
+}
+async function refreshPartnerPublishedTabNavigation(){
+ // Never contact a new callable unless the server gate AND UI are reviewed.
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true||
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true)return false;
+ const user=auth.currentUser,company=partnerInlineWorkspaceCompany;
+ const generation=++partnerPublishedTabGeneration;
+ let policy=null;
+ try{
+  if(!user||user.emailVerified!==true||!company||!partnerInlineData)
+   throw Error("PARTNER_PUBLICATION_IDENTITY_UNVERIFIED");
+  const result=await httpsCallable(partnerCountFunctions,"getPartnerPublishedTabs")({});
+  if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
+     generation!==partnerPublishedTabGeneration)return false;
+  policy=result?.data;
+ }catch{policy=null;} // missing/invalid or revoked => NO optional tabs
+ if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
+    generation!==partnerPublishedTabGeneration)return false;
+ try{
+  const {applyPartnerTabPublicationToNavigation}=await import(
+   "./ranking/partner-tab-navigation-gate.mjs");
+  if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
+     generation!==partnerPublishedTabGeneration)return false;
+  const view=applyPartnerTabPublicationToNavigation({
+   navigation:pInline("partnerSameAppNavigation"),
+   management:pInline("partnerManagementTabs"),
+   details:pInline("partnerSameAppDashboardDetails"),
+   policy,selectedPanel:partnerSameAppSelectedPanel
+  });
+  partnerPublishedTabIds=new Set(view.visibleTabs);
+  if(!view.selectedPanelAllowed)partnerSameAppSelectedPanel="record";
+  return true;
+ }catch{
+  // No optional tab can be opened if the verified policy fails parsing.
+  partnerPublishedTabIds=new Set();
+  for(const panel of ["individual","product","team","detail","report",
+    "daily","history","goal","analysis","chart","products"]){
+   for(const b of document.querySelectorAll(
+    '#partnerInlineWorkspace [data-partner-panel="'+panel+'"]'))
+    b.hidden=true;
+  }
+  pInline("partnerSameAppDashboardDetails").hidden=true;
+  partnerSameAppSelectedPanel="record";
+  return false;
+ }
+}
 let partnerAuditNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 let partnerInlineEditingStaffId="";
@@ -13020,6 +13075,14 @@ function mountPartnerCanonicalNavigation(){
   cards.push(card);
  }
  target.replaceChildren(...cards);
+ // Deny all optional tabs during policy lookup. Until the settings API
+ // and every protected count endpoint are live, this remains disabled.
+ if(NICO_PARTNER_TAB_UI_ENABLED===true){
+  partnerPublishedTabIds=null;
+  for(const button of cards){
+   if(button.dataset.partnerPanel!=="record")button.hidden=true;
+  }
+ }
  const details=pInline("partnerSameAppDashboardDetails");
  if(details.parentNode!==target)target.append(details);
  // Input must always be visible, like the original HQ record form, without
@@ -13910,6 +13973,10 @@ function partnerSameAppPositionPanel(name){
  (row[row.length-1]||button).after(detail);
 }
 function partnerSameAppSelectPanel(name){
+ if(!partnerPublishedTabAllowed(name)){
+  partnerInlineStatus("このタブはOwnerから公開されていません。",true);
+  return;
+ }
  if(name==="record"){
   // The form is permanently mounted below the daily summary; this card is a
   // shortcut, not a toggle. Ranking/detail panels remain independently open.
@@ -13965,6 +14032,7 @@ function partnerSameAppSelectPanel(name){
 // Mirror the original dashboard toggle: a second tap closes the same detail.
 // Hide without removing its DOM, preserving unsaved two-column entries.
 function partnerSameAppTogglePanel(name){
+ if(!partnerPublishedTabAllowed(name))return;
  if(name==="record"){partnerSameAppSelectPanel("record");return;}
  const detail=pInline("partnerSameAppDashboardDetails");
  if(partnerSameAppSelectedPanel===name&&!detail.hidden){
@@ -14525,6 +14593,7 @@ async function partnerInlineFetch(){
       snap.enabledCategories.some(key=>!snap.categories.includes(key))))
    throw Error("partner_publication_schema");
   partnerInlineData=snap;partnerInlineRender();
+  void refreshPartnerPublishedTabNavigation();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
   // scoreboard currently on screen; never reuse the previous day's figures.

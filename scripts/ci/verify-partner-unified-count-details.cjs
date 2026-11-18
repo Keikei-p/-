@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=17,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=20,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -74,6 +74,9 @@ assert(changed.every(file=>[
  "functions-ranking-approvals/index.js",
  "functions-ranking-approvals/joint-count-http-adapter.cjs",
  "tests/joint-count-http-adapter.test.cjs",
+ "ranking/partner-tab-visibility-policy.mjs",
+ "ranking/partner-tab-navigation-gate.mjs",
+ "tests/partner-eight-tab-navigation-bridge.test.mjs",
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
  "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
@@ -109,6 +112,16 @@ assert(!/\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction)\s*\(/
  "HTTP adapter must never write to Firestore");
 assert(!/\b(?:firebase-admin|finance|revenue|cashback)\s*\(.*\)/.test(http),
  "HTTP adapter must not initialize financial data reads");
+const tabGate=fs.readFileSync("ranking/partner-tab-navigation-gate.mjs","utf8");
+assert(tabGate.includes('readVerifiedPartnerTabPolicy(policy)') &&
+       tabGate.includes('const allowed=new Set(approved.tabs)') &&
+       tabGate.includes('if(!active)details.hidden=true'),
+ "Owner's server-issued selection must guard optional visible tabs");
+assert(!/\b(?:firebase|Firestore|httpsCallable|fetch|setDoc|addDoc|updateDoc|deleteDoc)\s*\(/.test(tabGate),
+ "Pure tab renderer must not query or mutate data stores");
+assert(here.includes("const NICO_PARTNER_TAB_UI_ENABLED = false;") &&
+       here.includes("const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;"),
+ "Both independent publication rollout switches must default OFF");
 const privateReader=fs.readFileSync(
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
 assert(privateReader.includes('partner.collection("partnerPrivateProducts").limit(MAX_PRIVATE+1)'),
