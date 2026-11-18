@@ -1,0 +1,58 @@
+name: NICO Same App Joint Count HTTP Wiring - NO DEPLOY
+on:
+  pull_request:
+    paths:
+      - index.html
+      - ranking/same-app-joint-count-projection.mjs
+      - ranking/same-app-joint-count-panel.mjs
+      - tests/same-app-joint-count-wire.test.mjs
+      - functions-ranking-approvals/index.js
+      - scripts/ci/verify-partner-unified-count-details.cjs
+      - .github/workflows/nico-same-app-joint-count-wire-no-deploy.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-joint-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify pure frontend projection and original partner count details
+        run: |
+          node --check ranking/same-app-joint-count-projection.mjs
+          node --check ranking/same-app-joint-count-panel.mjs
+          node --check functions-ranking-approvals/index.js
+          node --test tests/same-app-joint-count-wire.test.mjs tests/partner-unified-count-team-view.test.mjs
+      - name: Existing count save and self finance remain byte-identical
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node scripts/ci/verify-partner-unified-count-details.cjs
+      - name: Joint release gate is the ONLY backend behavior change
+        run: |
+          node - <<'NODE'
+          const fs=require("node:fs"),cp=require("node:child_process"),assert=require("node:assert/strict");
+          const prev=cp.execFileSync("git",["show","FETCH_HEAD:functions-ranking-approvals/index.js"],{encoding:"utf8"});
+          const next=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
+          const flag='zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"';
+          assert(next.includes(flag));
+          const same=next.replace(flag,"zeroSetupLink:false");
+          const strip=s=>s.replace(/\/\*[\s\S]*?\*\/|^[ \t]*\/\/.*$/gm,"").replace(/\s+/g,"");
+          assert.equal(strip(same),strip(prev));
+          const source=[
+           "ranking/same-app-joint-count-projection.mjs",
+           "ranking/same-app-joint-count-panel.mjs"
+          ].map(p=>fs.readFileSync(p,"utf8")).join("\n");
+          assert(!/\b(?:getDocs|setDoc|addDoc|updateDoc|deleteDoc|runTransaction|localStorage|fetch|httpsCallable)\s*\(/.test(source));
+          const ui=fs.readFileSync("index.html","utf8");
+          assert(ui.includes('expectedRole:partner?"partner_owner":"hub_owner"'));
+          assert(ui.includes('if(await tryLoadVerifiedSameAppJointCount({'));
+          assert(ui.includes('const payload={date,sharedRankings:true};'));
+          console.log("J0INT_RELEASE_TWO_GATES_OFF_BY_DEFAULT");
+          console.log("SAME_APP_COUNT_SAVE_ORIGINAL_UNCHANGED");
+          NODE
+      - name: No Firebase deploy or source data modifications
+        run: echo NO_DEPLOY_NO_FIRESTORE_WRITES
