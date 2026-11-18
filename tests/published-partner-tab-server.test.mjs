@@ -138,3 +138,17 @@ test("vendored Functions module matches trusted source byte-for-byte, no writes"
  assert(!/\b(?:tx|db)\.(?:set|create|update|delete)\s*\(/.test(base));
  assert(!/\b(?:setDoc|updateDoc|deleteDoc|writeBatch)\s*\(/.test(base));
 });
+
+test("all four staged count authorization modules stay byte-identical to canonical counterparts",()=>{
+ for(const name of [
+  "published-partner-tab-server.mjs",
+  "owner-visible-count-atomic-loader.mjs",
+  "canonical-owner-count-server-factory.mjs",
+  "owner-visible-count-server-handler.mjs"
+ ]){
+  const canonical=fs.readFileSync(new URL("../ranking/"+name,import.meta.url),"utf8");
+  const vendored=fs.readFileSync(new URL(
+   "../functions-ranking-approvals/ranking/"+name,import.meta.url),"utf8");
+  assert.equal(vendored,canonical,"staged count authority drift: "+name);
+ }
+});
