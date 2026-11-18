@@ -1,0 +1,81 @@
+name: NICO AI count-only reporting foundation (NO DEPLOY / NO SEND)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reports/verified-count-ai-briefing.mjs'
+      - 'tests/report-verified-count-ai.test.mjs'
+      - 'docs/SALES_UNIFIED_UI_AI_REPORT_PROTECTION_20261118.md'
+      - '.github/workflows/nico-verified-ai-count-report-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reports/verified-count-ai-briefing.mjs'
+      - 'tests/report-verified-count-ai.test.mjs'
+      - 'docs/SALES_UNIFIED_UI_AI_REPORT_PROTECTION_20261118.md'
+      - '.github/workflows/nico-verified-ai-count-report-no-deploy.yml'
+permissions:
+  contents: read
+concurrency:
+  group: nico-ai-count-safe-report-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  count-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      FIREBASE_TOKEN: ''
+      LINE_CHANNEL_ACCESS_TOKEN: ''
+      OPENAI_API_KEY: ''
+      REPORT_DELIVERY_ENABLED: 'false'
+      NICO_AI_REPORT_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Limit change scope; protect users, partner counts, Rules, price, schedules and Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$LINE_CHANNEL_ACCESS_TOKEN"
+          test -z "$OPENAI_API_KEY"
+          test "$REPORT_DELIVERY_ENABLED" = false
+          test "$NICO_AI_REPORT_ENABLED" = false
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(grep -E '^REPORT_DELIVERY_ENABLED' wrangler.sales-reports.toml | tr -d ' ')" = 'REPORT_DELIVERY_ENABLED="false"'
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --no-tags origin main
+            git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+            printf '%s\n' \
+              '.github/workflows/nico-verified-ai-count-report-no-deploy.yml' \
+              'docs/SALES_UNIFIED_UI_AI_REPORT_PROTECTION_20261118.md' \
+              'reports/verified-count-ai-briefing.mjs' \
+              'tests/report-verified-count-ai.test.mjs' \
+              | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+            diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          fi
+          node --check reports/verified-count-ai-briefing.mjs
+          node --check tests/report-verified-count-ai.test.mjs
+          if grep -Eq 'firebase deploy|wrangler deploy|gh workflow run|deleteDoc\(|updateDoc\(|setDoc\(|LINE_CHANNEL_ACCESS_TOKEN' \
+            reports/verified-count-ai-briefing.mjs; then
+            echo 'STOP_REPORT_MODULE_MUTATION_OR_DELIVERY'
+            exit 1
+          fi
+      - name: Verify the actual legacy partner count source, non-report status, rank totals and price isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/report-verified-count-ai.test.mjs
+          node --test tests/report-format.test.mjs tests/report-combine.test.mjs tests/report-worker.integration.test.mjs
+          node --test tests/partner-publication-write-ranking-consistency.test.cjs
+          echo 'NICO_COUNT_AI_SAFE_OFFLINE_REPORT_PASS_NO_FIRESTORE_WRITES_NO_SEND_NO_MODEL_CALLS'
