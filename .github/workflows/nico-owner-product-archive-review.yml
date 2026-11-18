@@ -34,8 +34,10 @@ jobs:
           git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
           printf '%s\n' \
             '.github/workflows/nico-owner-product-archive-review.yml' \
+            'docs/SALES_RELEASE_SIGNOFF.md' \
             'firestore.rules' \
             'index.html' \
+            'tests/count-pricing-update-hotfix.test.cjs' \
             'tests/owner-product-archive-ui.test.mjs' \
             'tests/rules.test.cjs' | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
           diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
@@ -65,9 +67,9 @@ jobs:
              throw Error('STOP_PRODUCT_ARCHIVE_SCOPE_WEAKENED');
           console.log('NON_PRODUCT_FINANCE_AND_RECORD_RULES_BYTE_IDENTICAL');
           NODE
-      - name: Contract tests for deletion prevention, reversible UI, active input gating
+      - name: Contract tests for deletion prevention, reversible UI and original pricing
         run: |
-          node --test tests/owner-product-archive-ui.test.mjs
+          node --test tests/owner-product-archive-ui.test.mjs tests/count-pricing-update-hotfix.test.cjs
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '21'}
       - name: Install pinned Firebase CLI and emulator test dependencies
