@@ -120,5 +120,35 @@ jobs:
           console.log("J0INT_RELEASE_TWO_GATES_OFF_BY_DEFAULT");
           console.log("SAME_APP_COUNT_SAVE_ORIGINAL_UNCHANGED");
           NODE
+      - name: Public production status and unauthenticated denial (NO CREDENTIALS / NO DEPLOY)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ''
+          GOOGLE_APPLICATION_CREDENTIALS: ''
+          FIREBASE_TOKEN: ''
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node --input-type=module <<'NODE'
+          import {checkNicoLivePublic} from "./tools/production/nico-live-public-release-audit.mjs";
+          const proof=await checkNicoLivePublic({timeoutMs:6500});
+          const pages=Object.fromEntries(Object.entries(proof.pages)
+            .filter(([key,value])=>value&&Number.isInteger(value.status))
+            .map(([key,value])=>[key,{status:value.status,verified:value.verified}]));
+          console.log(JSON.stringify({
+            project:proof.project,pages,
+            callableAnonymousProtected:proof.callableAnonymousProtected,
+            gatewayAnonymousProtected:proof.gatewayAnonymousProtected,
+            authenticatedOwnerAndPartnerProof:false,
+            backupIsolatedRestoreVerified:false,
+            productionWrites:0,deployed:false
+          }));
+          if(!proof.pages.home.verified)
+            throw Error("STOP_LIVE_HOME_NOT_VERIFIED");
+          if(!proof.callableAnonymousProtected||!proof.gatewayAnonymousProtected)
+            throw Error("STOP_ANONYMOUS_ACCESS_BOUNDARY_NOT_VERIFIED");
+          console.log("LIVE_PUBLIC_ANONYMOUS_READ_ONLY_PASS_NO_PRODUCTION_WRITE");
+          NODE
       - name: No Firebase deploy or source data modifications
         run: echo NO_DEPLOY_NO_FIRESTORE_WRITES
