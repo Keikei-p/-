@@ -118,7 +118,11 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
   if(rankedOwn.length!==reportedOwn.length||
      rankedOwn.some((v,i)=>v!==reportedOwn[i]))fail();
   const sameCompany=companyRows.filter(c=>c.name===ownName);
-  if(sameCompany.length!==1||sameCompany[0].count!==ownCount)fail();
+  // A company with NO report is intentionally absent from the public rank.
+  // Missing is NOT a verified zero: only accept the full unreported state.
+  if(sameCompany.length===0){
+   if(ownCount!==0||unidentified!==0||ownDetails.some(t=>t.reported))fail();
+  }else if(sameCompany.length!==1||sameCompany[0].count!==ownCount)fail();
   // A partner can see ONLY public, ranked company aggregates. Those
   // aggregates must equal the ranked product sum; no hidden discrepancy
   // may be mistaken for a confirmed zero or a complete scoreboard.
