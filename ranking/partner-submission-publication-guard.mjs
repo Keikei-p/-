@@ -7,6 +7,7 @@
  * supplied previousCounts). OFF counts are immutable, not silently reset.
  */
 import {allowedPartnerCategories} from "./approved-published-categories.mjs";
+const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -70,7 +71,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
   if(MONEY.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
   // Never interpret old combined SB光・AIR as either new 光 or Air.
   if(b.productId==="partnerSku05"&&
-     !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))deny();
+     !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
   mapped.set(b.productId,b.hubProductId);
  }
  const allowed=new Set();

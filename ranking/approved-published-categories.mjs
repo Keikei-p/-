@@ -1,6 +1,7 @@
 // Shared ranks are released ONLY for exact Owner-reviewed SKU mappings and
 // server-stored per-partner visibility. This module never writes or returns
 // financial master fields, inactive products, raw IDs or cashback tier labels.
+const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
@@ -60,7 +61,7 @@ export function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,
      seenHubSku.has(b.hubProductId))stop();
   seenHubSku.add(b.hubProductId);
   if(b.productId==="partnerSku05"&&
-   !/SB光・AIR|旧合算|未分類/.test(catalog.get(b.hubProductId).name))stop();
+   !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))stop();
   binding.set(b.productId,b.hubProductId);
  }
  return Object.freeze(KEYS.filter((category,i)=>{

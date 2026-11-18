@@ -1,0 +1,75 @@
+name: NICO legacy combined Light/AIR exact count contract (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/approved-published-categories.cjs'
+      - 'functions-partner-workspace/submission-publication-guard.cjs'
+      - 'functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs'
+      - 'functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs'
+      - 'ranking/approved-published-categories.mjs'
+      - 'ranking/canonical-joint-count-sku-reader.mjs'
+      - 'ranking/owner-reviewed-sku-mapping-store.mjs'
+      - 'ranking/partner-submission-publication-guard.mjs'
+      - 'tools/production/inspect-live-sku-publication-readonly.mjs'
+      - 'tests/owner-product-visibility-firestore.test.mjs'
+      - 'tests/owner-reviewed-sku-mapping-store.test.mjs'
+      - 'tests/inspect-live-sku-publication-readonly.test.mjs'
+      - 'scripts/ci/review-combined-light-air-exact-contract-20261118.cjs'
+      - '.github/workflows/nico-combined-light-air-contract-review.yml'
+permissions:
+  contents: read
+jobs:
+  exact-matcher-and-finance-fence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact reviewed source and test delta with no prod credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object scripts/ci/review-combined-light-air-exact-contract-20261118.cjs)" = 89fb9e82330a2b5ab3903095cfd4c6aec96e914b
+          node --check scripts/ci/review-combined-light-air-exact-contract-20261118.cjs
+          node scripts/ci/review-combined-light-air-exact-contract-20261118.cjs
+      - name: Verify packaged count-only modules and financial boundary have not drifted
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp ranking/canonical-joint-count-sku-reader.mjs functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
+          cmp ranking/owner-reviewed-sku-mapping-store.mjs functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs
+          node --check functions-partner-workspace/approved-published-categories.cjs
+          node --check functions-partner-workspace/submission-publication-guard.cjs
+          node --check functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
+          node --check functions-ranking-approvals/ranking/owner-reviewed-sku-mapping-store.mjs
+          node --check ranking/partner-submission-publication-guard.mjs
+          node --check tools/production/inspect-live-sku-publication-readonly.mjs
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+      - name: Owner ON, partner save, direct and partner ranking, old combined regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/owner-product-visibility-firestore.test.mjs \
+            tests/owner-reviewed-sku-mapping-store.test.mjs \
+            tests/inspect-live-sku-publication-readonly.test.mjs \
+            tests/canonical-joint-count-sku-reader.test.mjs \
+            tests/partner-publication-write-ranking-consistency.test.cjs \
+            tests/partner-submission-publication-guard.test.mjs \
+            tests/owner-product-visibility-rankings.test.mjs
+          echo 'EXACT_COMBINED_LIGHT_AIR_AND_FINANCE_COUNT_TESTS_PASS'
+          echo 'FIREBASE_FUNCTIONS_WRITES=0 FIRESTORE_WRITES=0 HOSTING_DEPLOY=0 RULES_DEPLOY=0'

@@ -9,6 +9,7 @@ import {createRequire} from "node:module";
 import {readFileSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import path from "node:path";
+const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const PROJECT="sales-management-cc116";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:revenue|sales|price|cashback|amount|commission|profit|salary|単価|売上|金額|報酬|利益|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
@@ -86,7 +87,7 @@ export function assessSkuPublication({hubId,ownerUid,relations,visibility,mappin
   if(ids.has(pair))fail("DUPLICATE_PARTNER_SKU");
   ids.add(pair);
   if(bind.productId==="partnerSku05"&&
-    !/SB光・AIR|旧合算|未分類/.test(products.get(bind.hubProductId).name))
+    !LEGACY_COMBINED_LIGHT_AIR.test(products.get(bind.hubProductId).name.normalize("NFKC")))
    fail("LEGACY_LIGHT_AIR_MAPPING");
  }
  let partnersReady=0,allEligibleMapped=true;
