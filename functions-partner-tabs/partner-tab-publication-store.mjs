@@ -166,7 +166,27 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     const hub=read(hs);
     if(!obj(hub)||hub.active===false||!okId(hub.ownerUid)||
        !["internal","direct",undefined,null].includes(hub.companyKind))blocked();
-    return {hub:c.hubCompanyId,ownerUid:hub.ownerUid};
+    // Strict same-member count scope for optional records. A partner member
+    // never inherits another staff person's history merely from a company ID.
+    let role,teamId=null;
+    if(isSecondary){
+      role=context.role;
+      teamId=role==="owner"?null:context.teamId;
+    }else if(c.ownerUid===actor.uid&&user.companyRole==="owner"&&
+       m.companyRole==="owner"){
+      role="owner";
+    }else if(user.companyRole==="member"&&m.companyRole==="member"&&
+       ["leader","member"].includes(user.role)&&m.role===user.role&&
+       okId(user.teamId)&&m.teamId===user.teamId&&c.ownerUid!==actor.uid){
+      role=user.role;teamId=user.teamId;
+    }else if(user.authKind==="partner_code_shared"&&
+       c.companyCodePrincipalUid===actor.uid&&
+       user.companyRole==="owner"&&m.companyRole==="owner"&&
+       user.canViewRevenue===false&&user.canViewUnitPrice===false){
+      role="owner";
+    }else blocked();
+    return {hub:c.hubCompanyId,ownerUid:hub.ownerUid,
+      partner,uid:actor.uid,role,teamId,companyName:c.name};
   }
 
   async function readOwner(actor) {
@@ -180,6 +200,28 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     return db.runTransaction(async tx => {
       const {hub,ownerUid}=await verifiedPartnerViewer(tx,actor,workspaceCompanyId);
       return publicShape(state(read(await tx.get(config(hub))),hub,ownerUid));
+    },{readOnly:true});
+  }
+
+  async function readPublishedOptional({actor,workspaceCompanyId="",tab,date,reader}={}){
+    if(!["report","daily","history","goal"].includes(tab)||
+       typeof reader!=="function"||
+       typeof date!=="string"||
+       !/^20\\d\\d-(0[1-9]|1[0-2])-([0-2]\\d|3[01])$/.test(date)||
+       Number.isNaN(Date.parse(date+"T00:00:00Z"))||
+       new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date)
+      blocked();
+    return db.runTransaction(async tx=>{
+      const who=await verifiedPartnerViewer(tx,actor,workspaceCompanyId);
+      const p=state(read(await tx.get(config(who.hub))),who.hub,who.ownerUid);
+      if(p.published!==true||!p.tabs.includes(tab))blocked();
+      // No second policy query: authenticated membership, the Owner's current
+      // selection, source entries and audits use THIS read-only transaction.
+      const result=await reader({tx,db,identity:who,tab,date});
+      if(!obj(result)||result.tab!==tab||result.date!==date||
+         result.schema!=="nico-published-partner-optional-v1")
+        blocked();
+      return result;
     },{readOnly:true});
   }
 
@@ -209,5 +251,5 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     });
   }
 
-  return Object.freeze({readOwner,readPartner,saveOwner});
+  return Object.freeze({readOwner,readPartner,readPublishedOptional,saveOwner});
 }
