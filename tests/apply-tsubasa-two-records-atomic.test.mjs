@@ -21,7 +21,7 @@ const sample=(id,team,date,additional={})=>({
   createdAt:"ORIGINAL_DATE",updatedAt:"ORIGINAL_DATE",reportedAt:"ORIGINAL_DATE"
 });
 const clone=x=>structuredClone(x);
-function fakeFirestore({extraRecord,price=20000,priorAudit=false}={}){
+function fakeFirestore({extraRecord,price=20000}={}){
   const store=new Map();
   const put=(collection,id,data)=>store.set(collection+"/"+id,clone(data));
   put("companies",hub,{ownerUid:"owner",companyKind:"hub",active:true});
@@ -36,10 +36,6 @@ function fakeFirestore({extraRecord,price=20000,priorAudit=false}={}){
   put("records","partner",{...sample("r1","partner_team","2026-11-17"),
     companyId:"partner_foreign"});
   if(extraRecord)put("records","r4",sample("r4","team2","2026-06-01"));
-  if(priorAudit){
-    const {createHash}=requireIgnored();
-    void createHash;
-  }
   const query=(name)=>({
     name,filter:[],
     select(...fields){void fields;return this;},
@@ -95,8 +91,6 @@ function fakeFirestore({extraRecord,price=20000,priorAudit=false}={}){
   };
   return {db,store};
 }
-// Deliberately no node:crypto dependency needed in these simulated snapshots.
-function requireIgnored(){return {createHash:null};}
 
 test("exact two-record atomic migration preserves all other rows, dates and finance",async()=>{
   const {db,store}=fakeFirestore();
