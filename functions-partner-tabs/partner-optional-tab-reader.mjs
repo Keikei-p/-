@@ -109,7 +109,11 @@ export async function readPublishedPartnerOptionalTab({
    if(next.total!==row.totalCount)stop();
    // Never serialize privateCounts, workLocation, correctionReason,
    // actor emails, timestamps or financial classification originals.
-   history.push({staffId:row.staffId,staffName:eligible.get(row.staffId).name,
+   // The audit's original display name wins over a later staff rename.
+   // Legacy audits with no name snapshot remain readable but never mutate.
+   const historicalName=row.staffNameSnapshot??eligible.get(row.staffId).name;
+   if(!name(historicalName))stop();
+   history.push({staffId:row.staffId,staffName:historicalName,
     version:row.version,previousTotalCount:prev.total,totalCount:next.total,
     previousCounts:prev.counts,counts:next.counts});
   }
