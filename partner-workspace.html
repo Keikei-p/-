@@ -824,7 +824,7 @@ const sbSeparateActive=()=>data?.sbSeparateInputEnabled===true&&
  $("date").value>="2026-11-18"&&
  (data.enabledCategories??KEYS).includes("SB光・AIR");
 const checkedSplitValue=input=>{
- if(!/^(?:0|[1-9]\\d{0,3})$/.test(input.value.trim()))throw Error("invalid separated SB count");
+ if(!/^(?:0|[1-9]\d{0,3})$/.test(input.value.trim()))throw Error("invalid separated SB count");
  return Number(input.value);
 };
 function values(){const o={};for(const x of grid.querySelectorAll("input[data-key]")){
