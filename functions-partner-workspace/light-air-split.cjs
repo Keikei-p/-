@@ -43,6 +43,9 @@ function planSplitWrite({
  if(!validInt(combinedCount)||!validInt(priorCount))stop();
  const previous=validateBreakdown(priorBreakdown,priorCount,date);
  if(splitEnabled!==true||date<START){
+  // A later feature-flag rollback must NOT change a saved split total while
+  // leaving its prior breakdown behind. Existing counts stay immutable.
+  if(priorBreakdown!==undefined&&combinedCount!==priorCount)stop();
   if(requestedBreakdown!==undefined)stop();
   // The old count update path is handled by the original service;
   // this feature must not invent or update old breakdown metadata.
