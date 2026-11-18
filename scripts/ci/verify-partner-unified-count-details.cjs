@@ -87,9 +87,9 @@ for(const path of [
  "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs"
 ]){
  const src=fs.readFileSync(path,"utf8");
- assert(!/\\b(?:tx|db)\\.(?:set|create|update|delete|add)\\s*\\(/.test(src),
+ assert(!/\b(?:tx|db)\.(?:set|create|update|delete|add)\s*\(/.test(src),
   "Readonly source must never write to Firestore: "+path);
- assert(!/\\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch)\\s*\\(/.test(src),
+ assert(!/\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch)\s*\(/.test(src),
   "No client datastore writes: "+path);
 }
 const privateReader=fs.readFileSync(
