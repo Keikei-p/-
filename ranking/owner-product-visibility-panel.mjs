@@ -67,7 +67,20 @@ export function createOwnerProductVisibilityPanel({
    page.appendChild(el(document,"h2",scoped?"選択した協力店の商材ON/OFF":"協力店に公開する商材"));
    page.appendChild(el(document,"p",
     scoped?"自社で全体公開ONの商材だけを切替できます。OFFでも保存済み件数・履歴は消えません。":"ONの商材だけが協力店の件数と合同ランキングの対象です。OFFにしても保存済みの件数・履歴は消えません。"));
-   for(const product of view.products){
+   // Keep all existing product IDs and published count mappings. Historical
+   // (inactive) masters are not deleted; move their disabled switches to one
+   // collapsed section instead of duplicating old/new choices in the main UI.
+   const primary=view.products.filter(p=>p.active);
+   const historical=view.products.filter(p=>!p.active);
+   const archived=historical.length?el(document,"details"):null;
+   if(archived){
+    archived.className="nico-owner-archived-product-switches";
+    archived.appendChild(el(document,"summary",
+     "旧商材・取扱終了（"+historical.length+"件）／過去実績は保持"));
+   }
+   page.appendChild(el(document,"p",
+    "使用中 "+primary.length+"商材。光・AIRは個別入力、ランキングは従来の合算商材を使います。"));
+   for(const product of [...primary,...historical]){
     const label=el(document,"label",undefined,"nico-owner-product-switch");
     const checkbox=el(document,"input");
     checkbox.type="checkbox";
@@ -107,8 +120,10 @@ export function createOwnerProductVisibilityPanel({
       }
      }
     });
-    page.appendChild(label);
+    if(product.active)page.appendChild(label);
+    else archived?.appendChild(label);
    }
+   if(archived)page.appendChild(archived);
    // The Owner explicitly chose ALL registered active products for ranking.
    // Do not bypass per-product, server-audited ON/OFF and version checks.
    // Company-specific overrides are never silently changed by a global save.
