@@ -102,7 +102,7 @@ export function projectPublishedPartnerCountTab({
     typeof response.own.company!=="string"||
     !safeCount(response.own.count))denied();
  // Check the complete canonical payload BEFORE discarding unused data.
- auditNoFinancialKeys(response);
+ try{auditNoFinancialKeys(response);}catch{denied();}
  const publicRows=response.publicRanking;
  let rows;
  if(requestedTab==="product")rows=publicRows.products;
@@ -120,6 +120,6 @@ export function projectPublishedPartnerCountTab({
  if(Object.keys(output).sort().join("|")!==
     "period|range|readTime|role|rows|schema|tab|unit"||
     output.rows.some(row=>!plain(row)||!safeCount(row.count)))denied();
- auditNoFinancialKeys(output);
+ try{auditNoFinancialKeys(output);}catch{denied();}
  return Object.freeze(output);
 }
