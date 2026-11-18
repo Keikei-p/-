@@ -11,7 +11,6 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const graph=[
  "ranking/canonical-owner-count-server-factory.mjs",
  "ranking/owner-visible-count-server-handler.mjs",
- "ranking/published-partner-tab-server.mjs",
  "ranking/owner-visible-count-atomic-loader.mjs",
  "ranking/canonical-joint-count-sku-reader.mjs",
  "ranking/owner-product-visibility-in-atomic-tx.mjs",
@@ -24,7 +23,7 @@ const graph=[
  "ranking/partner-workspace-count-source.mjs",
  "security/public-projection.mjs"
 ];
-test("isolated callable package has all 14 canonical dependencies, unmodified",()=>{
+test("isolated callable package has all 13 canonical dependencies, unmodified",()=>{
  for(const p of graph){
   const canonical=path.join(root,p);
   const vendored=path.join(root,"functions-ranking-approvals",p);
