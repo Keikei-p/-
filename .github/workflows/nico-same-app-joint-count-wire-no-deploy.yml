@@ -83,17 +83,17 @@ jobs:
           const prev=cp.execFileSync("git",["show","FETCH_HEAD:functions-ranking-approvals/index.js"],{encoding:"utf8"});
           const next=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
           const flag='zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"';
-          const triple='enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&\\n  process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled"';
+          const triple='enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&\n  process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled"';
           assert(next.includes(triple),"All THREE release flags must be enabled");
           assert(next.includes('publishedOnly:true,')&&next.includes('enforcePartnerTabPublication:true'),
            "The ranking API must refuse full unfiltered partner scope");
           assert(next.includes(flag));
           const same=next.replace(triple,
            'enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"')
-           .replace(' publishedOnly:true,\\n','')
-           .replace(/zeroSetupLink:process\\.env\\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled",[\\s\\S]*?enforcePartnerTabPublication:true/,
+           .replace(' publishedOnly:true,\n','')
+           .replace(/zeroSetupLink:process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled",[\s\S]*?enforcePartnerTabPublication:true/,
             'zeroSetupLink:false');
-          const strip=s=>s.replace(/\\/\\*[\\s\\S]*?\\*\\/|^[ \\t]*\\/\\/.*$/gm,"").replace(/\\s+/g,"");
+          const strip=s=>s.replace(/\/\*[\s\S]*?\*\/|^[ \t]*\/\/.*$/gm,"").replace(/\s+/g,"");
           assert.equal(strip(same),strip(prev));
           const source=[
            "ranking/same-app-joint-count-projection.mjs",
