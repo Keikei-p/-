@@ -62,12 +62,13 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=49,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=50,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
  "scripts/ci/verify-partner-unified-count-details.cjs",
  ".github/workflows/nico-partner-unified-count-details-no-deploy.yml",
+ "ranking/verified-dual-count-dashboards.mjs",
  "ranking/same-app-joint-count-projection.mjs",
  "ranking/same-app-joint-count-panel.mjs",
  "tests/same-app-joint-count-wire.test.mjs",
@@ -113,6 +114,13 @@ assert(changed.every(file=>[
  "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs",
  ".github/workflows/nico-same-app-joint-count-wire-no-deploy.yml"
 ].includes(file)),"unexpected changed source: "+changed.join(","));
+// The browser-side projection and the deployed Functions vendor must agree
+// on team details and hidden other-company private product names.
+assert.equal(
+ fs.readFileSync("ranking/verified-dual-count-dashboards.mjs","utf8"),
+ fs.readFileSync("functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs","utf8"),
+ "Count-only viewer and server copies must remain byte-identical"
+);
 // Only the listed trusted count-only readers may change; partner saves,
  // Firebase Rules, finance Functions and source records remain immutable.
 for(const path of [
