@@ -148,3 +148,52 @@ test("wire-up must fail closed on 200 contract drift and 401/403, not silently r
  assert(source.includes('date!==pInline(field).value'));
  assert(source.includes('if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;'));
 });
+
+test("offline +1 partner count reaches BOTH company dashboards with no old-count mutation",()=>{
+ const hubBefore=owner(),partnerBefore=partner();
+ const frozenPrevious=structuredClone({hubBefore,partnerBefore});
+ const beforeHub=project(hubBefore);
+ const beforePartner=project(partnerBefore,{partner:true});
+ assert.equal(beforeHub.total,8);
+ assert.equal(beforeHub.partnerCount,3);
+ assert.equal(beforePartner.ownCount,3);
+ // Model a new verified server GET after one additional submitted count.
+ // This is NOT a Firebase write and NOT a live end-to-end assertion.
+ const hubAfter=structuredClone(hubBefore),partnerAfter=structuredClone(partnerBefore);
+ hubAfter.summary.partner+=1;hubAfter.summary.total+=1;
+ hubAfter.memberRanking[1].count+=1;
+ hubAfter.productRanking[1].count+=1;
+ hubAfter.companyBreakdown[1].count+=1;
+ hubAfter.teamBreakdown[1].count+=1;
+ hubAfter.teamBreakdown[1].detail.members[0].count+=1;
+ hubAfter.teamBreakdown[1].detail.products[0].count+=1;
+ partnerAfter.own.count+=1;
+ partnerAfter.publicRanking.members[1].count+=1;
+ partnerAfter.publicRanking.products[1].count+=1;
+ partnerAfter.publicRanking.companies[1].count+=1;
+ partnerAfter.publicRanking.teams[1].count+=1;
+ const nextHub=project(hubAfter);
+ const nextPartner=project(partnerAfter,{partner:true});
+ assert.equal(nextHub.total-beforeHub.total,1);
+ assert.equal(nextHub.partnerCount-beforeHub.partnerCount,1);
+ assert.equal(nextHub.ownCount,beforeHub.ownCount);
+ assert.equal(nextPartner.ownCount-beforePartner.ownCount,1);
+ assert.equal(nextHub.productRows.find(v=>v.name.includes("SB光")).count,4);
+ assert.equal(nextPartner.productRows.find(v=>v.name.includes("SB光")).count,4);
+ assert.equal(nextHub.teamDetails[1].members[0].count,4);
+ assert.equal(nextPartner.teamRows[1].count,4);
+ assert.equal(nextHub.financeIncluded,false);
+ assert.equal(nextPartner.financeIncluded,false);
+ assert.deepEqual({hubBefore,partnerBefore},frozenPrevious);
+});
+test("rank parity is maintained for an additional zero/one-count tie",()=>{
+ const hub=owner();
+ hub.memberRanking[0].count=3;hub.memberRanking[0].rank=1;
+ hub.memberRanking[1].count=3;hub.memberRanking[1].rank=1;
+ const same=project(hub);
+ assert.equal(same.personRows[0].rank,1);
+ assert.equal(same.personRows[1].rank,1);
+ const corrupted=structuredClone(hub);
+ corrupted.memberRanking[1].rank=2;
+ assert.throws(()=>project(corrupted));
+});
