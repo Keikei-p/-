@@ -684,3 +684,44 @@ test("private-count mode rejects missing/unknown catalog, altered sum, financial
   assert.deepEqual(baseline.entries[0].counts,input.entries[0].counts);
  }
 });
+
+test("other partner never receives another company's private SKU name, but still sees its verified count",()=>{
+ const one=linkedPrivateSourceFixture(),sourceA=buildPartnerCountRankingSource(one);
+ const two=linkedPrivateSourceFixture();
+ two.partnerCompanyId="partnerB";
+ two.companyLabel="協力店B";
+ two.relation.partnerCompanyId="partnerB";
+ two.entries=[];two.summaries=[];two.privateProducts=[];
+ const sourceB=buildPartnerCountRankingSource(two);
+ const raw=authoritativeDashboardFixture();
+ const hub=structuredClone(raw.sources[0]);
+ hub.products.push({companyId:"hub",sourceId:"ownExtra",name:"追加プラン",
+  active:true,sortOrder:0});
+ const context={...raw.context,role:"partner_owner",
+  viewerUid:"partnerBOwner",viewerCompanyId:"partnerB",
+  approvedCompanyIds:["hub","partner","partnerB"]};
+ const joined=composeCanonicalMonthlyRankingInput({
+  context,hubSource:hub,partnerSources:[sourceA,sourceB],
+  hubOwnerUid:"owner",month:"2026-11",serverAsOf:"2026-11-18",
+  zeroSetupLink:true
+ });
+ const privateGroup=joined.productGroups.find(x=>x.companyId==="partner"&&
+  x.productId==="partnerPrivate:privateRetired").groupId;
+ const product=buildVerifiedCountDashboard({
+  ...joined,context,
+  period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"}
+ });
+ const pub=product.publicRanking.products;
+ assert(!pub.some(p=>p.name.includes("販売終了の旧商材")));
+ assert(pub.some(p=>p.name==="他社の追加商材（名称非公開）"&&p.count===1));
+ assert.equal(pub.reduce((n,p)=>n+p.count,0),11);
+ assert.equal(project(product,{partner:true}).productRows
+  .reduce((n,p)=>n+p.count,0),11);
+ assert(privateGroup.startsWith("partnerPrivateUnmatched:"));
+ const ownContext={...context,viewerCompanyId:"partner",viewerUid:"partnerAOwner"};
+ const ownView=buildVerifiedCountDashboard({
+  ...joined,context:ownContext,
+  period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"}
+ });
+ assert(ownView.publicRanking.products.some(p=>p.name.includes("販売終了の旧商材")));
+});
