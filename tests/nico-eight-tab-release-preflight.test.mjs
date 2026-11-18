@@ -53,6 +53,32 @@ test("code-principal revocation must be checked in each server read transaction"
  assert(store.includes('verifiedPartnerViewer(tx,actor,workspaceCompanyId,true)'));
  assert(store.includes("{readOnly:true}"));
 });
+test("company-code publication and four optional data paths are guarded by the SAME revocable session proof",()=>{
+ const store=read("functions-partner-tabs/partner-tab-publication-store.mjs");
+ const controller=read("functions-partner-tabs/controller.cjs");
+ const original=read("functions-partner-workspace/workspace-identity.cjs");
+ for(const token of [
+  "partnerCodeSessions","partnerCodeCredentials","partnerCodeLogins",
+  'credential.active!==true','credential.companyCode!==ms.companyCode',
+  'credential.version!==ms.version','login.status!=="active"',
+  'ms.expiresAt.toMillis()<=Date.now()', 'user.canViewRevenue!==false',
+  'm.canViewUnitPrice!==false','relation.countSharingApproved!==true',
+  'p.published!==true||!p.tabs.includes(tab)'
+ ])assert(store.includes(token),"Required session/finance/Owner gate missing: "+token);
+ assert(store.includes("readPartnerCodeSession"));
+ assert(store.includes("codeSessionToken!==undefined"));
+ assert(store.includes("await verifiedCodeSessionPartner(tx,codeSessionToken)"));
+ assert(controller.includes('const codeMode=d&&Object.hasOwn(d,"codeSessionToken")'));
+ assert(controller.includes("readPartnerCodeSession(d.codeSessionToken)"));
+ assert(controller.includes('!CODE_SESSION.test(d.codeSessionToken)'));
+ assert(original.includes("partnerCodeSessions"));
+ assert(original.includes("partnerCodeLogins"));
+ assert(original.includes("partnerCodeCredentials"));
+ // Company-code sign-in remains the existing signed opaque session, not a
+ // fabricated email identity nor a browser-supplied role/UID/company.
+ assert(!controller.includes("signInWithEmailAndPassword"));
+ assert(!controller.includes('actor={uid:d.uid'));
+});
 test("this gate does NOT count CI green as real-account E2E or backup restore proof",()=>{
  const rules=read("firestore.rules");
  assert(rules.includes("rules_version"));
