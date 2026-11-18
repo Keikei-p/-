@@ -102,7 +102,7 @@ function makePartnerTabPublicationCallables({
   const actor=await identity(request,keys);
   if(!["report","daily","history","goal"].includes(d.tab)||
      typeof d.date!=="string"||
-     !/^20\\d\\d-(0[1-9]|1[0-2])-([0-2]\\d|3[01])$/.test(d.date)||
+     !/^20\d\d-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(d.date)||
      !Number.isFinite(Date.parse(d.date+"T00:00:00Z"))||
      new Date(d.date+"T00:00:00Z").toISOString().slice(0,10)!==d.date||
      (keys.includes("workspaceCompanyId")&&
