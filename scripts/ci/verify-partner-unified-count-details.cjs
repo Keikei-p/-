@@ -75,7 +75,7 @@ assert(changed.every(file=>[
  ".github/workflows/nico-same-app-joint-count-wire-no-deploy.yml"
 ].includes(file)),"unexpected changed source: "+changed.join(","));
 const joint=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
-assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"'),
+assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"'),
  "Both flags are required to enable the direct joint HTTP route");
 assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"'),
  "Outer production GET gate must remain OFF by default");
