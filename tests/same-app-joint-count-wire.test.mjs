@@ -145,9 +145,12 @@ test("unreported records never become ranked zero or hide a positive count",()=>
 });
 test("wire-up must fail closed on 200 contract drift and 401/403, not silently rank stale data",()=>{
  const source=readFileSync(new URL("../index.html",import.meta.url),"utf8");
- assert(source.includes('throw Error(httpStatus===503?"SAME_APP_JOINT_NOT_RELEASED":'));
+ assert(source.includes('const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;'));
+ assert(source.includes('if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)'));
+ assert(source.includes('throw Error("SAME_APP_JOINT_NOT_RELEASED");'));
+ assert(source.includes('throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");'));
  assert(source.includes('if(error?.message!=="SAME_APP_JOINT_NOT_RELEASED"){'));
- assert(source.includes('httpStatus=reply?.status??null;'));
+ assert(!source.includes('httpStatus=reply?.status??null;'));
  assert(source.includes('date!==pInline(field).value'));
  assert(source.includes('if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;'));
 });
@@ -289,4 +292,33 @@ test("no ON OFF mapping joins exact self SKU, preserves legacy combined, never c
  assert.equal(rows.filter(s=>s.companyId==="partner1").length,9);
  assert.deepEqual({hubSource,partnerSource},original);
  assert.equal(JSON.stringify(rows).includes("unitPrice"),false);
+});
+
+test("default-OFF gate refuses joint HTTP before any fetch/Auth/import",async()=>{
+ const source=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ const begin=source.indexOf("async function tryLoadVerifiedSameAppJointCount(");
+ const end=source.indexOf("async function loadSharedDailyStandings(",begin);
+ assert(begin>=0&&end>begin);
+ const method=source.slice(begin,end).trim();
+ assert(method.indexOf('if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)')<
+        method.indexOf('import("./ranking/verified-joint-month-http-bridge.mjs")'));
+ // Execute the actual inline function under an isolated OFF gate. Dynamic
+ // imports, auth, and network must not be touched before the first refusal.
+ const checked=new Function("NICO_SAME_APP_JOINT_HTTP_ENABLED",
+  "return ("+method+");")(false);
+ await assert.rejects(()=>checked({
+  where:"partner",date:"2026-11-18",partner:true,detail:false,
+  status:null,content:null,uid:"partner1",seq:1
+ }),/SAME_APP_JOINT_NOT_RELEASED/);
+});
+test("a disabled joint bridge cannot read Auth or call the network",()=>{
+ let network=0,token=0;
+ assert.throws(()=>createVerifiedJointMonthHttpBridge({
+  featureEnabled:false,
+  auth:{currentUser:{uid:"u1",emailVerified:true,
+   getIdToken:async()=>{token++;return "A".repeat(50);}}},
+  fetcher:async()=>{network++;throw Error("unexpected");}
+ }),/VERIFIED_JOINT_COUNT_MONTH_BRIDGE_BLOCKED/);
+ assert.equal(network,0);
+ assert.equal(token,0);
 });
