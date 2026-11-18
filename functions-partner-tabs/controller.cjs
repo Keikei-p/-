@@ -16,14 +16,17 @@ const safeTabs=v=>Array.isArray(v)&&v.length<=8&&
  v.every(x=>typeof x==="string"&&allowed.has(x))&&new Set(v).size===v.length;
 function makePartnerTabPublicationCallables({
  db,FieldValue,getAuth,HttpsError,enabled=()=>false,
+ optionalDataEnabled=()=>false,
  modules=()=>Promise.all([
   import("./trusted-token-reader.mjs"),
-  import("./partner-tab-publication-store.mjs")
+  import("./partner-tab-publication-store.mjs"),
+  import("./partner-optional-tab-reader.mjs")
  ])
 }={}) {
  if(!db?.runTransaction||typeof FieldValue?.serverTimestamp!=="function"||
     typeof getAuth!=="function"||typeof HttpsError!=="function"||
-    typeof enabled!=="function"||typeof modules!=="function")
+    typeof enabled!=="function"||typeof optionalDataEnabled!=="function"||
+    typeof modules!=="function")
    throw Error("PARTNER_TAB_CALLABLE_DEPENDENCIES_MISSING");
  let loaded;
  const imports=()=>loaded??=Promise.resolve().then(()=>modules());
@@ -89,6 +92,48 @@ function makePartnerTabPublicationCallables({
    return confirm(res);
   }catch{denied();}
  };
+ const loadOptional=async request=>{
+  // An independently reviewed feature flag disables ALL optional read paths
+  // before token verification or any datastore access.
+  if(optionalDataEnabled()!==true)unavailable();
+  const d=request?.data;
+  const keys=["tab","date",...(d&&Object.hasOwn(d,"workspaceCompanyId")?
+   ["workspaceCompanyId"]:[])];
+  const actor=await identity(request,keys);
+  if(!["report","daily","history","goal"].includes(d.tab)||
+     typeof d.date!=="string"||
+     !/^20\\d\\d-(0[1-9]|1[0-2])-([0-2]\\d|3[01])$/.test(d.date)||
+     !Number.isFinite(Date.parse(d.date+"T00:00:00Z"))||
+     new Date(d.date+"T00:00:00Z").toISOString().slice(0,10)!==d.date||
+     (keys.includes("workspaceCompanyId")&&
+      (!ID.test(d.workspaceCompanyId)||[
+       "__proto__","constructor","prototype"].includes(d.workspaceCompanyId))))
+   invalid();
+  try{
+   const [,store,readModule]=await imports();
+   if(typeof readModule?.readPublishedPartnerOptionalTab!=="function")denied();
+   const out=await store.createPartnerTabPublicationStore({db,FieldValue})
+    .readPublishedOptional({
+     actor,workspaceCompanyId:d.workspaceCompanyId||"",
+     tab:d.tab,date:d.date,
+     reader:readModule.readPublishedPartnerOptionalTab
+    });
+   const common=["schema","tab","date","companyName","reportStatus",
+    "totalCount","reportedStaffCount"];
+   const props={
+    report:["lines"],daily:["products"],history:["audits"],goal:["actualCount"]
+   }[d.tab];
+   if(!exact(out,[...common,...props])||
+      out.schema!=="nico-published-partner-optional-v1"||
+      out.tab!==d.tab||out.date!==d.date||
+      typeof out.companyName!=="string"||
+      !["未報告","確定0件","報告済"].includes(out.reportStatus)||
+      !Number.isSafeInteger(out.totalCount)||out.totalCount<0||
+      !Number.isSafeInteger(out.reportedStaffCount)||out.reportedStaffCount<0)
+     denied();
+   return out;
+  }catch{denied();}
+ };
  const saveOwner=async request=>{
   const actor=await identity(request,["expectedRevision","published","tabs"]);
   const d=request.data;
@@ -108,6 +153,6 @@ function makePartnerTabPublicationCallables({
    })};
   }catch{denied();}
  };
- return Object.freeze({loadOwner,loadPartner,saveOwner});
+ return Object.freeze({loadOwner,loadPartner,loadOptional,saveOwner});
 }
 module.exports={makePartnerTabPublicationCallables};
