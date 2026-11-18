@@ -1177,3 +1177,5 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - GitHubのsales-production-reviewedラベルは保護CIでの差分レビュー用。本番デプロイや管理者自筆署名を代替しない。
 - 管理者本人の署名・実端末確認: 未取得。
 - この文章を更新した時点で本番商材データの変更、物理削除、本番Rules/Hostingの配備: 実施していない。
+
+- 2026-11-18: PR #793 に `sales-production-reviewed` をGitHub接続から実際に付与。これは保護CIの技術レビュー用ラベルであり、本人自筆署名や本番配備・権限検証の完了ではない。ラベル適用後のHEADで必須CIを再実行する。
