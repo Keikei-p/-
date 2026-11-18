@@ -10071,7 +10071,7 @@ async function refreshOwnerPartnerTabPublicationUI(stillOwner){
    ownerPartnerTabPublicationUI=mountOwnerPartnerTabSettingsPanel({
     enabled:true,serverGuardVerified:true,root,auth,
     functions:partnerCountFunctions,httpsCallable,
-    canOwner:()=>canLoadPartnerRanking()&&stillOwner()
+    canOwner:()=>canLoadPartnerRanking()
    });
   }
   if(!stillOwner())return false;
