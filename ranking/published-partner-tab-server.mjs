@@ -17,6 +17,20 @@ const safeId=x=>typeof x==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(x)&&
 const safeCount=x=>Number.isSafeInteger(x)&&x>=0;
 const plain=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const denied=()=>{throw Error("PARTNER_PUBLISHED_TAB_ACCESS_DENIED");};
+const MONEY_LABEL=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\\s_-]*back|revenue|unit[\\s_-]*price|commission|salary|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\\s*(?:万円|千円|円))/i;
+function inspectMoneyText(value,depth=0){
+ if(depth>32)denied();
+ if(typeof value==="string"){
+  if(MONEY_LABEL.test(value.normalize("NFKC")))denied();
+  return;
+ }
+ if(Array.isArray(value)){if(value.length>10000)denied();
+  value.forEach(x=>inspectMoneyText(x,depth+1));return;}
+ if(plain(value)){
+  const keys=Object.keys(value);if(keys.length>10000)denied();
+  keys.forEach(k=>inspectMoneyText(value[k],depth+1));
+ }
+}
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 function verifiedContext(context){
  if(!plain(context)||context.serverVerified!==true||
@@ -103,6 +117,7 @@ export function projectPublishedPartnerCountTab({
     !safeCount(response.own.count))denied();
  // Check the complete canonical payload BEFORE discarding unused data.
  try{auditNoFinancialKeys(response);}catch{denied();}
+ inspectMoneyText(response);
  const publicRows=response.publicRanking;
  let rows;
  if(requestedTab==="product")rows=publicRows.products;
@@ -121,5 +136,6 @@ export function projectPublishedPartnerCountTab({
     "period|range|readTime|role|rows|schema|tab|unit"||
     output.rows.some(row=>!plain(row)||!safeCount(row.count)))denied();
  try{auditNoFinancialKeys(output);}catch{denied();}
+ inspectMoneyText(output);
  return Object.freeze(output);
 }
