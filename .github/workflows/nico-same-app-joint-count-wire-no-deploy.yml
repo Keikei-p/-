@@ -7,6 +7,8 @@ on:
       - ranking/same-app-joint-count-panel.mjs
       - tests/same-app-joint-count-wire.test.mjs
       - functions-ranking-approvals/index.js
+      - functions-ranking-approvals/joint-count-http-adapter.cjs
+      - tests/joint-count-http-adapter.test.cjs
       - functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
       - functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
       - functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs
@@ -31,12 +33,13 @@ jobs:
           node --check ranking/same-app-joint-count-projection.mjs
           node --check ranking/same-app-joint-count-panel.mjs
           node --check functions-ranking-approvals/index.js
+          node --check functions-ranking-approvals/joint-count-http-adapter.cjs
           node --check functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs
           node --check functions-ranking-approvals/ranking/partner-workspace-count-source.mjs
           node --check functions-ranking-approvals/ranking/zero-setup-count-linker.mjs
           node --check functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs
           node --check functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs
-          node --test tests/same-app-joint-count-wire.test.mjs tests/partner-unified-count-team-view.test.mjs
+          node --test tests/same-app-joint-count-wire.test.mjs tests/partner-unified-count-team-view.test.mjs tests/joint-count-http-adapter.test.cjs
       - name: Existing count save and self finance remain byte-identical
         run: |
           git fetch --no-tags --depth=1 origin main
