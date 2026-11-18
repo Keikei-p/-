@@ -97,6 +97,7 @@ assert(changed.every(file=>[
  "ranking/owner-visible-count-server-handler.mjs",
  "functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs",
  "tests/published-partner-tab-server.test.mjs",
+ "tests/isolated-joint-count-function-package.test.mjs",
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
  "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
