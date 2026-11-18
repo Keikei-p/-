@@ -147,13 +147,51 @@ export function buildPartnerSharedLeaderCountView(workspace){
   reported:seen.has(s.id)
  })));
  const oldProducts=Object.freeze([...privateMap.values()].map(p=>Object.freeze({...p})));
+ // Match the existing internal leader team-detail terminology and layout
+ // without loading sales prices, cashback, goals, or internal financial records.
+ // A staff transfer never changes the immutable submitted team attribution.
+ const teamDetails=Object.freeze(teams.map(team=>{
+  const current=members.filter(p=>p.active&&p.teamId===team.id);
+  const saved=records.filter(e=>e.teamId===team.id);
+  const productTotals=Object.fromEntries(enabled.map(name=>[name,0]));
+  for(const entry of saved)
+   for(const name of enabled)
+    productTotals[name]=add(productTotals[name],entry.counts[name]);
+  const verifiedProductTotal=Object.values(productTotals)
+   .reduce((s,n)=>add(s,n),0);
+  if(verifiedProductTotal!==team.totalCount)stop();
+  const people=saved.map(r=>Object.freeze({
+   staffId:r.staffId,name:r.name,countLabel:r.totalCount+"件",
+   submitted:true,totalCount:r.totalCount
+  }));
+  for(const person of current)
+   if(!seen.has(person.id))
+    people.push(Object.freeze({staffId:person.id,name:person.name,
+     countLabel:"未報告",submitted:false,totalCount:null}));
+  return Object.freeze({
+   id:team.id,title:team.name,headerClassName:"team-detail-header",
+   titleClassName:"team-detail-title",
+   totalClassName:"team-detail-total",
+   memberMeta:"現在の所属 "+current.length+"人",
+   totalLabel:team.totalCount+"件",totalCount:team.totalCount,
+   reportStatus:team.reportStatus,
+   // No authorized goal API in the partner count response: never invent one.
+   goalLabel:"目標未設定",
+   productsTitle:"商材別件数",peopleTitle:"班員別詳細",
+   productRows:Object.freeze(enabled.map(name=>Object.freeze({
+    name,count:productTotals[name],countLabel:productTotals[name]+"件"
+   }))),
+   peopleRows:Object.freeze(people),
+   moneySectionIncluded:false,financeLabelsIncluded:false
+  });
+ }));
  return Object.freeze({
   schema:"nico-unified-leader-count-ui-v1",scope:"authenticated-partner-count-view",
   date:day,companyName,role:workspace.role,
   publicInputs:Object.freeze(enabled.map(name=>Object.freeze({name,unit:"件"}))),
   publishedCategories:Object.freeze([...enabled]),
   lightAirSeparateInputEnabled:workspace.sbSeparateInputEnabled===true,
-  teams,members,dayRecords:Object.freeze(records),
+  teams,members,teamDetails,dayRecords:Object.freeze(records),
   dayCount:reportedTotal,
   unknownHistoricalTeamCount:unknownTeamCount,
   oldPrivateProducts:oldProducts,
