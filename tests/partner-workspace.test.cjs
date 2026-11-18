@@ -1812,3 +1812,77 @@ test("Owner correction updates exact approved joint rankings in both apps from s
  assert.equal(reenabled.totalCount,5);
  assert.equal(reenabled.people[0].totalCount,5);
 });
+
+
+test("2026-11-18: historical SB 5 stays unclassified, new 光2/AIR3 rank as one 10, Owner corrects split without altering finance",async()=>{
+ const date="2026-11-18";
+ const {db,api,req,zero,dependencies}=setup(true,true,true,true,true,
+   Date.parse("2026-11-18T12:00:00+09:00"));
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro","combined"],partnerOverrides:{}});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku05",hubProductId:"combined"}]});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,products:[
+   {id:"nuro",companyId:"hub",name:"NURO",active:true},
+   {id:"combined",companyId:"hub",name:"SB光・AIR（旧合算・未分類）",active:true}]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当者",teamId:team}))).staffId;
+ const existingApi=makeWorkspace({...dependencies,separateLightAirEnabled:()=>false});
+ await existingApi.submit(req("p",{date,staffId:staff,expectedVersion:0,
+  counts:{...zero(),"SB光・AIR":5}}));
+ const financeBefore=clone(db.store.get("products/money"));
+ const salesBefore=clone(db.store.get("records/old"));
+ let view=await api.view(req("p",{date}));
+ assert.equal(view.sbSeparateInputEnabled,true);
+ assert.deepEqual(view.records[0].sbBreakdown,{"SB光":0,"SB AIR":0,"旧未分類":5});
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:1,
+  counts:{...zero(),"SB光・AIR":10}})));
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:1,
+  counts:{...zero(),"SB光・AIR":10},
+  sbBreakdown:{"SB光":2,"SB AIR":3,"旧未分類":5}}));
+ const saved=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.deepEqual(saved.sbBreakdown,{"SB光":2,"SB AIR":3,"旧未分類":5});
+ assert.equal(saved.counts["SB光・AIR"],10);
+ assert.equal(saved.teamIdSnapshot,team);
+ const report=db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner");
+ assert.equal(report.counts["SB光・AIR"],10);
+ assert.equal(report.totalCount,10);
+ assert.equal(Object.hasOwn(report,"sbBreakdown"),false);
+ const ranking=await api.view(req("h",{date,sharedCountRankings:true,rankingPeriod:"day"}));
+ assert.equal(ranking.totalCount,10);
+ assert.equal(ranking.companies[0].totalCount,10);
+ assert.equal(ranking.teams[0].totalCount,10);
+ assert.equal(ranking.people[0].totalCount,10);
+ assert.equal(ranking.products.length,1);
+ assert.equal(ranking.products[0].totalCount,10);
+ const old=await api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
+ assert.deepEqual(old.entries[0].sbBreakdown,{"SB光":2,"SB AIR":3,"旧未分類":5});
+ await api.correctHubPartnerCounts(req("h",{date,partnerCompanyId:"partner",
+  staffId:staff,expectedVersion:2,counts:{...zero(),"SB光・AIR":11},
+  sbBreakdown:{"SB光":3,"SB AIR":3,"旧未分類":5},
+  correctionReason:"光の正しい実績を1件追加訂正する"}));
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v3");
+ assert.deepEqual(audit.previousSbBreakdown,{"SB光":2,"SB AIR":3,"旧未分類":5});
+ assert.deepEqual(audit.sbBreakdown,{"SB光":3,"SB AIR":3,"旧未分類":5});
+ const flags=db.store.get("companies/hub/rankingProductVisibility/shared");
+ const publicCatalog=db.store.get("companies/hub/rankingCountPublicCatalog/shared");
+ flags.version++;flags.partnerOverrides.partner=["nuro"];publicCatalog.version++;
+ view=await api.view(req("p",{date}));
+ assert.equal(view.records[0].counts["SB光・AIR"],0);
+ assert.deepEqual(view.records[0].sbBreakdown,{"SB光":0,"SB AIR":0,"旧未分類":0});
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:3,
+  counts:{...zero(),NURO:1,"SB光・AIR":1},
+  sbBreakdown:{"SB光":1,"SB AIR":0,"旧未分類":0}})));
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:3,
+  counts:{...zero(),NURO:1}}));
+ const after=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staff);
+ assert.equal(after.counts["SB光・AIR"],11);
+ assert.deepEqual(after.sbBreakdown,{"SB光":3,"SB AIR":3,"旧未分類":5});
+ assert.deepEqual(db.store.get("products/money"),financeBefore);
+ assert.deepEqual(db.store.get("records/old"),salesBefore);
+});
