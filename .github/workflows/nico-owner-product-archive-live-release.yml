@@ -1,0 +1,154 @@
+name: NICO reviewed Owner product archive Rules and surgical index-only production release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/hosting/surgical-existing-index.mjs'
+      - 'tools/hosting/release-owner-archive-transplant.mjs'
+      - 'tools/production/audit-owner-archive-rules-release.mjs'
+      - 'tests/owner-product-archive-live-release.test.mjs'
+      - '.github/workflows/nico-owner-product-archive-live-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/hosting/surgical-existing-index.mjs'
+      - 'tools/hosting/release-owner-archive-transplant.mjs'
+      - 'tools/production/audit-owner-archive-rules-release.mjs'
+      - 'tests/owner-product-archive-live-release.test.mjs'
+      - '.github/workflows/nico-owner-product-archive-live-release.yml'
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: nico-owner-product-archive-reviewed-exact-release
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Protect all original sales, financial and source scopes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object firestore.rules)" = 1ce70f0183b57e94f34a85a0b38a70019932f5ea
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git rev-parse c3295f67f63102295d074d7729dbcad93d73a42a:index.html)" = "$(git hash-object index.html)"
+          test "$(git rev-parse c3295f67f63102295d074d7729dbcad93d73a42a:firestore.rules)" = "$(git hash-object firestore.rules)"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --no-tags origin main
+            git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+            printf '%s\n' \
+              '.github/workflows/nico-owner-product-archive-live-release.yml' \
+              'tests/owner-product-archive-live-release.test.mjs' \
+              'tools/hosting/release-owner-archive-transplant.mjs' \
+              'tools/hosting/surgical-existing-index.mjs' \
+              'tools/production/audit-owner-archive-rules-release.mjs' \
+              | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+            diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          fi
+      - name: Check exact hunk transplant, live login FX and Rules GET-only parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/hosting/release-owner-archive-transplant.mjs
+          node --check tools/production/audit-owner-archive-rules-release.mjs
+          node --test tests/owner-product-archive-live-release.test.mjs \
+            tests/owner-product-archive-ui.test.mjs
+          echo 'REVIEWED_ARCHIVE_RELEASE_PRECHECK_PASS_NO_DEPLOY'
+  release:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' && needs.offline.result == 'success' &&
+          startsWith(github.event.head_commit.message,
+            'release(sales): reviewed Owner reversible archive Rules and index (#') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_OWNER_ARCHIVE_HOSTING_APPROVAL: REVIEWED_ARCHIVE_INDEX_ONLY_NO_OTHER_ASSETS
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify protected main, pinned reviewed parent, scope and prior passing checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git rev-parse HEAD^)" = c3295f67f63102295d074d7729dbcad93d73a42a
+          git diff --name-only HEAD^ HEAD | LC_ALL=C sort > "$RUNNER_TEMP/released.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-owner-product-archive-live-release.yml' \
+            'tests/owner-product-archive-live-release.test.mjs' \
+            'tools/hosting/release-owner-archive-transplant.mjs' \
+            'tools/hosting/surgical-existing-index.mjs' \
+            'tools/production/audit-owner-archive-rules-release.mjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/released.txt"
+          test "$(git hash-object firestore.rules)" = 1ce70f0183b57e94f34a85a0b38a70019932f5ea
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(gh api repos/Keikei-p/-/pulls/793 --jq .merged)" = true
+          test "$(gh api repos/Keikei-p/-/actions/runs/44238306724 --jq .conclusion)" = success
+          test "$(gh api repos/Keikei-p/-/actions/runs/44238306794 --jq .conclusion)" = success
+          test "$(gh api repos/Keikei-p/-/actions/runs/44238306713 --jq .conclusion)" = success
+          node --test tests/owner-product-archive-live-release.test.mjs \
+            tests/owner-product-archive-ui.test.mjs
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Install reviewed dependencies only
+        run: |
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix tests --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Validate all internal user and historical Firestore rules in emulator
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ''
+          FIREBASE_SERVICE_ACCOUNT_JSON: ''
+        run: |
+          RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore \
+            "node --test tests/rules.test.cjs"
+      - name: Load temporary protected Firebase credential
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/owner-archive-release-sa.json"
+          chmod 600 "$RUNNER_TEMP/owner-archive-release-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/owner-archive-release-sa.json" >> "$GITHUB_ENV"
+      - name: GET-only verify old live Firestore Rules exact preimage
+        run: node tools/production/audit-owner-archive-rules-release.mjs --before
+      - name: GET-only dry-run exact reviewed archive hunk overlay on live login FX and 33 files
+        run: node tools/hosting/release-owner-archive-transplant.mjs --dry-run
+      - name: Deploy ONLY reviewed Firestore Rules after both successful live preflights
+        run: |
+          firebase deploy --only firestore:rules --project sales-management-cc116 --non-interactive
+      - name: Independently verify deployed Rules and unchanged non-product finance paths
+        run: node tools/production/audit-owner-archive-rules-release.mjs --after
+      - name: Release exact archive index hunks only, preserving all other Hosting files
+        run: node tools/hosting/release-owner-archive-transplant.mjs --release
+      - name: Remove protected temporary credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/owner-archive-release-sa.json"
