@@ -1,0 +1,124 @@
+name: NICO approved exact 2-count Tsubasa to Tsubasa Electric atomic migration
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/apply-tsubasa-two-records-atomic.mjs'
+      - 'tests/apply-tsubasa-two-records-atomic.test.mjs'
+      - '.github/workflows/nico-tsubasa-exact-two-atomic-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/apply-tsubasa-two-records-atomic.mjs'
+      - 'tests/apply-tsubasa-two-records-atomic.test.mjs'
+      - '.github/workflows/nico-tsubasa-exact-two-atomic-release.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nico-tsubasa-exact-two-atomic-one-time
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Strict three-file scope and unchanged existing finance, counts and app
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object index.html)" = f5ceecf35d22ca88edb886b679dbc6dfc6c25f81
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --no-tags origin main
+            git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+            printf '%s\n' '.github/workflows/nico-tsubasa-exact-two-atomic-release.yml' \
+              'tests/apply-tsubasa-two-records-atomic.test.mjs' \
+              'tools/production/apply-tsubasa-two-records-atomic.mjs' \
+              | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+            diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          fi
+          node --check tools/production/apply-tsubasa-two-records-atomic.mjs
+          node --check tests/apply-tsubasa-two-records-atomic.test.mjs
+          node --test tests/plan-tsubasa-electric-reclassification.test.mjs \
+            tests/apply-tsubasa-two-records-atomic.test.mjs
+          echo 'TSUBASA_EXACT_TWO_ATOMIC_OFFLINE_TEST_PASS_NO_FIREBASE_WRITES'
+  release:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' && needs.offline.result == 'success' &&
+          startsWith(github.event.head_commit.message,
+            'release(sales): exact approved Tsubasa 2-count migration') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_TSUBASA_EXACT_TWO_APPROVAL: EXACT_TWO_AUTHORIZED_NO_OTHER_CHANGES
+      NICO_TSUBASA_REVIEWED_PARENT: 6429862066b06982c4d4c80005ee9a35f4402f96
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: One-time main parent, exact scope, approved clean preview and original finance gates
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git rev-parse HEAD^)" = "$NICO_TSUBASA_REVIEWED_PARENT"
+          git diff --name-only HEAD^ HEAD | LC_ALL=C sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' '.github/workflows/nico-tsubasa-exact-two-atomic-release.yml' \
+            'tests/apply-tsubasa-two-records-atomic.test.mjs' \
+            'tools/production/apply-tsubasa-two-records-atomic.mjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/allowed.txt"
+          diff -u "$RUNNER_TEMP/allowed.txt" "$RUNNER_TEMP/changed.txt"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = f5ceecf35d22ca88edb886b679dbc6dfc6c25f81
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(gh api repos/Keikei-p/-/actions/runs/44233442016 --jq .conclusion)" = success
+          test "$(gh api repos/Keikei-p/-/actions/runs/44233442016 --jq .head_sha)" = "$NICO_TSUBASA_REVIEWED_PARENT"
+          node --test tests/plan-tsubasa-electric-reclassification.test.mjs \
+            tests/apply-tsubasa-two-records-atomic.test.mjs
+      - name: Install existing Admin SDK, no deployment
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Load reviewed Firebase identity to temporary file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/tsubasa-atomic-identity.json"
+          chmod 600 "$RUNNER_TEMP/tsubasa-atomic-identity.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/tsubasa-atomic-identity.json" >> "$GITHUB_ENV"
+      - name: Commit exactly two records plus immutable before-after correction history
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/apply-tsubasa-two-records-atomic.mjs > "$RUNNER_TEMP/tsubasa-atomic-private.log" 2>&1 || {
+            grep -E '^STOP_(TSUBASA_ATOMIC|TSUBASA_RECLASS)_[A-Z_]+$' "$RUNNER_TEMP/tsubasa-atomic-private.log" || true
+            exit 1
+          }
+          grep '^NICO_TSUBASA_ATOMIC_RESULT ' "$RUNNER_TEMP/tsubasa-atomic-private.log"
+          grep -q '"updatedRecords":2' "$RUNNER_TEMP/tsubasa-atomic-private.log"
+          grep -q '"movedCount":2' "$RUNNER_TEMP/tsubasa-atomic-private.log"
+          grep -q '"otherDocumentsDeleted":0' "$RUNNER_TEMP/tsubasa-atomic-private.log"
+          grep -q '"otherProductsModified":0' "$RUNNER_TEMP/tsubasa-atomic-private.log"
+      - name: Always clean temporary identity and logs
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/tsubasa-atomic-identity.json" "$RUNNER_TEMP/tsubasa-atomic-private.log"
