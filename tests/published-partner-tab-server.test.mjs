@@ -16,10 +16,10 @@ function dbFixture(raw=policy(["individual","detail"])){
  const docs=new Map([["companies/hubCompany",
    {active:true,ownerUid:"hubOwner",companyKind:"internal"}]]);
  if(raw!==null)docs.set("companies/hubCompany/partnerTabPublication/shared",raw);
- const db={collection(name){return {doc(id){
-  const path=name+"/"+id;
-  return {path,collection(key){return {doc(docId){return {path:path+"/"+key+"/"+docId};}}};}
- }}}};
+ const ref=path=>({path,collection(name){return {doc(id){
+   return ref(path+"/"+name+"/"+id);
+  }};}});
+ const db={collection(name){return {doc(id){return ref(name+"/"+id);}}}};
  const tx={async get(ref){
   paths.push(ref.path);
   if(!ref.path.startsWith("companies/hubCompany"))throw Error("UNSAFE_READ");
