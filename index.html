@@ -24910,7 +24910,7 @@ function buildProductInputGroups(
     result => {
       // Archived products remain visible only while correcting their original
       // historic record; a new day cannot acquire new archived counts.
-      if (!editingRecordId && products.some(product =>
+      if ((typeof editingRecordId === "undefined" || !editingRecordId) && products.some(product =>
         product.id === result.productId && product.active === false)) return;
 
       if (
