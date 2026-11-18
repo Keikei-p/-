@@ -30,8 +30,12 @@ for(const [label,a,b] of important){
 }
 assert(here.includes('import {buildPartnerUnifiedCountTeamView} from "./ranking/partner-unified-count-team-view.mjs";'));
 assert(here.includes('buildPartnerUnifiedCountTeamView(snap)'));
-assert(here.includes('if(Array.isArray(snap.enabledCategories)){'),
- "No backend-approved publication guard");
+assert(here.includes('if(Array.isArray(snap.categories)){'),
+ "Verified server count categories required for shared team view");
+assert(here.includes('const enabledKeys=snap.enabledCategories??snap.categories;'),
+ "Existing backend allowlist must remain effective when supplied");
+assert(here.includes('const unifiedProductList=true;'),
+ "Legacy private products must not become writable in shared UI");
 assert(here.includes("renderPartnerCountTeamCard("));
 assert(here.includes("team.reportStatus===\"not_reported\""));
 const script=here.match(/<script type="module">([\s\S]*?)<\/script>/);
