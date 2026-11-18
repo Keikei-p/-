@@ -100,6 +100,13 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
   // Another partner's member details are NOT part of this authorized
   // envelope. Do not infer or render them.
   const ownCount=count(response.own.count);
+  // A partner can see ONLY public, ranked company aggregates. Those
+  // aggregates must equal the ranked product sum; no hidden discrepancy
+  // may be mistaken for a confirmed zero or a complete scoreboard.
+  const companyCount=companyRows.reduce((n,c)=>n+c.count,0);
+  const publicProductCount=productRows.reduce((n,c)=>n+c.count,0);
+  if(!Number.isSafeInteger(companyCount)||companyCount!==publicProductCount||
+     ownCount>companyCount)fail();
   return Object.freeze({...common,role:"partner",total:null,ownCount,
    personRows,productRows,teamRows,companyRows,
    teamDetails:teamRows.map(x=>({name:x.name,count:x.count,
@@ -124,8 +131,11 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
    obj(t)&&obj(t.detail)&&posted(t.detail.reportStatus)).map(t=>({
     name:label(t.companyName)+"・"+label(t.name),count:count(t.count)
    })));
+ // Company rows must reconcile EXACTLY to the canonical ledger. A
+ // confirmed report is never allowed to disappear behind "未報告".
+ // This comparison is read-only; it cannot rewrite historical counts.
  const companyCount=companyRows.reduce((n,c)=>n+c.count,0);
- if(companyCount>total)fail();
+ if(companyCount!==total||!Number.isSafeInteger(companyCount))fail();
  const teamDetails=array(response.teamBreakdown,400).map(detail);
  return Object.freeze({...common,role:"hub",total,ownCount:self,
   partnerCount,personRows,productRows,companyRows,teamRows,teamDetails});
