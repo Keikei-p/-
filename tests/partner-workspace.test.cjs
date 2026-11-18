@@ -51,7 +51,8 @@ class DB {
  }
 }
 class CallError extends Error{constructor(code,message){super(message);this.code=code;}}
-function setup(sharedRankingOn=false,publicationWriteOn=false,ownerReadOn=false,ownerWriteOn=false){
+function setup(sharedRankingOn=false,publicationWriteOn=false,ownerReadOn=false,ownerWriteOn=false,
+ splitOn=false,clock=NOW){
  const db=new DB();
  const partnerUser=(uid,role,teamId=null)=>({uid,companyId:"partner",companyRole:role==="owner"?"owner":"member",
  role,teamId,active:true,accessKind:"partner",memberType:"cooperator",
@@ -77,8 +78,9 @@ function setup(sharedRankingOn=false,publicationWriteOn=false,ownerReadOn=false,
  const dependencies={db,getAuth,Timestamp,FieldValue,HttpsError:CallError,
   enabled:()=>true,sharedRankingEnabled:()=>sharedRankingOn,
   submissionPublicationEnabled:()=>publicationWriteOn,
+  separateLightAirEnabled:()=>splitOn,
   ownerCorrectionReadEnabled:()=>ownerReadOn,
-  ownerCorrectionWriteEnabled:()=>ownerWriteOn,now:()=>NOW};
+  ownerCorrectionWriteEnabled:()=>ownerWriteOn,now:()=>clock};
  const api=makeWorkspace(dependencies);
  const req=(uid,data={})=>({auth:{uid,token:{email:uid+"@example.com",email_verified:true}},
   rawRequest:{headers:{authorization:"Bearer "+uid.repeat(30)}},data});
