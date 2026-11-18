@@ -1,0 +1,61 @@
+name: NICO Partner Unified Count Rankings Without ON OFF - NO DEPLOY
+on:
+  pull_request:
+    paths:
+      - functions-partner-workspace/index.js
+      - functions-partner-workspace/service.cjs
+      - functions-partner-workspace/unified-count-ranking-policy.cjs
+      - tests/partner-unified-ranking-no-toggle.test.cjs
+      - .github/workflows/nico-partner-unified-no-toggle-count-ranks.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  count-rankings-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact syntax checks
+        run: |
+          node --check functions-partner-workspace/index.js
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/unified-count-ranking-policy.cjs
+          node --check tests/partner-unified-ranking-no-toggle.test.cjs
+      - name: Authenticated offline Firestore read-only count ranking checks
+        run: node --test tests/partner-unified-ranking-no-toggle.test.cjs
+      - name: Existing save, correction, invitation and amount fence must not change
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node - <<'NODE'
+          const fs=require('node:fs'), cp=require('node:child_process'), assert=require('node:assert/strict');
+          const original=cp.execFileSync('git',['show','FETCH_HEAD:functions-partner-workspace/service.cjs'],{encoding:'utf8'});
+          const current=fs.readFileSync('functions-partner-workspace/service.cjs','utf8');
+          const saved=(content,start,end)=>{
+            const a=content.indexOf(start),b=content.indexOf(end,a);
+            assert(a>=0&&b>a,'Protected source drift '+start);
+            return content.slice(a,b);
+          };
+          const anchors=[
+            ['async function submit(request){','return Object.freeze({manage,accept,view,submit,'],
+            ['async function manage(request){','async function accept(request){']
+          ];
+          for(const [start,end] of anchors)
+            assert.equal(saved(current,start,end),saved(original,start,end),
+              'Original count submit / partner management changed');
+          const idx=fs.readFileSync('functions-partner-workspace/index.js','utf8');
+          assert(idx.includes('NICO_PARTNER_UNIFIED_COUNT_RANKING_ENABLED==="enabled"'));
+          assert(current.includes('const unified=unifiedRankingEnabled()===true;'));
+          assert(current.includes('...(unified?[]:['));
+          assert(!current.includes('db.collection("products").get('));
+          console.log('PRESERVED_ORIGINAL_COUNT_LEDGER_AND_FINANCE_FENCE');
+          NODE
+      - name: Confirm NO automatic deployment and no credentials
+        run: |
+          if grep -R -En 'firebase deploy|wrangler deploy|secrets\.\w+|\.runTransaction\(' functions-partner-workspace/unified-count-ranking-policy.cjs tests/partner-unified-ranking-no-toggle.test.cjs; then
+            echo "UNEXPECTED_OPERATIONS"; exit 1
+          fi
+          echo NO_DEPLOY
