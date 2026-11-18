@@ -78,9 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
-          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-branches/main --jq .commit.sha)" || {
-            test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
-          }
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
           test "$(git rev-parse HEAD^)" = "$NICO_TSUBASA_REVIEWED_PARENT"
           git diff --name-only HEAD^ HEAD | LC_ALL=C sort > "$RUNNER_TEMP/changed.txt"
           printf '%s\n' '.github/workflows/nico-tsubasa-exact-two-atomic-release.yml' \
