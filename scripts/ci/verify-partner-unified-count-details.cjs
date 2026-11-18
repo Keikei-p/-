@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=12,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=14,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -72,8 +72,34 @@ assert(changed.every(file=>[
  "ranking/same-app-joint-count-panel.mjs",
  "tests/same-app-joint-count-wire.test.mjs",
  "functions-ranking-approvals/index.js",
+ "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
+ "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
+ "functions-ranking-approvals/ranking/partner-workspace-count-source.mjs",
+ "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs",
  ".github/workflows/nico-same-app-joint-count-wire-no-deploy.yml"
 ].includes(file)),"unexpected changed source: "+changed.join(","));
+// Only the listed trusted count-only readers may change; partner saves,
+ // Firebase Rules, finance Functions and source records remain immutable.
+for(const path of [
+ "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
+ "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
+ "functions-ranking-approvals/ranking/partner-workspace-count-source.mjs",
+ "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs"
+]){
+ const src=fs.readFileSync(path,"utf8");
+ assert(!/\\b(?:tx|db)\\.(?:set|create|update|delete|add)\\s*\\(/.test(src),
+  "Readonly source must never write to Firestore: "+path);
+ assert(!/\\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch)\\s*\\(/.test(src),
+  "No client datastore writes: "+path);
+}
+const privateReader=fs.readFileSync(
+ "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
+assert(privateReader.includes('partner.collection("partnerPrivateProducts").limit(MAX_PRIVATE+1)'),
+ "Private product catalogue must be bounded");
+assert(privateReader.includes('...(includePrivateCounts?[tx.get(privateQuery)]:[])'),
+ "Private catalogue must be read in the existing verified transaction");
+assert(privateReader.includes('readOnly:true'),
+ "Standalone private history reader can only run a read-only transaction");
 const joint=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
 assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"'),
  "Both flags are required to enable the direct joint HTTP route");
