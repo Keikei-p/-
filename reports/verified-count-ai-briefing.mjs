@@ -171,7 +171,9 @@ export function buildVerifiedPartnerCountBriefing(snapshot,{title="協力店 件
  if(partial)notes.push("【一部未確定】報告未提出や旧実績の未割当を含むため、全社確定順位と誤認しないでください。");
  const text=[headline,src.start===src.end?src.start:src.start+"〜"+src.end,
   "対象：協力店の公開許可された件数のみ","",...notes].join("\n");
- if(text.length>4200||MONEY.test(text))fail();
+ // The report has intentional line separators; validate EACH rendered line.
+ // User-provided labels were separately validated and cannot inject newlines.
+ if(text.length>4200||text.split("\n").some(line=>MONEY.test(line)))fail();
  return Object.freeze({schema:"nico-reviewed-count-briefing-v1",
   periodStart:src.start,periodEnd:src.end,scope:"partner-counts-only",
   reportStatus:partial?"incomplete":"verified",
