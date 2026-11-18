@@ -42,22 +42,6 @@ exports.getOwnerReviewedSkuMapping=onCall(options,skuMapping.get);
 exports.setOwnerReviewedSkuMapping=onCall(options,skuMapping.save);
 
 /**
- * ADDITIVE / STAGING ONLY: one Hub Owner tab publication across ALL partners.
- * Default flag OFF; does not deploy or switch existing ranking/count APIs.
- * Writes ONLY companies/{hub}/partnerTabPublication/shared and append-only
- * partnerTabPublicationAudits. No count or finance originals can be touched.
- * Partner UI and count response must enforce server publication before release.
- */
-const {makePartnerTabPublicationCallables}=require("./partner-tab-publication-controller.cjs");
-const sharedTabs=makePartnerTabPublicationCallables({
- db:getFirestore(),FieldValue,getAuth,HttpsError,
- enabled:()=>process.env.NICO_PARTNER_TAB_PUBLICATION_ENABLED==="enabled"
-});
-exports.getOwnerPartnerTabPublication=onCall(options,sharedTabs.loadOwner);
-exports.setOwnerPartnerTabPublication=onCall(options,sharedTabs.saveOwner);
-exports.getPartnerPublishedTabs=onCall(options,sharedTabs.loadPartner);
-
-/**
  * ADDITIVE STAGING ONLY: standalone ranking GET endpoint.
  * No existing count-write or finance Functions are changed.
  * The production flag is absent => 503 with zero Firestore/Auth reads.
