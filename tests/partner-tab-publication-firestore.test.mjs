@@ -142,12 +142,12 @@ test("unpublished draft is invisible to partner; later publish is additive confi
 
 test("nonOwner, secondary identity and cooperator cannot save Owner publication",async()=>{
  for(const change of [
-  {"users/"+UID:{...user,companyRole:"leader"}},
-  {"companies/"+HUB+"/members/"+UID:{...member,companyRole:"leader"}},
-  {"users/"+UID:{...user,accessKind:"partner"}},
-  {"partnerWorkspaceContexts/"+UID:{active:true}},
-  {"companies/"+HUB:{...company,ownerUid:"somebody"}},
-  {"users/"+UID:{...user,active:false}}
+  {["users/"+UID]:{...user,companyRole:"leader"}},
+  {["companies/"+HUB+"/members/"+UID]:{...member,companyRole:"leader"}},
+  {["users/"+UID]:{...user,accessKind:"partner"}},
+  {["partnerWorkspaceContexts/"+UID]:{active:true}},
+  {["companies/"+HUB]:{...company,ownerUid:"somebody"}},
+  {["users/"+UID]:{...user,active:false}}
  ]){
   const f=seeded();for(const [k,v] of Object.entries(change))f.data.set(k,v);
   await fail(()=>store(f).saveOwner({actor:actor(),expectedRevision:0,
