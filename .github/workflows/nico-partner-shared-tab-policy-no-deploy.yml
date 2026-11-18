@@ -12,6 +12,7 @@ on:
       - 'tests/partner-tab-visibility-policy.test.mjs'
       - 'tests/partner-tab-publication-firestore.test.mjs'
       - 'tests/partner-tab-publication-callables.test.mjs'
+      - 'tests/partner-tab-publication-token.test.mjs'
       - '.github/workflows/nico-partner-shared-tab-policy-no-deploy.yml'
   workflow_dispatch:
 
@@ -38,11 +39,13 @@ jobs:
           node --check tests/partner-tab-visibility-policy.test.mjs
           node --check tests/partner-tab-publication-firestore.test.mjs
           node --check tests/partner-tab-publication-callables.test.mjs
+          node --check tests/partner-tab-publication-token.test.mjs
       - name: Eight count-only tabs, Owner permission, partner read and historical preservation
         run: |
           node --test tests/partner-tab-visibility-policy.test.mjs \
             tests/partner-tab-publication-firestore.test.mjs \
-            tests/partner-tab-publication-callables.test.mjs
+            tests/partner-tab-publication-callables.test.mjs \
+            tests/partner-tab-publication-token.test.mjs
       - name: Protected original ranking entrypoint is byte-identical to main
         run: |
           git fetch --no-tags --depth=1 origin main
