@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=51,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=53,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -70,6 +70,8 @@ assert(changed.every(file=>[
  "scripts/ci/verify-partner-unified-count-details.cjs",
  ".github/workflows/nico-partner-unified-count-details-no-deploy.yml",
  "ranking/verified-dual-count-dashboards.mjs",
+ "security/secondary-finance-read-fence.mjs",
+ ".github/workflows/nico-eight-tab-finance-and-restore-demo-no-deploy.yml",
  "ranking/same-app-joint-count-projection.mjs",
  "ranking/same-app-joint-count-panel.mjs",
  "tests/same-app-joint-count-wire.test.mjs",
@@ -122,6 +124,21 @@ assert.equal(
  fs.readFileSync("functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs","utf8"),
  "Count-only viewer and server copies must remain byte-identical"
 );
+// The staged finance fence is never permitted to replace live Rules here.
+// It must be pinned to the current main Firestore Rules blob (same checkout),
+// and ALL actual candidate GET/LIST tests run in demo emulator CI only.
+const financeSource=fs.readFileSync("security/secondary-finance-read-fence.mjs","utf8");
+const currentRuleBlob=cp.execFileSync("git",["hash-object","firestore.rules"],{
+ encoding:"utf8"
+}).trim();
+assert(financeSource.includes('export const ORIGINAL_BLOB="'+currentRuleBlob+'";'),
+ "Staged finance candidate must match exact current main Rules SHA");
+assert(financeSource.includes("FINANCE_READ_FENCE_NO_DEPLOY")&&
+       financeSource.includes("function activeSecondaryPartnerContext()"),
+ "Candidate finance fence can never be an ungated production release");
+assert.equal(fs.readFileSync("firebase.json","utf8"),
+ cp.execFileSync("git",["show","FETCH_HEAD:firebase.json"],{encoding:"utf8"}),
+ "Production Firebase manifests cannot be retargeted to experimental Rules");
 // Only the listed trusted count-only readers may change; partner saves,
  // Firebase Rules, finance Functions and source records remain immutable.
 for(const path of [
