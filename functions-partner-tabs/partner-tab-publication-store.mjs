@@ -88,7 +88,7 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     return {hub,uid:actor.uid};
   }
 
-  async function verifiedPartnerViewer(tx, actor, workspaceCompanyId="") {
+  async function verifiedPartnerViewer(tx, actor, workspaceCompanyId="",strictOptional=false) {
     if(!principalOk(actor)||typeof workspaceCompanyId!=="string"||
        (workspaceCompanyId!==""&&!okId(workspaceCompanyId))) blocked();
     const [us,secondary] = await Promise.all([
@@ -169,6 +169,7 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     // Strict same-member count scope for optional records. A partner member
     // never inherits another staff person's history merely from a company ID.
     let role,teamId=null;
+    if(strictOptional===true){
     if(isSecondary){
       role=context.role;
       teamId=role==="owner"?null:context.teamId;
@@ -185,6 +186,7 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
        user.canViewRevenue===false&&user.canViewUnitPrice===false){
       role="owner";
     }else blocked();
+    }
     return {hub:c.hubCompanyId,ownerUid:hub.ownerUid,
       partner,uid:actor.uid,role,teamId,companyName:c.name};
   }
@@ -212,7 +214,7 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
        new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date)
       blocked();
     return db.runTransaction(async tx=>{
-      const who=await verifiedPartnerViewer(tx,actor,workspaceCompanyId);
+      const who=await verifiedPartnerViewer(tx,actor,workspaceCompanyId,true);
       const p=state(read(await tx.get(config(who.hub))),who.hub,who.ownerUid);
       if(p.published!==true||!p.tabs.includes(tab))blocked();
       // No second policy query: authenticated membership, the Owner's current
