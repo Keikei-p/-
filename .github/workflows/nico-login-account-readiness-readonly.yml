@@ -27,10 +27,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object tools/production/audit-login-readiness-live-readonly.mjs)" = d91f8621a0d05a59635948bbdfd25ccfbc3c936a
-          test "$(git hash-object tests/audit-login-readiness-live-readonly.test.mjs)" = 29384dc1bb4cfbccb550c1d3ec7462600f9e1ec1
+          test "$(git hash-object tools/production/audit-login-readiness-live-readonly.mjs)" = 64ec2f91c84cf784803407ec003358c1ebd4c41d
+          test "$(git hash-object tests/audit-login-readiness-live-readonly.test.mjs)" = 3579fc1a9a65d63468e29fb0c85429b6113c3dcc
           test "$(git hash-object legacy-finance-entry-guard.mjs)" = 20d730127d0623bb94d14d21998ab5111d849cfc
-          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
           node --check tools/production/audit-login-readiness-live-readonly.mjs
           node --test tests/audit-login-readiness-live-readonly.test.mjs
           echo "LOGIN_READINESS_OFFLINE_PASS_NO_WRITES"

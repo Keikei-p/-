@@ -94,6 +94,24 @@ test("missing Firebase account is reported but does not create or reset any cred
  assert.equal(r.categoryCounts.AUTH_USER_NOT_FOUND,1);
  assert.equal(r.loginSessionsCreated,0);
 });
+test("company-code principal is classified as session-only, never a missing email account",async()=>{
+ const code={uid,companyId:cid,active:true,authKind:"partner_code_shared",
+  accessKind:"partner",memberType:"cooperator",companyRole:"owner",
+  canViewRevenue:false,canViewUnitPrice:false};
+ const f=mock({users:new Map([[uid,code]]),auth:new Map(),
+  authFailCode:"auth/insufficient-permission"});
+ const r=await auditLoginReadiness(f);
+ assert.equal(r.categoryCounts.SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT,1);
+ assert.equal(r.metadataReads.firebaseAccountsLookedUp,0);
+ assert.deepEqual(f.paths,[]);
+ assert.equal(r.actualPasswordSignInNotTested,true);
+ assert.equal(r.codeBasedSharedSessionsNotTested,true);
+ assert.equal(r.productionWrites,0);
+ assert.equal(classify({user:{...code,canViewRevenue:true},auth:null,
+  companyExists:false}),"SHARED_CODE_PROFILE_FLAGS_INCONSISTENT");
+ assert.equal(classify({user:{...code,active:false},auth:null,
+  companyExists:false}),"USER_DISABLED");
+});
 test("Auth permission or API failure cannot be mislabeled as a deleted user",async()=>{
  const f=mock({auth:new Map(),authFailCode:"auth/insufficient-permission"});
  await assert.rejects(auditLoginReadiness(f),
