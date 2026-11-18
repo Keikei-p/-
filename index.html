@@ -5021,7 +5021,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
     <button type="button" class="quick-menu-button" data-partner-panel="invite" aria-controls="partnerPanelInvite"><span class="quick-menu-icon">✉️</span>招待リンク</button>
     <button type="button" class="quick-menu-button" data-partner-panel="teams" aria-controls="partnerPanelTeams"><span class="quick-menu-icon">👥</span>班管理</button>
     <button type="button" class="quick-menu-button" data-partner-panel="members" aria-controls="partnerPanelMembers"><span class="quick-menu-icon">👤</span>メンバー管理</button>
-    <button type="button" class="quick-menu-button" data-partner-panel="catalog" aria-controls="partnerPanelCatalog"><span class="quick-menu-icon">📦</span>商材管理</button>
+    <button type="button" class="quick-menu-button" data-partner-panel="catalog" aria-controls="partnerPanelCatalog"><span class="quick-menu-icon">📦</span>旧商材履歴</button>
   </div>
   <div id="partnerSameAppDashboardDetails" class="dashboard-detail-area" hidden>
   <section id="partnerPanelTeams" data-partner-view="teams" hidden>
@@ -5090,12 +5090,12 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
   </section>
   <section id="partnerPanelCatalog" data-partner-view="catalog" hidden>
     <div class="p-inline-card">
-      <h3>📦 商材追加・管理</h3>
-      <p class="p-inline-muted">自社と共有の商材に加えて協力店専用の商材を追加できます。協力店専用の件数は全社ランキングに公開しません。</p>
-      <div class="p-inline-grid">
+      <h3>📦 旧・協力店専用商材（閲覧のみ）</h3>
+      <p class="p-inline-muted">今後の実績登録は共通商材から行います。これまで登録された専用商材と件数・履歴は変更も削除もしません。</p>
+      <div class="p-inline-grid" hidden>
         <label class="p-inline-field">追加する商材名<input id="pInlineCustomName" maxlength="80" placeholder="商材名"></label>
       </div>
-      <button id="pInlineAddPrivateProduct" class="team-action-button" type="button">商材を追加</button>
+      <button id="pInlineAddPrivateProduct" class="team-action-button" type="button" hidden disabled>旧商材追加は終了</button>
       <p id="pInlineCatalogStatus" role="status"></p>
       <div id="pInlinePrivateProductList" class="p-inline-list"></div>
     </div>
@@ -5121,7 +5121,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
       <input id="pInlineWorkLocation" type="text" maxlength="100" autocomplete="off" placeholder="例：○○市 ○○店"></div>
     <div class="section-title">商材別件数</div>
     <div id="pInlineCountFields" class="product-input-list" aria-label="商材ごとの件数入力・2列表示"></div>
-    <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共有商材 0件｜協力店専用 0件</p>
+    <p id="pInlineEntryTotals" class="record-total-value" aria-live="polite">共通商材 0件</p>
     <div class="p-inline-actions">
       <button id="pInlineSave" class="record-save-button" type="button">実績を一括登録</button>
       <button id="pInlineZero" class="record-clear-button" type="button">実績なし（0件報告）</button>
