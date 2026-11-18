@@ -1,0 +1,136 @@
+name: NICO secondary Owner archive permission Rules-only production hotfix
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-secondary-owner-archive-rules-release.mjs'
+      - 'tests/secondary-owner-archive-rules-live.test.mjs'
+      - '.github/workflows/nico-secondary-owner-archive-rules-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/audit-secondary-owner-archive-rules-release.mjs'
+      - 'tests/secondary-owner-archive-rules-live.test.mjs'
+      - '.github/workflows/nico-secondary-owner-archive-rules-release.yml'
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: nico-nonmaster-owner-product-archive-rules-only
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prove exact Rules-only release scope and no secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git rev-parse 6f20244475ba62fc15178a49b9ce6c8d4095cd60:firestore.rules)" = "$(git hash-object firestore.rules)"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --no-tags origin main
+            git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+            printf '%s\n' \
+              '.github/workflows/nico-secondary-owner-archive-rules-release.yml' \
+              'tests/secondary-owner-archive-rules-live.test.mjs' \
+              'tools/production/audit-secondary-owner-archive-rules-release.mjs' \
+              | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+            diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          fi
+          node --check tools/production/audit-secondary-owner-archive-rules-release.mjs
+          node --test tests/secondary-owner-archive-rules-live.test.mjs
+          echo 'SECONDARY_OWNER_ARCHIVE_RULES_OFFLINE_REVIEW_PASS_NO_WRITES'
+  release:
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.repository == 'Keikei-p/-' && needs.offline.result == 'success' &&
+          startsWith(github.event.head_commit.message,
+            'release(sales): secondary Owner archive Rules hotfix (#') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify protected main SHA, reviewed parent and 3-file diff only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git rev-parse HEAD^)" = 6f20244475ba62fc15178a49b9ce6c8d4095cd60
+          git diff --name-only HEAD^ HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-secondary-owner-archive-rules-release.yml' \
+            'tests/secondary-owner-archive-rules-live.test.mjs' \
+            'tools/production/audit-secondary-owner-archive-rules-release.mjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(gh api repos/Keikei-p/-/pulls/795 --jq .merged)" = true
+          test "$(gh api repos/Keikei-p/-/actions/runs/44240880438 --jq .conclusion)" = success
+          test "$(gh api repos/Keikei-p/-/actions/runs/44240880400 --jq .conclusion)" = success
+          node --test tests/secondary-owner-archive-rules-live.test.mjs
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Install approved emulators and Rules deployment dependencies
+        run: |
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+          npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+          npm install --prefix tests --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Re-run screenshot account and full existing Firestore permissions offline
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ''
+          FIREBASE_SERVICE_ACCOUNT_JSON: ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore \
+            "node --test tests/rules.test.cjs"
+      - name: Load isolated protected Firebase deploy identity after all gates
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/secondary-owner-rules-sa.json"
+          chmod 600 "$RUNNER_TEMP/secondary-owner-rules-sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/secondary-owner-rules-sa.json" >> "$GITHUB_ENV"
+      - name: GET-only exact live Rules preimage check (no document access)
+        run: node tools/production/audit-secondary-owner-archive-rules-release.mjs --before
+      - name: Deploy Firestore Security Rules only - no data or Hosting changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase deploy --only firestore:rules --project sales-management-cc116 --non-interactive
+      - name: GET-only verify exact new live Rules and unchanged finance fences
+        run: node tools/production/audit-secondary-owner-archive-rules-release.mjs --after
+      - name: Remove temporary protected identity
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/secondary-owner-rules-sa.json"
