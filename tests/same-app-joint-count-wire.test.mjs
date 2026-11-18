@@ -2,6 +2,7 @@ import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
 import {buildVerifiedCountDashboard} from "../functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs";
 import {buildPartnerCountRankingSource} from "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs";
+import {composeCanonicalMonthlyRankingInput} from "../functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {createJointCountHttpAdapter}=require("../functions-ranking-approvals/joint-count-http-adapter.cjs");
@@ -573,4 +574,113 @@ test("release blocker: existing private-only partner count remains saved but is 
  // This explicitly DENIES production-ready full parity: source is missing
  // two private-product counts. A future full-scope patch must update this.
  console.log("RELEASE_BLOCKED_PRIVATE_PRODUCT_HISTORY_UNLINKED");
+});
+
+function linkedPrivateSourceFixture(){
+ const keys=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
+  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const counts=Object.fromEntries(keys.map(x=>[x,x==="NURO"?3:0]));
+ const privateProducts=[
+  {id:"privateMatch",companyId:"partner",name:"追加プラン",
+   active:true,origin:"partner_custom",visibility:"private"},
+  {id:"privateRetired",companyId:"partner",name:"販売終了の旧商材",
+   active:false,origin:"partner_custom",visibility:"private"}
+ ];
+ const entry={id:"2026-11-18__p1",companyId:"partner",hubCompanyId:"hub",
+  staffId:"p1",teamIdSnapshot:"t1",staffNameSnapshot:"協力店A担当",
+  date:"2026-11-18",version:2,
+  counts,totalCount:3,privateCounts:{privateMatch:2,privateRetired:1},
+  privateTotalCount:3};
+ const input={
+  hubCompanyId:"hub",partnerCompanyId:"partner",companyLabel:"協力店A",
+  period:"2026-11",readTime:"2026-11-18T11:45:00.000Z",
+  relation:{hubCompanyId:"hub",partnerCompanyId:"partner",active:true,countSharingApproved:true},
+  proof:{serverVerified:true,countSharingVerified:true,
+   completeMonthEntriesRead:true,completeMonthSummariesRead:true,
+   historicalTeamsVerified:true,snapshotConsistent:true,
+   completePrivateProductCatalogueRead:true},
+  teams:[{id:"t1",name:"1班",goalCount:null}],
+  entries:[entry],privateProducts,includePrivateCounts:true,
+  summaries:[{source:"staff-entries-v1",hubCompanyId:"hub",
+   partnerCompanyId:"partner",date:"2026-11-18",counts,totalCount:3}]
+ };
+ return input;
+}
+test("full private-history projection is 3 standard + 3 private, with original daily report still 3",()=>{
+ const input=linkedPrivateSourceFixture(),before=structuredClone(input);
+ const source=buildPartnerCountRankingSource(input);
+ assert.equal(source.records.length,1);
+ assert.equal(source.records[0].totalCount,6);
+ assert.equal(source.lines.reduce((sum,row)=>sum+row.count,0),6);
+ assert.equal(source.products.length,11);
+ assert.equal(source.lines.filter(x=>x.productId.startsWith("partnerPrivate:"))
+  .reduce((sum,x)=>sum+x.count,0),3);
+ assert.equal(source.lines.filter(x=>x.productId==="partnerSku01")[0].count,3);
+ assert.equal(input.summaries[0].totalCount,3);
+ assert.equal(source.records[0].reportStatus,"submitted");
+ assert.deepEqual(input,before);
+ assert(!JSON.stringify(source).includes("privateCounts"));
+ assert(!JSON.stringify(source).includes("privateTotalCount"));
+ assert(!JSON.stringify(source).includes("unitPrice"));
+});
+test("real canonical linker and dashboard include saved custom counts once, including inactive old SKU",()=>{
+ const input=linkedPrivateSourceFixture(),partner=buildPartnerCountRankingSource(input);
+ const direct=authoritativeDashboardFixture("hub_owner");
+ const hub=structuredClone(direct.sources[0]);
+ hub.products.push({companyId:"hub",sourceId:"directCustom",name:"追加プラン",
+  active:true,sortOrder:0});
+ const sourceBefore=structuredClone({hub,partner});
+ const joined=composeCanonicalMonthlyRankingInput({
+  context:direct.context,hubSource:hub,partnerSources:[partner],
+  hubOwnerUid:"owner",month:"2026-11",serverAsOf:"2026-11-18",
+  zeroSetupLink:true
+ });
+ const match=joined.productGroups.find(x=>x.companyId==="partner"&&
+  x.productId==="partnerPrivate:privateMatch");
+ const old=joined.productGroups.find(x=>x.companyId==="partner"&&
+  x.productId==="partnerPrivate:privateRetired");
+ assert.equal(match.groupId,"directCustom");
+ assert(old.groupId.startsWith("partnerPrivateUnmatched:"));
+ assert.equal(old.groupName,"販売終了の旧商材");
+ const response=buildVerifiedCountDashboard({
+  ...joined,context:direct.context,
+  period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"}
+ });
+ const view=project(response);
+ assert.equal(view.ownCount,5);
+ assert.equal(view.partnerCount,6);
+ assert.equal(view.total,11);
+ assert.equal(view.productRows.reduce((n,row)=>n+row.count,0),11);
+ assert.equal(view.productRows.find(x=>x.name==="追加プラン").count,2);
+ assert.equal(view.teamDetails.find(x=>x.name==="協力店A・1班").count,6);
+ assert.deepEqual({hub,partner},sourceBefore,"ranking never rewrites source");
+ const partnerCtx={...direct.context,role:"partner_owner",
+  viewerUid:"partnerOwner",viewerCompanyId:"partner"};
+ const partnerResponse=buildVerifiedCountDashboard({
+  ...joined,context:partnerCtx,
+  period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"}
+ });
+ const partnerView=project(partnerResponse,{partner:true});
+ assert.equal(partnerView.ownCount,6);
+ assert.equal(partnerView.productRows.reduce((n,row)=>n+row.count,0),11);
+ assert.equal(partnerView.financeIncluded,false);
+});
+test("private-count mode rejects missing/unknown catalog, altered sum, financial name, duplicate and incomplete proof",()=>{
+ const scenarios=[
+  x=>{x.privateProducts.pop();},
+  x=>{x.entries[0].privateTotalCount=9;},
+  x=>{x.privateProducts[0].name="売上100万円プラン";},
+  x=>{x.privateProducts.push({...x.privateProducts[0]});},
+  x=>{delete x.proof.completePrivateProductCatalogueRead;},
+  x=>{x.entries[0].privateCounts.unverifiedId=1;},
+  x=>{x.entries[0].privateCounts.privateMatch=-1;},
+  x=>{x.entries[0].privateCounts.privateMatch=10000;}
+ ];
+ for(const mutate of scenarios){
+  const input=linkedPrivateSourceFixture(),baseline=structuredClone(input);
+  mutate(input);
+  assert.throws(()=>buildPartnerCountRankingSource(input),
+   undefined,"unsafe private read must stop");
+  assert.deepEqual(baseline.entries[0].counts,input.entries[0].counts);
+ }
 });
