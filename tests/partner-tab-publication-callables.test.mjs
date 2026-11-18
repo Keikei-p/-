@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {makePartnerTabPublicationCallables}=require(
- "../functions-ranking-approvals/partner-tab-publication-controller.cjs"
+ "../functions-partner-tabs/controller.cjs"
 );
 class HttpsError extends Error {
  constructor(code,message){super(message);this.code=code;}
