@@ -1,0 +1,43 @@
+name: NICO Same Index Partner Count and Team Details - NO DEPLOY
+
+on:
+  pull_request:
+    paths:
+      - index.html
+      - ranking/partner-unified-count-team-view.mjs
+      - tests/partner-unified-count-team-view.test.mjs
+      - scripts/ci/verify-partner-unified-count-details.cjs
+      - .github/workflows/nico-partner-unified-count-details-no-deploy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-finance-leak:
+    name: Shared count screen, saved-team details, no original writes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Source syntax
+        run: |
+          node --check ranking/partner-unified-count-team-view.mjs
+          node --check tests/partner-unified-count-team-view.test.mjs
+          node --check scripts/ci/verify-partner-unified-count-details.cjs
+      - name: Count-only historical invariants
+        run: node --test tests/partner-unified-count-team-view.test.mjs
+      - name: Compare original count save and self finance logic with main
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node scripts/ci/verify-partner-unified-count-details.cjs
+      - name: No Firebase deployment or writes in new projection
+        run: |
+          if grep -En '(firebase deploy|\.collection\(|\.doc\(|\.set\(|\.update\(|\.delete\(|httpsCallable\(|firebase-admin|revenuePerUnit|unitPrice)' ranking/partner-unified-count-team-view.mjs; then
+            echo "UNSAFE_PROJECTION"
+            exit 1
+          fi
+          echo "NO_DEPLOY_COUNT_READ_ONLY"
