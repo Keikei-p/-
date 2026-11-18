@@ -7571,6 +7571,10 @@ const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartn
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 // STAGING ONLY. This does not authorize a new Production API or deploy.
 const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;
+ // Release gate: do not contact a disabled/unpublished joint HTTP Function.
+ // Switch this only in a separately reviewed release AFTER actual Auth,
+ // finance-denial, isolated restore and count-parity E2E prove it is safe.
+ const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -13645,18 +13649,17 @@ function renderSharedCountTeamDetails(parent,report){
 // one server-verified count-only GET, no Owner SKU ON/OFF configuration.
 // When the release flags are OFF, the old callable/UI remains in place.
 async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,status,content,uid,seq}){
+ // Crucial: the front-end must default to the current proven count-only
+ // callable without initiating a cross-origin request that will 503/404.
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)
+  throw Error("SAME_APP_JOINT_NOT_RELEASED");
  const [bridgeModule,projectionModule,panelModule]=await Promise.all([
   import("./ranking/verified-joint-month-http-bridge.mjs"),
   import("./ranking/same-app-joint-count-projection.mjs"),
   import("./ranking/same-app-joint-count-panel.mjs")
  ]);
- let httpStatus=null;
  const bridge=bridgeModule.createVerifiedJointMonthHttpBridge({
-  featureEnabled:true,auth,fetcher:async(...args)=>{
-   const reply=await fetch(...args);
-   httpStatus=reply?.status??null;
-   return reply;
-  },
+  featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
   endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
   expectedRole:partner?"partner_owner":"hub_owner",
   getWorkspaceCompanyId:()=>partner?partnerInlineWorkspaceCompany:""
@@ -13667,10 +13670,9 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
    period:{kind:"day",day:date,asOf:getTodayString()},filters:{}
   });
  }catch{
-  // Only explicit server 503 can use the historical count-only fallback.
-  // A bad 200, 401/403, Auth drift or network error blocks other totals.
-  throw Error(httpStatus===503?"SAME_APP_JOINT_NOT_RELEASED":
-   "SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
+  // Once enabled, every failure (including 503, bad 200, 401/403 or
+  // network errors) is a hard stop. Never switch to a different ranking.
+  throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
  }
  const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
  const field=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
@@ -13715,7 +13717,8 @@ async function loadSharedDailyStandings(where,force=false){
    console.error("same_app_joint_count_unverified",error?.code||"blocked");
    return;
   }
-  // Explicit server 503: preserve ONLY the verified legacy count-only path.
+  // Explicit reviewed client flag OFF: ONLY the old verified callable runs.
+  // A server failure when the client flag is ON NEVER reaches this fallback.
   console.info("same_app_joint_count_not_released");
  }
  try{
