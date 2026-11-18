@@ -46,7 +46,7 @@ test("modified edit controls or missing context stop rather than guessing patche
  assert.throws(()=>applyHunks(live,hunks),/STOP_OWNER_ARCHIVE_HOST_MISSING_OR_AMBIGUOUS_LIVE_HUNK/);
 });
 test("non-Owner-archive diffs and missing reviews reject",()=>{
- assert.throws(()=>parseReviewedIndexHunks(patch.replace("productArchivePendingIds","unrelatedPending")),/STOP_OWNER_ARCHIVE_HOST_ARCHIVE_PATCH_INCOMPLETE/);
+ assert.throws(()=>parseReviewedIndexHunks(patch.replaceAll("restore-product-button","unreviewed-restore-button")),/STOP_OWNER_ARCHIVE_HOST_ARCHIVE_PATCH_INCOMPLETE/);
  assert.equal(REVIEWED_PUBLIC_VERSION,"sites/nico-factory/versions/5b51a39e4318e1c1");
  assert.match(REVIEWED_PUBLIC_SHA256,/^[0-9a-f]{64}$/);
 });
@@ -64,7 +64,9 @@ test("Rule preimage drift stops before any production release",()=>{
   /STOP_OWNER_ARCHIVE_RULES_LIVE_PREIMAGE_CHANGED/);
  assert.throws(()=>compareOwnerArchiveRulePhase({phase:"--after",live:oldRules,base:oldRules,reviewed:newRules}),
   /STOP_OWNER_ARCHIVE_RULES_POSTDEPLOY_RULES_UNVERIFIED/);
- assert.throws(()=>verifyScopedArchiveRules(oldRules,newRules.replace("allow delete: if false","allow delete: if true")),
+ const start=newRules.indexOf("match /products/{productId} {");
+ const modified=newRules.slice(0,start)+newRules.slice(start).replace("allow delete: if false","allow delete: if true");
+ assert.throws(()=>verifyScopedArchiveRules(oldRules,modified),
   /STOP_OWNER_ARCHIVE_RULES_UNREVIEWED_PRODUCT_RULES/);
 });
 test("Rule management API is GET-only and accepts reviewed Firebase source",async()=>{
