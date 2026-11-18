@@ -154,3 +154,68 @@ test("other product data and all source identity fields stay identical",()=>{
   assert.equal(result.updates[0].teamId,a.teamId);
   assert.equal(result.updates[0].nextResults.nuro__cb_0.productName,"NURO");
 });
+
+
+// Live inventory is read-only even under Admin credentials; it never receives
+// or calls transaction mutation methods. This test uses no Firebase SDK.
+import {auditTsubasaReadOnly} from
+  "../tools/production/inspect-tsubasa-electric-reclassification-readonly.mjs";
+function fakeSnapshot(id,data){return {id,data:()=>structuredClone(data)};}
+function fakeDb({companies,productRows,recordRows}){
+  const calls=[];
+  const db={
+    collection(name){
+      const q={name,fields:[],filters:[],limitN:0,
+        select(...fields){this.fields=fields;return this;},
+        where(field,op,value){this.filters.push([field,op,value]);return this;},
+        limit(n){this.limitN=n;return this;}};
+      return q;
+    },
+    runTransaction:async (fn,options)=>{
+      assert.deepEqual(options,{readOnly:true});
+      return fn({
+        get:async query=>{
+          calls.push(query.name);
+          const values=query.name==="companies"?companies:
+            query.name==="products"?productRows:recordRows;
+          return {docs:values};
+        }
+      });
+    }
+  };
+  return {db,calls};
+}
+test("production preview is a read-only transaction and returns only redacted totals",async()=>{
+  const data=fakeDb({
+    companies:[
+      fakeSnapshot(companyId,{ownerUid:"owner_1",active:true,companyKind:"hub"}),
+      fakeSnapshot("partner_x",{ownerUid:"owner_2",active:true,companyKind:"partner"})
+    ],
+    productRows:products().map(p=>fakeSnapshot(p.id,p)),
+    recordRows:[
+      fakeSnapshot("r1",record("r1",{tsubasa_old__cb_0:old(2),
+        nuro__cb_0:other(3)},"team1","2025-01-31")),
+      fakeSnapshot("r2",record("r2",{tsubasa_old__cb_0:old(1)},"team4","2026-10-05")),
+      fakeSnapshot("r3",record("r3",{nuro__cb_0:other(2)},"team2","2026-11-01"))
+    ]
+  });
+  const report=await auditTsubasaReadOnly({db:data.db});
+  assert.deepEqual(data.calls,["companies","products","records"]);
+  assert.equal(report.affectedRecords,2);
+  assert.equal(report.movedCount,3);
+  assert.equal(report.affectedTeams,2);
+  assert.equal(report.productionWrites,0);
+  assert.equal(report.productionDeletes,0);
+  assert.equal(report.readyForApply,false);
+  assert.equal(JSON.stringify(report).includes("user_r1"),false);
+  assert.equal(JSON.stringify(report).includes("20000"),false);
+});
+test("production preview blocks multiple hub companies rather than guessing owner",async()=>{
+  const c=[
+    fakeSnapshot(companyId,{ownerUid:"owner1",active:true}),
+    fakeSnapshot("other_hub",{ownerUid:"owner2",active:true})
+  ];
+  const {db}=fakeDb({companies:c,productRows:[],recordRows:[]});
+  await assert.rejects(()=>auditTsubasaReadOnly({db}),
+    /STOP_TSUBASA_READONLY_EXACT_ONE_HUB_REQUIRED/);
+});
