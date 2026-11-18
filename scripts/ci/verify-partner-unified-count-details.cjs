@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=53,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=54,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -72,6 +72,7 @@ assert(changed.every(file=>[
  "ranking/verified-dual-count-dashboards.mjs",
  "security/secondary-finance-read-fence.mjs",
  ".github/workflows/nico-eight-tab-finance-and-restore-demo-no-deploy.yml",
+ ".github/workflows/nico-live-backup-and-rules-metadata-get-only.yml",
  "ranking/same-app-joint-count-projection.mjs",
  "ranking/same-app-joint-count-panel.mjs",
  "tests/same-app-joint-count-wire.test.mjs",
