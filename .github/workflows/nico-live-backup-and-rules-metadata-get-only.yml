@@ -138,6 +138,24 @@ jobs:
                   totalDocuments:3000,totalQueries:100}
               });
               const reasons=new Set(history.blockingReasons);
+              const heldRows=history.companies.flatMap(c=>c.products)
+                .filter(row=>row.state!=="mapped");
+              console.log("NICO_LIVE_UNMAPPED_PRODUCT_REASONS "+JSON.stringify({
+                ownerPublicationMissingOrInvalid:reasons.has("PUBLICATION_UNVERIFIED"),
+                reviewedMappingMissing:reasons.has("MAPPING_MISSING"),
+                reviewedMappingInvalid:reasons.has("MAPPING_UNVERIFIED"),
+                uniqueSameNameCandidateHeld:heldRows.some(row=>
+                  row.exactNameCandidates.length===1&&row.originalCount>0),
+                ambiguousSameNameCandidateHeld:heldRows.some(row=>
+                  row.exactNameCandidates.length>1&&row.originalCount>0),
+                noSameNameCandidateHeld:heldRows.some(row=>
+                  row.exactNameCandidates.length===0&&row.originalCount>0),
+                ownerOffProductHeld:heldRows.some(row=>row.state==="held_off"),
+                legacyLightAirReviewHeld:heldRows.some(row=>
+                  row.state==="held_legacy_combined"),
+                ownerMappingOrPermissionsNotChanged:true,
+                rawProductNamesExported:false,productionWrites:0
+              }));
               console.log("NICO_LIVE_PARTNER_HISTORY_RECONCILIATION "+JSON.stringify({
                 completeSnapshot:history.completeSnapshot===true,
                 sourceConservationVerified:history.sourceConservationVerified===true,
