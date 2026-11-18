@@ -119,18 +119,30 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
  if(self+partnerCount!==total)fail();
  const productRows=uniqueRanks(array(response.productRanking).map(row));
  if(productRows.reduce((n,p)=>n+p.count,0)!==total)fail();
- const personRows=uniqueRanks(array(response.memberRanking).filter(p=>
-   obj(p)&&posted(p.reportStatus)).map(p=>({
-    ...row(p),name:label(p.companyName)+"・"+label(p.name)
-   })));
- const companyRows=assignRank(array(response.companyBreakdown,100).filter(c=>
-  obj(c)&&posted(c.reportStatus)).map(c=>({
-  name:label(c.name),count:count(c.count)
- })));
- const teamRows=assignRank(array(response.teamBreakdown,400).filter(t=>
-   obj(t)&&obj(t.detail)&&posted(t.detail.reportStatus)).map(t=>({
-    name:label(t.companyName)+"・"+label(t.name),count:count(t.count)
-   })));
+ const personRows=uniqueRanks(array(response.memberRanking).filter(p=>{
+   if(!obj(p))fail();
+   const submitted=posted(p.reportStatus);
+   if(!submitted&&(p.rank!==null||count(p.count)!==0))fail();
+   return submitted;
+  }).map(p=>({
+   ...row(p),name:label(p.companyName)+"・"+label(p.name)
+  })));
+ const companyRows=assignRank(array(response.companyBreakdown,100).filter(c=>{
+   if(!obj(c))fail();
+   const submitted=posted(c.reportStatus);
+   if(!submitted&&count(c.count)!==0)fail();
+   return submitted;
+  }).map(c=>({
+   name:label(c.name),count:count(c.count)
+  })));
+ const teamRows=assignRank(array(response.teamBreakdown,400).filter(t=>{
+   if(!obj(t)||!obj(t.detail))fail();
+   const submitted=posted(t.detail.reportStatus);
+   if(!submitted&&count(t.count)!==0)fail();
+   return submitted;
+  }).map(t=>({
+   name:label(t.companyName)+"・"+label(t.name),count:count(t.count)
+  })));
  // Company rows must reconcile EXACTLY to the canonical ledger. A
  // confirmed report is never allowed to disappear behind "未報告".
  // This comparison is read-only; it cannot rewrite historical counts.
