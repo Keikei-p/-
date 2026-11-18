@@ -124,3 +124,57 @@ test("selected secondary workspace forwarded only after verified ID Token and ex
  }
  assert.equal(calls.partner,1);
 });
+
+test("optional four-tab callable defaults OFF before reading any Auth or Firestore",async()=>{
+ let calls=0;
+ const service=makePartnerTabPublicationCallables({
+  db:{runTransaction(){calls++;}},FieldValue:{serverTimestamp(){}},
+  getAuth:()=>{calls++;return {};},HttpsError,
+  enabled:()=>true,optionalDataEnabled:()=>false,
+  modules:async()=>{calls++;throw Error("MUST_REMAIN_OFF");}
+ });
+ await fails(()=>service.loadOptional(request({tab:"history",date:"2026-11-18"})),
+  "failed-precondition");
+ assert.equal(calls,0);
+});
+test("optional tab endpoint forwards only server-authorized company, date and tab",async()=>{
+ const incoming=[];
+ const output={
+  schema:"nico-published-partner-optional-v1",tab:"history",
+  date:"2026-11-18",companyName:"協力店A",
+  reportStatus:"報告済",totalCount:5,reportedStaffCount:1,audits:[]
+ };
+ const service=makePartnerTabPublicationCallables({
+  db:{runTransaction(){}},FieldValue:{serverTimestamp(){}},
+  getAuth:()=>({}),HttpsError,enabled:()=>true,
+  optionalDataEnabled:()=>true,
+  modules:async()=>[{
+   createVerifiedRankTokenReader:()=>async token=>{
+    assert.equal(token,bearer.slice(7));
+    return {uid:"owner1",email:"owner@example.com",emailVerified:true};
+   }
+  },{
+   createPartnerTabPublicationStore:()=>({
+    readPublishedOptional:async args=>{incoming.push(args);return output;}
+   })
+  },{
+   readPublishedPartnerOptionalTab:async()=>{throw Error("NOT_USED_IN_STUB");}
+  }]
+ });
+ assert.deepEqual(await service.loadOptional(request({
+  tab:"history",date:"2026-11-18",workspaceCompanyId:"partner1"
+ })),output);
+ assert.equal(incoming.length,1);
+ assert.equal(incoming[0].actor.uid,"owner1");
+ assert.equal(incoming[0].workspaceCompanyId,"partner1");
+ assert.equal(incoming[0].tab,"history");
+ assert.equal(incoming[0].date,"2026-11-18");
+ for(const input of [
+  {tab:"history",date:"2026-11-18",companyId:"other"},
+  {tab:"history",date:"2026-11-18",role:"owner"},
+  {tab:"revenue",date:"2026-11-18"},
+  {tab:"history",date:"2026-02-30"},
+  {tab:"history",date:"2026-11-18",workspaceCompanyId:"__proto__"}
+ ])await fails(()=>service.loadOptional(request(input)),"invalid-argument");
+ assert.equal(incoming.length,1);
+});
