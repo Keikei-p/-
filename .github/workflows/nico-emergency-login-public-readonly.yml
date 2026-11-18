@@ -1,0 +1,108 @@
+name: NICO emergency login public-only audit (NO DEPLOY, NO COUNTS)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/nico-live-login-anonymous-audit.mjs'
+      - 'tests/nico-live-login-anonymous-audit.test.mjs'
+      - '.github/workflows/nico-emergency-login-public-readonly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/production/nico-live-login-anonymous-audit.mjs'
+      - 'tests/nico-live-login-anonymous-audit.test.mjs'
+      - '.github/workflows/nico-emergency-login-public-readonly.yml'
+permissions:
+  contents: read
+jobs:
+  read-only:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert no counts, source, auth, Functions, Rules, Hosting or production data changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-emergency-login-public-readonly.yml' \
+            'tests/nico-live-login-anonymous-audit.test.mjs' \
+            'tools/production/nico-live-login-anonymous-audit.mjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/approved.txt"
+          diff -u "$RUNNER_TEMP/approved.txt" "$RUNNER_TEMP/changed.txt"
+          node --check tools/production/nico-live-login-anonymous-audit.mjs
+          node --test tests/nico-live-login-anonymous-audit.test.mjs
+          node --test tests/legacy-finance-entry-guard.test.mjs
+          echo 'EXISTING_LOGIN_FINANCE_BOUNDARY_PRESERVED'
+      - name: GET public login and diagnostic pages anonymously, NO account/record access
+        run: |
+          set -euo pipefail
+          node tools/production/nico-live-login-anonymous-audit.mjs --read-only
+          echo 'PUBLIC_LOGIN_READ_ONLY_AUDIT_COMPLETE'
+
+  production-auth-metadata-readonly:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Keikei-p/-'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+      NICO_JOINT_COUNT_RANKING_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin reviewed audit tool, finance boundary, original login and latest main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object tools/production/audit-login-readiness-live-readonly.mjs)" = d91f8621a0d05a59635948bbdfd25ccfbc3c936a
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          test -z "$NICO_JOINT_COUNT_RANKING_ENABLED"
+          node --test tests/audit-login-readiness-live-readonly.test.mjs
+      - name: Install existing Firebase Admin SDK locally (NO deploy command)
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Stage existing admin credential privately for READ-ONLY Auth/user/member metadata
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-login-metadata.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-login-metadata.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-login-metadata.private.json" >> "$GITHUB_ENV"
+      - name: Audit ONLY login readiness classes and aggregate counts (NO UIDs/emails/data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/audit-login-readiness-live-readonly.mjs --read-only
+          echo "LOGIN_METADATA_AUDITED_READ_ONLY_USER_CHANGES=0_FINANCIAL_RECORDS_READ=0"
+      - name: Erase temporary admin identity even if the audit fails
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/nico-login-metadata.private.json"
