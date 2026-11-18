@@ -123,12 +123,14 @@ function env({selection=["report","daily","history","goal"],published=true,asMem
   });
   return {sessionHash,code};
  };
- const getCode=tab=>store.readPublishedOptional({
-  codeSessionToken,tab,date:DATE,reader:readPublishedPartnerOptionalTab
+ const readWithCode=options=>store.readPublishedOptional({
+  codeSessionToken,tab:"history",date:DATE,
+  reader:readPublishedPartnerOptionalTab,...options
  });
+ const getCode=tab=>readWithCode({tab});
  const readCodePolicy=()=>store.readPartnerCodeSession(codeSessionToken);
  return {get,reads,data,writes:()=>writes,configureCode,getCode,
-  readCodePolicy,codeSessionToken};
+  readCodePolicy,readWithCode,codeSessionToken};
 }
 test("all 4 tabs are read from same trusted Owner policy transaction and existing partner counts",async()=>{
  const f=env();
@@ -298,19 +300,9 @@ test("revoked, expired and mismatched company-code session fail before any origi
 });
 test("opaque code-token format and cross-company selection cannot bypass company owner policy",async()=>{
  const f=env();f.configureCode();
- await blocked(()=>createPartnerTabPublicationStore({db:{
-  collection(){throw Error("UNSAFE_COLLECTION");},
-  runTransaction(){throw Error("UNSAFE_TRANSACTION")}
- },FieldValue:{serverTimestamp:()=>({})}}).readPublishedOptional({
-  codeSessionToken:"invalid",tab:"history",date:DATE,
-  reader:readPublishedPartnerOptionalTab
- }));
- await blocked(()=>createPartnerTabPublicationStore({db:{
-  collection(){throw Error("UNSAFE_COLLECTION");},
-  runTransaction(){throw Error("UNSAFE_TRANSACTION")}
- },FieldValue:{serverTimestamp:()=>({})}}).readPublishedOptional({
-  codeSessionToken:f.codeSessionToken,workspaceCompanyId:"foreign",
-  tab:"history",date:DATE,reader:readPublishedPartnerOptionalTab
- }));
+ await blocked(()=>f.readWithCode({codeSessionToken:"invalid"}));
+ await blocked(()=>f.readWithCode({workspaceCompanyId:"foreign"}));
+ await blocked(()=>f.readWithCode({actor:actor(paths.owner)}));
+ assert(!f.reads.some(x=>x.includes("partnerWorkEntries")));
  assert.equal(f.writes(),0);
 });
