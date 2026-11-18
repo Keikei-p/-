@@ -178,3 +178,76 @@ test("optional tab endpoint forwards only server-authorized company, date and ta
  ])await fails(()=>service.loadOptional(request(input)),"invalid-argument");
  assert.equal(incoming.length,1);
 });
+
+test("shared partner codeSessionToken works for two read-only callables with no Firebase bearer",async()=>{
+ const opaque="S".repeat(43),reads=[];
+ const result={schema:"nico-partner-tabs-v1",revision:2,published:true,
+  tabs:["daily","history"]};
+ const optional={schema:"nico-published-partner-optional-v1",
+  tab:"history",date:"2026-11-18",companyName:"協力店A",
+  reportStatus:"報告済",totalCount:5,reportedStaffCount:1,audits:[]};
+ let authTouches=0;
+ const svc=makePartnerTabPublicationCallables({
+  db:{runTransaction(){}},FieldValue:{serverTimestamp(){}},
+  HttpsError,getAuth:()=>{authTouches++;throw Error("FIREBASE_AUTH_SHOULD_NOT_RUN");},
+  enabled:()=>true,optionalDataEnabled:()=>true,
+  modules:async()=>[{},{
+   createPartnerTabPublicationStore:()=>({
+    readPartnerCodeSession:async token=>{
+     reads.push({kind:"policy",token});return result;
+    },
+    readPublishedOptional:async payload=>{
+     reads.push({kind:"optional",...payload});return optional;
+    }
+   })
+  },{readPublishedPartnerOptionalTab:async()=>{}}]
+ });
+ const requestCode=data=>({data,auth:null,rawRequest:{headers:{}}});
+ assert.deepEqual(await svc.loadPartner(requestCode({codeSessionToken:opaque})),result);
+ assert.deepEqual(await svc.loadOptional(requestCode({
+  codeSessionToken:opaque,tab:"history",date:"2026-11-18"
+ })),optional);
+ assert.equal(authTouches,0);
+ assert.equal(reads.length,2);
+ assert.equal(reads[0].token,opaque);
+ assert.equal(reads[1].codeSessionToken,opaque);
+ assert.equal(Object.hasOwn(reads[1],"actor"),false);
+ assert.equal(Object.hasOwn(reads[1],"workspaceCompanyId"),false);
+});
+test("opaque session is never mixed with Firebase UID, company hint or unknown tab input",async()=>{
+ const opaque="S".repeat(43),calls=[];
+ const svc=makePartnerTabPublicationCallables({
+  db:{runTransaction(){}},FieldValue:{serverTimestamp(){}},
+  HttpsError,getAuth:()=>{throw Error("SHOULD_NOT_AUTH");},
+  enabled:()=>true,optionalDataEnabled:()=>true,
+  modules:async()=>[{},{
+   createPartnerTabPublicationStore:()=>({
+    readPartnerCodeSession:async value=>{calls.push(value);return saved;},
+    readPublishedOptional:async value=>{calls.push(value);return {};}
+   })
+  },{readPublishedPartnerOptionalTab:async()=>{}}]
+ });
+ const codeRequest=(data,authenticated=false)=>({
+  data,auth:authenticated?auth:null,
+  rawRequest:{headers:{authorization:authenticated?bearer:undefined}}
+ });
+ for(const data of [
+  {codeSessionToken:"weak"},
+  {codeSessionToken:opaque,workspaceCompanyId:"partner2"},
+  {codeSessionToken:opaque,companyId:"other"},
+  {codeSessionToken:opaque,role:"owner"}
+ ])await fails(()=>svc.loadPartner(codeRequest(data)),"invalid-argument");
+ await fails(()=>svc.loadPartner(codeRequest({codeSessionToken:opaque},true)),
+  "unauthenticated");
+ for(const data of [
+  {codeSessionToken:"short",tab:"history",date:"2026-11-18"},
+  {codeSessionToken:opaque,tab:"goal",date:"2026-02-30"},
+  {codeSessionToken:opaque,tab:"revenue",date:"2026-11-18"},
+  {codeSessionToken:opaque,tab:"history",date:"2026-11-18",role:"owner"},
+  {codeSessionToken:opaque,tab:"history",date:"2026-11-18",workspaceCompanyId:"other"}
+ ])await fails(()=>svc.loadOptional(codeRequest(data)),"invalid-argument");
+ await fails(()=>svc.loadOptional(codeRequest({
+  codeSessionToken:opaque,tab:"history",date:"2026-11-18"
+ },true)),"unauthenticated");
+ assert.equal(calls.length,0);
+});
