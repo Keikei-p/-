@@ -72,9 +72,15 @@ test("historical record with unknown team is not assigned to person's current te
 test("no published Owner allowlist means shared UI cannot guess valid products",()=>{
  const s=fixture();delete s.enabledCategories;
  invalid(()=>view(s));
- s.enabledCategories=[];const r=view(s);
+ // A client-provided OFF view with unredacted counts is NOT trustworthy.
+ s.enabledCategories=[];invalid(()=>view(s));
+ // Only the SERVER's redacted response is valid; stored original fixture stays
+ // untouched outside this synthetic view fixture.
+ s.records[0].counts=zero();s.records[0].totalCount=0;
+ const r=view(s);
  assert.deepEqual(r.publicInputs,[]);
- assert.equal(r.dayCount,5);
+ assert.equal(r.dayCount,0);
+ assert.equal(r.oldPrivateCount,4);
 });
 test("published OFF excludes new inputs but cannot destroy historical count values",()=>{
  const s=fixture();s.enabledCategories=["NURO"];
