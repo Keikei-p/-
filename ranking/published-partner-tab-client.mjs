@@ -125,6 +125,55 @@ export function createPublishedPartnerCountBridge({
   }
  });
 }
+/**
+ * Staged count-only rank GET for EXISTING opaque company-code logins.
+ * The canonical server's makeWorkspaceIdentity.readCountViewer already
+ * verifies this bearer against partnerCodeSessions, current credentials,
+ * membership and approved hub/partner relation in a read-only transaction.
+ * Owner tab publication is checked again inside the canonical count tx.
+ *
+ * Do not put the secret in URL, referrer, logs, DOM, storage or response.
+ * No browser-selected company/role override. The old email bridge is unchanged.
+ */
+export function createPublishedPartnerCodeCountBridge({
+ featureEnabled=false,serverGuardVerified=false,
+ getCodeSessionToken,fetcher,endpoint=API
+}={}){
+ if(featureEnabled!==true||serverGuardVerified!==true||
+    endpoint!==API||typeof getCodeSessionToken!=="function"||
+    typeof fetcher!=="function")fail();
+ const code=/^[A-Za-z0-9_-]{43}$/;
+ return Object.freeze({
+  async load({tab,day}={}){
+   if(!TABS.has(tab)||!safeDay(day))fail();
+   const token=getCodeSessionToken();
+   if(typeof token!=="string"||!code.test(token))fail();
+   const current=()=>getCodeSessionToken()===token;
+   const query=new URLSearchParams({day,tab});
+   const url=API+"?"+query.toString();
+   let response;
+   try{
+    response=await fetcher(url,{
+     method:"GET",
+     headers:{Authorization:"Bearer "+token,Accept:"application/json"},
+     cache:"no-store",credentials:"omit",redirect:"error",
+     referrerPolicy:"no-referrer"
+    });
+   }catch{fail();}
+   if(!current()||response?.status!==200||
+      typeof response?.text!=="function"||
+      !String(response.headers?.get?.("Content-Type")??"")
+       .toLowerCase().includes("application/json"))fail();
+   const body=await response.text();
+   if(!current()||typeof body!=="string"||body.length>400000)fail();
+   let json;
+   try{json=JSON.parse(body);}catch{fail();}
+   if(!current())fail();
+   return verifyPublishedPartnerCountResponse(json,{tab,day});
+  }
+ });
+}
+
 export function renderPublishedPartnerCountTab({document,root,status,payload}={}){
  if(!document||typeof document.createElement!=="function"||
    !root||typeof root.replaceChildren!=="function"||
