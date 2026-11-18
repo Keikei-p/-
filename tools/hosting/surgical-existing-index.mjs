@@ -93,7 +93,11 @@ export async function uploadSingleExistingIndex({assetBytes,request,release=fals
    "sites/nico-factory/versions/8ae15e2d9d6d6051",
    // 2026-10-31 workspace-only audited release #41171058175 verified all 11
    // original Hosting assets and preserved the main sales index unchanged.
-   "sites/nico-factory/versions/5b2ce8a92a380386"
+   "sites/nico-factory/versions/5b2ce8a92a380386",
+   // 2026-11-18 run #44144880569 verified the exact 33-path login-FX-only
+   // version. The Owner archive wrapper pins this same version, validates the
+   // original public bytes and explicitly demands all 33 unchanged file paths.
+   "sites/nico-factory/versions/5b51a39e4318e1c1"
  ]);
  const files=[];let pageToken="";
  do{
