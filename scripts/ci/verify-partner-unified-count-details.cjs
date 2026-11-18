@@ -105,9 +105,9 @@ assert(http.includes('const PARTNER_OWN_FIELDS=new Set([') &&
        http.includes('function partnerTeamRankingSafe(ownData,rows)') &&
        http.includes('const PARTNER_ENVELOPE=['),
  "Partner own-team fields need an independently guarded HTTP envelope");
-assert(!/\\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction)\\s*\\(/.test(http),
+assert(!/\b(?:setDoc|addDoc|updateDoc|deleteDoc|writeBatch|runTransaction)\s*\(/.test(http),
  "HTTP adapter must never write to Firestore");
-assert(!/\\b(?:firebase-admin|finance|revenue|cashback)\\s*\\(.*\\)/.test(http),
+assert(!/\b(?:firebase-admin|finance|revenue|cashback)\s*\(.*\)/.test(http),
  "HTTP adapter must not initialize financial data reads");
 const privateReader=fs.readFileSync(
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs","utf8");
