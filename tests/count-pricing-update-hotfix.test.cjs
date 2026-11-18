@@ -144,7 +144,7 @@ function saveHost({before=5,after=6,catalog=catalogs.explicit,store=storeFixture
  const input={value:String(after),dataset:{productId:"sku",productName:catalog.name,
   cashback:"0",revenuePerUnit:String(rate),resultKey:"sku__cb_0"}};
  const ctx=context([...pricingNames,"getCurrentInputResults","validateProductInputRows","calculateResultsTotals",
-  "recordRevision","recordConflict","persistDailyRecord","validateFinancialRecordForSave","findDailyRecord","setRecordSaveInProgress"],{
+  "recordRevision","recordConflict","persistDailyRecord","validateFinancialRecordForSave","validateArchivedProductCountChange","findDailyRecord","setRecordSaveInProgress"],{
   db:{projectId:"demo-nico-pricing-hotfix"},saveRecordButton:node(),recordSaveInProgress:false,
   recordSaveStatus:node(),recordManagement:node(),zeroResultRequested:false,
   recordDate:node(day),recordMember:node("demoStaff"),recordLocation:node("匿名現場"),

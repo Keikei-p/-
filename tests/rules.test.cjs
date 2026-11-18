@@ -234,6 +234,61 @@ test('authenticated master shown as owner can add and edit products but cannot d
   });
 });
 
+test('Owner archives and restores products without deleting master, price or historical records',async()=>{
+  const db=dbFor('owner');
+  const ref=doc(db,'products','archive-restore-product');
+  const seed={companyId:company,name:'不要になった追加商材',revenue:22000,
+    cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:22000}],
+    sortOrder:3,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(ref,seed));
+  await env.withSecurityRulesDisabled(async c=>{
+    await setDoc(doc(c.firestore(),'records','original-archived-product-record'),{
+      ...payload('owner'),results:{archive:{productId:'archive-restore-product',
+        productName:'不要になった追加商材',count:2,cashback:0,revenuePerUnit:22000}},
+      totalCount:2,totalRevenue:44000
+    });
+  });
+  const before=(await getDoc(doc(db,'records','original-archived-product-record'))).data();
+  const productBefore=(await getDoc(ref)).data();
+  await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  const archived=(await getDoc(ref)).data();
+  assert.equal(archived.active,false);
+  assert.equal(archived.revenue,productBefore.revenue);
+  assert.deepEqual(archived.pricingOptions,productBefore.pricingOptions);
+  assert.deepEqual(archived.cashbackOptions,productBefore.cashbackOptions);
+  assert.deepEqual(archived.createdAt,productBefore.createdAt);
+  assert.deepEqual((await getDoc(doc(db,'records','original-archived-product-record'))).data(),before);
+  await assertFails(deleteDoc(ref));
+  await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().active,true);
+  assert.deepEqual((await getDoc(doc(db,'records','original-archived-product-record'))).data(),before);
+});
+
+test('Owner cannot change price or any identity field together with archive/restore',async()=>{
+  const db=dbFor('owner'),ref=doc(db,'products','archive-price-guard');
+  await assertSucceeds(setDoc(ref,catalogPayload()));
+  await assertFails(updateDoc(ref,{active:false,revenue:0,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{active:false,name:'別商品',updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{active:false,companyId:'company-b',updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().active,true);
+});
+
+test('Explicit finance-granted leader cannot archive; foreign company and ordinary members denied',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const admin=c.firestore();
+    await updateDoc(doc(admin,'users','leaderA'),{canViewUnitPrice:true});
+    await updateDoc(doc(admin,'companies',company,'members','leaderA'),{canViewUnitPrice:true});
+  });
+  const owner=dbFor('owner'),ref=doc(owner,'products','archive-owner-only');
+  await assertSucceeds(setDoc(ref,catalogPayload()));
+  for(const uid of ['leaderA','leaderB','helper','foreign','inactive']){
+    await assertFails(updateDoc(doc(dbFor(uid),'products','archive-owner-only'),{
+      active:false,updatedAt:serverTimestamp()
+    }));
+  }
+  assert.equal((await getDoc(ref)).data().active,true);
+});
+
 test('product catalog permissions still reject ordinary members and foreign members',async()=>{
   const product={companyId:company,name:'未許可の商材',revenue:5000,
     cashbackOptions:[0],pricingOptions:[{cashback:0,revenuePerUnit:5000}],

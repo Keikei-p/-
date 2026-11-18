@@ -2643,8 +2643,30 @@ body.product-reordering .product-list {
 }
 
 .product-item .product-actions button {
-  padding: 6px 8px;
+  padding: 8px 10px;
+  min-height: 36px;
+  font-size: 11px;
+}
+.product-item--archived {
+  border-style: dashed;
+  background: var(--card-soft);
+}
+.product-item--archived .product-name::after {
+  content: "（非表示）";
   font-size: 10px;
+  color: var(--sub);
+}
+.product-item .product-actions .archive-product-button {
+  background: #fef2f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+}
+.product-item .product-actions .restore-product-button {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
 }
 
 @media (max-width: 360px) {
@@ -6995,7 +7017,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
       </div>
 
       <div class="product-sort-help">
-        商材カードを長押しして、そのまま好きな位置へ動かすと並べ替えできます。
+        商材カードを長押しすると並べ替えできます。オーナーは「削除」で入力一覧から非表示にし、「元に戻す」で再使用できます。過去の実績・件数・売上・単価・ランキング履歴は削除しません。
       </div>
 
       <div
@@ -18525,7 +18547,7 @@ function renderTeamGoalInputs() {
   }
 
 
-  products.forEach(
+  products.filter(product => product.active !== false).forEach(
     product => {
 
       const row =
@@ -20835,10 +20857,84 @@ productList.addEventListener(
 );
 
 
+// Archiving is a reversible catalog-only operation, never a hard delete.
+// Only active=true/false and updatedAt are changed. Existing records and
+// financial source documents are never read or written by this action.
+const productArchivePendingIds = new Set();
+async function changeOwnerProductArchiveState(product, makeActive) {
+  if (!isCurrentCompanyOwner() || !auth.currentUser?.uid ||
+      !currentUserData?.companyId || !product?.id ||
+      product.companyId !== currentUserData.companyId) {
+    showError("商材の削除・復元は自社オーナーのみ操作できます。");
+    return;
+  }
+  if (productArchivePendingIds.has(product.id) ||
+      (product.active !== false) === makeActive) return;
+  const userUid = auth.currentUser.uid;
+  const companyId = currentUserData.companyId;
+  const desiredName = String(product.name || "");
+  const draftResults = captureProductInputDraft();
+  if (!makeActive && !editingRecordId &&
+      Object.values(draftResults || {}).some(row =>
+        row?.productId === product.id && Number(row?.count || 0) > 0)) {
+    showError("この商材に未保存の件数があります。先に実績を保存するか、入力を0件にしてから削除してください。");
+    return;
+  }
+  const question = makeActive
+    ? `「${desiredName}」を元に戻して、件数入力に再表示しますか？`
+    : `「${desiredName}」を入力一覧から削除（非表示）しますか？\\n過去の実績・売上・単価・履歴は消えません。あとで元に戻せます。`;
+  if (!window.confirm(question)) return;
+  productArchivePendingIds.add(product.id);
+  renderProducts();
+  const ref = doc(db, "products", product.id);
+  let committed = false;
+  try {
+    await runTransaction(db, async transaction => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) throw Error("PRODUCT_REMOVED_OR_UNKNOWN");
+      const live = snap.data();
+      if (live.companyId !== companyId || live.name !== desiredName ||
+          (live.active !== false) !== (product.active !== false) ||
+          auth.currentUser?.uid !== userUid) {
+        throw Error("PRODUCT_CHANGED_OR_IDENTITY_CHANGED");
+      }
+      transaction.update(ref, {
+        active: makeActive,
+        updatedAt: serverTimestamp()
+      });
+    });
+    committed = true;
+    const verified = await getDocFromServer(ref);
+    if (!verified.exists() || verified.data().companyId !== companyId ||
+        verified.data().active !== makeActive) {
+      throw Error("PRODUCT_SAVE_NOT_VERIFIED");
+    }
+    if (auth.currentUser?.uid !== userUid) throw Error("IDENTITY_CHANGED");
+    // Refresh the catalog and keep draft values of OTHER products intact.
+    await loadProducts(true);
+    prepareProductInputList(draftResults);
+    showSuccess(makeActive
+      ? `「${desiredName}」を再表示しました。過去実績はそのままです。`
+      : `「${desiredName}」を入力一覧から非表示にしました。過去実績は保持されています。`);
+  } catch (error) {
+    if (committed) {
+      showError("商材の保存処理は実行されましたが、表示の最終確認ができませんでした。重ねて操作せず画面を更新して確認してください。");
+    } else if (/PRODUCT_CHANGED_OR_IDENTITY_CHANGED|PRODUCT_REMOVED_OR_UNKNOWN/.test(error?.message || "")) {
+      showError("商材またはログイン状態が更新されました。画面を再読み込みしてから操作してください。");
+    } else {
+      showError(await productWriteFailureMessage("非表示・復元", error));
+    }
+  } finally {
+    productArchivePendingIds.delete(product.id);
+    renderProducts();
+  }
+}
+
 function renderProducts() {
 
+  const activeProductCount = products.filter(product => product.active !== false).length;
   productManagementCount.textContent =
-    `${products.length}件`;
+    `${activeProductCount}件${products.length > activeProductCount ? `（非表示${products.length - activeProductCount}件）` : ""}`;
 
   productList.innerHTML =
     "";
@@ -20869,7 +20965,7 @@ function renderProducts() {
         );
 
       item.className =
-        "product-item";
+        product.active === false ? "product-item product-item--archived" : "product-item";
 
       item.dataset.productId =
         product.id;
@@ -20950,11 +21046,21 @@ function renderProducts() {
           );
 
 
-      // 商材マスターと当時の価格参照を保護するため、物理削除は不可。
-
-      actions.appendChild(
-        edit
-      );
+      // Physical deletion remains forbidden. Owner may only archive/restore.
+      actions.appendChild(edit);
+      if (isCurrentCompanyOwner()) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = product.active === false
+          ? "restore-product-button" : "archive-product-button";
+        toggle.textContent = product.active === false ? "元に戻す" : "削除";
+        toggle.title = "実績や売上を消さず、件数入力一覧での表示だけを切り替えます";
+        toggle.setAttribute("aria-label",
+          (product.active === false ? "再表示：" : "入力一覧から削除：") + (product.name || "商材"));
+        toggle.disabled = productArchivePendingIds.has(product.id);
+        toggle.onclick = () => changeOwnerProductArchiveState(product, product.active === false);
+        actions.appendChild(toggle);
+      }
 
 
       item.appendChild(
@@ -24922,10 +25028,21 @@ function prepareProductInputList(
     "";
 
 
-  const inputGroups =
-    buildProductInputGroups(
-      existingResults
-    );
+  // Archive is presentation-only: pricing and historical save functions stay
+  // byte-identical to the reviewed production count/price hotfix.
+  const archivedHistory = normalizeExistingResultMap(existingResults);
+  const inputGroups = buildProductInputGroups(existingResults)
+    .map(group => ({
+      ...group,
+      plans: group.plans.filter(plan => {
+        const product = products.find(item => item.id === plan.productId);
+        if (product?.active !== false) return true;
+        // Historical lines remain visible for original-record corrections only.
+        return Boolean(editingRecordId &&
+          archivedHistory[resultVariantKey(plan.productId, plan.cashback)]);
+      })
+    }))
+    .filter(group => group.plans.length > 0);
 
 
   if (
@@ -25578,6 +25695,24 @@ function verifyChangedRecordPricing(nextResults, storedResults, productCatalog) 
   return "";
 }
 
+// Additional archive-only gate. Existing price calculation/validation is
+// unchanged; archived product lines can be corrected historically, but no
+// archived product can gain new counts while inactive.
+function validateArchivedProductCountChange(nextResults,previousResults,catalog) {
+  const previous=normalizeExistingResultMap(previousResults);
+  for (const row of Object.values(nextResults || {})) {
+    const product=(catalog||[]).find(p=>p.id===row?.productId);
+    if (product?.active !== false) continue;
+    const key=resultVariantKey(row.productId,row.cashback||0);
+    const prior=Number(previous[key]?.count||0);
+    const next=Number(row.count||0);
+    if (!Number.isSafeInteger(next)||next>prior) {
+      return "使用停止中の商材は新しく件数を追加できません。商材管理から元に戻してください。";
+    }
+  }
+  return "";
+}
+
 function validateFinancialRecordForSave(data) {
   const rows = data?.results;
   if (!rows || typeof rows !== "object" || Array.isArray(rows)) {
@@ -26170,6 +26305,14 @@ saveRecordButton.onclick =
 
 
     const existingDailyRecord = findDailyRecord(targetUid, date);
+    if (!zeroResultSubmission) {
+      const archiveProblem=validateArchivedProductCountChange(
+        results,existingDailyRecord?.results,products);
+      if (archiveProblem) {
+        showError(archiveProblem);
+        return;
+      }
+    }
     // CB is a selector only; sales are quantity * approved revenuePerUnit.
     // Never overwrite unchanged historical rates, but block new/incremented counts
     // whose unit rate no longer matches the catalog.
