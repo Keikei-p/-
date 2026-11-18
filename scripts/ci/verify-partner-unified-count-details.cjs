@@ -62,10 +62,11 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=50,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=51,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
+ "tests/verified-dual-count-dashboards.test.mjs",
  "scripts/ci/verify-partner-unified-count-details.cjs",
  ".github/workflows/nico-partner-unified-count-details-no-deploy.yml",
  "ranking/verified-dual-count-dashboards.mjs",
