@@ -35,7 +35,7 @@ jobs:
           test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
-          test "$(node -p "require('./.firebaserc').projects.default")" = 'sales-management-cc116'
+          test "$(node -p "JSON.parse(require('node:fs').readFileSync('.firebaserc','utf8')).projects.default")" = 'sales-management-cc116'
           node --check tools/production/audit-managed-backup-restore-preflight-readonly.mjs
           node --check tools/production/inspect-live-firestore-rules-release.mjs
           node security/secondary-finance-read-fence.mjs --check
