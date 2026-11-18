@@ -80,7 +80,16 @@ function env({selection=["report","daily","history","goal"],published=true,asMem
       return {docs:docs.slice(0,ref.max),size:docs.length};
      }
      const value=data.get(ref.path);
-     return {exists:value!==undefined,data:()=>value===undefined?undefined:structuredClone(value)};
+     return {exists:value!==undefined,data:()=>{
+      if(value===undefined)return undefined;
+      // Firestore Timestamp.toMillis() is a method on its SDK prototype.
+      // Preserve the mock method; structuredClone cannot copy functions.
+      if(ref.path.startsWith("partnerCodeSessions/")){
+       const {expiresAt,...scalars}=value;
+       return {...structuredClone(scalars),expiresAt};
+      }
+      return structuredClone(value);
+     }};
     },
     create(){writes++;throw Error("NO_MUTATIONS");},
     update(){writes++;throw Error("NO_MUTATIONS");},
