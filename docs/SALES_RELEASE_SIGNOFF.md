@@ -1199,3 +1199,5 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - UserだけOwner／MemberだけOwnerはどちらも拒否し、他社、無権限ユーザー、売上金額変更の同時実行、物理deleteを拒否。
 - 変更したRules以外のRulesブロックが完全一致すること、既存のEmulator全件、Sales App Validationとprotected-change-guardが合格することを公開条件とする。
 - 本人の署名・実アカウントでのボタン押下確認は代理しない。公開後のユーザー再確認が必要。
+
+- 2026-11-18: PR #795 の商材使用停止権限Rulesだけについて、GitHub連携で `sales-production-reviewed` を追加。保護チェック評価用であり、本番公開・署名を意味しない。追加後のコミットで必須CIを再検証する。
