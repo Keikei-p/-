@@ -114,7 +114,7 @@ test("Rules still forbid hard deletes and archive is Owner-only with exactly two
 });
 test("Archived products excluded from fresh count and goal inputs; historical records kept",()=>{
   assert.match(html,/products\.filter\(product => product\.active !== false\)\.forEach/);
-  assert.match(html,/if \(!editingRecordId && products\.some\(product =>/);
+  assert.match(html,/typeof editingRecordId === "undefined" \|\| !editingRecordId/);
   assert.match(html,/product\.active === false\) \{\s*return "使用停止した商材には新しい実績を登録できません/);
   assert.match(html,/Object\.values\(\s*existingMap\s*\)\.forEach/);
   assert.match(html,/input\.dataset\.resultKey/);
