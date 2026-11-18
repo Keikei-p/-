@@ -1,5 +1,6 @@
 import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
+import {buildVerifiedCountDashboard} from "../functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {createJointCountHttpAdapter}=require("../functions-ranking-approvals/joint-count-http-adapter.cjs");
@@ -454,4 +455,87 @@ test("simultaneous individual/product/team requests do not cancel each other's v
  // A save/logout advances the global epoch and invalidates every card.
  scope.invalidate();
  assert(pending.every(x=>!scope.valid(x.where,x.epoch,x.seq)));
+});
+
+function authoritativeDashboardFixture(role="hub_owner",partnerCount=3){
+ const time="2026-11-18T11:45:00.000Z",day="2026-11-18";
+ const record=(companyId,sourceId,uid,n)=>({
+  companyId,sourceId,uid,date:day,teamId:"t1",totalCount:n,
+  reportStatus:n===0?"no_result":"submitted",
+  memberNameSnapshot:uid==="p1"?"協力店A担当":"直営担当",
+  teamNameSnapshot:"1班",workLocation:""
+ });
+ const line=(rec,productId,n)=>({
+  companyId:rec.companyId,recordId:rec.sourceId,
+  sourceId:rec.sourceId+"_line",date:day,uid:rec.uid,
+  teamId:rec.teamId,productId,count:n
+ });
+ const direct=record("hub","direct1","h1",5);
+ const partner=record("partner","partner1","p1",partnerCount);
+ const zero=record("partner","partnerZero","p2",0);
+ const source=(companyId,kind,records,lines,people,productId)=>({
+  companyId,companyLabel:kind==="own"?"直営":"協力店A",kind,
+  consentVerified:true,isComplete:true,readTime:time,
+  completeWindows:{current:true,previous:true},
+  teams:[{id:"t1",name:"1班",goalCount:null}],
+  roster:people.map(([uid,name])=>({uid,name,teamId:"t1"})),
+  records,lines,
+  products:[{companyId,sourceId:productId,name:"NURO光",
+   active:true,sortOrder:0}]
+ });
+ const context={serverVerified:true,userActive:true,memberActive:true,
+  companyActive:true,activeCountSharingVerified:true,
+  individualNamesApproved:true,completeSnapshotBudgetApproved:true,
+  viewerUid:role==="hub_owner"?"owner":"partnerOwner",
+  viewerCompanyId:role==="hub_owner"?"hub":"partner",
+  hubCompanyId:"hub",approvedCompanyIds:["hub","partner"],role};
+ return {context,hubCompanyId:"hub",approvedCompanyIds:["hub","partner"],
+  period:{kind:"day",day,asOf:day},
+  sources:[
+   source("hub","own",[direct],[line(direct,"nuro",5)],
+    [["h1","直営担当"]],"nuro"),
+   source("partner","partner",[partner,zero],[line(partner,"partnerSku01",partnerCount)],
+    [["p1","協力店A担当"],["p2","0件報告者"],["p3","未報告者"]],"partnerSku01")
+  ],
+  productGroups:[
+   {companyId:"hub",productId:"nuro",groupId:"nuro",groupName:"NURO光"},
+   {companyId:"partner",productId:"partnerSku01",groupId:"nuro",groupName:"NURO光"}
+  ]
+ };
+}
+test("real verified server builder -> owner UI projection: 5+3 is 8 with exact team detail",()=>{
+ const fixture=authoritativeDashboardFixture();
+ const frozen=structuredClone(fixture);
+ const raw=buildVerifiedCountDashboard(fixture);
+ assert.equal(raw.summary.total,8);
+ const view=project(raw);
+ assert.equal(view.total,8);
+ assert.equal(view.ownCount,5);
+ assert.equal(view.partnerCount,3);
+ assert.equal(view.productRows[0].count,8);
+ assert.equal(view.teamDetails.find(x=>x.name==="協力店A・1班").count,3);
+ assert.equal(view.personRows.length,3); // includes explicitly reported zero
+ assert(!view.personRows.some(x=>x.name.includes("未報告者")));
+ assert.deepEqual(fixture,frozen);
+});
+test("real verified server builder -> partner UI projection: public ranks only, finance absent",()=>{
+ const fixture=authoritativeDashboardFixture("partner_owner");
+ const raw=buildVerifiedCountDashboard(fixture);
+ const view=project(raw,{partner:true});
+ assert.equal(view.ownCount,3);
+ assert.equal(view.productRows[0].count,8);
+ assert.equal(view.companyRows.length,2);
+ assert.equal(view.personRows.length,3);
+ assert.equal(view.teamDetails.find(x=>x.name==="直営・1班").members.length,0);
+ assert(!("summary" in raw));
+ assert.equal(view.financeIncluded,false);
+});
+test("real server correction replacement 3 to 4 is only +1 in owner and partner projections",()=>{
+ const a=buildVerifiedCountDashboard(authoritativeDashboardFixture("hub_owner",3));
+ const b=buildVerifiedCountDashboard(authoritativeDashboardFixture("hub_owner",4));
+ const pa=buildVerifiedCountDashboard(authoritativeDashboardFixture("partner_owner",3));
+ const pb=buildVerifiedCountDashboard(authoritativeDashboardFixture("partner_owner",4));
+ assert.equal(project(b).total-project(a).total,1);
+ assert.equal(project(b).partnerCount-project(a).partnerCount,1);
+ assert.equal(project(pb,{partner:true}).ownCount-project(pa,{partner:true}).ownCount,1);
 });
