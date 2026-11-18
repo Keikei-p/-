@@ -13940,8 +13940,7 @@ function renderPartnerPrivateProductCatalog(){
  // Once the server provides the shared product publication allowlist,
  // partner-custom catalog edits are disabled in the unified count UI.
  // Existing old private entries and products remain untouched and readable.
- const editable=["owner","leader"].includes(snap.role)&&
-  !Array.isArray(snap.enabledCategories);
+ const editable=false; // Shared owner catalog only: legacy private product history stays read-only.
  const add=pInline("pInlineAddPrivateProduct");
  add.disabled=!editable||partnerInlineBusy;
  const list=pInline("pInlinePrivateProductList");list.replaceChildren();
@@ -14027,9 +14026,7 @@ function renderPartnerEntryTotals(){
   if(input.dataset.privateCountId)privateTotal+=Number(input.value);
   else shared+=Number(input.value);
  }
- target.textContent=Array.isArray(partnerInlineData?.enabledCategories)?
-  "公開ON商材 "+shared+"件｜旧専用商材の過去分はそのまま保持":
-  "共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
+ target.textContent="共通商材 "+shared+"件｜旧専用商材の過去分はそのまま保持";
  if(partnerInlineHasUnsavedCounts())
   pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
 }
@@ -14079,7 +14076,7 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
- const unifiedProductList=Array.isArray(snap.enabledCategories);
+ const unifiedProductList=true; // Shared product input only; never edit historical private SKUs.
  for(const product of snap.privateProducts||[]){
   const prior=entry?.privateCounts?.[product.id]??0;
   if(unifiedProductList){
@@ -14183,7 +14180,7 @@ function partnerInlineRender(){
  details.className="p-inline-list partner-count-team-grid";
  // The same index.html and existing versioned count save remain unchanged.
  // New count-only detail rendering requires the backend's explicit ON allowlist.
- if(Array.isArray(snap.enabledCategories)){
+ if(Array.isArray(snap.categories)){
   const view=buildPartnerUnifiedCountTeamView(snap);
   const companySection=document.createElement("section");
   companySection.className="p-inline-company-teams partner-count-team-grid";
@@ -14876,7 +14873,7 @@ pInline("pInlineAddPrivateProduct").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,name=pInline("pInlineCustomName").value.trim();
  // The existing private-product management API is not part of the shared
  // published catalog. Do not call it from the unified Owner-managed UI.
- if(Array.isArray(snap?.enabledCategories))throw Error("shared_catalog_owner_only");
+ throw Error("shared_catalog_owner_only"); // Retire partner-only SKU creation in unified UI.
  if(!["owner","leader"].includes(snap.role)||!name||name.length>80)throw Error("product");
  await partnerInlineManage(partnerInlinePayload({action:"addPrivateProduct",name}));
  pInline("pInlineCustomName").value="";
