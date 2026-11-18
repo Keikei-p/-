@@ -209,7 +209,7 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     if(!["report","daily","history","goal"].includes(tab)||
        typeof reader!=="function"||
        typeof date!=="string"||
-       !/^20\\d\\d-(0[1-9]|1[0-2])-([0-2]\\d|3[01])$/.test(date)||
+       !/^20\d\d-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(date)||
        Number.isNaN(Date.parse(date+"T00:00:00Z"))||
        new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date)
       blocked();
