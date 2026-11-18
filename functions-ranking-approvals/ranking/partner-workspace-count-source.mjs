@@ -15,6 +15,8 @@ const CATEGORY_CONTRACT=Object.freeze([
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"
 ]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
+const MAX_PRIVATE=100;
+const PRIVATE_ID_PREFIX="partnerPrivate:";
 const MONTH=/^\d{4}-(0[1-9]|1[0-2])$/;
 const DATE=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const MONEY=/(?:単価|売上|利益|報酬|キャッシュバック|[￥¥$€]|(?:CB|revenue|cashback|unitPrice)\s*[:=_-]?\s*[0-9０-９]|[0-9０-９][\d０-９,，.]*\s*(?:万円|千円|円))/i;
@@ -60,7 +62,10 @@ export const PARTNER_RANK_SKUS=skus;
  */
 export function buildPartnerCountRankingSource({
  hubCompanyId,partnerCompanyId,companyLabel,period,readTime,
- relation,proof,teams,entries,summaries
+ relation,proof,teams,entries,summaries,
+ // The old 9-SKU reader remains compatible. Only the zero-setup GET opts
+ // in once the entire private catalog is read in the same authorized tx.
+ privateProducts,includePrivateCounts=false
 }={}){
  if(KEYS.join("|")!==CATEGORY_CONTRACT.join("|")||
    !id(hubCompanyId)||!id(partnerCompanyId)||hubCompanyId===partnerCompanyId||
@@ -75,8 +80,23 @@ export function buildPartnerCountRankingSource({
    proof.historicalTeamsVerified!==true||
    proof.snapshotConsistent!==true||
    !Array.isArray(teams)||!Array.isArray(entries)||!Array.isArray(summaries)||
-   teams.length>10000||entries.length>100000||summaries.length>31)stop();
+   teams.length>10000||entries.length>100000||summaries.length>31||
+   typeof includePrivateCounts!=="boolean"||
+   (includePrivateCounts&&(
+    proof.completePrivateProductCatalogueRead!==true||
+    !Array.isArray(privateProducts)||privateProducts.length>MAX_PRIVATE
+   )))stop();
  const company=label(companyLabel);
+ const knownPrivate=new Map();
+ if(includePrivateCounts){
+  for(const p of privateProducts){
+   if(!p||!id(p.id)||p.companyId!==partnerCompanyId||
+      p.origin!=="partner_custom"||p.visibility!=="private"||
+      typeof p.active!=="boolean"||knownPrivate.has(p.id))stop();
+   const name=label(p.name); // No financial names in count-only results.
+   knownPrivate.set(p.id,{name,active:p.active});
+  }
+ }
  const teamMap=new Map();
  for(const t of teams){
   if(!t||!id(t.id)||teamMap.has(t.id))stop();
@@ -85,6 +105,8 @@ export function buildPartnerCountRankingSource({
  }
  const daily=new Map(),seenEntries=new Set();
  const records=[],lines=[];
+ const privateOrder=[...knownPrivate.keys()].sort((a,b)=>a.localeCompare(b,"en"));
+ const privateOrdinal=new Map(privateOrder.map((id,i)=>[id,i]));
  for(const e of entries){
   if(!e||e.companyId!==partnerCompanyId||e.hubCompanyId!==hubCompanyId||
     !validDay(e.date)||e.date.slice(0,7)!==period||
@@ -96,11 +118,27 @@ export function buildPartnerCountRankingSource({
   seenEntries.add(key);
   const {counts,total}=countObject(e.counts,9999);
   if(e.totalCount!==total)stop();
+  let privateTotal=0;
+  const privateCountRows=[];
+  if(includePrivateCounts){
+   const raw=e.privateCounts??{};
+   if(!raw||typeof raw!=="object"||Array.isArray(raw)||
+      Object.keys(raw).length>MAX_PRIVATE)stop();
+   for(const [originalId,n] of Object.entries(raw)){
+    if(!id(originalId)||!knownPrivate.has(originalId))stop();
+    privateTotal+=safeNumber(n,9999);
+    if(!Number.isSafeInteger(privateTotal))stop();
+    if(n>0)privateCountRows.push({originalId,count:n});
+   }
+   if((e.privateTotalCount??0)!==privateTotal)stop();
+  }
+  const completeTotal=total+privateTotal;
+  if(!Number.isSafeInteger(completeTotal))stop();
   const display= e.staffNameSnapshot==null?"担当者":label(e.staffNameSnapshot);
   records.push({
    companyId:partnerCompanyId,sourceId:key,uid:e.staffId,date:e.date,
-   teamId:e.teamIdSnapshot,totalCount:total,
-   reportStatus:total===0?"no_result":"submitted",
+   teamId:e.teamIdSnapshot,totalCount:completeTotal,
+   reportStatus:completeTotal===0?"no_result":"submitted",
    memberNameSnapshot:display,teamNameSnapshot:teamMap.get(e.teamIdSnapshot).name,
    workLocation:""
   });
@@ -118,6 +156,14 @@ export function buildPartnerCountRankingSource({
     productId:skus[i].id,count:n
    });
   }
+  // Each historical private count belongs to the same record, exactly once.
+  // partnerWorkCountDays summaries contain ONLY the old nine categories.
+  for(const {originalId,count:n} of privateCountRows)lines.push({
+   companyId:partnerCompanyId,recordId:key,
+   sourceId:key+"__p"+String(privateOrdinal.get(originalId)).padStart(4,"0"),
+   date:e.date,uid:e.staffId,teamId:e.teamIdSnapshot,
+   productId:PRIVATE_ID_PREFIX+originalId,count:n
+  });
   aggregate.total+=total;if(!Number.isSafeInteger(aggregate.total))stop();
  }
  const seenDays=new Set();
@@ -136,6 +182,11 @@ export function buildPartnerCountRankingSource({
  const products=skus.map(s=>({
   companyId:partnerCompanyId,sourceId:s.id,name:s.name,active:true,sortOrder:0
  }));
+ if(includePrivateCounts)for(const [originalId,item] of knownPrivate){
+  products.push({companyId:partnerCompanyId,
+   sourceId:PRIVATE_ID_PREFIX+originalId,name:item.name,
+   active:item.active,sortOrder:0});
+ }
  assertPublicSchema("publicRecords",records);
  assertPublicSchema("publicRecordLines",lines);
  assertPublicSchema("publicProducts",products);
