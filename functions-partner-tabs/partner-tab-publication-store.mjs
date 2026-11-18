@@ -88,43 +88,84 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     return {hub,uid:actor.uid};
   }
 
-  async function verifiedPartnerViewer(tx, actor) {
-    if (!principalOk(actor)) blocked();
+  async function verifiedPartnerViewer(tx, actor, workspaceCompanyId="") {
+    if(!principalOk(actor)||typeof workspaceCompanyId!=="string"||
+       (workspaceCompanyId!==""&&!okId(workspaceCompanyId))) blocked();
     const [us,secondary] = await Promise.all([
       tx.get(col("users").doc(actor.uid)),
       tx.get(col("partnerWorkspaceContexts").doc(actor.uid))
     ]);
     const user = read(us), context = read(secondary);
-    // Secondary financial identities are NOT unlocked by browser role flags.
-    // Future secondary-authorized readers must add their own audited identity proof.
-    if (secondary.exists === true && context?.active !== false) blocked();
-    if (!obj(user) || user.uid !== actor.uid || !okId(user.companyId) ||
-        user.active !== true || user.accessKind !== "partner" ||
-        user.memberType !== "cooperator" ||
-        user.canViewRevenue !== false || user.canViewUnitPrice !== false ||
-        (typeof user.email === "string" &&
-         user.email.trim().toLowerCase() !== actor.email.toLowerCase())) blocked();
-    const partner = user.companyId;
-    const [cs,ms,rel] = await Promise.all([
+    if(!obj(user)||user.uid!==actor.uid||!okId(user.companyId)||
+       user.active!==true||
+       (typeof user.email==="string"&&
+        user.email.trim().toLowerCase()!==actor.email.toLowerCase()))blocked();
+    const partner=workspaceCompanyId||user.companyId;
+    const isSecondary=partner!==user.companyId;
+    // An internal primary account may only read a partner workspace through
+    // its current, independently authenticated secondary membership. NEVER
+    // interpret a browser company ID or role as authorization.
+    if(isSecondary){
+      if(!obj(context)||secondary.exists!==true||
+         context.active!==true||context.kind!=="partner_secondary"||
+         context.uid!==actor.uid||context.primaryCompanyId!==user.companyId||
+         context.partnerCompanyId!==partner||!okId(context.hubCompanyId)||
+         typeof context.emailLower!=="string"||
+         context.emailLower!==actor.email.toLowerCase()||
+         !["owner","leader","member"].includes(context.role)||
+         !["internal",undefined,null].includes(user.accessKind)||
+         !["internal","direct","member","managed",undefined,null].includes(user.memberType)||
+         user.authKind==="partner_code_shared")blocked();
+      const [primaryCompanySnap,primaryMemberSnap]=await Promise.all([
+        tx.get(company(user.companyId)),
+        tx.get(company(user.companyId).collection("members").doc(actor.uid))
+      ]);
+      const primaryCompany=read(primaryCompanySnap),primaryMember=read(primaryMemberSnap);
+      if(!obj(primaryCompany)||!obj(primaryMember)||
+         primaryCompany.active===false||
+         !["internal","direct",undefined,null].includes(primaryCompany.companyKind)||
+         primaryMember.uid!==actor.uid||primaryMember.active!==true||
+         (primaryMember.companyId!=null&&primaryMember.companyId!==user.companyId)||
+         !["internal",undefined,null].includes(primaryMember.accessKind)||
+         !["internal","direct","member","managed",undefined,null].includes(primaryMember.memberType))
+       blocked();
+    }else{
+      // A direct partner identity with another active workspace must not
+      // silently acquire a second company's tab policy.
+      if(secondary.exists===true&&context?.active!==false)blocked();
+      if(user.accessKind!=="partner"||user.memberType!=="cooperator"||
+         user.canViewRevenue!==false||user.canViewUnitPrice!==false)blocked();
+    }
+    const [cs,ms,rel]=await Promise.all([
       tx.get(company(partner)),
       tx.get(company(partner).collection("members").doc(actor.uid)),
       tx.get(col("partnerRelations").doc(partner))
     ]);
-    const c=read(cs), m=read(ms), relation=read(rel);
-    if (!obj(c) || c.companyKind !== "partner" ||
-        !okId(c.hubCompanyId) || c.active !== true ||
-        !obj(m) || m.uid !== actor.uid || m.active !== true ||
-        m.accessKind !== "partner" || m.memberType !== "cooperator" ||
-        m.canViewRevenue !== false || m.canViewUnitPrice !== false ||
-        (m.companyId != null && m.companyId !== partner) ||
-        !obj(relation) || relation.active !== true ||
-        relation.countSharingApproved !== true ||
-        relation.partnerCompanyId !== partner ||
-        relation.hubCompanyId !== c.hubCompanyId) blocked();
+    const c=read(cs),m=read(ms),relation=read(rel);
+    if(!obj(c)||c.companyKind!=="partner"||!okId(c.hubCompanyId)||
+       c.active!==true||!obj(m)||m.uid!==actor.uid||m.active!==true||
+       m.accessKind!=="partner"||m.memberType!=="cooperator"||
+       m.canViewRevenue!==false||m.canViewUnitPrice!==false||
+       (m.companyId!=null&&m.companyId!==partner)||
+       !obj(relation)||relation.active!==true||
+       relation.countSharingApproved!==true||
+       relation.partnerCompanyId!==partner||
+       relation.hubCompanyId!==c.hubCompanyId)blocked();
+    if(isSecondary){
+      if(c.hubCompanyId!==context.hubCompanyId)blocked();
+      const owner=context.role==="owner"&&c.ownerUid===actor.uid&&
+       c.masterUid===actor.uid&&m.companyRole==="owner"&&
+       m.role==="leader"&&m.teamId==null;
+      const worker=["leader","member"].includes(context.role)&&
+       m.companyRole==="member"&&m.role===context.role&&
+       okId(context.teamId)&&m.teamId===context.teamId&&
+       c.ownerUid!==actor.uid;
+      if(!owner&&!worker)blocked();
+    }
     const hs=await tx.get(company(c.hubCompanyId));
     const hub=read(hs);
-    if (!obj(hub) || hub.active === false || !okId(hub.ownerUid) ||
-        ![undefined,null,"internal","direct"].includes(hub.companyKind)) blocked();
+    if(!obj(hub)||hub.active===false||!okId(hub.ownerUid)||
+       !["internal","direct",undefined,null].includes(hub.companyKind))blocked();
     return {hub:c.hubCompanyId,ownerUid:hub.ownerUid};
   }
 
@@ -135,9 +176,9 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     },{readOnly:true});
   }
 
-  async function readPartner(actor) {
+  async function readPartner(actor,workspaceCompanyId="") {
     return db.runTransaction(async tx => {
-      const {hub,ownerUid}=await verifiedPartnerViewer(tx,actor);
+      const {hub,ownerUid}=await verifiedPartnerViewer(tx,actor,workspaceCompanyId);
       return publicShape(state(read(await tx.get(config(hub))),hub,ownerUid));
     },{readOnly:true});
   }
