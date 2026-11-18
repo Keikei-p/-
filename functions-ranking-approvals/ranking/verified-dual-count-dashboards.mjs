@@ -469,7 +469,14 @@ export function buildVerifiedCountDashboard({
   rank:x.rank,company:x.companyName,name:x.name,count:x.count
  }));
  const publicProducts=rankedProducts.map(x=>({
-  rank:x.rank,name:x.name,count:x.count
+  rank:x.rank,
+  // The viewer's own saved custom product name is authorized, but a
+  // different partner must not learn another company's private SKU label.
+  // Counts/ranks remain unchanged. A matched hub SKU uses the hub label.
+  name:x.id.startsWith("partnerPrivateUnmatched:")&&
+   !x.companies.some(c=>c.companyId===ownCompany)?
+    "他社の追加商材（名称非公開）":x.name,
+  count:x.count
  }));
  // Publish ranked, aggregate-only organization comparisons. This is the
  // same already-verified set of ON-only source lines as member/SKU ranks.
@@ -481,16 +488,43 @@ export function buildVerifiedCountDashboard({
  })),x=>x.count).map(x=>({rank:x.rank,name:x.name,count:x.count}));
  const publicTeams=ordered([...teams.values()].filter(x=>
   [...teamDetails.get(JSON.stringify([x.companyId,x.id.slice(x.companyId.length+1)])).people.values()].some(p=>p.days.size>0)).map(x=>({
-  id:x.id,name:x.name,company:x.companyName,count:x.count
+  id:x.id,name:x.name,company:x.companyName,count:x.count,
+  own:x.companyId===ownCompany
  })),x=>x.count).map(x=>({
-  rank:x.rank,name:x.name,company:x.company,count:x.count
+  rank:x.rank,name:x.name,company:x.company,count:x.count,own:x.own
  }));
+ // Only the signed-in partner company's saved team rows may carry personal
+ // and product breakdowns. Never return another company's raw team details.
+ const ownTeamDetails=[...teams.values()].filter(team=>
+  team.companyId===ownCompany).map(team=>{
+  const key=JSON.stringify([team.companyId,team.id.slice(team.companyId.length+1)]);
+  const source=teamDetails.get(key);
+  if(!source)stop();
+  const members=[...source.people.values()].map(p=>({
+   name:label(p.name),count:count(p.count),
+   reportStatus:p.days.size===0?"未報告":p.count===0?"確定0件":
+    p.days.size<range.days?"一部未報告":"報告済"
+  }));
+  const products=[...source.products.values()].map(p=>({
+   name:label(p.name),count:count(p.count)
+  }));
+  if(members.reduce((sum,p)=>add(sum,p.count),0)!==team.count||
+     products.reduce((sum,p)=>add(sum,p.count),0)!==team.count)stop();
+  const reported=members.some(p=>p.reportStatus!=="未報告");
+  return {name:label(team.name),count:count(team.count),
+   reportStatus:!reported?"未報告":team.count===0?"確定0件":"報告済",
+   members,products};
+ });
+ const ownCompanyRow=companyRows.find(x=>x.id===ownCompany);
+ if(!ownCompanyRow||add(
+  ownTeamDetails.reduce((sum,team)=>add(sum,team.count),0),
+  ownCompanyRow.unidentifiedCount)!==ownCompanyRow.count)stop();
  const data={schema:common.schema,period:common.period,range,unit:"件",
   readTime:common.readTime,role:"partner_owner",
   own:{company:parsed.names.get(ownCompany),
    count:companyRows.find(x=>x.id===ownCompany)?.count??0,
    unidentifiedCount:companyRows.find(x=>x.id===ownCompany)?.unidentifiedCount??0,
-   people:ownPeople,products:ownProducts},
+   people:ownPeople,products:ownProducts,teamDetails:ownTeamDetails},
   publicRanking:{members:publicMembers,products:publicProducts,
    companies:publicCompanies,teams:publicTeams}};
  auditNoFinancialKeys(data);

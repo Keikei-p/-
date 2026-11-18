@@ -379,3 +379,70 @@ test("NFKC-normalized money labels cannot cross the partner ranking HTTP boundar
   assert(!out.body.includes(name));
  }
 });
+
+test("verified partner-only saved team breakdown passes the real HTTP boundary",async()=>{
+ const p=data();
+ p.own={company:"協力店",count:5,unidentifiedCount:0,people:[],products:[],
+  teamDetails:[
+   {name:"1班",count:5,reportStatus:"報告済",
+    members:[{name:"協力店の担当",count:5,reportStatus:"報告済"}],
+    products:[{name:"NURO光",count:5}]},
+   {name:"2班",count:0,reportStatus:"未報告",members:[],products:[]}
+  ]};
+ p.publicRanking.teams=[
+  {rank:1,name:"1班",company:"協力店",count:5,own:true},
+  {rank:2,name:"1班",company:"直営",count:3,own:false}
+ ];
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,p)
+ });
+ const out=response();
+ await adapter(req(),out);
+ assert.equal(out.statusCode,200);
+ const safe=JSON.parse(out.body);
+ assert.equal(safe.own.teamDetails[0].members[0].count,5);
+ assert(!("teamDetails" in safe.publicRanking));
+ assert.equal(safe.publicRanking.teams[1].own,false);
+ assert(!("summary" in safe));
+ assert(!out.body.includes("unitPrice"));
+});
+
+test("partner-only team details cannot smuggle other company or miscount",async()=>{
+ const fixture=()=>{
+  const p=data();
+  p.own={company:"協力店",count:5,unidentifiedCount:0,people:[],products:[],
+   teamDetails:[{name:"1班",count:5,reportStatus:"報告済",
+    members:[{name:"協力店の担当",count:5,reportStatus:"報告済"}],
+    products:[{name:"NURO光",count:5}]}]};
+  p.publicRanking.teams=[
+   {rank:1,name:"1班",company:"協力店",count:5,own:true},
+   {rank:2,name:"1班",company:"直営",count:3,own:false}
+  ];
+  return p;
+ };
+ const cases=[
+  p=>{p.own.teamDetails[0].members[0].count=6;},
+  p=>{p.own.teamDetails[0].products[0].count=4;},
+  p=>{p.own.teamDetails[0].members[0].uid="foreign-uid";},
+  p=>{p.own.teamDetails[0].products[0].unitPrice=99999;},
+  p=>{p.publicRanking.teams[1].own=true;},
+  p=>{p.publicRanking.teams[0].own=false;},
+  p=>{p.own.teamDetails[0].name="直営・1班";},
+  p=>{p.own.teamDetails[0].members[0].reportStatus="未報告";},
+  p=>{p.own.teamDetails[0].reportStatus="未報告";},
+  p=>{p.own.teamDetails.push({name:"2班",count:10,reportStatus:"報告済",
+    members:[{name:"架空",count:10,reportStatus:"報告済"}],
+    products:[{name:"商品",count:10}]});},
+  p=>{delete p.own.unidentifiedCount;},
+  p=>{delete p.publicRanking.teams[0].own;}
+ ];
+ for(const mutate of cases){
+  const p=fixture();mutate(p);
+  const adapter=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,p)
+  });
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
