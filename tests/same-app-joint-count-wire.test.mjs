@@ -375,43 +375,48 @@ test("a disabled joint bridge cannot read Auth or call the network",()=>{
  assert.equal(token,0);
 });
 
-test("both independent server switches must be enabled before a ranking GET can read Auth",()=>{
+test("three independent server switches gate ranking GET before Auth/Firestore",()=>{
  const source=readFileSync(new URL("../functions-ranking-approvals/index.js",import.meta.url),"utf8");
  const matches=[...source.matchAll(
-  /enabled:\(\)=>(process\.env\.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\s*process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled")/g
+  /enabled:\(\)=>(process\.env\.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\s*process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&\s*process\.env\.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled")/g
  )];
- assert.equal(matches.length,1,"Must have one exact double-gated GET service");
- const read=(joint,zeroSetup)=>runInNewContext(matches[0][1],{
+ assert.equal(matches.length,1,"Must have one exact triple-gated GET service");
+ const read=(joint,zeroSetup,tab)=>runInNewContext(matches[0][1],{
   process:{env:{
    NICO_JOINT_COUNT_RANKING_ENABLED:joint,
-   NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED:zeroSetup
+   NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED:zeroSetup,
+   NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED:tab
   }}
  });
- for(const [a,b] of [
-  [undefined,undefined],["enabled",undefined],
-  [undefined,"enabled"],["disabled","enabled"],
-  ["enabled","disabled"],["Enabled","enabled"]
- ])assert.equal(read(a,b),false);
- assert.equal(read("enabled","enabled"),true);
+ for(const [a,b,c] of [
+  [undefined,undefined,undefined],["enabled",undefined,undefined],
+  [undefined,"enabled","enabled"],["enabled","enabled",undefined],
+  ["enabled",undefined,"enabled"],["disabled","enabled","enabled"],
+  ["enabled","disabled","enabled"],["enabled","enabled","disabled"],
+  ["Enabled","enabled","enabled"]
+ ])assert.equal(read(a,b,c),false);
+ assert.equal(read("enabled","enabled","enabled"),true);
 });
-
-test("server 503 when missing either explicit release gate never initializes Auth or Firestore",async()=>{
+test("a missing server-side publication gate never initializes count/Auth backend",async()=>{
  const source=readFileSync(new URL("../functions-ranking-approvals/index.js",import.meta.url),"utf8");
  const match=source.match(
-  /enabled:\(\)=>(process\.env\.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\s*process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled")/
+  /enabled:\(\)=>(process\.env\.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\s*process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&\s*process\.env\.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled")/
  );
  assert(match);
  const checks=[
-  [undefined,undefined],["enabled",undefined],[undefined,"enabled"]
+  [undefined,undefined,undefined],["enabled",undefined,"enabled"],
+  ["enabled","enabled",undefined],["enabled",undefined,undefined]
  ];
- for(const [a,b] of checks){
+ for(const [a,b,c] of checks){
   const active=()=>runInNewContext(match[1],{
    process:{env:{NICO_JOINT_COUNT_RANKING_ENABLED:a,
-    NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED:b}}
+    NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED:b,
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED:c}}
   });
   let calls=0,code=null,body=null;
   const call=createJointCountHttpAdapter({
-   enabled:active,loadHandler:async()=>{calls++;throw Error("BACKEND_MUST_REMAIN_OFF");}
+   enabled:active,publishedOnly:true,
+   loadHandler:async()=>{calls++;throw Error("BACKEND_MUST_REMAIN_OFF");}
   });
   await call({
    method:"GET",originalUrl:"/getVerifiedJointCountRanking?day=2026-11-18",
