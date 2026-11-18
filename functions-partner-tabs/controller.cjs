@@ -6,6 +6,7 @@
  */
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const SCHEMA="nico-partner-tabs-v1";
+const CODE_SESSION=/^[A-Za-z0-9_-]{43}$/;
 const TABS=["product","team","individual","detail","report","daily","history","goal"];
 const allowed=new Set(TABS);
 const exact=(value,keys)=>!!value&&typeof value==="object"&&!Array.isArray(value)&&
@@ -76,9 +77,25 @@ function makePartnerTabPublicationCallables({
   }catch{denied();}
  };
  const loadPartner=async request=>{
+  // The existing code login uses a distinct opaque session. Never require
+  // a fabricated Firebase ID token or silently reinterpret it as email auth.
+  const d=request?.data;
+  const codeMode=d&&Object.hasOwn(d,"codeSessionToken");
+  if(codeMode){
+   if(enabled()!==true)unavailable();
+   if(!exact(d,["codeSessionToken"])||
+      typeof d.codeSessionToken!=="string"||
+      !CODE_SESSION.test(d.codeSessionToken))invalid();
+   if(request?.auth?.uid)unauthorized();
+   try{
+    const [,store]=await imports();
+    const result=await store.createPartnerTabPublicationStore({db,FieldValue})
+     .readPartnerCodeSession(d.codeSessionToken);
+    return confirm(result);
+   }catch{denied();}
+  }
   // An existing authenticated account can select ONLY a server-verified
   // secondary partner workspace. Other caller-supplied fields are forbidden.
-  const d=request?.data;
   const keys=d&&Object.hasOwn(d,"workspaceCompanyId")?
    ["workspaceCompanyId"]:[];
   const actor=await identity(request,keys);
@@ -97,9 +114,17 @@ function makePartnerTabPublicationCallables({
   // before token verification or any datastore access.
   if(optionalDataEnabled()!==true)unavailable();
   const d=request?.data;
-  const keys=["tab","date",...(d&&Object.hasOwn(d,"workspaceCompanyId")?
-   ["workspaceCompanyId"]:[])];
-  const actor=await identity(request,keys);
+  const codeMode=d&&Object.hasOwn(d,"codeSessionToken");
+  const keys=["tab","date",...(codeMode?["codeSessionToken"]:
+   (d&&Object.hasOwn(d,"workspaceCompanyId")?["workspaceCompanyId"]:[]))];
+  // Disallow mixed Firebase and code-session proof and any extra company hint.
+  if(codeMode){
+   if(enabled()!==true)unavailable();
+   if(!exact(d,keys)||typeof d.codeSessionToken!=="string"||
+      !CODE_SESSION.test(d.codeSessionToken))invalid();
+   if(request?.auth?.uid)unauthorized();
+  }
+  const actor=codeMode?undefined:await identity(request,keys);
   if(!["report","daily","history","goal"].includes(d.tab)||
      typeof d.date!=="string"||
      !/^20\d\d-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(d.date)||
@@ -114,7 +139,8 @@ function makePartnerTabPublicationCallables({
    if(typeof readModule?.readPublishedPartnerOptionalTab!=="function")denied();
    const out=await store.createPartnerTabPublicationStore({db,FieldValue})
     .readPublishedOptional({
-     actor,workspaceCompanyId:d.workspaceCompanyId||"",
+     ...(codeMode?{codeSessionToken:d.codeSessionToken}:{actor,
+      workspaceCompanyId:d.workspaceCompanyId||""}),
      tab:d.tab,date:d.date,
      reader:readModule.readPublishedPartnerOptionalTab
     });

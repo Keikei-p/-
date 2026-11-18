@@ -7,6 +7,10 @@
  * All requested tabs must be enforced by the partner count API BEFORE any
  * live UI enables this setting; a hidden DOM tab is never a security fence.
  */
+import {createHash} from "node:crypto";
+const CODE_SESSION=/^[A-Za-z0-9_-]{43}$/;
+const COMPANY_CODE=/^NICO-[A-F0-9]{24}$/;
+
 const VALID_TABS = Object.freeze([
   "product", "team", "individual", "detail",
   "report", "daily", "history", "goal"
@@ -151,6 +155,25 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
        relation.countSharingApproved!==true||
        relation.partnerCompanyId!==partner||
        relation.hubCompanyId!==c.hubCompanyId)blocked();
+    // The existing code-principal login has an independent revocable
+    // credential record. Never infer access solely from a historical
+    // users/{uid} + member row if that credential was disabled.
+    // This is a defensive DENY for any JWT identity carrying code auth;
+    // opaque codeSessionToken authentication is NOT supported by these
+    // new Firebase onCall endpoints and still requires a separate E2E gate.
+    if(user.authKind==="partner_code_shared"){
+      if(isSecondary||workspaceCompanyId!==""||
+         c.companyCodePrincipalUid!==actor.uid||
+         m.authKind!=="partner_code_shared"||
+         user.companyRole!=="owner"||m.companyRole!=="owner"||
+         user.canViewRevenue!==false||user.canViewUnitPrice!==false)
+        blocked();
+      const credential=read(await tx.get(
+        col("partnerCodeCredentials").doc(partner)));
+      if(!obj(credential)||credential.active!==true||
+         credential.companyId!==partner||
+         credential.principalUid!==actor.uid)blocked();
+    }else if(m.authKind==="partner_code_shared")blocked();
     if(isSecondary){
       if(c.hubCompanyId!==context.hubCompanyId)blocked();
       const owner=context.role==="owner"&&c.ownerUid===actor.uid&&
@@ -191,6 +214,65 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
       partner,uid:actor.uid,role,teamId,companyName:c.name};
   }
 
+  // The existing partner-workspace uses an opaque codeSessionToken, not a
+  // Firebase email ID token. Revalidate that exact existing credential model
+  // inside the SAME read-only transaction as Owner publication and counts.
+  // Never persist, echo, log or include the supplied opaque token in output.
+  async function verifiedCodeSessionPartner(tx,opaque) {
+    if(typeof opaque!=="string"||!CODE_SESSION.test(opaque))blocked();
+    const hash=createHash("sha256").update(opaque).digest("hex");
+    const session=read(await tx.get(col("partnerCodeSessions").doc(hash)));
+    const ms=session;
+    if(!obj(ms)||ms.active!==true||!okId(ms.principalUid)||
+       !okId(ms.companyId)||!validVersion(ms.version)||ms.version<1||
+       !COMPANY_CODE.test(ms.companyCode)||
+       typeof ms.expiresAt?.toMillis!=="function"||
+       !Number.isFinite(ms.expiresAt.toMillis())||
+       ms.expiresAt.toMillis()<=Date.now())blocked();
+    const uid=ms.principalUid,cid=ms.companyId;
+    const [credentialSnap,loginSnap,userSnap,companySnap,
+      memberSnap,relationSnap]=await Promise.all([
+      tx.get(col("partnerCodeCredentials").doc(cid)),
+      tx.get(col("partnerCodeLogins").doc(ms.companyCode)),
+      tx.get(col("users").doc(uid)),tx.get(company(cid)),
+      tx.get(company(cid).collection("members").doc(uid)),
+      tx.get(col("partnerRelations").doc(cid))
+    ]);
+    const credential=read(credentialSnap),login=read(loginSnap);
+    const user=read(userSnap),c=read(companySnap),m=read(memberSnap);
+    const relation=read(relationSnap);
+    if(!obj(credential)||credential.active!==true||
+       credential.companyId!==cid||credential.principalUid!==uid||
+       credential.companyCode!==ms.companyCode||
+       credential.version!==ms.version||
+       !obj(login)||login.status!=="active"||
+       login.principalUid!==uid||login.partnerCompanyId!==cid||
+       login.version!==ms.version||
+       !obj(user)||user.active!==true||user.uid!==uid||
+       user.companyId!==cid||user.authKind!=="partner_code_shared"||
+       user.accessKind!=="partner"||user.memberType!=="cooperator"||
+       user.companyRole!=="owner"||user.canViewRevenue!==false||
+       user.canViewUnitPrice!==false||
+       !obj(c)||c.active!==true||c.companyKind!=="partner"||
+       c.companyCodePrincipalUid!==uid||!okId(c.hubCompanyId)||
+       !obj(m)||m.active!==true||m.uid!==uid||m.companyId!==cid||
+       m.authKind!=="partner_code_shared"||
+       m.accessKind!=="partner"||m.memberType!=="cooperator"||
+       m.companyRole!=="owner"||m.canViewRevenue!==false||
+       m.canViewUnitPrice!==false||
+       !obj(relation)||relation.active!==true||
+       relation.countSharingApproved!==true||
+       relation.partnerCompanyId!==cid||
+       relation.hubCompanyId!==c.hubCompanyId)blocked();
+    const hub=read(await tx.get(company(c.hubCompanyId)));
+    if(!obj(hub)||hub.active===false||!okId(hub.ownerUid)||
+       ![undefined,null,"internal","direct"].includes(hub.companyKind)||
+       typeof c.name!=="string"||c.name.trim().length===0||
+       c.name.trim().length>80)blocked();
+    return {hub:c.hubCompanyId,ownerUid:hub.ownerUid,
+      partner:cid,uid,role:"owner",teamId:null,companyName:c.name};
+  }
+
   async function readOwner(actor) {
     return db.runTransaction(async tx => {
       const {hub,uid}=await verifiedHubOwner(tx,actor);
@@ -205,7 +287,16 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     },{readOnly:true});
   }
 
-  async function readPublishedOptional({actor,workspaceCompanyId="",tab,date,reader}={}){
+  async function readPartnerCodeSession(codeSessionToken){
+    return db.runTransaction(async tx=>{
+      const who=await verifiedCodeSessionPartner(tx,codeSessionToken);
+      return publicShape(state(read(await tx.get(config(who.hub))),
+       who.hub,who.ownerUid));
+    },{readOnly:true});
+  }
+
+  async function readPublishedOptional({actor,codeSessionToken,
+    workspaceCompanyId="",tab,date,reader}={}){
     if(!["report","daily","history","goal"].includes(tab)||
        typeof reader!=="function"||
        typeof date!=="string"||
@@ -214,7 +305,11 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
        new Date(date+"T00:00:00Z").toISOString().slice(0,10)!==date)
       blocked();
     return db.runTransaction(async tx=>{
-      const who=await verifiedPartnerViewer(tx,actor,workspaceCompanyId,true);
+      const codeMode=codeSessionToken!==undefined;
+      if(codeMode&&(actor!==undefined||workspaceCompanyId!==""))blocked();
+      const who=codeMode?
+        await verifiedCodeSessionPartner(tx,codeSessionToken):
+        await verifiedPartnerViewer(tx,actor,workspaceCompanyId,true);
       const p=state(read(await tx.get(config(who.hub))),who.hub,who.ownerUid);
       if(p.published!==true||!p.tabs.includes(tab))blocked();
       // No second policy query: authenticated membership, the Owner's current
@@ -253,5 +348,6 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
     });
   }
 
-  return Object.freeze({readOwner,readPartner,readPublishedOptional,saveOwner});
+  return Object.freeze({readOwner,readPartner,readPartnerCodeSession,
+    readPublishedOptional,saveOwner});
 }

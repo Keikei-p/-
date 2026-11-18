@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {verifyPartnerOptionalTabData,createPartnerPublishedOptionalTabClient}
+import {verifyPartnerOptionalTabData,createPartnerPublishedOptionalTabClient,
+ createPartnerCodeSessionOptionalTabClient}
  from "../ranking/published-partner-optional-client.mjs";
 const day="2026-11-18";
 const base=(tab,extra)=>({
@@ -44,6 +45,18 @@ test("each optional response rejects extra financial fields, wrong company or fo
     /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
   }
  }
+});
+test("the partner browser rejects a CB cash-tier in company and historical staff labels",()=>{
+ for(const original of fixtures){
+  const changed=structuredClone(original);
+  changed.companyName="協力店A CB40000";
+  assert.throws(()=>verifyPartnerOptionalTabData(changed,{tab:original.tab,date:day}),
+   /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+ }
+ const history=structuredClone(fixtures[2]);
+ history.audits[0].staffName="担当A CB:40000";
+ assert.throws(()=>verifyPartnerOptionalTabData(history,{tab:"history",date:day}),
+  /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
 });
 test("history cannot carry private original, audit emails, or forged count delta",()=>{
  const item=structuredClone(fixtures[2]);
@@ -119,4 +132,101 @@ test("existing same-screen input and financial source remain untouched, tab UI g
  assert(html.includes('"./ranking/published-partner-optional-client.mjs"'));
  assert(html.includes('const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");'));
  assert(html.includes('const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");'));
+});
+
+test("company-code client verifies fresh Owner publication before each protected history read",async()=>{
+ let session="S".repeat(43);
+ const requests=[],policy={schema:"nico-partner-tabs-v1",revision:3,
+  published:true,tabs:["daily","history"]};
+ const client=createPartnerCodeSessionOptionalTabClient({
+  enabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>session,functions:{},
+  httpsCallable:(_f,name)=>async payload=>{
+   requests.push({name,payload});
+   return {data:name==="getPartnerPublishedTabs"?policy:fixtures[2]};
+  }
+ });
+ const output=await client.load({tab:"history",date:day});
+ assert.equal(output.audits[0].totalCount,5);
+ assert.equal(requests.length,2);
+ assert.deepEqual(requests[0],{
+  name:"getPartnerPublishedTabs",payload:{codeSessionToken:session}
+ });
+ assert.deepEqual(requests[1],{
+  name:"getPartnerPublishedOptionalTab",
+  payload:{tab:"history",date:day,codeSessionToken:session}
+ });
+ assert(!JSON.stringify(output).includes(session));
+ await client.load({tab:"history",date:day});
+ assert.equal(requests.length,4,"Owner publication must be re-read for every view");
+});
+test("code client OFF or absent Session does not access Auth, Firestore or server",async()=>{
+ let reads=0;
+ for(const flags of [[false,true],[true,false],[false,false]]){
+  assert.throws(()=>createPartnerCodeSessionOptionalTabClient({
+   enabled:flags[0],serverGuardVerified:flags[1],
+   functions:{},getCodeSessionToken:()=>{reads++;return "S".repeat(43)},
+   httpsCallable:()=>{reads++;return async()=>({})}
+  }),/PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+ }
+ assert.equal(reads,0);
+ const client=createPartnerCodeSessionOptionalTabClient({
+  enabled:true,serverGuardVerified:true,functions:{},
+  getCodeSessionToken:()=>"bad",
+  httpsCallable:()=>{reads++;return async()=>({})}
+ });
+ await assert.rejects(()=>client.load({tab:"history",date:day}),
+  /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+ assert.equal(reads,0);
+});
+test("code client rejects unpublished tab, session switch, financial data and server denial",async()=>{
+ let token="T".repeat(43),calls=[];
+ const deny=async policy=>{
+  calls=[];
+  const client=createPartnerCodeSessionOptionalTabClient({
+   enabled:true,serverGuardVerified:true,getCodeSessionToken:()=>token,
+   httpsCallable:(_f,name)=>async payload=>{
+    calls.push({name,payload});
+    if(name==="getPartnerPublishedTabs")return {data:policy};
+    return {data:fixtures[2]};
+   }
+  });
+  await assert.rejects(()=>client.load({tab:"history",date:day}),
+   /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+  assert.equal(calls.length,1);
+ };
+ await deny({schema:"nico-partner-tabs-v1",revision:1,
+  published:false,tabs:[]});
+ await deny({schema:"nico-partner-tabs-v1",revision:1,
+  published:true,tabs:["daily"]});
+ await deny({schema:"nico-partner-tabs-v1",revision:1,
+  published:true,tabs:["history"],role:"owner"});
+ let release;
+ const pending=new Promise(resolve=>release=resolve);
+ const switched=createPartnerCodeSessionOptionalTabClient({
+  enabled:true,serverGuardVerified:true,getCodeSessionToken:()=>token,
+  httpsCallable:(_f,name)=>async()=>{
+   if(name==="getPartnerPublishedTabs")return pending;
+   throw Error("MUST_NOT_REQUEST_UNVERIFIED_DATA");
+  }
+ });
+ const attempt=switched.load({tab:"history",date:day});
+ token="U".repeat(43);
+ release({data:{schema:"nico-partner-tabs-v1",revision:1,published:true,
+  tabs:["history"]}});
+ await assert.rejects(attempt,/PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
+ token="T".repeat(43);
+ const illegal=createPartnerCodeSessionOptionalTabClient({
+  enabled:true,serverGuardVerified:true,getCodeSessionToken:()=>token,
+  httpsCallable:(_f,name)=>async()=>{
+   if(name==="getPartnerPublishedTabs")return {
+    data:{schema:"nico-partner-tabs-v1",revision:1,published:true,tabs:["history"]}
+   };
+   const payload=structuredClone(fixtures[2]);
+   payload.audits[0].unitPrice=30000;
+   return {data:payload};
+  }
+ });
+ await assert.rejects(()=>illegal.load({tab:"history",date:day}),
+  /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
 });

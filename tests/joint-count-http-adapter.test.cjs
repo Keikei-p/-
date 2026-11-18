@@ -496,3 +496,47 @@ test("published-only HTTP rejects other tab keys, cross-scope details and moneta
   assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
  }
 });
+
+test("code-session rank bearer is accepted only through the same protected published-only HTTP contract",async()=>{
+ const opaque="C".repeat(43),requests=[];
+ const proof={schema:"nico-published-partner-count-tab-v1",
+  role:"partner_owner",unit:"件",period:"day",
+  range:{start:"2026-11-18",end:"2026-11-18"},
+  readTime:"2026-11-18T09:00:00.000Z",tab:"product",
+  rows:[{rank:1,name:"NURO",count:5}]
+ };
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>async request=>{
+   requests.push(request);
+   return new Response(JSON.stringify(proof),{
+    status:200,headers:{"Content-Type":"application/json"}
+   });
+  }
+ });
+ const result=response();
+ await adapter(req("/getVerifiedJointCountRanking?day=2026-11-18&tab=product",{
+  headers:{authorization:"Bearer "+opaque}
+ }),result);
+ assert.equal(result.statusCode,200);
+ assert.deepEqual(JSON.parse(result.body),proof);
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].headers.get("Authorization"),"Bearer "+opaque);
+ assert(!requests[0].url.includes(opaque));
+ assert.equal(new URL(requests[0].url).searchParams.get("workspaceCompanyId"),null);
+ assert.equal(result.headers["cache-control"],"no-store");
+});
+test("company-code rank token never bypasses the three default-OFF server release checks",async()=>{
+ let loads=0;
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>false,publishedOnly:true,
+  loadHandler:()=>{loads++;return make();}
+ });
+ const result=response();
+ await adapter(req("/getVerifiedJointCountRanking?day=2026-11-18&tab=product",{
+  headers:{authorization:"Bearer "+"C".repeat(43)}
+ }),result);
+ assert.equal(result.statusCode,503);
+ assert.equal(loads,0);
+ assert.deepEqual(JSON.parse(result.body),{error:"request_blocked"});
+});

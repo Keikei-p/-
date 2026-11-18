@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {createPublishedPartnerCountBridge,verifyPublishedPartnerCountResponse,
- renderPublishedPartnerCountTab} from "../ranking/published-partner-tab-client.mjs";
+import {createPublishedPartnerCountBridge,createPublishedPartnerCodeCountBridge,
+ verifyPublishedPartnerCountResponse,renderPublishedPartnerCountTab} from "../ranking/published-partner-tab-client.mjs";
 
 const day="2026-11-18";
 const api="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking";
@@ -150,4 +150,106 @@ test("shared dashboard routes partner to published-only client, Owner retains or
  assert(html.includes("const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;"));
  assert(html.includes("const NICO_PARTNER_TAB_UI_ENABLED = false;"));
  assert(html.includes("const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;"));
+});
+
+test("opaque company code session uses canonical server verified ranking bearer, never URL or company override",async()=>{
+ let session="Z".repeat(43);
+ const calls=[];
+ const bridge=createPublishedPartnerCodeCountBridge({
+  featureEnabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>session,
+  fetcher:async(url,opts)=>{
+   calls.push({url,opts});
+   return {status:200,headers:{get:x=>x==="Content-Type"?"application/json":null},
+    text:async()=>JSON.stringify(base())};
+  }
+ });
+ const result=await bridge.load({tab:"product",day});
+ assert.equal(result.rows[0].count,5);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].opts.method,"GET");
+ assert.equal(calls[0].opts.cache,"no-store");
+ assert.equal(calls[0].opts.credentials,"omit");
+ assert.equal(calls[0].opts.redirect,"error");
+ assert.equal(calls[0].opts.headers.Authorization,"Bearer "+session);
+ assert.equal(new URL(calls[0].url).searchParams.get("workspaceCompanyId"),null);
+ assert.deepEqual([...new URL(calls[0].url).searchParams.keys()].sort(),
+  ["day","tab"]);
+ assert(!calls[0].url.includes(session));
+ assert(!JSON.stringify(result).includes(session));
+});
+test("rank code-session OFF gate stops before token lookup and before fetch",()=>{
+ let calls=0;
+ for(const [enabled,serverGuardVerified] of [
+  [false,false],[true,false],[false,true]
+ ]){
+  assert.throws(()=>createPublishedPartnerCodeCountBridge({
+   featureEnabled:enabled,serverGuardVerified,
+   getCodeSessionToken:()=>{calls++;return "Z".repeat(43)},
+   fetcher:async()=>{calls++}
+  }),/PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED/);
+ }
+ assert.equal(calls,0);
+});
+test("code rank session revoked/change, unpublished tab and finance fail closed, no stale results",async()=>{
+ for(const badStatus of [401,403,404,503]){
+  const token="Z".repeat(43),requests=[];
+  const bridge=createPublishedPartnerCodeCountBridge({
+   featureEnabled:true,serverGuardVerified:true,
+   getCodeSessionToken:()=>token,
+   fetcher:async(url,opts)=>{
+    requests.push({url,opts});
+    return {status:badStatus,headers:{get:()=>"application/json"},
+     text:async()=>JSON.stringify(base())};
+   }
+  });
+  await reject(()=>bridge.load({tab:"product",day}));
+  assert.equal(requests.length,1);
+ }
+ let session="Z".repeat(43);
+ const bridge=createPublishedPartnerCodeCountBridge({
+  featureEnabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>session,
+  fetcher:async()=>{session="Y".repeat(43);return {
+   status:200,headers:{get:()=>"application/json"},
+   text:async()=>JSON.stringify(base())
+  }}
+ });
+ await reject(()=>bridge.load({tab:"product",day}));
+ let called=0;
+ const invalid=createPublishedPartnerCodeCountBridge({
+  featureEnabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>"bad",
+  fetcher:async()=>{called++}
+ });
+ await reject(()=>invalid.load({tab:"product",day}));
+ await reject(()=>invalid.load({tab:"revenue",day}));
+ await reject(()=>invalid.load({tab:"history",day}));
+ assert.equal(called,0);
+ const finance=createPublishedPartnerCodeCountBridge({
+  featureEnabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>"S".repeat(43),
+  fetcher:async()=>({status:200,headers:{get:()=>"application/json"},
+   text:async()=>JSON.stringify({...base(),unitPrice:20000})})
+ });
+ await reject(()=>finance.load({tab:"product",day}));
+});
+test("canonical ranking factory keeps original code bearer Auth path without changing existing Count API",()=>{
+ const src=readFileSync(new URL(
+  "../functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs",
+  import.meta.url),"utf8");
+ const factory=readFileSync(new URL(
+  "../functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs",
+  import.meta.url),"utf8");
+ const HTTP=readFileSync(new URL(
+  "../functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs",
+  import.meta.url),"utf8");
+ assert(src.includes('const code=/^[A-Za-z0-9_-]{43}$/.test(token);'));
+ assert(src.includes('data:code?{codeSessionToken:token}:{workspaceCompanyId}'));
+ assert(src.includes("session.expiresAt.toMillis()<=now()"));
+ assert(src.includes("getAuth().verifyIdToken(token,true)"));
+ assert(src.includes('if(a.codeAuth&&(s.kind!=="partner"||s.cid!==a.companyId))fail()'));
+ assert(factory.includes("readCountViewer({token,workspaceCompanyId,tx})"));
+ assert(HTTP.includes('projectPublishedPartnerCountTab({'));
+ assert(HTTP.includes('partnerTabPolicy.tabs.includes(tab)'));
 });

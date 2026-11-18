@@ -1,14 +1,14 @@
 /**
  * Candidate financial raw-GET/LIST/WRITE fence for active secondary partners.
  * EMULATOR ONLY. This generator never changes the production Rules file.
- * Legacy internal input can break: preserve count-only Function access and
+ * Pinned to current main Rules blob 6d3f165 (2026-11-19 JST).\n * Legacy internal input can break: preserve count-only Function access and
  * require independently verified real-user continuity before any cutover.
  */
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {fileURLToPath} from "node:url";
 import path from "node:path";
-export const ORIGINAL_BLOB="d9f4df6a2ac0f8b5720534a2461ec66b94379190";
+export const ORIGINAL_BLOB="6d3f165791188394d473417414e34208cd56bae6";
 export const COLLECTIONS=Object.freeze(["products","records","recordCorrections","revenueGoals"]);
 function gitBlob(value){
  const data=Buffer.from(value,"utf8");

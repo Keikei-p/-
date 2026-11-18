@@ -7,7 +7,7 @@
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
-const MONEY=/(?:売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円)|revenue|unit[\s_-]*price|cash[\s_-]*back)/i;
+const MONEY=/(?:売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円)|revenue|unit[\s_-]*price|cash[\s_-]*back|\bCB\s*[:=_-]?\s*[0-9０-９])/i;
 const SCHEMA="nico-published-partner-optional-v1";
 const stop=()=>{throw Error("PARTNER_OPTIONAL_COUNT_ACCESS_UNVERIFIED");};
 const plain=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
