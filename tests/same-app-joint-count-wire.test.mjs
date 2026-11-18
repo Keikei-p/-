@@ -1,4 +1,5 @@
 import {readFileSync} from "node:fs";
+import {runInNewContext} from "node:vm";
 import {createVerifiedJointMonthHttpBridge} from "../ranking/verified-joint-month-http-bridge.mjs";
 import {PARTNER_RANK_SKUS} from "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs";
 import {linkAllRegisteredCountsWithoutSetup} from "../functions-ranking-approvals/ranking/zero-setup-count-linker.mjs";
@@ -321,4 +322,24 @@ test("a disabled joint bridge cannot read Auth or call the network",()=>{
  }),/VERIFIED_JOINT_COUNT_MONTH_BRIDGE_BLOCKED/);
  assert.equal(network,0);
  assert.equal(token,0);
+});
+
+test("both independent server switches must be enabled before a ranking GET can read Auth",()=>{
+ const source=readFileSync(new URL("../functions-ranking-approvals/index.js",import.meta.url),"utf8");
+ const matches=[...source.matchAll(
+  /enabled:\(\)=>(process\.env\.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\s*process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled")/g
+ )];
+ assert.equal(matches.length,1,"Must have one exact double-gated GET service");
+ const read=(joint,zeroSetup)=>runInNewContext(matches[0][1],{
+  process:{env:{
+   NICO_JOINT_COUNT_RANKING_ENABLED:joint,
+   NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED:zeroSetup
+  }}
+ });
+ for(const [a,b] of [
+  [undefined,undefined],["enabled",undefined],
+  [undefined,"enabled"],["disabled","enabled"],
+  ["enabled","disabled"],["Enabled","enabled"]
+ ])assert.equal(read(a,b),false);
+ assert.equal(read("enabled","enabled"),true);
 });
