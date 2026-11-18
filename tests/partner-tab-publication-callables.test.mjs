@@ -18,7 +18,9 @@ function fixture(on=true) {
  const calls={loads:0,auth:0,writes:0,owner:0,partner:0};
  const store={
   async readOwner(actor){calls.owner++;assert.equal(actor.uid,"owner1");return saved;},
-  async readPartner(actor){calls.partner++;return saved;},
+  async readPartner(actor,workspaceCompanyId=""){
+   calls.partner++;calls.lastWorkspace=workspaceCompanyId;return saved;
+  },
   async saveOwner(args){
    calls.writes++;
    assert.equal(args.actor.uid,"owner1");
@@ -106,4 +108,19 @@ test("erroring store does not leak private authorization detail",async()=>{
  assert.equal(Object.hasOwn(value,"companyId"),false);
  assert.equal(Object.hasOwn(value,"revenue"),false);
  assert.equal(Object.hasOwn(value,"uid"),false);
+});
+
+test("selected secondary workspace forwarded only after verified ID Token and exact input",async()=>{
+ const {calls,service}=fixture();
+ assert.deepEqual(await service.loadPartner(request({workspaceCompanyId:"company1"})),saved);
+ assert.equal(calls.lastWorkspace,"company1");
+ for(const data of [
+  {workspaceCompanyId:"../other"}, {workspaceCompanyId:""},
+  {workspaceCompanyId:"company1",role:"owner"},
+  {workspaceCompanyId:"company1",companyId:"other"},
+  {workspaceCompanyId:"__proto__"}
+ ]){
+  await fails(()=>service.loadPartner(request(data)),"invalid-argument");
+ }
+ assert.equal(calls.partner,1);
 });

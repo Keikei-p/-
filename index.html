@@ -12951,7 +12951,9 @@ async function refreshPartnerPublishedTabNavigation(){
  try{
   if(!user||user.emailVerified!==true||!company||!partnerInlineData)
    throw Error("PARTNER_PUBLICATION_IDENTITY_UNVERIFIED");
-  const result=await httpsCallable(partnerCountFunctions,"getPartnerPublishedTabs")({});
+  const result=await httpsCallable(partnerCountFunctions,"getPartnerPublishedTabs")({
+   workspaceCompanyId:company
+  });
   if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
      generation!==partnerPublishedTabGeneration)return false;
   policy=result?.data;
