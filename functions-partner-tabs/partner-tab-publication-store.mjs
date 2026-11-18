@@ -151,6 +151,25 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
        relation.countSharingApproved!==true||
        relation.partnerCompanyId!==partner||
        relation.hubCompanyId!==c.hubCompanyId)blocked();
+    // The existing code-principal login has an independent revocable
+    // credential record. Never infer access solely from a historical
+    // users/{uid} + member row if that credential was disabled.
+    // This is a defensive DENY for any JWT identity carrying code auth;
+    // opaque codeSessionToken authentication is NOT supported by these
+    // new Firebase onCall endpoints and still requires a separate E2E gate.
+    if(user.authKind==="partner_code_shared"){
+      if(isSecondary||workspaceCompanyId!==""||
+         c.companyCodePrincipalUid!==actor.uid||
+         m.authKind!=="partner_code_shared"||
+         user.companyRole!=="owner"||m.companyRole!=="owner"||
+         user.canViewRevenue!==false||user.canViewUnitPrice!==false)
+        blocked();
+      const credential=read(await tx.get(
+        col("partnerCodeCredentials").doc(partner)));
+      if(!obj(credential)||credential.active!==true||
+         credential.companyId!==partner||
+         credential.principalUid!==actor.uid)blocked();
+    }else if(m.authKind==="partner_code_shared")blocked();
     if(isSecondary){
       if(c.hubCompanyId!==context.hubCompanyId)blocked();
       const owner=context.role==="owner"&&c.ownerUid===actor.uid&&
