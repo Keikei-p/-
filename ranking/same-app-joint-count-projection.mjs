@@ -31,7 +31,10 @@ function audit(value,depth=0){
     !(typeof value==="number"&&Number.isFinite(value)))fail();
 }
 const row=v=>{if(!obj(v))fail();return {name:label(v.name),count:count(v.count),rank:rank(v.rank)};};
-const posted=v=>v!=="未報告";
+const posted=v=>{
+ if(!["未報告","確定0件","報告済","一部未報告"].includes(v))fail();
+ return v!=="未報告";
+};
 function uniqueRanks(rows){
  const ordered=rows.filter(v=>v.rank!==null).slice().sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
  let last=null,lastRank=0;
@@ -74,6 +77,10 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
   response.unit!=="件"||!["day","week","month"].includes(response.period)||
   response.role!==(partner?"partner_owner":"hub_owner")||
   !obj(response.range))fail();
+ const keys=partner?["schema","role","unit","period","range","readTime","own","publicRanking"]:
+  ["schema","role","unit","period","range","readTime","summary","memberRanking",
+   "productRanking","companyBreakdown","teamBreakdown","filters"];
+ if(Object.keys(response).sort().join("|")!==keys.sort().join("|"))fail();
  // The backend's exact role envelope is checked separately by its HTTP
  // adapter; this extra audit rejects monetary keys/values before the DOM.
  audit(response);
