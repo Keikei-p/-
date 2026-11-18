@@ -68,7 +68,7 @@ export function parseReviewedIndexHunks(patch){
     !hunks.some(x=>x.next.includes("archivedHistory")))stop("ARCHIVE_PATCH_INCOMPLETE");
  return Object.freeze(hunks);
 }
-function applyHunks(source,hunks,reverse=false){
+export function applyHunks(source,hunks,reverse=false){
  if(typeof source!=="string"||source.length<500000||source.length>3000000)
   stop("SOURCE_SHAPE");
  let out=source;let min=0;
