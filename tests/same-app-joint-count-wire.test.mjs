@@ -1,6 +1,7 @@
 import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
 import {buildVerifiedCountDashboard} from "../functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs";
+import {buildPartnerCountRankingSource} from "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {createJointCountHttpAdapter}=require("../functions-ranking-approvals/joint-count-http-adapter.cjs");
@@ -538,4 +539,38 @@ test("real server correction replacement 3 to 4 is only +1 in owner and partner 
  assert.equal(project(b).total-project(a).total,1);
  assert.equal(project(b).partnerCount-project(a).partnerCount,1);
  assert.equal(project(pb,{partner:true}).ownCount-project(pa,{partner:true}).ownCount,1);
+});
+
+test("release blocker: existing private-only partner count remains saved but is absent from joint source",()=>{
+ const names=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
+  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"];
+ const counts=Object.fromEntries(names.map(k=>[k,0]));
+ // This is an OFFLINE reproduction of the current production ledger format;
+ // it must NOT be described as full historic parity until the backend
+ // includes private product lines and canonical name matching safely.
+ const entry={id:"2026-11-18__staff1",companyId:"partner1",hubCompanyId:"hub1",
+  staffId:"staff1",teamIdSnapshot:"t1",date:"2026-11-18",version:1,
+  counts,totalCount:0,privateCounts:{privateProduct1:2},privateTotalCount:2};
+ const before=structuredClone(entry);
+ const source=buildPartnerCountRankingSource({
+  hubCompanyId:"hub1",partnerCompanyId:"partner1",companyLabel:"協力店A",
+  period:"2026-11",readTime:"2026-11-18T11:45:00.000Z",
+  relation:{hubCompanyId:"hub1",partnerCompanyId:"partner1",
+   active:true,countSharingApproved:true},
+  proof:{serverVerified:true,countSharingVerified:true,
+   completeMonthEntriesRead:true,completeMonthSummariesRead:true,
+   historicalTeamsVerified:true,snapshotConsistent:true},
+  teams:[{id:"t1",name:"1班",goalCount:null}],
+  entries:[entry],
+  summaries:[{source:"staff-entries-v1",date:"2026-11-18",
+   hubCompanyId:"hub1",partnerCompanyId:"partner1",counts,totalCount:0}]
+ });
+ assert.equal(entry.privateTotalCount,2);
+ assert.equal(source.records[0].totalCount,0);
+ assert.equal(source.lines.length,0);
+ assert.equal(source.products.length,9);
+ assert.deepEqual(entry,before,"private historic original remains untouched");
+ // This explicitly DENIES production-ready full parity: source is missing
+ // two private-product counts. A future full-scope patch must update this.
+ console.log("RELEASE_BLOCKED_PRIVATE_PRODUCT_HISTORY_UNLINKED");
 });
