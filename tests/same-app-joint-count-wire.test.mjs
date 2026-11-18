@@ -50,7 +50,10 @@ const owner=()=>({
 const partner=()=>({
  schema:"nico-verified-dual-count-v1",role:"partner_owner",unit:"件",
  period:"day",range,readTime:"2026-11-18T09:00:00.000Z",
- own:{company:"協力店A",count:3,unidentifiedCount:0,people:[],products:[]},
+ own:{company:"協力店A",count:3,unidentifiedCount:0,people:[],products:[],
+  teamDetails:[{name:"1班",count:3,reportStatus:"報告済",
+   members:[{name:"Bさん",count:3,reportStatus:"報告済"}],
+   products:[{name:"SB光・AIR（旧合算・未分類）",count:3}]}]},
  publicRanking:{
   members:[{rank:1,company:"直営",name:"Aさん",count:5},
    {rank:2,company:"協力店A",name:"Bさん",count:3}],
@@ -58,8 +61,8 @@ const partner=()=>({
    {rank:2,name:"SB光・AIR（旧合算・未分類）",count:3}],
   companies:[{rank:1,name:"直営",count:5},
    {rank:2,name:"協力店A",count:3}],
-  teams:[{rank:1,company:"直営",name:"1班",count:5},
-   {rank:2,company:"協力店A",name:"1班",count:3}]
+  teams:[{rank:1,company:"直営",name:"1班",count:5,own:false},
+   {rank:2,company:"協力店A",name:"1班",count:3,own:true}]
  }
 });
 test("same owner view: 5 own + 3 partner = 8 verified, no count writes",()=>{
@@ -84,8 +87,10 @@ test("same partner view: visible joint ranks only, other members' detail exclude
  assert.equal(view.total,null); // partner cannot see Owner-only summary envelope
  assert.equal(view.companyRows.length,2);
  assert.equal(view.personRows[0].name,"直営・Aさん");
- assert.equal(view.teamDetails[0].members.length,0);
- assert.equal(view.teamDetails[0].products.length,0);
+ assert.equal(view.teamDetails.find(x=>x.name==="直営・1班").members.length,0);
+ assert.equal(view.teamDetails.find(x=>x.name==="直営・1班").products.length,0);
+ assert.equal(view.teamDetails.find(x=>x.name==="協力店A・1班").members[0].count,3);
+ assert.equal(view.teamDetails.find(x=>x.name==="協力店A・1班").products[0].count,3);
  assert.deepEqual(input,before);
 });
 test("different rank on same count, spoofed total, or malformed detail is blocked",()=>{
@@ -115,6 +120,41 @@ test("unreported people are never given a rank and zero-report remains ranked",(
  assert.equal(v.personRows[1].count,0);
  const y=owner();y.memberRanking[2].reportStatus="incorrect";
  assert.throws(()=>project(y));
+});
+test("partner-own team details reject forged totals, extra finance, or false rank ownership",()=>{
+ const wrong=partner();
+ wrong.own.teamDetails[0].members[0].count=4;
+ assert.throws(()=>project(wrong,{partner:true}));
+ const missing=partner();
+ delete missing.own.teamDetails;
+ assert.throws(()=>project(missing,{partner:true}));
+ const finance=partner();
+ finance.own.teamDetails[0].products[0].unitPrice=90000;
+ assert.throws(()=>project(finance,{partner:true}));
+ const forged=partner();
+ forged.publicRanking.teams[0].own=true;
+ assert.throws(()=>project(forged,{partner:true}));
+ const unreported=partner();
+ unreported.own.teamDetails[0].reportStatus="未報告";
+ assert.throws(()=>project(unreported,{partner:true}));
+});
+test("partner reported zero is distinct from an unreported own team",()=>{
+ const p=partner();
+ p.own.count=0;
+ p.own.teamDetails=[{name:"1班",count:0,reportStatus:"確定0件",
+  members:[{name:"Bさん",count:0,reportStatus:"確定0件"}],products:[]},
+  {name:"2班",count:0,reportStatus:"未報告",members:[],products:[]}];
+ p.publicRanking.members=[{rank:1,company:"直営",name:"Aさん",count:5},
+  {rank:2,company:"協力店A",name:"Bさん",count:0}];
+ p.publicRanking.products=[{rank:1,name:"NURO",count:5}];
+ p.publicRanking.companies=[{rank:1,name:"直営",count:5},
+  {rank:2,name:"協力店A",count:0}];
+ p.publicRanking.teams=[{rank:1,company:"直営",name:"1班",count:5,own:false},
+  {rank:2,company:"協力店A",name:"1班",count:0,own:true}];
+ const view=project(p,{partner:true});
+ assert.equal(view.teamDetails.find(t=>t.name==="協力店A・1班").reported,true);
+ assert.equal(view.teamDetails.find(t=>t.name==="協力店A・2班").reported,false);
+ assert.equal(view.teamDetails.find(t=>t.name==="直営・1班").members.length,0);
 });
 test("a partner cannot impersonate the hub response through its local role",()=>{
  assert.throws(()=>project(owner(),{partner:true}));
@@ -257,7 +297,8 @@ test("partner workspace HTTP identity only receives public count envelope",async
  },filters:{}});
  const projection=project(raw,{partner:true});
  assert.equal(projection.ownCount,3);
- assert.equal(projection.teamDetails[0].members.length,0);
+ assert.equal(projection.teamDetails.find(x=>x.name==="直営・1班").members.length,0);
+ assert.equal(projection.teamDetails.find(x=>x.name==="協力店A・1班").members[0].count,3);
  assert.equal(projection.personRows.length,2);
  assert.match(f.requests[0].url,/workspaceCompanyId=partner1/);
  assert.equal("summary" in raw,false);
@@ -530,6 +571,13 @@ test("real verified server builder -> partner UI projection: public ranks only, 
  assert.equal(view.companyRows.length,2);
  assert.equal(view.personRows.length,3);
  assert.equal(view.teamDetails.find(x=>x.name==="直営・1班").members.length,0);
+ const own=view.teamDetails.find(x=>x.name==="協力店A・1班");
+ assert.equal(own.count,3);
+ assert.equal(own.members.find(x=>x.name==="協力店A担当").count,3);
+ assert.equal(own.members.find(x=>x.name==="0件報告者").count,0);
+ assert.equal(own.products[0].count,3);
+ assert.equal(raw.own.teamDetails.length,1);
+ assert(raw.own.teamDetails.every(x=>x.members.every(m=>m.name!=="直営担当")));
  assert(!("summary" in raw));
  assert.equal(view.financeIncluded,false);
 });
