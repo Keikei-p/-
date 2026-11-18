@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=14,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=15,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -73,6 +73,7 @@ assert(changed.every(file=>[
  "tests/same-app-joint-count-wire.test.mjs",
  "functions-ranking-approvals/index.js",
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
+ "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
  "functions-ranking-approvals/ranking/partner-workspace-count-source.mjs",
  "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs",
@@ -82,6 +83,7 @@ assert(changed.every(file=>[
  // Firebase Rules, finance Functions and source records remain immutable.
 for(const path of [
  "functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs",
+ "functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs",
  "functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs",
  "functions-ranking-approvals/ranking/partner-workspace-count-source.mjs",
  "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs"
