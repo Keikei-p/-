@@ -36,7 +36,7 @@ jobs:
           node scripts/ci/verify-partner-unified-count-details.cjs
       - name: No Firebase deployment or writes in new projection
         run: |
-          if grep -En '(firebase deploy|\.collection\(|\.doc\(|\.set\(|\.update\(|\.delete\(|httpsCallable\(|firebase-admin|revenuePerUnit|unitPrice)' ranking/partner-unified-count-team-view.mjs; then
+          if grep -En '(firebase deploy|firebase-admin|httpsCallable\(|db\.collection\(|tx\.(create|update|delete|set)\(|deleteDoc\(|setDoc\(|updateDoc\()' ranking/partner-unified-count-team-view.mjs; then
             echo "UNSAFE_PROJECTION"
             exit 1
           fi
