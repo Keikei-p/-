@@ -408,3 +408,49 @@ test("actual unpublished joint ranking panel does not call incompatible legacy A
  assert.match(nodes.partnerSharedRankingsStatus.textContent,/この協力店の保存済み件数/);
  assert.doesNotMatch(nodes.partnerSharedRankingsStatus.textContent,/照合できません/);
 });
+
+test("simultaneous individual/product/team requests do not cancel each other's verified counts",async()=>{
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ const a=html.indexOf("let sharedDailyRankingGeneration=0;");
+ const b=html.indexOf("const sharedDailyRankCache=new Map();",a);
+ const start=html.indexOf("async function loadSharedDailyStandings(",b);
+ const end=html.indexOf('pInline("partnerSharedRankingsRefresh").onclick=',start);
+ assert(a>0&&b>a&&start>b&&end>start);
+ const stateSource=html.slice(a,b);
+ const method=html.slice(start,end);
+ const statuses={},contents={},dates={};
+ const names=["Individual","Product","Team"];
+ for(const name of names){
+  dates["ownerSharedDate"+name]={value:"2026-11-18"};
+  statuses["ownerSharedStatus"+name]={textContent:""};
+  contents["ownerSharedContent"+name]={replaceChildren(){}};
+ }
+ const pending=[];
+ const make=new Function("pInline","auth","getTodayString","canReadSharedCountOnlyRanks",
+  "NICO_SAME_APP_JOINT_HTTP_ENABLED","tryLoadVerifiedSameAppJointCount",
+  "readPartnerWorkDay",stateSource+"\n"+method+"\nreturn {"+
+  "load:loadSharedDailyStandings,valid:sharedDailyRankingIsCurrent,"+
+  "invalidate:()=>{sharedDailyRankingGeneration++}};"
+ );
+ const scope=make(id=>dates[id]||statuses[id]||contents[id],
+  {currentUser:{uid:"owner1"}},()=>"2026-11-18",()=>true,true,
+  args=>new Promise(resolve=>pending.push({...args,resolve})),
+  async()=>{throw Error("UNSUPPORTED_LEGACY_RANKING_CALLED");}
+ );
+ const first=scope.load("Individual"),second=scope.load("Product"),
+  third=scope.load("Team");
+ assert.equal(pending.length,3);
+ assert(pending.every(x=>scope.valid(x.where,x.epoch,x.seq)));
+ // Only requests for the same card supersede each other.
+ const fourth=scope.load("Individual");
+ assert.equal(pending.length,4);
+ assert.equal(scope.valid(pending[0].where,pending[0].epoch,pending[0].seq),false);
+ assert.equal(scope.valid(pending[1].where,pending[1].epoch,pending[1].seq),true);
+ assert.equal(scope.valid(pending[2].where,pending[2].epoch,pending[2].seq),true);
+ assert.equal(scope.valid(pending[3].where,pending[3].epoch,pending[3].seq),true);
+ pending.forEach(x=>x.resolve(true));
+ await Promise.all([first,second,third,fourth]);
+ // A save/logout advances the global epoch and invalidates every card.
+ scope.invalidate();
+ assert(pending.every(x=>!scope.valid(x.where,x.epoch,x.seq)));
+});
