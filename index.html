@@ -12936,6 +12936,10 @@ copyInviteButton.onclick =
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
 let partnerPublishedTabGeneration=0,partnerPublishedTabIds=null;
+let partnerOptionalTabGeneration=0,partnerOptionalVerifiedGoal=null;
+const partnerOptionalPublicationProtectionActive=()=>
+ NICO_PARTNER_TAB_UI_ENABLED===true||
+ NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true;
 function partnerPublishedTabAllowed(name){
  if(NICO_PARTNER_TAB_UI_ENABLED!==true)return true; // existing released UI untouched
  if(["record","invite","teams","members","catalog","account"].includes(name))return true;
@@ -13298,6 +13302,13 @@ function renderPartnerCountOnlyExtras(){
   privateTotals.set(id,(privateTotals.get(id)||0)+n);
  for(const [id,n] of [...privateTotals].sort((a,b)=>b[1]-a[1]))
   if(n)partnerMainAppendRow(products,(privateProductById.get(id)||"過去の専用商材")+"（社内のみ）",n+"件");
+ if(partnerOptionalPublicationProtectionActive()){
+  // Do not pre-render optional report/goal data from the mandatory editable
+  // count-entry payload before Owner publication and tab API verification.
+  pInline("pPartnerReportText").value="";
+  pInline("pPartnerGoalResult").textContent="Owner公開設定の確認が必要です。";
+  return;
+ }
  const lines=[snap.companyName+"｜"+snap.date+" 営業実績報告",
   "総件数："+count+"件","報告した担当者："+new Set(items.map(x=>x.staffId)).size+"人",""];
  for(const [key,n] of byProduct)if(n)lines.push(key+"："+n+"件");
@@ -13316,7 +13327,13 @@ function renderPartnerGoalEstimate(){
     !Number.isSafeInteger(days)||days<1||days>366){
   out.textContent="目標件数と残り稼働日数を確認してください。";return;
  }
- const actual=snap.records.reduce((n,r)=>n+r.totalCount,0);
+ const actual=partnerOptionalPublicationProtectionActive()?
+  (partnerOptionalVerifiedGoal?.uid===auth.currentUser?.uid&&
+   partnerOptionalVerifiedGoal?.company===partnerInlineWorkspaceCompany&&
+   partnerOptionalVerifiedGoal?.date===snap.date?
+    partnerOptionalVerifiedGoal.total:null):
+  snap.records.reduce((n,r)=>n+r.totalCount,0);
+ if(actual===null){out.textContent="目標日割りは未公開、または本人確認前です。";return;}
  const remaining=Math.max(0,goal-actual);
  out.textContent="選択日の件数："+actual+"件｜残り "+remaining+"件｜1日あたり "+Math.ceil(remaining/days)+"件";
 }
@@ -14078,6 +14095,9 @@ function partnerSameAppSelectPanel(name){
   });
  }
  partnerSameAppPositionPanel(name);
+ if(partnerInlineData&&partnerOptionalPublicationProtectionActive()&&
+    ["report","daily","history","goal"].includes(name))
+  void loadPartnerPublishedOptionalPanel(name);
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
@@ -14086,7 +14106,8 @@ function partnerSameAppSelectPanel(name){
  // Partner's own saved team/people are already rendered from getPartnerWorkspace.
  // Do not load unrelated companies for this detail tab or expose finance data.
  if(partnerInlineData&&name==="detail")pInline("pInlineTeamDetails").hidden=false;
- if(partnerInlineData&&name==="history")
+ if(partnerInlineData&&name==="history"&&
+    !partnerOptionalPublicationProtectionActive())
   void loadPartnerRevisionHistory();
 }
 // Mirror the original dashboard toggle: a second tap closes the same detail.
@@ -14477,17 +14498,108 @@ function partnerInlineRender(){
  
  }
  const daily=pInline("pInlineDailySummary");daily.replaceChildren();
- partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
-  snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
- for(const [cat,n] of byProduct)if(n)partnerMainAppendRow(daily,cat,n+"件");
+ if(!partnerOptionalPublicationProtectionActive()){
+  partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
+   snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
+  for(const [cat,n] of byProduct)if(n)partnerMainAppendRow(daily,cat,n+"件");
+ }
  const history=pInline("pInlineHistory");history.replaceChildren();
- for(const entry of snap.records){
+ for(const entry of partnerOptionalPublicationProtectionActive()?[]:snap.records){
   const person=allStaff.find(p=>p.id===entry.staffId);
   partnerMainAppendRow(history,(person?.name||"登録者")+"｜第"+entry.version+"版",
    snap.date+"｜"+entry.totalCount+"件");
  }
- if(!snap.records.length)partnerMainAppendRow(history,
-  "この日の登録はありません","未報告は0件とは扱いません");
+ if(!partnerOptionalPublicationProtectionActive()&&!snap.records.length)
+  partnerMainAppendRow(history,"この日の登録はありません",
+   "未報告は0件とは扱いません");
+}
+
+
+async function loadPartnerPublishedOptionalPanel(tab){
+ const uid=auth.currentUser?.uid,day=pInline("pInlineDate").value;
+ const company=partnerInlineWorkspaceCompany,seq=++partnerOptionalTabGeneration;
+ const snap=partnerInlineData;
+ const stillCurrent=()=>uid===auth.currentUser?.uid&&
+  company===partnerInlineWorkspaceCompany&&
+  day===pInline("pInlineDate").value&&
+  seq===partnerOptionalTabGeneration&&
+  tab===partnerSameAppSelectedPanel&&
+  !pInline("partnerSameAppDashboardDetails").hidden;
+ const report=pInline("pPartnerReportText"),daily=pInline("pInlineDailySummary");
+ const history=pInline("pInlineHistory"),goal=pInline("pPartnerGoalResult");
+ if(tab==="report")report.value="";
+ if(tab==="daily")daily.replaceChildren();
+ if(tab==="history")history.replaceChildren();
+ if(tab==="goal"){partnerOptionalVerifiedGoal=null;goal.textContent="公開設定を確認中…";}
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true||
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true||
+    !partnerPublishedTabIds?.has(tab)||!snap||!uid){
+  if(tab==="goal")goal.textContent="このタブはまだ公開されていません。";
+  return false;
+ }
+ try{
+  const {createPartnerPublishedOptionalTabClient}=await import(
+   "./ranking/published-partner-optional-client.mjs");
+  if(!stillCurrent())return false;
+  const loader=createPartnerPublishedOptionalTabClient({
+   enabled:true,serverGuardVerified:true,auth,functions:partnerCountFunctions,
+   httpsCallable,getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
+  });
+  const verified=await loader.load({tab,date:day});
+  if(!stillCurrent()||verified.companyName!==snap.companyName)return false;
+  if(tab==="report")report.value=verified.lines.join("\n");
+  if(tab==="daily"){
+   partnerMainAppendRow(daily,day+"｜"+verified.companyName,
+    verified.reportStatus+"｜"+verified.totalCount+"件");
+   for(const product of verified.products)
+    if(product.count)partnerMainAppendRow(daily,product.name,product.count+"件");
+  }
+  if(tab==="goal"){
+   partnerOptionalVerifiedGoal={uid,company,date:day,total:verified.actualCount};
+   renderPartnerGoalEstimate();
+  }
+  if(tab==="history"){
+   const allowed=new Map((snap.staff||[]).map(p=>[p.id,p]));
+   const rows=document.createDocumentFragment();
+   for(const event of verified.audits){
+    if(!allowed.has(event.staffId))throw Error("HISTORY_STAFF_SCOPE_UNVERIFIED");
+    const row=document.createElement("details");row.className="p-inline-row";
+    const title=document.createElement("summary");
+    title.textContent=event.staffName+"｜第"+event.version+"版｜"+
+     event.previousTotalCount+"件 → "+event.totalCount+"件";
+    row.append(title);
+    for(const category of snap.categories){
+     const before=event.previousCounts[category],after=event.counts[category];
+     if(before!==after)
+      partnerMainAppendRow(row,category,before+"件 → "+after+"件");
+    }
+    const saved=snap.records?.find(x=>x.staffId===event.staffId);
+    if(allowed.get(event.staffId).active&&saved){
+     const edit=document.createElement("button");edit.type="button";
+     edit.className="team-action-button";
+     edit.textContent="✏️ 最新の実績を修正";
+     edit.onclick=()=>void partnerInlineOpenHistoryCorrection(event.staffId,day);
+     row.append(edit);
+    }
+    rows.append(row);
+   }
+   history.replaceChildren(rows);
+   if(!verified.audits.length)partnerMainAppendRow(history,
+    "この日の登録履歴はありません","未報告は0件とは扱いません");
+  }
+  return true;
+ }catch{
+  if(!stillCurrent())return false;
+  if(tab==="report")report.value="";
+  if(tab==="daily"){daily.replaceChildren();
+   partnerMainAppendRow(daily,"日別情報を確認できません","公開設定・所属を確認してください");}
+  if(tab==="history"){history.replaceChildren();
+   partnerMainAppendRow(history,"登録履歴を確認できません",
+    "公開設定・所属を確認してください");}
+  if(tab==="goal"){partnerOptionalVerifiedGoal=null;
+   goal.textContent="目標日割りを確認できません。";}
+  return false;
+ }
 }
 
 // Open a saved person's latest counts directly from the history, like the
@@ -14550,6 +14662,11 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
 }
 
 async function loadPartnerRevisionHistory(){
+ // The old includeAuditHistory flag does NOT implement a server-side
+ // history authorization. Never use it once publication controls are active.
+ if(partnerOptionalPublicationProtectionActive()){
+  void loadPartnerPublishedOptionalPanel("history");return;
+ }
  const snap=partnerInlineData,uid=auth.currentUser?.uid;
  if(!snap||!uid)return;
  const date=pInline("pInlineDate").value;
@@ -14652,6 +14769,8 @@ async function partnerInlineFetch(){
       new Set(snap.enabledCategories).size!==snap.enabledCategories.length||
       snap.enabledCategories.some(key=>!snap.categories.includes(key))))
    throw Error("partner_publication_schema");
+  partnerOptionalVerifiedGoal=null;
+  ++partnerOptionalTabGeneration;
   partnerInlineData=snap;partnerInlineRender();
   void refreshPartnerPublishedTabNavigation();
   partnerInlineStatus("最新の件数を表示しています。");
@@ -14661,6 +14780,9 @@ async function partnerInlineFetch(){
    void loadSharedDailyStandings("partner",true);
   else if(partnerSameAppSelectedPanel==="detail")
    void loadSharedDailyStandings("partnerDetail",true);
+  else if(partnerOptionalPublicationProtectionActive()&&
+     ["report","daily","history","goal"].includes(partnerSameAppSelectedPanel))
+   void loadPartnerPublishedOptionalPanel(partnerSameAppSelectedPanel);
   else if(partnerSameAppSelectedPanel==="history")
    void loadPartnerRevisionHistory();
   return true;
