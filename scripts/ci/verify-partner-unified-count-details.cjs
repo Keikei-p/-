@@ -23,7 +23,9 @@ const important=[
  ["source count keys and team day classification",
   'const PARTNER_NURO_CB_TIERS=', 'function partnerInlineSelectedCb()'],
  ["self financial member details untouched",
-  'const goalProgress =\n    buildTeamGoalProgress(', 'const revenueGoalProgress =\n        buildTeamRevenueGoalProgress(']
+  'const goalProgress =\n    buildTeamGoalProgress(', 'const revenueGoalProgress =\n        buildTeamRevenueGoalProgress('],
+ ["original self product catalog query unchanged",
+  'async function loadProducts(', 'function clearProductLongPress()']
 ];
 for(const [label,a,b] of important){
  assert.equal(section(here,a,b),section(baseline,a,b),label+" source changed");
@@ -38,6 +40,13 @@ assert(here.includes('const unifiedProductList=true;'),
  "Legacy private products must not become writable in shared UI");
 assert(here.includes("renderPartnerCountTeamCard("));
 assert(here.includes("team.reportStatus===\"not_reported\""));
+assert(here.includes('id="pInlineAddPrivateProduct" class="team-action-button" type="button" hidden disabled'),
+ "Old private product creation UI must be retired");
+assert(here.includes("const editable=false;"),"Old private product updates must be read only");
+assert(here.includes("const unifiedProductList=true;"),"No new private count fields");
+assert(here.includes('const enabledKeys=snap.enabledCategories??snap.categories;'),
+ "Never override a deployed backend publication restriction");
+
 const script=here.match(/<script type="module">([\s\S]*?)<\/script>/);
 assert(script?.[1],"main script not found");
 const syntax=cp.spawnSync(process.execPath,["--input-type=module","--check"],{
