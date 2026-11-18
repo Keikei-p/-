@@ -1141,12 +1141,15 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time
         && (
           (
-            (isCompanyOwner(resource.data.companyId)
-              || isCompanyMaster(resource.data.companyId))
+            // Cheap change-key check must happen before any Owner reads:
+            // otherwise ordinary price/name edits by non-master managers
+            // exceed Firestore's 1,000 evaluation-expression limit.
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['active', 'updatedAt'])
             && request.resource.data.active is bool
             && request.resource.data.active != resource.data.get('active', true)
-            && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['active', 'updatedAt'])
+            && (isCompanyOwner(resource.data.companyId)
+              || isCompanyMaster(resource.data.companyId))
           )
           ||
           // Preserve every original name/finance/CB edit grant unchanged.
