@@ -60,7 +60,7 @@ test("both safe release flags OFF: Owner form makes zero callable requests",asyn
 test("Owner reads, selects, saves and unpublishes all 8 across one shared policy",async()=>{
  const {root,list}=fakeDom();const user={uid:"owner",emailVerified:true};
  let latest=docData(2,true,["product"]),saves=[],reads=0;
- const api=name=>async(payload)=>{
+ const api=(_functions,name)=>async(payload)=>{
   if(name==="getOwnerPartnerTabPublication"){reads++;return {data:latest};}
   assert.equal(name,"setOwnerPartnerTabPublication");
   saves.push(payload);
