@@ -179,3 +179,37 @@ test("unknown data tabs and malformed dates never query Firestore",async()=>{
  }
  assert.equal(f.writes(),0);
 });
+
+test("revoked code-principal credentials are denied before optional history reads",async()=>{
+ const f=env();
+ const u=f.data.get("users/pOwner");
+ const m=f.data.get("companies/partner1/members/pOwner");
+ const c=f.data.get("companies/partner1");
+ f.data.set("users/pOwner",{...u,authKind:"partner_code_shared"});
+ f.data.set("companies/partner1/members/pOwner",{
+  ...m,authKind:"partner_code_shared"});
+ f.data.set("companies/partner1",{...c,companyCodePrincipalUid:"pOwner"});
+ // Missing current credential never inherits the old active membership.
+ await blocked(()=>f.get("history"));
+ assert.equal(f.reads.some(p=>p.includes("partnerWorkAudits")),false);
+ const credential="partnerCodeCredentials/partner1";
+ f.data.set(credential,{
+  active:true,companyId:"partner1",principalUid:"pOwner"
+ });
+ const allowed=await f.get("history");
+ assert.equal(allowed.totalCount,8);
+ f.data.set(credential,{
+  active:false,companyId:"partner1",principalUid:"pOwner"
+ });
+ const readsBefore=f.reads.length;
+ await blocked(()=>f.get("history"));
+ assert.equal(f.reads.slice(readsBefore).some(p=>p.includes("partnerWorkEntries")),false);
+ assert.equal(f.writes(),0);
+});
+test("a standard verified partner owner never becomes a code-principal through a forged member flag",async()=>{
+ const f=env(),path="companies/partner1/members/pOwner";
+ f.data.set(path,{...f.data.get(path),authKind:"partner_code_shared"});
+ await blocked(()=>f.get("daily"));
+ assert.equal(f.reads.some(p=>p.includes("partnerWorkEntries")),false);
+ assert.equal(f.writes(),0);
+});
