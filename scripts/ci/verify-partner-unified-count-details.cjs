@@ -62,13 +62,30 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=6,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=12,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
  "scripts/ci/verify-partner-unified-count-details.cjs",
- ".github/workflows/nico-partner-unified-count-details-no-deploy.yml"
+ ".github/workflows/nico-partner-unified-count-details-no-deploy.yml",
+ "ranking/same-app-joint-count-projection.mjs",
+ "ranking/same-app-joint-count-panel.mjs",
+ "tests/same-app-joint-count-wire.test.mjs",
+ "functions-ranking-approvals/index.js",
+ ".github/workflows/nico-same-app-joint-count-wire-no-deploy.yml"
 ].includes(file)),"unexpected changed source: "+changed.join(","));
+const joint=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
+assert(joint.includes('enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"'),
+ "Outer production GET gate must remain OFF by default");
+assert(joint.includes('zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"'),
+ "Unreviewed published counts must remain OFF by default");
+assert(here.includes('tryLoadVerifiedSameAppJointCount({'),
+ "Both company views must actually use the canonical count GET");
+assert(here.includes('getWorkspaceCompanyId:()=>partner?partnerInlineWorkspaceCompany:""'),
+ "Partner-secondary company context must stay server verified");
+assert(here.includes('if(await tryLoadVerifiedSameAppJointCount({'),
+ "Preserve the existing count-only fallback while GET is OFF");
+console.log("VERIFIED_JOINT_COUNT_HTTP_GATED_AND_LEGACY_FALLBACK");
 console.log("VERIFIED_SAME_INDEX_COUNT_FORM_UNMODIFIED");
 console.log("VERIFIED_FINANCE_ORIGINAL_UNMODIFIED");
 console.log("VERIFIED_TEAM_DETAIL_READ_ONLY_AND_NO_DEPLOY");
