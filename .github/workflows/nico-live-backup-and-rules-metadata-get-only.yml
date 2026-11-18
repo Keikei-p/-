@@ -38,6 +38,8 @@ jobs:
           test "$(node -p "JSON.parse(require('node:fs').readFileSync('.firebaserc','utf8')).projects.default")" = 'sales-management-cc116'
           node --check tools/production/audit-managed-backup-restore-preflight-readonly.mjs
           node --check tools/production/inspect-live-firestore-rules-release.mjs
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --check tools/production/audit-login-readiness-live-readonly.mjs
           node security/secondary-finance-read-fence.mjs --check
       - name: Run existing metadata parser regression tests with zero credentials
         shell: bash
@@ -63,8 +65,12 @@ jobs:
           import {readFileSync} from "node:fs";
           import {inspectManagedRestorePreflight,DATABASES_URL,BACKUPS_URL} from "./tools/production/audit-managed-backup-restore-preflight-readonly.mjs";
           import {inspectLiveFirestoreRules} from "./tools/production/inspect-live-firestore-rules-release.mjs";
+          import {inventory,publicInventorySummary} from "./tools/production/audit-secondary-contexts-readonly.mjs";
+          import {auditLoginReadiness} from "./tools/production/audit-login-readiness-live-readonly.mjs";
           const require=createRequire(new URL("./functions/package.json",import.meta.url));
-          const {applicationDefault}=require("firebase-admin/app");
+          const {applicationDefault,initializeApp}=require("firebase-admin/app");
+          const {getFirestore}=require("firebase-admin/firestore");
+          const {getAuth}=require("firebase-admin/auth");
           const provider=applicationDefault();
           const HOST="https://firebaserules.googleapis.com/v1/projects/sales-management-cc116/";
           const allowed=url=>url===DATABASES_URL||url===BACKUPS_URL||
@@ -85,6 +91,38 @@ jobs:
             ]);
             console.log("NICO_LIVE_BACKUP_METADATA "+JSON.stringify(backup));
             console.log("NICO_LIVE_FINANCE_RULES_METADATA "+JSON.stringify(rules));
+            // Read ONLY bounded user/secondary membership metadata. Report no
+            // account IDs, addresses, names or even per-category counts.
+            const app=initializeApp({credential:provider,projectId:"sales-management-cc116"},
+              "nico-live-meta-audit");
+            const db=getFirestore(app),auth=getAuth(app);
+            const secondary=await inventory({db,credential:provider,authService:auth,
+              request:read,includeBackup:false});
+            const safe=publicInventorySummary(secondary);
+            console.log("NICO_LIVE_SECONDARY_FINANCE_RISK "+JSON.stringify({
+              reviewedMainRulesActive:rules.deployedSourceExactlyMatchesReviewedMain,
+              secondaryContextsPresent:safe.secondaryContextsPresent,
+              oldInternalFinancePathPresent:safe.oldInternalFinancePathPresent,
+              ownerContextConflictPresent:safe.ownerContextConflictPresent,
+              unrecognizedContextPresent:safe.unrecognizedContextPresent,
+              historicalTransferPresent:safe.historicalTransferPresent,
+              realPartnerFinanceDenyVerified:false,
+              productionWrites:0
+            }));
+            const login=await auditLoginReadiness({db,auth});
+            const categoryNames=Object.keys(login.categoryCounts);
+            const starts=(prefix)=>categoryNames.some(k=>k.startsWith(prefix));
+            console.log("NICO_LIVE_LOGIN_READINESS_METADATA "+JSON.stringify({
+              boundedUserMetadataScanCompleted:login.boundedScanComplete,
+              ownerAndInternalLoginMetadataPresent:starts("INTERNAL_ROUTE_METADATA_READY"),
+              partnerEmailCountOnlyRouteCandidatePresent:starts("PARTNER_EMAIL_COUNT_ONLY_ROUTE_CANDIDATE"),
+              sharedCodePrincipalsNotPasswordAccounts:starts("SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT"),
+              loginMetadataBlockerPresent:categoryNames.some(k=>
+                !["INTERNAL_ROUTE_METADATA_READY","PARTNER_EMAIL_COUNT_ONLY_ROUTE_CANDIDATE",
+                  "SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT"].includes(k)),
+              actualSignInTested:false,financialOriginalsRead:false,
+              productionWrites:0,authChanges:0
+            }));
             console.log("REAL_PARTNER_TOKEN_FINANCE_GET_LIST_PROVEN=false");
             console.log("REAL_BACKUP_PAYLOAD_ISOLATED_RESTORE_PROVEN=false");
             console.log("PRODUCTION_DOCUMENT_READS=0 PRODUCTION_WRITES=0 DEPLOYS=0");
