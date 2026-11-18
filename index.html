@@ -13641,6 +13641,36 @@ function renderSharedCountTeamDetails(parent,report){
  for(const name of report.missingCompanies||[])
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
+// New canonical SAME-APP ranking path: existing direct + partner ledgers in
+// one server-verified count-only GET, no Owner SKU ON/OFF configuration.
+// When the release flags are OFF, the old callable/UI remains in place.
+async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,status,content,uid,seq}){
+ const [bridgeModule,projectionModule,panelModule]=await Promise.all([
+  import("./ranking/verified-joint-month-http-bridge.mjs"),
+  import("./ranking/same-app-joint-count-projection.mjs"),
+  import("./ranking/same-app-joint-count-panel.mjs")
+ ]);
+ const bridge=bridgeModule.createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
+  endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+  expectedRole:partner?"partner_owner":"hub_owner",
+  getWorkspaceCompanyId:()=>partner?partnerInlineWorkspaceCompany:""
+ });
+ const response=await bridge.load({
+  period:{kind:"day",day:date,asOf:getTodayString()},filters:{}
+ });
+ const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
+ const field=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
+ if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
+    date!==pInline(field).value)return true;
+ const view=projectionModule.buildSameAppJointCountProjection(response,{partner});
+ panelModule.renderSameAppJointCountPanel({
+  document,root:content,status,view,partner,detail,
+  selection:partner?partnerSameAppSelectedPanel:named||""
+ });
+ return true;
+}
+
 async function loadSharedDailyStandings(where,force=false){
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
@@ -13660,6 +13690,16 @@ async function loadSharedDailyStandings(where,force=false){
   status.textContent="確認する日付を選択してください。";return;
  }
  status.textContent="会社・班・個人・商材の件数を照合しています…";
+ try{
+  if(await tryLoadVerifiedSameAppJointCount({
+   where,date,partner,detail,status,content,uid,seq
+  }))return;
+ }catch(error){
+  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
+  // New HTTP release may be OFF (503). Keep legacy count-only UI unchanged;
+  // never retry a write or silently show a fake 0-count ranking.
+  console.info("same_app_joint_count_not_available",error?.code||"not_released");
+ }
  try{
   const payload={date,sharedRankings:true};
   if(partner&&partnerInlineWorkspaceCompany)
