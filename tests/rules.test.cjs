@@ -323,6 +323,71 @@ test('secondary owner (not master) can create and edit SBMNP but cannot delete i
    assert.equal((await getDoc(ref)).exists(),true);
 });
 
+
+test('exact screenshot state: non-master Owner with both authoritative owner documents can archive and restore without finance changes',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const admin=c.firestore();
+    await updateDoc(doc(admin,'companies',company),{masterUid:'different-master'});
+    await updateDoc(doc(admin,'users','owner'),{
+      companyRole:'owner',role:'member',canViewRevenue:false,canViewUnitPrice:false
+    });
+    await updateDoc(doc(admin,'companies',company,'members','owner'),{
+      companyRole:'owner',role:'member',canViewRevenue:false,canViewUnitPrice:false
+    });
+    // Existing historical catalog may be in old schema without pricing tiers.
+    await setDoc(doc(admin,'products','older-product'),{
+      companyId:company,name:'昔の追加商材',revenue:15000,
+      sortOrder:3,active:true,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+    });
+    await setDoc(doc(admin,'records','fixed-history-count'),{
+      ...payload('owner'),results:{old:{productId:'older-product',
+        productName:'昔の追加商材',count:5,revenuePerUnit:15000}},
+      totalCount:5,totalRevenue:75000
+    });
+  });
+  const client=dbFor('owner');
+  const ref=doc(client,'products','older-product');
+  const recordRef=doc(client,'records','fixed-history-count');
+  const before=(await getDoc(ref)).data();
+  const oldRecord=(await getDoc(recordRef)).data();
+  await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  const archived=(await getDoc(ref)).data();
+  assert.equal(archived.active,false);
+  assert.equal(archived.name,before.name);
+  assert.equal(archived.revenue,15000);
+  assert.equal(archived.createdAt.seconds,before.createdAt.seconds);
+  assert.deepEqual((await getDoc(recordRef)).data(),oldRecord);
+  await assertFails(updateDoc(ref,{active:true,revenue:0,updatedAt:serverTimestamp()}));
+  await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().active,true);
+  assert.deepEqual((await getDoc(recordRef)).data(),oldRecord);
+  await assertFails(deleteDoc(ref));
+});
+
+test('non-master Owner archive remains blocked if user or member owner claim is absent',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    const admin=c.firestore();
+    await updateDoc(doc(admin,'companies',company),{masterUid:'different-master'});
+    await setDoc(doc(admin,'products','both-owner-claims-required'),catalogPayload());
+  });
+  const ref=doc(dbFor('owner'),'products','both-owner-claims-required');
+  await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  await env.withSecurityRulesDisabled(async c=>{
+    await updateDoc(doc(c.firestore(),'companies',company,'members','owner'),{companyRole:'member'});
+  });
+  await assertFails(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+  await env.withSecurityRulesDisabled(async c=>{
+    const db=c.firestore();
+    await updateDoc(doc(db,'companies',company,'members','owner'),{companyRole:'owner'});
+    await updateDoc(doc(db,'users','owner'),{companyRole:'member'});
+  });
+  await assertFails(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+  await env.withSecurityRulesDisabled(async c=>{
+    await updateDoc(doc(c.firestore(),'users','owner'),{companyRole:'owner'});
+  });
+  await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+});
+
 test('leader with both explicit finance grants can create, edit and delete SBMNP',async()=>{
   await env.withSecurityRulesDisabled(async c=>{
     const db=c.firestore();
@@ -405,7 +470,12 @@ test('product validation and cross-company protections remain enforced for secon
   await assertSucceeds(setDoc(ref,catalogPayload()));
   await assertFails(updateDoc(ref,{companyId:'company-b',updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(ref,{revenue:-1,updatedAt:serverTimestamp()}));
-  await assertFails(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  // Non-master Owner has authoritative owner markers in BOTH user and member.
+  // Archiving was incorrectly permission-denied before the rules fix.
+  await assertSucceeds(updateDoc(ref,{active:false,updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().active,false);
+  await assertSucceeds(updateDoc(ref,{active:true,updatedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().active,true);
   await assertFails(updateDoc(doc(db,'products','foreign-product'),{name:'denied',updatedAt:serverTimestamp()}));
   await assertFails(deleteDoc(doc(db,'products','foreign-product')));
 });

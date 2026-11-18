@@ -1131,32 +1131,39 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
+      // Evaluate the narrow reversible Owner-only active toggle FIRST.
+      // Non-master Owners previously hit the expensive generic price-edit
+      // predicate before this exception (permission-denied even with both
+      // authoritative companyRole=owner documents). Only active+updatedAt
+      // can change; old pricing, historical counts and product IDs stay put.
       allow update: if resource.data.companyId != null
-        && canManageProducts(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
-        && validShortName(request.resource.data.name, 50)
-        && request.resource.data.revenue is number
-        && request.resource.data.revenue >= 0
-        && validProductExtras(request.resource.data)
         && request.resource.data.updatedAt == request.time
         && (
-          // Existing edit grants remain unchanged, including finance controls.
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly([
-              'name', 'revenue', 'cashbackOptions', 'pricingOptions',
-              'sortOrder', 'updatedAt'
-            ])
-          ||
-          // Reversible archive only: Owner/master may change active and
-          // updatedAt. Price, product IDs and all historical records are
-          // immutable through this branch. Physical delete stays prohibited.
           (
-            (isCompanyOwner(resource.data.companyId)
-              || isCompanyMaster(resource.data.companyId))
+            // Cheap change-key check must happen before any Owner reads:
+            // otherwise ordinary price/name edits by non-master managers
+            // exceed Firestore's 1,000 evaluation-expression limit.
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['active', 'updatedAt'])
             && request.resource.data.active is bool
             && request.resource.data.active != resource.data.get('active', true)
+            && (isCompanyOwner(resource.data.companyId)
+              || isCompanyMaster(resource.data.companyId))
+          )
+          ||
+          // Preserve every original name/finance/CB edit grant unchanged.
+          (
+            canManageProducts(resource.data.companyId)
+            && validShortName(request.resource.data.name, 50)
+            && request.resource.data.revenue is number
+            && request.resource.data.revenue >= 0
+            && validProductExtras(request.resource.data)
             && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['active', 'updatedAt'])
+              .hasOnly([
+                'name', 'revenue', 'cashbackOptions', 'pricingOptions',
+                'sortOrder', 'updatedAt'
+              ])
           )
         );
 

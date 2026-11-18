@@ -1179,3 +1179,25 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - この文章を更新した時点で本番商材データの変更、物理削除、本番Rules/Hostingの配備: 実施していない。
 
 - 2026-11-18: PR #793 に `sales-production-reviewed` をGitHub接続から実際に付与。これは保護CIの技術レビュー用ラベルであり、本人自筆署名や本番配備・権限検証の完了ではない。ラベル適用後のHEADで必須CIを再実行する。
+
+---
+
+## SECONDARY_OWNER_PRODUCT_ARCHIVE_PERMISSION_FIX_20261118
+
+### 実際の不具合・要求
+- ユーザーの実画面：商材削除・復元時 permission-denied。診断は `認証メール確認=OK / ユーザーOwner=はい / MASTER=別ユーザー / 会社所属=あり / 所属側Owner=はい`。
+- 本番へ前回公開したOwner商材使用停止・復元は、会社Masterと別UIDのOwnerで失敗。現在の個人/会社所属のroleを変更せず解決し、他の全商材・過去件数・売上・単価・CBを保持する。
+
+### 根本原因と限定修正
+- `firestore.rules` の `products/{productId}` 更新で、汎用 `canManageProducts` と `validProductExtras`、名称・金額を含む重い編集条件がOwner専用 `active` 更新判定より先に実行される。非Master Ownerや旧形式商品は保存に失敗していた。
+- 最小のOwner専用分岐を最初に判定：サーバー正本 `users/{uid}` と `companies/{companyId}/members/{uid}` の双方Owner、または既存Masterの権限で、`active` と `updatedAt` だけを書換可能。
+- 従来の商材追加・名称・金額・CB編集条件は厳密に維持。レコード・売上・ランキング・監査・会社権限・ログイン・協力店のコードは一切変更なし。
+- `products` の物理削除は変わらず禁止。追加のFirestoreデータ書込み・本番データ移行は無し。
+
+### 再発防止
+- Firestore Emulatorで実画面と同じ非Master Owner（メール検証済／user & member双方Owner）、finance許可なし、旧商品レコードを用いたアーカイブ／復元を実施。
+- UserだけOwner／MemberだけOwnerはどちらも拒否し、他社、無権限ユーザー、売上金額変更の同時実行、物理deleteを拒否。
+- 変更したRules以外のRulesブロックが完全一致すること、既存のEmulator全件、Sales App Validationとprotected-change-guardが合格することを公開条件とする。
+- 本人の署名・実アカウントでのボタン押下確認は代理しない。公開後のユーザー再確認が必要。
+
+- 2026-11-18: PR #795 の商材使用停止権限Rulesだけについて、GitHub連携で `sales-production-reviewed` を追加。保護チェック評価用であり、本番公開・署名を意味しない。追加後のコミットで必須CIを再検証する。
