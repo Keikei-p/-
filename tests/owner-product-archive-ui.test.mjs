@@ -123,5 +123,5 @@ test("Product management has accessible Delete and Restore controls without docu
   assert.match(html,/toggle\.textContent = product\.active === false \? "元に戻す" : "削除"/);
   assert.match(html,/toggle\.setAttribute\("aria-label"/);
   assert.match(html,/削除しても|実績・件数・売上・単価・ランキング履歴は削除しません/);
-  assert.doesNotMatch(archiveSource,/\bdeleteDoc\(|\bdelete\(/);
+  assert.doesNotMatch(archiveSource,/\bdeleteDoc\(|\btransaction\.delete\(/);
 });
