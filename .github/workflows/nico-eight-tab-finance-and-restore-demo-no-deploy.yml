@@ -9,6 +9,7 @@ on:
       - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
       - 'tests/managed-backup-rehearsal.test.mjs'
       - 'tests/restore-guard.test.mjs'
+      - 'scripts/ci/verify-partner-unified-count-details.cjs'
   workflow_dispatch:
 permissions:
   contents: read
