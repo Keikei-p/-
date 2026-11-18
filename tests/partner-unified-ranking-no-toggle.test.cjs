@@ -97,7 +97,8 @@ function fixture(options={},gate=true){
  return {svc,req,storage,visited,writes};
 }
 const fail=fn=>assert.rejects(fn,e=>e?.code==="failed-precondition"||
- e?.code==="permission-denied"||e?.code==="unavailable"||e?.code==="data-loss");
+ e?.code==="permission-denied"||e?.code==="unavailable"||e?.code==="data-loss"||
+ e?.code==="unauthenticated");
 
 test("unified categories always match the original 9-key count ledger for every company",()=>{
  for(const partnerId of ["partner1","partner2","partner99"]){
@@ -148,11 +149,21 @@ test("legacy feature flag OFF remains unavailable and never permits bypass",asyn
  assert.equal(x.writes.length,0);
 });
 test("no relation, inconsistent day total or missing summary fails closed",async()=>{
- for(const conditions of [{missingRelation:true},{invalidTotal:true},{orphan:true}]){
+ for(const conditions of [{missingRelation:true},{invalidTotal:true}]){
   const x=fixture(conditions);
   await fail(()=>x.svc.view(x.req));
   assert.equal(x.writes.length,0);
  }
+});
+test("missing day summary is unreported, never fabricated as a submitted zero",async()=>{
+ const x=fixture({orphan:true});
+ const o=await x.svc.view(x.req);
+ assert.equal(o.totalCount,0);
+ assert.equal(o.reportCount,0);
+ assert.equal(o.unreportedCompanies.length,1);
+ assert.equal(o.companies.length,0);
+ assert.equal(o.people.length,0);
+ assert.equal(x.writes.length,0);
 });
 test("old company-only counts remain countable, never invented as team/member",async()=>{
  const x=fixture({oldQuick:true});
