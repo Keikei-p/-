@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions-partner-tabs",
+    "codebase": "partner-shared-tabs",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log"
+    ]
+  }
+}
