@@ -62,7 +62,7 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=47,"unexpected scope of feature change: "+changed.join(","));
+assert(changed.length<=49,"unexpected scope of feature change: "+changed.join(","));
 assert(changed.every(file=>[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
@@ -93,6 +93,8 @@ assert(changed.every(file=>[
  "ranking/published-partner-optional-client.mjs",
  "tests/partner-optional-client.test.mjs",
  "tests/partner-optional-four-tab-read.test.mjs",
+ "firebase.partner-tabs.json",
+ "tests/nico-eight-tab-release-preflight.test.mjs",
  "functions-partner-tabs/partner-optional-tab-reader.mjs",
  "tests/published-partner-tab-client.test.mjs",
  "functions-ranking-approvals/ranking/published-partner-tab-server.mjs",
@@ -171,6 +173,18 @@ assert(ownerUI.includes("readVerifiedPartnerTabPolicy") &&
        ownerUI.includes("prepareOwnerTabPublication") &&
        !/\b(?:setDoc|updateDoc|deleteDoc|addDoc|runTransaction)\s*\(/.test(ownerUI),
  "Owner UI must use server-authenticated CAS callable, never direct datastore writes");
+const codePrincipal=fs.readFileSync(
+ "functions-partner-tabs/partner-tab-publication-store.mjs","utf8");
+assert(codePrincipal.includes('col("partnerCodeCredentials").doc(partner)')&&
+       codePrincipal.includes('credential.active!==true')&&
+       codePrincipal.includes('credential.principalUid!==actor.uid'),
+ "Code principal must recheck active credentials before partner data reads");
+const optionalManifest=JSON.parse(fs.readFileSync(
+ "firebase.partner-tabs.json","utf8"));
+assert(optionalManifest.functions?.source==="functions-partner-tabs"&&
+       optionalManifest.functions?.codebase==="partner-shared-tabs"&&
+       !("functions" in JSON.parse(fs.readFileSync("firebase.json","utf8"))),
+ "Optional functions must be separately deployable but not auto-deployed");
 const optionalStore=fs.readFileSync(
  "functions-partner-tabs/partner-tab-publication-store.mjs","utf8");
 assert(optionalStore.includes("async function readPublishedOptional(")&&
