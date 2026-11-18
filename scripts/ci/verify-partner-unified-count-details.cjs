@@ -40,10 +40,18 @@ assert(here.includes('const unifiedProductList=true;'),
  "Legacy private products must not become writable in shared UI");
 assert(here.includes("renderPartnerCountTeamCard("));
 assert(here.includes("team.reportStatus===\"not_reported\""));
-assert(here.includes('id="pInlineAddPrivateProduct" class="team-action-button" type="button" hidden disabled'),
- "Old private product creation UI must be retired");
-assert(here.includes("const editable=false;"),"Old private product updates must be read only");
-assert(here.includes("const unifiedProductList=true;"),"No new private count fields");
+assert(here.includes('id="pInlineAddPrivateProduct" class="team-action-button" type="button"'),
+ "Existing private SKU input must remain until the shared server catalog is ready");
+assert(here.includes('partnerUsesVerifiedOwnerCatalog(snap)'),
+ "No legacy product edit removal without verified server replacement");
+assert(here.includes('const unifiedProductList=partnerUsesVerifiedOwnerCatalog(snap);'),
+ "Existing private SKU entry must remain until shared catalog is verified");
+assert(here.includes('snap?.sharedCatalogMode==="owner-products-count-only-v1"&&'),
+ "Never infer catalogue cutover from browser publication toggles");
+assert(here.includes('snap?.sharedCatalogVerified===true;'),
+ "Only a verified server reply may switch off legacy editing");
+assert(here.includes('const editable=["owner","leader"].includes(snap.role)&&!sharedMode;'),
+ "Original partner catalog must remain editable on legacy backend");
 assert(here.includes('const enabledKeys=snap.enabledCategories??snap.categories;'),
  "Never override a deployed backend publication restriction");
 
