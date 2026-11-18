@@ -93,13 +93,32 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
    ...row(v),name:label(v.company)+"・"+label(v.name)
   })));
   const productRows=uniqueRanks(array(pub.products).map(row));
-  const teamRows=uniqueRanks(array(pub.teams).map(v=>({
-   ...row(v),name:label(v.company)+"・"+label(v.name)
-  })));
+  const teamRows=uniqueRanks(array(pub.teams).map(v=>{
+   if(typeof v.own!=="boolean")fail();
+   return {...row(v),name:label(v.company)+"・"+label(v.name),own:v.own};
+  }));
   const companyRows=uniqueRanks(array(pub.companies).map(row));
-  // Another partner's member details are NOT part of this authorized
-  // envelope. Do not infer or render them.
+  // The trusted backend supplies ONLY the signed-in company's own team
+  // details; every other company's roster/products stay absent.
+  const ownName=label(response.own.company);
   const ownCount=count(response.own.count);
+  const unidentified=count(response.own.unidentifiedCount);
+  const ownDetails=array(response.own.teamDetails,400).map(v=>{
+   if(!obj(v)||Object.keys(v).sort().join("|")!==
+      "count|members|name|products|reportStatus")fail();
+   return detail({companyName:ownName,name:v.name,count:v.count,
+    detail:{schema:"nico-team-count-detail-v1",
+     members:v.members,products:v.products,reportStatus:v.reportStatus}});
+  });
+  if(ownDetails.reduce((sum,t)=>sum+t.count,0)+unidentified!==ownCount)fail();
+  // Ranked own-team rows must correspond 1-to-1 to verified saved details;
+  // matching on counts and names only here never changes historical team IDs.
+  const rankedOwn=teamRows.filter(t=>t.own).map(t=>t.name+"|"+t.count).sort();
+  const reportedOwn=ownDetails.filter(t=>t.reported).map(t=>t.name+"|"+t.count).sort();
+  if(rankedOwn.length!==reportedOwn.length||
+     rankedOwn.some((v,i)=>v!==reportedOwn[i]))fail();
+  const sameCompany=companyRows.filter(c=>c.name===ownName);
+  if(sameCompany.length!==1||sameCompany[0].count!==ownCount)fail();
   // A partner can see ONLY public, ranked company aggregates. Those
   // aggregates must equal the ranked product sum; no hidden discrepancy
   // may be mistaken for a confirmed zero or a complete scoreboard.
@@ -109,8 +128,8 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
      ownCount>companyCount)fail();
   return Object.freeze({...common,role:"partner",total:null,ownCount,
    personRows,productRows,teamRows,companyRows,
-   teamDetails:teamRows.map(x=>({name:x.name,count:x.count,
-    reported:true,members:[],products:[]}))});
+   teamDetails:[...ownDetails,...teamRows.filter(x=>!x.own).map(x=>({
+    name:x.name,count:x.count,reported:true,members:[],products:[]}))]});
  }
  if(!obj(response.summary)||!Array.isArray(response.memberRanking)||
     !Array.isArray(response.productRanking))fail();
