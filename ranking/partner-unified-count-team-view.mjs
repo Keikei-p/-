@@ -7,10 +7,12 @@
  * Firebase Callable result. No Firestore reads/writes, migration, SKU matching,
  * ranking recomputation or economic calculations are performed here.
  *
- * Fail closed unless the backend supplies an explicit enabledCategories
- * whitelist and zero-masks every disabled saved category. Old saved originals
- * are NOT changed. Shared count submission still uses the existing verified
- * submitPartnerWorkspaceCounts function and its versioned readback.
+ * The existing server response categories are the canonical writable count
+ * keys. No Owner ON/OFF or company-specific publishing UI is required.
+ * If an older server-side publication gate happens to be enabled, respect its
+ * explicit enabledCategories allowlist and require OFF values to be masked.
+ * Never bypass a server restriction in the browser. Old saved originals are
+ * NOT changed. Count submit and the versioned readback remain unchanged.
  */
 export const PARTNER_DAY_PRODUCT_KEYS=Object.freeze([
   "NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
@@ -52,9 +54,11 @@ export function buildPartnerUnifiedCountTeamView(workspace){
  const companyName=name(workspace.companyName),reportDate=day(workspace.date);
  const categories=limit(workspace.categories,PARTNER_DAY_PRODUCT_KEYS.length);
  if(categories.join("|")!==PARTNER_DAY_PRODUCT_KEYS.join("|"))stop();
- // Existing live legacy clients WITHOUT a publication allowlist MUST continue
- // on the legacy renderer until the server's ON/OFF rollout is approved.
- const selected=limit(workspace.enabledCategories,PARTNER_DAY_PRODUCT_KEYS.length);
+ // The same verified 9-key count ledger serves all partner companies. The
+ // optional legacy server restriction is honored only when it exists. There
+ // is no additional browser-level per-company ON/OFF approval to configure.
+ const selected=workspace.enabledCategories===undefined?
+  [...categories]:limit(workspace.enabledCategories,PARTNER_DAY_PRODUCT_KEYS.length);
  if(new Set(selected).size!==selected.length||selected.some(key=>!categories.includes(key)))stop();
  const enabled=new Set(selected);
  const teams=limit(workspace.teams,150),staff=limit(workspace.staff,150);
