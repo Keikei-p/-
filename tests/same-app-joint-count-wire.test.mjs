@@ -3,6 +3,7 @@ import {runInNewContext} from "node:vm";
 import {buildVerifiedCountDashboard} from "../functions-ranking-approvals/ranking/verified-dual-count-dashboards.mjs";
 import {buildPartnerCountRankingSource} from "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs";
 import {composeCanonicalMonthlyRankingInput} from "../functions-ranking-approvals/ranking/canonical-joint-count-sku-reader.mjs";
+import {createPartnerMonthTransactionReader} from "../functions-ranking-approvals/ranking/partner-month-readonly-loader.mjs";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {createJointCountHttpAdapter}=require("../functions-ranking-approvals/joint-count-http-adapter.cjs");
@@ -724,4 +725,77 @@ test("other partner never receives another company's private SKU name, but still
   period:{kind:"day",day:"2026-11-18",asOf:"2026-11-18"}
  });
  assert(ownView.publicRanking.products.some(p=>p.name.includes("販売終了の旧商材")));
+});
+
+test("true one-snapshot read-only transaction reads private SKU originals and adds them once",async()=>{
+ const src=linkedPrivateSourceFixture(),iso=src.readTime;
+ const ts={seconds:Math.floor(Date.parse(iso)/1000),nanoseconds:0,
+  toDate:()=>new Date(iso)};
+ const docs=new Map([
+  ["companies/hub",{name:"直営",active:true,companyKind:"internal"}],
+  ["companies/partner",{name:"協力店A",active:true,companyKind:"partner",
+   hubCompanyId:"hub"}],
+  ["partnerRelations/partner",src.relation],
+  ["companies/partner/partnerWorkTeams/t1",{
+   companyId:"partner",name:"1班",active:true}],
+  ["companies/partner/partnerWorkEntries/"+src.entries[0].id,src.entries[0]],
+  ...src.privateProducts.map(x=>["companies/partner/partnerPrivateProducts/"+x.id,x]),
+  ["companies/hub/partnerWorkCountDays/2026-11-18/reports/partner",src.summaries[0]]
+ ]);
+ class Ref{
+  constructor(path){this.path=path;}
+  collection(n){return new Q(this.path+"/"+n);}
+ }
+ class Q{
+  constructor(path,filters=[],max=Infinity){
+   this.path=path;this.filters=filters;this.max=max;
+  }
+  doc(id){return new Ref(this.path+"/"+id);}
+  collection(n){return new Q(this.path+"/"+n);}
+  where(k,op,v){return new Q(this.path,[...this.filters,[k,op,v]],this.max);}
+  limit(n){return new Q(this.path,this.filters,n);}
+ }
+ const events=[];
+ const snap=(path,data)=>({
+  id:path.split("/").at(-1),exists:data!==undefined,
+  readTime:ts,data:()=>data===undefined?undefined:structuredClone(data)
+ });
+ const tx={async get(ref){
+  events.push({op:"get",path:ref.path});
+  if(ref instanceof Ref)return snap(ref.path,docs.get(ref.path));
+  const rows=[...docs.entries()].filter(([key,data])=>
+   key.startsWith(ref.path+"/")&&!key.slice(ref.path.length+1).includes("/")&&
+   ref.filters.every(([field,op,value])=>
+    op===">="?data[field]>=value:op==="<="?data[field]<=value:false));
+  return {readTime:ts,docs:rows.slice(0,ref.max).map(([path,data])=>snap(path,data))};
+ }};
+ const db={collection:path=>new Q(path),
+  runTransaction(){throw Error("NESTED_TRANSACTION_FORBIDDEN");}};
+ const context={serverVerified:true,userActive:true,memberActive:true,
+  companyActive:true,activeCountSharingVerified:true,
+  completeSnapshotBudgetApproved:true,hubCompanyId:"hub",
+  approvedCompanyIds:["hub","partner"]};
+ const before=structuredClone([...docs]);
+ const reader=createPartnerMonthTransactionReader({
+  db,clock:()=>new Date(iso),includePrivateCounts:true
+ });
+ const out=await reader({
+  tx,hubCompanyId:"hub",partnerCompanyId:"partner",
+  month:"2026-11",context
+ });
+ assert.equal(out.records[0].totalCount,6);
+ assert.equal(out.lines.reduce((n,line)=>n+line.count,0),6);
+ assert.equal(out.products.length,11);
+ assert(events.some(x=>x.path==="companies/partner/partnerPrivateProducts"));
+ assert.deepEqual([...docs],before,"No original counts, prices or categories changed");
+ const altered=new Map(docs);
+ altered.delete("companies/partner/partnerPrivateProducts/privateRetired");
+ const deleted=docs.get("companies/partner/partnerPrivateProducts/privateRetired");
+ docs.delete("companies/partner/partnerPrivateProducts/privateRetired");
+ await assert.rejects(()=>reader({
+  tx,hubCompanyId:"hub",partnerCompanyId:"partner",
+  month:"2026-11",context
+ }),/INCOMPLETE|UNVERIFIED/,"Missing historical private catalog blocks publication");
+ docs.set("companies/partner/partnerPrivateProducts/privateRetired",deleted);
+ assert.deepEqual([...docs],before);
 });
