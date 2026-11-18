@@ -39,7 +39,10 @@ jobs:
           const next=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
           const flag='zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"';
           assert(next.includes(flag));
-          const same=next.replace(flag,"zeroSetupLink:false");
+          const jointOn='enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\n  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"';
+          assert(next.includes(jointOn),"Both release flags must gate the HTTP route");
+          const same=next.replace(flag,"zeroSetupLink:false")
+           .replace(jointOn,'enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"');
           const strip=s=>s.replace(/\/\*[\s\S]*?\*\/|^[ \t]*\/\/.*$/gm,"").replace(/\s+/g,"");
           assert.equal(strip(same),strip(prev));
           const source=[
