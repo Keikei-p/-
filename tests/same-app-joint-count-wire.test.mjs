@@ -1,5 +1,8 @@
 import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
+import {createRequire} from "node:module";
+const require=createRequire(import.meta.url);
+const {createJointCountHttpAdapter}=require("../functions-ranking-approvals/joint-count-http-adapter.cjs");
 import {createVerifiedJointMonthHttpBridge} from "../ranking/verified-joint-month-http-bridge.mjs";
 import {PARTNER_RANK_SKUS} from "../functions-ranking-approvals/ranking/partner-workspace-count-source.mjs";
 import {linkAllRegisteredCountsWithoutSetup} from "../functions-ranking-approvals/ranking/zero-setup-count-linker.mjs";
@@ -342,4 +345,35 @@ test("both independent server switches must be enabled before a ranking GET can 
   ["enabled","disabled"],["Enabled","enabled"]
  ])assert.equal(read(a,b),false);
  assert.equal(read("enabled","enabled"),true);
+});
+
+test("server 503 when missing either explicit release gate never initializes Auth or Firestore",async()=>{
+ const source=readFileSync(new URL("../functions-ranking-approvals/index.js",import.meta.url),"utf8");
+ const match=source.match(
+  /enabled:\(\)=>(process\.env\.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&\s*process\.env\.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled")/
+ );
+ assert(match);
+ const checks=[
+  [undefined,undefined],["enabled",undefined],[undefined,"enabled"]
+ ];
+ for(const [a,b] of checks){
+  const active=()=>runInNewContext(match[1],{
+   process:{env:{NICO_JOINT_COUNT_RANKING_ENABLED:a,
+    NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED:b}}
+  });
+  let calls=0,code=null,body=null;
+  const call=createJointCountHttpAdapter({
+   enabled:active,loadHandler:async()=>{calls++;throw Error("BACKEND_MUST_REMAIN_OFF");}
+  });
+  await call({
+   method:"GET",originalUrl:"/getVerifiedJointCountRanking?day=2026-11-18",
+   headers:{origin:"https://nico-factory.web.app",authorization:"Bearer "+"A".repeat(50)}
+  },{
+   setHeader(){},status(x){code=x;return this;},
+   send(s){body=JSON.parse(s);return this;}
+  });
+  assert.equal(code,503);
+  assert.deepEqual(body,{error:"request_blocked"});
+  assert.equal(calls,0);
+ }
 });
