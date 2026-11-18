@@ -632,9 +632,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let result;
   try{result=buildApprovedPartnerCountStandings({hubId,start,end,sources})}
   catch{fail("data-loss")}
+  // Only the authenticated, verified hub OWNER may inspect its actively
+  // registered partner roster names without bilateral approval. Other partner
+  // viewers stay masked unless existing public-name proof is satisfied.
+  // This never grants a finance read and cannot be requested via browser role.
+  const ownerManagedView=unified&&s.kind==="hub"&&s.role==="owner";
   const viewerNameProof=s.kind==="hub"||approved.some(row=>row.cid===s.cid&&row.publicNamesVerified);
-  const namedCompanies=new Set(approved.filter(row=>row.cid===s.cid||
-   viewerNameProof&&row.publicNamesVerified).map(row=>crypto.createHash("sha256")
+  const namedCompanies=new Set(approved.filter(row=>ownerManagedView||
+   row.cid===s.cid||viewerNameProof&&row.publicNamesVerified)
+   .map(row=>crypto.createHash("sha256")
     .update("company\n"+hubId+"\n"+row.cid).digest("hex")));
   result={...result,people:result.people.map(person=>namedCompanies.has(person.companyKey)?person:
    {...person,name:"担当者（名称非公開）"})};
