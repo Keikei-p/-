@@ -13937,7 +13937,11 @@ function partnerInlineFillSelect(id,items,label,preferred){
 function renderPartnerPrivateProductCatalog(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
- const editable=["owner","leader"].includes(snap.role);
+ // Once the server provides the shared product publication allowlist,
+ // partner-custom catalog edits are disabled in the unified count UI.
+ // Existing old private entries and products remain untouched and readable.
+ const editable=["owner","leader"].includes(snap.role)&&
+  !Array.isArray(snap.enabledCategories);
  const add=pInline("pInlineAddPrivateProduct");
  add.disabled=!editable||partnerInlineBusy;
  const list=pInline("pInlinePrivateProductList");list.replaceChildren();
@@ -14023,7 +14027,9 @@ function renderPartnerEntryTotals(){
   if(input.dataset.privateCountId)privateTotal+=Number(input.value);
   else shared+=Number(input.value);
  }
- target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
+ target.textContent=Array.isArray(partnerInlineData?.enabledCategories)?
+  "公開ON商材 "+shared+"件｜旧専用商材の過去分はそのまま保持":
+  "共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
  if(partnerInlineHasUnsavedCounts())
   pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
 }
@@ -14073,8 +14079,21 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
+ const unifiedProductList=Array.isArray(snap.enabledCategories);
  for(const product of snap.privateProducts||[]){
   const prior=entry?.privateCounts?.[product.id]??0;
+  if(unifiedProductList){
+   // Never offer newly editable company-private categories once all partners
+   // share the Owner's ON list. Old per-person private entries are shown
+   // as immutable history; submitPartnerWorkspaceCounts preserves originals.
+   if(prior>0){
+    const historical=document.createElement("div");
+    historical.className="p-inline-muted";
+    historical.textContent=product.name+"（旧専用商材の保存済み件数 "+prior+"件・変更不可）";
+    grid.append(historical);
+   }
+   continue;
+  }
   if(!product.active&&prior===0)continue;
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
@@ -14169,7 +14188,7 @@ function partnerInlineRender(){
   const companySection=document.createElement("section");
   companySection.className="p-inline-company-teams partner-count-team-grid";
   const companyHeading=document.createElement("h4");
-  companyHeading.textContent="🤝 "+view.companyName+"｜班別件数 "+view.companyTotalCount+"件";
+  companyHeading.textContent="🤝 "+view.companyName+"｜班・メンバー別登録 "+view.companyTotalCount+"件";
   companySection.append(companyHeading);details.append(companySection);
   for(const team of [...view.teamDetails,...view.historicalUnassigned]){
    // Preserve saved teamIdSnapshot and staff ID: never reassign old work.
@@ -14855,6 +14874,9 @@ pInline("pInlineResendInvite").onclick=async()=>{
 };
 pInline("pInlineAddPrivateProduct").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,name=pInline("pInlineCustomName").value.trim();
+ // The existing private-product management API is not part of the shared
+ // published catalog. Do not call it from the unified Owner-managed UI.
+ if(Array.isArray(snap?.enabledCategories))throw Error("shared_catalog_owner_only");
  if(!["owner","leader"].includes(snap.role)||!name||name.length>80)throw Error("product");
  await partnerInlineManage(partnerInlinePayload({action:"addPrivateProduct",name}));
  pInline("pInlineCustomName").value="";
