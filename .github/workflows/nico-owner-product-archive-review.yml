@@ -1,0 +1,83 @@
+name: NICO reversible Owner product archive (NO DEPLOY until audited release)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'firestore.rules'
+      - 'tests/rules.test.cjs'
+      - 'tests/owner-product-archive-ui.test.mjs'
+      - '.github/workflows/nico-owner-product-archive-review.yml'
+permissions:
+  contents: read
+jobs:
+  exact-safe-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: No production secrets, no unexpected changed paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-owner-product-archive-review.yml' \
+            'firestore.rules' \
+            'index.html' \
+            'tests/owner-product-archive-ui.test.mjs' \
+            'tests/rules.test.cjs' | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Prove non-product Firestore Rules byte equivalence with original main
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import cp from 'node:child_process';
+          const old=cp.execFileSync('git',['show','origin/main:firestore.rules'],{encoding:'utf8'});
+          const now=fs.readFileSync('firestore.rules','utf8');
+          const products='match /products/{productId} {';
+          const records='match /records/{recordId} {';
+          const start=old.indexOf(products), end=old.indexOf(records,start);
+          const ns=now.indexOf(products), ne=now.indexOf(records,ns);
+          if(start<0||end<0||ns<0||ne<0||start!==ns ||
+             old.slice(0,start)!==now.slice(0,ns) ||
+             old.slice(end)!==now.slice(ne))throw Error('STOP_NON_PRODUCT_RULES_CHANGED');
+          const segment=now.slice(ns,ne);
+          if(!segment.includes("hasOnly(['active', 'updatedAt'])")||
+             !segment.includes("isCompanyOwner(resource.data.companyId)")||
+             !segment.includes("isCompanyMaster(resource.data.companyId)")||
+             !segment.includes("allow delete: if false;"))
+             throw Error('STOP_PRODUCT_ARCHIVE_SCOPE_WEAKENED');
+          console.log('NON_PRODUCT_FINANCE_AND_RECORD_RULES_BYTE_IDENTICAL');
+          NODE
+      - name: Contract tests for deletion prevention, reversible UI, active input gating
+        run: |
+          node --test tests/owner-product-archive-ui.test.mjs
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Install pinned Firebase CLI and emulator test dependencies
+        run: |
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+          npm install --prefix tests --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Run ALL existing and new Firestore Rules emulator tests - no live writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          RULES_ONLY=1 firebase emulators:exec --project demo-sales-support --only firestore \
+            "node --test tests/rules.test.cjs"
+          echo 'OWNER_PRODUCT_ARCHIVE_RULES_EMULATOR_PASS_NO_DEPLOY'
