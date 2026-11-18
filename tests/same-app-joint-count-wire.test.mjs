@@ -788,8 +788,7 @@ test("true one-snapshot read-only transaction reads private SKU originals and ad
  assert.equal(out.products.length,11);
  assert(events.some(x=>x.path==="companies/partner/partnerPrivateProducts"));
  assert.deepEqual([...docs],before,"No original counts, prices or categories changed");
- const altered=new Map(docs);
- altered.delete("companies/partner/partnerPrivateProducts/privateRetired");
+
  const deleted=docs.get("companies/partner/partnerPrivateProducts/privateRetired");
  docs.delete("companies/partner/partnerPrivateProducts/privateRetired");
  await assert.rejects(()=>reader({
@@ -797,5 +796,7 @@ test("true one-snapshot read-only transaction reads private SKU originals and ad
   month:"2026-11",context
  }),/INCOMPLETE|UNVERIFIED/,"Missing historical private catalog blocks publication");
  docs.set("companies/partner/partnerPrivateProducts/privateRetired",deleted);
- assert.deepEqual([...docs],before);
+ const byKey=entries=>entries.slice().sort((a,b)=>a[0].localeCompare(b[0]));
+ assert.deepEqual(byKey([...docs]),byKey(before),
+  "Reinsertion order in the test Map cannot be mistaken for a source change");
 });
