@@ -17,7 +17,7 @@ const safeId=x=>typeof x==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(x)&&
 const safeCount=x=>Number.isSafeInteger(x)&&x>=0;
 const plain=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const denied=()=>{throw Error("PARTNER_PUBLISHED_TAB_ACCESS_DENIED");};
-const MONEY_LABEL=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\\s_-]*back|revenue|unit[\\s_-]*price|commission|salary|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\\s*(?:万円|千円|円))/i;
+const MONEY_LABEL=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
 function inspectMoneyText(value,depth=0){
  if(depth>32)denied();
  if(typeof value==="string"){
