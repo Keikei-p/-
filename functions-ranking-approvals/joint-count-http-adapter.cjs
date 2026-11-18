@@ -26,7 +26,7 @@ const PUBLIC_FIELDS=new Set([
  "ownCount","partnerCount","rank","reportStatus","reportedDays",
  "previousCount","change","growth","topProduct","remainingToGoal",
  "personalBestStatus","detail","goalCount","memberCount","scope",
- "teamDetails"
+ "teamDetails","tab","rows"
 ]);
 const FINANCE_KEY=/(?:revenue|sales|amount|price|unitprice|cashback|commission|salary|profit|margin|payment|fee|売上|単価|金額|報酬|利益|キャッシュバック)/i;
 const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cash\s*back|revenue|commission|salary|unit\s*price|CB)[\s:_=-]*[0-9０-９])/i;
@@ -159,6 +159,28 @@ function partnerTeamRankingSafe(ownData,rows){
  return expected.length===actual.length&&
     expected.every((v,i)=>v===actual[i]);
 }
+const PARTNER_PUBLISHED_TAB_ENVELOPE=["schema","role","unit","period","range","readTime","tab","rows"];
+function publishedPartnerTabScopeSafe(data){
+ if(!exact(data,PARTNER_PUBLISHED_TAB_ENVELOPE)||
+    data.schema!=="nico-published-partner-count-tab-v1"||
+    data.role!=="partner_owner"||data.unit!=="件"||
+    !Array.isArray(data.rows)||data.rows.length>10000)return false;
+ switch(data.tab){
+  case "product":
+   return rankRows(data.rows,["rank","name","count"]);
+  case "individual":
+   return rankRows(data.rows,["rank","company","name","count"]);
+  case "team":
+   return data.rows.every(row=>exact(row,TEAM_PUBLIC_WITH_OWN)&&
+    Number.isSafeInteger(row.rank)&&row.rank>0&&validCount(row.count)&&
+    textLabel(row.name)&&textLabel(row.company)&&typeof row.own==="boolean");
+  case "detail":
+   return safeOwnDetails({company:"検証済み協力店",unidentifiedCount:0,
+    count:data.rows.reduce((n,x)=>n+(validCount(x?.count)?x.count:0),0),
+    teamDetails:data.rows});
+  default:return false;
+ }
+}
 function partnerOwnScopeSafe(ownData){
  if(!ownData||typeof ownData!=="object"||Array.isArray(ownData)||
     Object.keys(ownData).some(key=>!PARTNER_OWN_FIELDS.has(key))||
@@ -193,7 +215,7 @@ function partnerPublicScopeSafe(data){
  * @param {()=>Promise<Function>|Function} config.loadHandler Auth+Rules
  *  verified canonical handler (never a browser-provided callback).
  */
-function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
+function createJointCountHttpAdapter({enabled=()=>false,loadHandler,publishedOnly=false}={}){
  if(typeof enabled!=="function"||typeof loadHandler!=="function")fail();
  let pending=null;
  return async function jointCountHttp(req,res){
@@ -247,11 +269,17 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    if(typeof body!=="string"||body.length>900000)fail();
    const data=JSON.parse(body);
    if(response.status===200){
-    if(!data||data.schema!=="nico-verified-dual-count-v1"||
-       !["hub_owner","partner_owner"].includes(data.role)||
-       !moneyFree(data)||
-       (data.role==="partner_owner"&&!partnerPublicScopeSafe(data))||
-       (data.role==="hub_owner"&&!exact(data,HUB_ENVELOPE)))fail();
+    if(!data||!["hub_owner","partner_owner"].includes(data.role)||
+       !moneyFree(data))fail();
+    if(data.role==="hub_owner"){
+     if(data.schema!=="nico-verified-dual-count-v1"||
+        !exact(data,HUB_ENVELOPE))fail();
+    }else if(publishedOnly===true){
+     if(!publishedPartnerTabScopeSafe(data))fail();
+    }else if(data.schema==="nico-published-partner-count-tab-v1"){
+     if(!publishedPartnerTabScopeSafe(data))fail();
+    }else if(data.schema!=="nico-verified-dual-count-v1"||
+             !partnerPublicScopeSafe(data))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||
             Object.keys(data).length!==1||
             !["request_blocked","service_disabled"].includes(data.error))fail();
