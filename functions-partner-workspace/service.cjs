@@ -967,7 +967,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     // Never infer a split into SB光 and SB AIR from a combined legacy total.
     rows.push({staffId:x.staffId,staffName,teamIdSnapshot,
      counts,totalCount:total,version:x.version,
-     sbBreakdown:unknownSb(counts["SB光・AIR"])});
+     sbBreakdown:separateLightAirEnabled()===true&&date>=SB_SPLIT_START?
+      validateBreakdown(x.sbBreakdown,counts["SB光・AIR"],date):
+      unknownSb(counts["SB光・AIR"])});
    }
    rows.sort((x,y)=>x.staffId.localeCompare(y.staffId));
    return {role:"hub",scope:"existing-partner-counts-only",
@@ -987,13 +989,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      d.expectedVersion>=999||!validOwnerReason(d.correctionReason))
    fail("invalid-argument");
   const date=validDate(d.date),{counts,total}=validateCounts(d.counts);
-  //光/AIR separation is explicitly out of scope for this release.
-  // An Owner may change the combined COUNT but cannot fabricate a breakdown.
+  // For pre-cutover corrections, keep the exact historical contract.
+  // After cutover, corrections require a complete signed 3-way breakdown;
+  // old unclassified counts cannot be reassigned to 光/AIR by guessing.
   const sb=d.sbBreakdown;
-  if(!sb||typeof sb!=="object"||Array.isArray(sb)||
+  const splitCorrection=separateLightAirEnabled()===true&&date>=SB_SPLIT_START;
+  if(!splitCorrection&&(!sb||typeof sb!=="object"||Array.isArray(sb)||
      Object.keys(sb).sort().join("|")!=="SB AIR|SB光|旧未分類"||
      sb["SB光"]!==0||sb["SB AIR"]!==0||
-     sb["旧未分類"]!==counts["SB光・AIR"])
+     sb["旧未分類"]!==counts["SB光・AIR"]))
    fail("failed-precondition");
   return db.runTransaction(async tx=>{
    const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
@@ -1019,7 +1023,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(old.totalCount!==previousTotal||daily.totalCount!==companyTotal)
     fail("data-loss");
    const combined=old.sbBreakdown;
-   if(combined!==undefined&&
+   const correctedSplit=splitCorrection?
+     planSplitWrite({date,splitEnabled:true,priorCount:prior["SB光・AIR"],
+      priorBreakdown:combined,combinedCount:counts["SB光・AIR"],
+      requestedBreakdown:sb}):null;
+   if(!splitCorrection&&combined!==undefined&&
       (typeof combined!=="object"||combined===null||
        combined["SB光"]!==0||combined["SB AIR"]!==0||
        combined["旧未分類"]!==prior["SB光・AIR"]))
@@ -1035,6 +1043,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
    const nextVersion=d.expectedVersion+1,stamp=FieldValue.serverTimestamp();
    const rowChanges={counts,totalCount:total,version:nextVersion,
+    ...(correctedSplit?.useSplit?{sbBreakdown:correctedSplit.breakdown}:{}),
     updatedByUid:a.uid,updatedAt:stamp};
    tx.update(er,rowChanges);
    tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp});
@@ -1056,6 +1065,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     teamIdSnapshot:old.teamIdSnapshot??null,
     workLocation:recordedLocation,
     counts,totalCount:total,version:nextVersion,
+    ...(correctedSplit?.useSplit?{sbBreakdown:correctedSplit.breakdown,
+      previousSbBreakdown:validateBreakdown(combined,prior["SB光・AIR"],date)}:{}),
     privateCounts:savedPrivate.counts,privateTotalCount:savedPrivate.total,
     updatedByUid:a.uid,updatedAt:stamp,
     previousCounts:prior,previousPrivateCounts:savedPrivate.counts,
