@@ -377,3 +377,34 @@ test("server 503 when missing either explicit release gate never initializes Aut
   assert.equal(calls,0);
  }
 });
+
+test("actual unpublished joint ranking panel does not call incompatible legacy API",async()=>{
+ const source=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ const start=source.indexOf("async function loadSharedDailyStandings(");
+ const end=source.indexOf('pInline("partnerSharedRankingsRefresh").onclick=',start);
+ assert(start>0&&end>start);
+ const method=source.slice(start,end).trim();
+ const off=source.indexOf('if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true){',start);
+ const priorCall=source.indexOf('const payload={date,sharedRankings:true};',start);
+ assert(off>start&&off<priorCall&&priorCall<end);
+ let calls=0;
+ const nodes={
+  pInlineDate:{value:"2026-11-18"},
+  partnerSharedRankingsStatus:{textContent:""},
+  partnerSharedRankingContent:{replaceChildren(){calls++;}}
+ };
+ const run=new Function("NICO_SAME_APP_JOINT_HTTP_ENABLED",
+  "pInline","auth","getTodayString","canReadSharedCountOnlyRanks",
+  "tryLoadVerifiedSameAppJointCount","readPartnerWorkDay",
+  "let sharedDailyRankingGeneration=0; return ("+method+");"
+ )(false,key=>nodes[key],{currentUser:{uid:"p1"}},
+  ()=>"2026-11-18",()=>true,
+  async()=>{throw Error("CANONICAL_MUST_STAY_OFF");},
+  async()=>{throw Error("LEGACY_UNSUPPORTED_RANKING_API_CALLED");}
+ );
+ await run("partner",true);
+ assert.equal(calls,1); // only clear the unopened joint slot
+ assert.match(nodes.partnerSharedRankingsStatus.textContent,/公開前/);
+ assert.match(nodes.partnerSharedRankingsStatus.textContent,/この協力店の保存済み件数/);
+ assert.doesNotMatch(nodes.partnerSharedRankingsStatus.textContent,/照合できません/);
+});
