@@ -297,7 +297,7 @@ test("revoked, expired and mismatched company-code session fail before any origi
    ...f.data.get("users/pOwner"),canViewRevenue:true}),
   (f,paths)=>f.data.set("partnerRelations/"+PARTNER,{
    ...f.data.get("partnerRelations/"+PARTNER),countSharingApproved:false}),
-  (f,paths)=>f.data.set(paths.policy,{
+  (f,_refs)=>f.data.set(paths.policy,{
    ...f.data.get(paths.policy),published:false})
  ]){
   const f=env(),refs=f.configureCode();mutate(f,refs);
