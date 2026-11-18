@@ -13704,6 +13704,16 @@ async function loadSharedDailyStandings(where,force=false){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>getTodayString()){
   status.textContent="確認する日付を選択してください。";return;
  }
+ // The old sharedRankings:true argument has NO matching server contract:
+ // getPartnerWorkspace accepts sharedCountRankings and returns partner-only
+ // aggregates, never a verified direct+partner total. Do not call it or
+ // misrepresent a partner-only rank as the unified company-wide standing.
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true){
+  status.textContent=partner?
+   "合同ランキングは公開前です。上のランキングには、この協力店の保存済み件数を表示しています。":
+   "直営＋協力店の合同ランキングは公開前です。既存の自社ランキングをご利用ください。";
+  return;
+ }
  status.textContent="会社・班・個人・商材の件数を照合しています…";
  try{
   if(await tryLoadVerifiedSameAppJointCount({
