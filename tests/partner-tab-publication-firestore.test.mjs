@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {PARTNER_OPTIONAL_TABS} from "../ranking/partner-tab-visibility-policy.mjs";
 import {
   PARTNER_TAB_ALLOWED_IDS,createPartnerTabPublicationStore
-} from "../functions-ranking-approvals/ranking/partner-tab-publication-store.mjs";
+} from "../functions-partner-tabs/partner-tab-publication-store.mjs";
 
 const UID="owner1", PARTNER="partner1", HUB="hub1", PARTNER_COMPANY="company1";
 const actor=(uid=UID,email="owner@example.com")=>({uid,email,emailVerified:true});
