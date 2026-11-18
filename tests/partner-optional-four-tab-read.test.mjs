@@ -46,6 +46,7 @@ function env({selection=["report","daily","history","goal"],published=true,asMem
   });
   data.set(paths.company+"/partnerWorkAudits/"+key+"__v1",{
    staffId,companyId:PARTNER,hubCompanyId:HUB,date:DATE,version:1,
+   staffNameSnapshot:staffId==="s1"?"担当A（当時）":"担当B",
    counts:counts(n,category),previousCounts:counts(0),
    totalCount:n,privateCounts:{"private-sku":12},
    correctionReason:"Internal audit must remain private",
@@ -108,7 +109,7 @@ test("all 4 tabs are read from same trusted Owner policy transaction and existin
  assert.equal(daily.products.find(p=>p.name==="SBMNP").count,3);
  const history=await f.get("history");
  assert.deepEqual(history.audits.map(x=>[x.staffName,x.totalCount]),
-  [["担当A",5],["担当B",3]]);
+  [["担当A（当時）",5],["担当B",3]]);
  assert.equal(JSON.stringify(history).includes("privateCounts"),false);
  assert.equal(JSON.stringify(history).includes("correctionReason"),false);
  assert.equal(JSON.stringify(history).includes("unitPrice"),false);
