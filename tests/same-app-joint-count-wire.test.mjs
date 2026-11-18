@@ -1,3 +1,4 @@
+import {readFileSync} from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {buildSameAppJointCountProjection as project}
@@ -107,4 +108,43 @@ test("unreported people are never given a rank and zero-report remains ranked",(
 test("a partner cannot impersonate the hub response through its local role",()=>{
  assert.throws(()=>project(owner(),{partner:true}));
  assert.throws(()=>project(partner(),{partner:false}));
+});
+
+test("a missing company count cannot be silently displayed as a verified total",()=>{
+ const x=owner();
+ x.companyBreakdown[1].count=2; // Stored 3, UI would otherwise display 2.
+ assert.throws(()=>project(x));
+ const p=partner();
+ p.publicRanking.companies[1].count=2;
+ assert.throws(()=>project(p,{partner:true}));
+});
+test("partner public company and product sums must reconcile without name-only guesses",()=>{
+ const p=partner();
+ p.publicRanking.products[0].count=4;
+ assert.throws(()=>project(p,{partner:true}));
+ const u=partner();
+ u.own.count=999;
+ assert.throws(()=>project(u,{partner:true}));
+});
+test("unreported records never become ranked zero or hide a positive count",()=>{
+ const x=owner();
+ x.memberRanking[2].rank=2;
+ assert.throws(()=>project(x));
+ const y=owner();
+ y.memberRanking[2].count=1;
+ assert.throws(()=>project(y));
+ const z=owner();
+ z.companyBreakdown[1].reportStatus="未報告";
+ assert.throws(()=>project(z));
+ const w=owner();
+ w.teamBreakdown[1].detail.reportStatus="未報告";
+ assert.throws(()=>project(w));
+});
+test("wire-up must fail closed on 200 contract drift and 401/403, not silently rank stale data",()=>{
+ const source=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ assert(source.includes('throw Error(httpStatus===503?"SAME_APP_JOINT_NOT_RELEASED":'));
+ assert(source.includes('if(error?.message!=="SAME_APP_JOINT_NOT_RELEASED"){'));
+ assert(source.includes('httpStatus=reply?.status??null;'));
+ assert(source.includes('date!==pInline(field).value'));
+ assert(source.includes('if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;'));
 });
