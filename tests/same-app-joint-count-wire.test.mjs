@@ -226,6 +226,9 @@ test("offline +1 partner count reaches BOTH company dashboards with no old-count
  partnerAfter.publicRanking.products[1].count+=1;
  partnerAfter.publicRanking.companies[1].count+=1;
  partnerAfter.publicRanking.teams[1].count+=1;
+ partnerAfter.own.teamDetails[0].count+=1;
+ partnerAfter.own.teamDetails[0].members[0].count+=1;
+ partnerAfter.own.teamDetails[0].products[0].count+=1;
  const nextHub=project(hubAfter);
  const nextPartner=project(partnerAfter,{partner:true});
  assert.equal(nextHub.total-beforeHub.total,1);
