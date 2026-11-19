@@ -96,6 +96,55 @@ export function classifySecondary({context,user,oldMember,oldCompany,partnerMemb
 }
 
 /**
+ * Bounded server-only diagnosis for ACTIVE but inconsistent secondary docs.
+ * Only three coarse boolean categories may reach a public Actions log.
+ * Does not expose document values, identities, paths or individual counts.
+ * Never interprets a code mismatch as permission to edit old memberships.
+ */
+export function classifyActiveContextMismatch({
+ context,user,oldMember,oldCompany,partnerMember,partnerCompany
+}={}){
+ const active=context?.active===true;
+ const complete=!!user&&!!oldMember&&!!oldCompany&&!!partnerMember&&!!partnerCompany;
+ if(!active||!complete)return Object.freeze({
+  contextPair:false,primary:false,partner:false
+ });
+ return Object.freeze({
+  contextPair:!ID.test(context.primaryCompanyId||'')||
+   !ID.test(context.partnerCompanyId||'')||
+   context.primaryCompanyId===context.partnerCompanyId,
+  primary:user.companyId!==context.primaryCompanyId||
+   oldMember.active===false||user.active===false||
+   oldCompany.active===false||!internalKind(oldCompany.companyKind)||
+   !internalAccess(user.accessKind)||!internalAccess(oldMember.accessKind)||
+   !legacyType(user.memberType)||!legacyType(oldMember.memberType),
+  partner:partnerCompany.companyKind!=='partner'||
+   partnerCompany.active===false||partnerMember.active===false||
+   partnerMember.accessKind!=='partner'||
+   partnerMember.memberType!=='cooperator'
+ });
+}
+
+/**
+ * Additional safe diagnosis for primary membership mismatches ONLY.
+ * NEVER use any result as a permission grant or an update instruction.
+ * All output becomes boolean-only aggregate flags with zero account IDs.
+ */
+export function classifyPrimaryMembershipMismatch({
+ context,user,oldMember,oldCompany
+}={}){
+ if(context?.active!==true||!user||!oldMember||!oldCompany)
+  return Object.freeze({link:false,inactive:false,access:false,type:false,companyKind:false});
+ return Object.freeze({
+  link:user.companyId!==context.primaryCompanyId,
+  inactive:user.active===false||oldMember.active===false||oldCompany.active===false,
+  access:!internalAccess(user.accessKind)||!internalAccess(oldMember.accessKind),
+  type:!legacyType(user.memberType)||!legacyType(oldMember.memberType),
+  companyKind:!internalKind(oldCompany.companyKind)
+ });
+}
+
+/**
  * Strict dry-run only. A primary conversion must never be issued solely from
  * this boolean; the user's live client session and immutable backup remain
  * separate deployment gates.
@@ -184,7 +233,16 @@ export async function inventory({db,credential,authService,request=fetch,include
  const values={totalContexts:contexts.length,activeSecondaryContexts:0,
   ownerConflicts:0,nonOwnerOldFinancePaths:0,activeUnknownOldFinancePaths:0,inactiveOrUnknownContexts:0,
   inactiveSecondaryContexts:0,activeUnknownSecondaryContexts:0,
-  inconsistentContexts:0,internalOwnersScanned:0,internalOwnerContexts:0,
+  inconsistentContexts:0,activeInconsistentContexts:0,
+  activeMissingContextDocuments:0,activeMismatchedContextDocuments:0,
+  activeInvalidCompanyPair:0,activePrimaryRecordMismatch:0,
+  activePrimaryIdentityLinkMismatch:0,activePrimaryInactiveState:0,
+  activePrimaryUserDisabled:0,activePrimaryMemberDisabled:0,
+  activePrimaryCompanyDisabled:0,
+  activePrimaryAccessMarkerMismatch:0,activePrimaryMemberTypeMismatch:0,
+  activePrimaryCompanyKindMismatch:0,
+  activePartnerRecordMismatch:0,activeUnsupportedContextKinds:0,
+  internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
  for(const c of contexts){
   const x=c.data()||{};
@@ -219,13 +277,82 @@ export async function inventory({db,credential,authService,request=fetch,include
    if(x.kind!=='partner_secondary'){
     values.inactiveOrUnknownContexts++;
     values.activeUnknownSecondaryContexts++;
-   }else values.inconsistentContexts++;
+    values.activeUnsupportedContextKinds++;
+   }else{
+    values.inconsistentContexts++;
+    values.activeInconsistentContexts++;
+    if(!user||!oldMember||!oldCompany||!partnerMember||!partnerCompany)
+     values.activeMissingContextDocuments++;
+    else{
+     values.activeMismatchedContextDocuments++;
+     const cause=classifyActiveContextMismatch({
+      context:x,user,oldMember,oldCompany,partnerMember,partnerCompany
+     });
+     if(cause.contextPair)values.activeInvalidCompanyPair++;
+     if(cause.primary){
+      values.activePrimaryRecordMismatch++;
+      const primary=classifyPrimaryMembershipMismatch({
+       context:x,user,oldMember,oldCompany
+      });
+      if(primary.link)values.activePrimaryIdentityLinkMismatch++;
+      if(primary.inactive){
+       values.activePrimaryInactiveState++;
+       // Distinguish an intentionally disabled primary membership from a
+       // disabled Auth user or company, without printing who it belongs to.
+       if(user.active===false)values.activePrimaryUserDisabled++;
+       if(oldMember.active===false)values.activePrimaryMemberDisabled++;
+       if(oldCompany.active===false)values.activePrimaryCompanyDisabled++;
+      }
+      if(primary.access)values.activePrimaryAccessMarkerMismatch++;
+      if(primary.type)values.activePrimaryMemberTypeMismatch++;
+      if(primary.companyKind)values.activePrimaryCompanyKindMismatch++;
+     }
+     if(cause.partner)values.activePartnerRecordMismatch++;
+    }
+   }
   }
   else if(kind==='inactive_or_unrecognized'){
    values.inactiveOrUnknownContexts++;
-   if(x.active===true)values.activeUnknownSecondaryContexts++;
-   else values.inactiveSecondaryContexts++;
-  }else values.inconsistentContexts++;
+   if(x.active===true){
+    values.activeUnknownSecondaryContexts++;
+    if(x.kind!=='partner_secondary')values.activeUnsupportedContextKinds++;
+   }else values.inactiveSecondaryContexts++;
+  }else{
+   // "broken" includes both active inconsistencies and already disabled
+   // historical contexts. Only the former can block current live access.
+   values.inconsistentContexts++;
+   if(x.active===true){
+    values.activeInconsistentContexts++;
+    if(!user||!oldMember||!oldCompany||!partnerMember||!partnerCompany)
+     values.activeMissingContextDocuments++;
+    else{
+     values.activeMismatchedContextDocuments++;
+     const cause=classifyActiveContextMismatch({
+      context:x,user,oldMember,oldCompany,partnerMember,partnerCompany
+     });
+     if(cause.contextPair)values.activeInvalidCompanyPair++;
+     if(cause.primary){
+      values.activePrimaryRecordMismatch++;
+      const primary=classifyPrimaryMembershipMismatch({
+       context:x,user,oldMember,oldCompany
+      });
+      if(primary.link)values.activePrimaryIdentityLinkMismatch++;
+      if(primary.inactive){
+       values.activePrimaryInactiveState++;
+       // Distinguish an intentionally disabled primary membership from a
+       // disabled Auth user or company, without printing who it belongs to.
+       if(user.active===false)values.activePrimaryUserDisabled++;
+       if(oldMember.active===false)values.activePrimaryMemberDisabled++;
+       if(oldCompany.active===false)values.activePrimaryCompanyDisabled++;
+      }
+      if(primary.access)values.activePrimaryAccessMarkerMismatch++;
+      if(primary.type)values.activePrimaryMemberTypeMismatch++;
+      if(primary.companyKind)values.activePrimaryCompanyKindMismatch++;
+     }
+     if(cause.partner)values.activePartnerRecordMismatch++;
+    }
+   }else values.inactiveSecondaryContexts++;
+  }
  }
  for(const c of companies){
   const x=c.data()||{};
@@ -277,7 +404,24 @@ export function publicInventorySummary(result){
   unrecognizedActiveOldFinanceReadPotential:Boolean(result.activeUnknownOldFinancePaths),
   ownerContextConflictPresent:Boolean(result.ownerConflicts||result.internalOwnerContexts),
   unrecognizedContextPresent:Boolean(result.inactiveOrUnknownContexts||result.inconsistentContexts),
-  activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||result.inconsistentContexts),
+  // A disabled/inactive broken historical context is not an active user.
+  // Never infer current active access from the general inconsistency counter.
+  activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||
+    result.activeInconsistentContexts||result.activeUnknownOldFinancePaths),
+  activeContextDocumentsMissingPresent:Boolean(result.activeMissingContextDocuments),
+  activeContextMembershipMismatchPresent:Boolean(result.activeMismatchedContextDocuments),
+  activeContextCompanyPairInvalidPresent:Boolean(result.activeInvalidCompanyPair),
+  activeContextPrimaryRecordMismatchPresent:Boolean(result.activePrimaryRecordMismatch),
+  activePrimaryIdentityLinkMismatchPresent:Boolean(result.activePrimaryIdentityLinkMismatch),
+  activePrimaryInactiveStatePresent:Boolean(result.activePrimaryInactiveState),
+  activePrimaryAuthUserDisabledPresent:Boolean(result.activePrimaryUserDisabled),
+  activePrimaryOldMemberDisabledPresent:Boolean(result.activePrimaryMemberDisabled),
+  activePrimaryOldCompanyDisabledPresent:Boolean(result.activePrimaryCompanyDisabled),
+  activePrimaryAccessMarkerMismatchPresent:Boolean(result.activePrimaryAccessMarkerMismatch),
+  activePrimaryMemberTypeMismatchPresent:Boolean(result.activePrimaryMemberTypeMismatch),
+  activePrimaryCompanyKindMismatchPresent:Boolean(result.activePrimaryCompanyKindMismatch),
+  activeContextPartnerRecordMismatchPresent:Boolean(result.activePartnerRecordMismatch),
+  activeContextUnsupportedKindPresent:Boolean(result.activeUnsupportedContextKinds),
   inactiveContextPresent:Boolean(result.inactiveSecondaryContexts),
   unapprovedTransferPresent:Boolean(result.transferNeedsReview),
   transferCandidatePresent:Boolean(result.transferEligibleCandidates),
