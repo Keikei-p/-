@@ -92,7 +92,7 @@ test("logging out invalidates outstanding counts, publication and visible local 
 test("verified count GET aborts when a company session changes before response",()=>{
  assert.match(html,/session=activeCodeSession,user=auth\.currentUser/);
  assert.match(html,/session!==activeCodeSession\|\|\s*user!==auth\.currentUser\|\|company!==workspaceCompanyId/);
- assert.match(html,/\+\+codeCountSessionEpoch;\s*\+\+countLoadId;\s*countDayCache\.clear\(\);/);
+ assert.match(html,/\+\+codeCountSessionEpoch;\s*codeCountGoalByMonth\.clear\(\);\s*\+\+countLoadId;\s*countDayCache\.clear\(\);/);
  assert.match(html,/const NICO_PARTNER_SAME_SCREEN_TABS_ENABLED=false;/);
  assert.match(html,/const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED=false;/);
 });

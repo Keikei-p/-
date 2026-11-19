@@ -10,6 +10,7 @@ const buttons=section('$("countGoalSave").onclick=()=>{','for(const mode of ["Da
 function make({code=true,mixed=false}={}){
  const store=new Map(),access=[];
  const dom=new Map([["dashboardPartnerMonth",{value:"2026-11"}],
+  ["countGoalSave",{}],["countGoalClear",{}],
   ["countGoalBox",{hidden:true}],["countGoalUnavailable",{hidden:false}],
   ["countGoalDailyEstimate",{textContent:""}],["countGoalDays",{value:"4"}],
   ["countGoalStatus",{textContent:""}],["countGoal",{value:"12"}]]);
