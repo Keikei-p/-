@@ -62,8 +62,43 @@ assert.equal(syntax.status,0,syntax.stderr||syntax.error?.message||"invalid html
 const changed=cp.execFileSync("git",["diff","--name-only","FETCH_HEAD","--"],{
  encoding:"utf8"
 }).trim().split("\n").filter(Boolean);
-assert(changed.length<=54,"unexpected scope of feature change: "+changed.join(","));
-assert(changed.every(file=>[
+// The legacy review is an exact small-scope contract. A separately reviewed
+// integration PR can also contain the previously merged login-audit fix and
+// its NO-DEPLOY review workflow. Never infer permission from changed file
+// count alone, and never widen other branches' historical allowlists.
+const integrated=process.env.GITHUB_HEAD_REF===
+ "integration/sales-shared-screen-eight-tabs-20261119";
+if(integrated){
+ // The already merged login audit MUST be byte-identical with current main;
+ // integration may neither downgrade nor silently change Auth diagnostics.
+ for(const file of [
+  "tools/production/audit-login-readiness-live-readonly.mjs",
+  "tests/audit-login-readiness-live-readonly.test.mjs",
+  ".github/workflows/nico-login-account-readiness-readonly.yml"
+ ]){
+  const current=fs.readFileSync(file,"utf8");
+  const reviewed=cp.execFileSync("git",["show","FETCH_HEAD:"+file],{
+   encoding:"utf8"
+  });
+  assert.equal(current,reviewed,"Merged login security review drift: "+file);
+ }
+ const integration=fs.readFileSync(
+  ".github/workflows/nico-sales-unified-integration-no-deploy.yml","utf8");
+ assert(integration.includes("PRODUCTION_DEPLOYED=false")&&
+  integration.includes("persist-credentials: false")&&
+  integration.includes("REAL_ACCOUNT_E2E_UNPROVEN"),
+  "Integrated CI must not claim real user security proof or deploy");
+ // Historical rank tests may only acknowledge the verified own-team bit,
+ // without changing their expected counts, owner visibility or finance fence.
+ assert.equal(
+  cp.execFileSync("git",["hash-object","tests/owner-product-visibility-rankings.test.mjs"],{
+   encoding:"utf8"
+  }).trim(),"6daa5a18563506237f66fb59c68731e26db4d08e",
+  "Owner SKU + own-team projection regression must match approved test");
+}
+assert(changed.length<=(integrated?59:54),
+ "unexpected scope of feature change: "+changed.join(","));
+const legacyAllowed=[
  "index.html","ranking/partner-unified-count-team-view.mjs",
  "tests/partner-unified-count-team-view.test.mjs",
  "tests/verified-dual-count-dashboards.test.mjs",
@@ -117,7 +152,17 @@ assert(changed.every(file=>[
  "functions-ranking-approvals/ranking/partner-workspace-count-source.mjs",
  "functions-ranking-approvals/ranking/zero-setup-count-linker.mjs",
  ".github/workflows/nico-same-app-joint-count-wire-no-deploy.yml"
-].includes(file)),"unexpected changed source: "+changed.join(","));
+];
+const integrationOnly=[
+ ".github/workflows/nico-login-account-readiness-readonly.yml",
+ ".github/workflows/nico-sales-unified-integration-no-deploy.yml",
+ "tests/audit-login-readiness-live-readonly.test.mjs",
+ "tests/owner-product-visibility-rankings.test.mjs",
+ "tools/production/audit-login-readiness-live-readonly.mjs"
+];
+assert(changed.every(file=>legacyAllowed.includes(file)||
+ (integrated&&integrationOnly.includes(file))),
+ "unexpected changed source: "+changed.join(","));
 // The browser-side projection and the deployed Functions vendor must agree
 // on team details and hidden other-company private product names.
 assert.equal(
