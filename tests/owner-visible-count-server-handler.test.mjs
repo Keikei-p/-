@@ -276,6 +276,57 @@ test("opt-in atomic snapshot path serves count-only ranking without legacy publi
  assert.equal((await bad(request())).status,503);
 });
 
+test("published auto-linked rankings honor Owner ON/OFF for every company without rewriting history",async()=>{
+ const f=fake(),before=copy([...f.state]);
+ const policy={serverVerified:true,ownerSettingsRead:true,
+  ownerUidVerified:true,productMappingsReviewed:true,revision:2,
+  hubCompanyId:"hub",snapshotReadTime:TIME,partnerOverrides:[]};
+ let enabled=["nuro"];
+ const run=createStagedOwnerVisibleCountHandler({
+  enabled:true,zeroSetupLink:true,enforcePartnerTabPublication:true,
+  db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async({context})=>({
+   input:{...countInput(context),snapshotReadTime:TIME},
+   publication:{...policy,enabledHubProductIds:[...enabled]},
+   partnerTabPolicy:{serverVerified:true,ownerUidVerified:true,
+    hubCompanyId:"hub",viewerCompanyId:context.viewerCompanyId,
+    snapshotReadTime:TIME,published:true,tabs:["product"]}
+  })
+ });
+ const ownerOn=await run(request("hub"));
+ assert.equal(ownerOn.status,200);
+ assert.deepEqual((await ownerOn.json()).summary,
+  {own:2,partner:5,total:7,unidentified:0});
+ const partnerOn=await run(request("partner","month=2026-11&tab=product"));
+ assert.equal(partnerOn.status,200);
+ const published=await partnerOn.json();
+ assert.equal(published.tab,"product");
+ assert.equal(published.rows[0].count,7);
+ enabled=[];
+ const ownerOff=await run(request("hub"));
+ assert.equal(ownerOff.status,200);
+ assert.deepEqual((await ownerOff.json()).summary,
+  {own:0,partner:0,total:0,unidentified:0});
+ const partnerOff=await run(request("partner","month=2026-11&tab=product"));
+ assert.equal(partnerOff.status,200);
+ assert.deepEqual((await partnerOff.json()).rows,[]);
+ // An old zero-setup witness without Owner product settings cannot publish.
+ const legacyWitness=createStagedOwnerVisibleCountHandler({
+  enabled:true,zeroSetupLink:true,enforcePartnerTabPublication:true,
+  db:f.db,auth:f.auth,FieldValue:f.FieldValue,
+  loadAtomicVerifiedCountSnapshot:async({context})=>({
+   input:{...countInput(context),snapshotReadTime:TIME},
+   publication:{serverVerified:true,zeroSetupVerified:true,
+    ownerSettingsRead:false,productMappingsReviewed:false,
+    ownerUidVerified:true,hubCompanyId:"hub",revision:1,snapshotReadTime:TIME}
+  })
+ });
+ assert.equal((await legacyWitness(request("hub"))).status,503);
+ assert.deepEqual([...f.state],before,"All original counts and finance remain unchanged");
+ assert(!f.ops.some(x=>/write|delete|update|create/.test(x.kind)));
+ assert(!/revenue|unitPrice|cashback|10000|20000/.test(JSON.stringify(published)));
+});
+
 test("zero-setup server ranking uses the same count-only result for hub and partner, ignores stale per-SKU settings",async()=>{
  const f=fake(),before=copy([...f.state]);
  // The previous Owner settings disabled every product. No UI setting or

@@ -96,7 +96,7 @@ if(integrated){
   }).trim(),"6daa5a18563506237f66fb59c68731e26db4d08e",
   "Owner SKU + own-team projection regression must match approved test");
 }
-assert(changed.length<=(integrated?59:54),
+assert(changed.length<=(integrated?60:54),
  "unexpected scope of feature change: "+changed.join(","));
 const legacyAllowed=[
  "index.html","ranking/partner-unified-count-team-view.mjs",
@@ -158,6 +158,7 @@ const integrationOnly=[
  ".github/workflows/nico-sales-unified-integration-no-deploy.yml",
  "tests/audit-login-readiness-live-readonly.test.mjs",
  "tests/owner-product-visibility-rankings.test.mjs",
+ "tests/owner-visible-count-server-handler.test.mjs",
  "tools/production/audit-login-readiness-live-readonly.mjs"
 ];
 assert(changed.every(file=>legacyAllowed.includes(file)||

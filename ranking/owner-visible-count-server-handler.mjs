@@ -86,6 +86,10 @@ export function createStagedOwnerVisibleCountHandler({
  if(enabled!==true)return async request=>reply(503,
   {error:"service_disabled"},request?.headers?.get?.("Origin")??"");
  const atomic=typeof loadAtomicVerifiedCountSnapshot==="function";
+ // Auto-matching product IDs can never override the Owner's ON/OFF settings
+ // when the partner's server-published tabs are enabled.
+ const enforceOwnerSelection=zeroSetupLink===true&&
+  enforcePartnerTabPublication===true;
  if(!db||!auth||!FieldValue||
     (!atomic&&typeof loadCompleteVerifiedCountInput!=="function"))
   throw Error("trusted server count dependencies missing");
@@ -185,13 +189,20 @@ export function createStagedOwnerVisibleCountHandler({
    // A reported count is not silently removed by an obsolete ON/OFF switch.
    if(zeroSetupLink===true&&
       (!atomic||publication?.serverVerified!==true||
-       publication.zeroSetupVerified!==true||
-       publication.ownerSettingsRead!==false||
-       publication.productMappingsReviewed!==false||
+       (enforceOwnerSelection?
+        (publication.zeroSetupVerified===true||
+         publication.ownerSettingsRead!==true||
+         publication.productMappingsReviewed!==true||
+         !Array.isArray(publication.enabledHubProductIds)):
+        (publication.zeroSetupVerified!==true||
+         publication.ownerSettingsRead!==false||
+         publication.productMappingsReviewed!==false))||
        publication.ownerUidVerified!==true||
        publication.snapshotReadTime!==input.snapshotReadTime))
     throw new Block();
-   const result=zeroSetupLink===true?
+   // Publishing a count is separate from storing its immutable original.
+   // Shared product names may be auto-matched, but Owner OFF always wins.
+   const result=zeroSetupLink===true&&!enforceOwnerSelection?
     buildVerifiedCountDashboard(rankingInput):
     buildOwnerVisibleCountRanking({input:rankingInput,publication});
    // The input remains the SAME verified full ledger. The response contains

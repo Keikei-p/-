@@ -35,13 +35,21 @@ export function createCanonicalOwnerCountSnapshot({
     typeof db.runTransaction!=="function"||
     typeof FieldValue.serverTimestamp!=="function")
   throw Error("CANONICAL_OWNER_COUNT_DEPENDENCY_MISSING");
+ // Once the partner tab publication fence is enabled, auto SKU name matching
+ // must ALSO obey the Owner's existing product ON/OFF selection. Both policy
+ // and counts are read in the very same read-only transaction.
+ const enforceOwnerSelection=zeroSetupLink===true&&
+  enforcePartnerTabPublication===true;
  return createStagedAtomicOwnerCountLoader({
   db,
   loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink}),
-  loadPublicationInTransaction:zeroSetupLink===true?
+  loadPublicationInTransaction:zeroSetupLink===true&&!enforceOwnerSelection?
    createZeroSetupCountPublicationReader({db,verifyCountViewer}):
    createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}),
-  zeroSetupLink,enforcePartnerTabPublication,
+  // Auto name mapping stays enabled for counts, but there is no unfiltered
+  // zero-settings publication shortcut for a partner-facing release.
+  zeroSetupLink:zeroSetupLink&&!enforceOwnerSelection,
+  enforcePartnerTabPublication,
   ...(enforcePartnerTabPublication===true?{
    loadPartnerTabPolicyInTransaction:createPartnerPublishedTabPolicyReader({db})
   }:{})
