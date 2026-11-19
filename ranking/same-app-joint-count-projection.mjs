@@ -35,13 +35,22 @@ const posted=v=>{
  if(!["未報告","確定0件","報告済","一部未報告"].includes(v))fail();
  return v!=="未報告";
 };
-function uniqueRanks(rows){
+function uniqueRanks(rows,{allowPublicGaps=false}={}){
  const ordered=rows.filter(v=>v.rank!==null).slice().sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,"ja"));
+ // Published subsets may retain their trusted global rank (e.g. 1, 3),
+ // but a reported row may never acquire a null rank or a fabricated tie.
+ if(allowPublicGaps&&ordered.length!==rows.length)fail();
  let last=null,lastRank=0;
  for(let i=0;i<ordered.length;i++){
-  const expected=last===ordered[i].count?lastRank:i+1;
-  if(ordered[i].rank!==expected)fail();
-  last=ordered[i].count;lastRank=expected;
+  const current=ordered[i],same=last===current.count;
+  if(allowPublicGaps){
+   if(same?current.rank!==lastRank:
+      current.rank<i+1||current.rank<=lastRank)fail();
+  }else{
+   const expected=same?lastRank:i+1;
+   if(current.rank!==expected)fail();
+  }
+  last=current.count;lastRank=current.rank;
  }
  return rows;
 }
@@ -91,13 +100,13 @@ export function buildSameAppJointCountProjection(response,{partner=false}={}){
   if(!obj(pub)||!obj(response.own))fail();
   const personRows=uniqueRanks(array(pub.members).map(v=>({
    ...row(v),name:label(v.company)+"・"+label(v.name)
-  })));
-  const productRows=uniqueRanks(array(pub.products).map(row));
+  })),{allowPublicGaps:true});
+  const productRows=uniqueRanks(array(pub.products).map(row),{allowPublicGaps:true});
   const teamRows=uniqueRanks(array(pub.teams).map(v=>{
    if(typeof v.own!=="boolean")fail();
    return {...row(v),name:label(v.company)+"・"+label(v.name),own:v.own};
-  }));
-  const companyRows=uniqueRanks(array(pub.companies).map(row));
+  }),{allowPublicGaps:true});
+  const companyRows=uniqueRanks(array(pub.companies).map(row),{allowPublicGaps:true});
   // The trusted backend supplies ONLY the signed-in company's own team
   // details; every other company's roster/products stay absent.
   const ownName=label(response.own.company);
