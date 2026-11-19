@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {classifySecondary,classifyActiveContextMismatch,transferEligibility,publicInventorySummary,
+import {classifySecondary,classifyActiveContextMismatch,classifyPrimaryMembershipMismatch,transferEligibility,publicInventorySummary,
  classifyLiveRules,hasRecentReadyBackup} from '../tools/production/audit-secondary-contexts-readonly.mjs';
 const context={uid:'test_uid',kind:'partner_secondary',active:true,primaryCompanyId:'internal_company',
  partnerCompanyId:'partner_company',hubCompanyId:'internal_company'};
@@ -83,6 +83,39 @@ test('active inconsistent membership reasons distinguish context, primary and pa
  const serialized=JSON.stringify(report);
  for(const value of ['different','internal_company','partner_company','activePrimaryRecordMismatch'])
   assert(!serialized.includes(value));
+});
+
+test('exact primary mismatch group is diagnosed safely without exposing old membership fields',()=>{
+ const none={link:false,inactive:false,access:false,type:false,companyKind:false};
+ assert.deepEqual(classifyPrimaryMembershipMismatch(sample()),none);
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({context:{...context,active:false}})),none);
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldMember:null})),none);
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({user:{...user,companyId:'other'}})),{...none,link:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldMember:{...oldMember,active:false}})),{...none,inactive:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({user:{...user,accessKind:'partner'}})),{...none,access:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldMember:{...oldMember,memberType:'cooperator'}})),{...none,type:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldCompany:{...oldCompany,companyKind:'partner'}})),{...none,companyKind:true});
+ const report=publicInventorySummary({
+  activePrimaryRecordMismatch:1,activePrimaryAccessMarkerMismatch:1,
+  activeInconsistentContexts:1,totalContexts:1
+ });
+ assert.equal(report.activeContextPrimaryRecordMismatchPresent,true);
+ assert.equal(report.activePrimaryAccessMarkerMismatchPresent,true);
+ assert.equal(report.activePrimaryIdentityLinkMismatchPresent,false);
+ assert.equal(report.activePrimaryInactiveStatePresent,false);
+ assert.equal(report.activePrimaryMemberTypeMismatchPresent,false);
+ assert.equal(report.safeToDeploy,false);
+ for(const forbidden of ['test_uid','cooperator','primaryCompanyId','memberType',
+  'activePrimaryAccessMarkerMismatch']){
+  assert(!JSON.stringify(report).includes(forbidden));
+ }
 });
 
 test('non-owner verified partner secondary has a read-only eligible transition plan',()=>{
