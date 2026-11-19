@@ -253,3 +253,82 @@ test("canonical ranking factory keeps original code bearer Auth path without cha
  assert(HTTP.includes('projectPublishedPartnerCountTab({'));
  assert(HTTP.includes('partnerTabPolicy.tabs.includes(tab)'));
 });
+
+
+test("published rank gap matches the server-approved global rank for every ranking tab",async()=>{
+ const datasets=[
+  ["product",[
+   {rank:2,name:"NURO",count:5},
+   {rank:4,name:"SB光・AIR",count:3}]],
+  ["individual",[
+   {rank:2,name:"担当A",company:"協力店A",count:5},
+   {rank:4,name:"担当B",company:"協力店B",count:3}]],
+  ["team",[
+   {rank:2,name:"1班",company:"協力店A",count:5,own:true},
+   {rank:4,name:"2班",company:"協力店B",count:3,own:false}]]
+ ];
+ for(const [tab,rows] of datasets){
+  const response=base(tab,rows),before=structuredClone(response);
+  const verified=verifyPublishedPartnerCountResponse(response,{tab,day});
+  assert.deepEqual(verified.rows.map(x=>x.rank),[2,4],tab);
+  assert.deepEqual(verified.rows.map(x=>x.count),[5,3],tab);
+  assert.deepEqual(response,before,"no count or source mutation");
+  const bridge=f({payload:response});
+  const result=await bridge.bridge.load({tab,day});
+  assert.deepEqual(result.rows.map(x=>x.rank),[2,4]);
+  assert.equal(bridge.requests.length,1,"single authenticated GET");
+  assert.equal(bridge.requests[0].options.method,"GET");
+  assert.equal(JSON.stringify(result).includes("unitPrice"),false);
+ }
+});
+
+test("published competition ties and redacted predecessors stay valid, but forged ranks fail closed",()=>{
+ const good=[
+  [{rank:1,name:"A",count:8},{rank:1,name:"B",count:8},
+   {rank:3,name:"C",count:5}],
+  [{rank:2,name:"A",count:8},{rank:2,name:"B",count:8},
+   {rank:5,name:"C",count:5}],
+  [{rank:1,name:"A",count:8},{rank:3,name:"C",count:5}]
+ ];
+ for(const rows of good)
+  assert.deepEqual(verifyPublishedPartnerCountResponse(base("product",rows),{
+   tab:"product",day
+  }).rows.map(r=>r.rank),rows.map(r=>r.rank));
+ const rejected=[
+  [{rank:1,name:"A",count:8},{rank:2,name:"B",count:8}], // false tie
+  [{rank:1,name:"A",count:8},{rank:1,name:"B",count:5}], // false order
+  [{rank:4,name:"A",count:8},{rank:3,name:"B",count:5}], // rank reversal
+  [{rank:1,name:"A",count:8},{rank:2,name:"B",count:8},
+   {rank:3,name:"C",count:5}],
+  [{rank:1,name:"A",count:8},{rank:2,name:"B",count:9}], // count reversal
+  [{rank:1,name:"A",count:8},{rank:null,name:"B",count:5}],
+  [{rank:1,name:"A",count:8},{rank:-1,name:"B",count:5}],
+  [{rank:1,name:"A",count:8},{rank:2,name:"売上30000円",count:5}],
+  [{rank:1,name:"A",count:8},{rank:2,name:"B",count:5,unitPrice:30000}]
+ ];
+ for(const rows of rejected)
+  assert.throws(()=>verifyPublishedPartnerCountResponse(base("product",rows),{
+   tab:"product",day
+  }),/PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED/);
+});
+
+test("company-code sessions display the same verified gaps, never a synthetic dense rank",async()=>{
+ const session="Z".repeat(43),requests=[];
+ const data=base("individual",[
+  {rank:2,name:"Aさん",company:"協力店A",count:5},
+  {rank:4,name:"Bさん",company:"協力店B",count:3}]);
+ const bridge=createPublishedPartnerCodeCountBridge({
+  featureEnabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>session,
+  fetcher:async(url,options)=>{
+   requests.push({url,options});
+   return {status:200,headers:{get:()=> "application/json"},
+    text:async()=>JSON.stringify(data)};
+  }
+ });
+ const res=await bridge.load({tab:"individual",day});
+ assert.deepEqual(res.rows.map(x=>x.rank),[2,4]);
+ assert.equal(requests.length,1);
+ assert(!requests[0].url.includes(session));
+ assert(!JSON.stringify(res).includes(session));
+});
