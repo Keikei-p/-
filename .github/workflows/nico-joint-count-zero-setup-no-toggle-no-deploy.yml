@@ -1,0 +1,54 @@
+name: NICO Joint Count Zero Setup (No ON OFF) - NO DEPLOY
+on:
+  pull_request:
+    paths:
+      - functions-ranking-approvals/index.js
+      - tests/joint-count-zero-setup-no-toggle.test.mjs
+      - .github/workflows/nico-joint-count-zero-setup-no-toggle-no-deploy.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  same-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and strict zero setup source proof
+        run: |
+          node --check functions-ranking-approvals/index.js
+          node --check tests/joint-count-zero-setup-no-toggle.test.mjs
+          node --test tests/joint-count-zero-setup-no-toggle.test.mjs
+      - name: Confirm deployment does not touch owner settings, original ledger or finance
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node - <<'NODE'
+          const fs=require('node:fs'),cp=require('node:child_process'),assert=require('node:assert/strict');
+          const old=cp.execFileSync('git',['show','FETCH_HEAD:functions-ranking-approvals/index.js'],{encoding:'utf8'});
+          const now=fs.readFileSync('functions-ranking-approvals/index.js','utf8');
+          const start='exports.getVerifiedJointCountRanking=onRequest(';
+          assert(old.includes(start)&&now.includes(start));
+          // The ONLY runtime behavior change is the existing zeroSetupLink
+          // flag, which is hard OFF unless separately explicitly enabled.
+          const expected=now.replace(
+            'zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"',
+            'zeroSetupLink:false'
+          );
+          assert(expected!==now,'New flag must exist');
+          const strip=s=>s.replace(/\/\*[\s\S]*?\*\/|^[ \t]*\/\/.*$/gm,'').replace(/\s+/g,'');
+          assert.equal(strip(expected),strip(old),'Protected Function code drift');
+          const files=cp.execFileSync('git',['diff','--name-only','FETCH_HEAD','--'],{encoding:'utf8'}).trim().split('\n');
+          assert(files.every(f=>[
+            'functions-ranking-approvals/index.js',
+            'tests/joint-count-zero-setup-no-toggle.test.mjs',
+            '.github/workflows/nico-joint-count-zero-setup-no-toggle-no-deploy.yml'
+          ].includes(f)),'Other files changed');
+          console.log('ORIGINAL_COUNT_FUNCTIONS_AND_FINANCE_UNCHANGED');
+          console.log('NO_RELEASE_FLAG_AUTO_ENABLE');
+          NODE
+      - name: No deployment
+        run: |
+          echo NO_DEPLOY_NO_FIRESTORE_WRITES
