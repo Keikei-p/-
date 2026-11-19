@@ -326,7 +326,10 @@ test("standalone day cards keep exact saved day totals and do not invent reporti
  assert.ok(begin>0&&end>begin);
  const code=source.slice(begin,end);
  const els=new Map(),get=id=>{if(!els.has(id))els.set(id,new El());return els.get(id)};
- const summary={days:[{date:"2026-11-14",count:0,people:0},{date:"2026-11-15",count:7,people:2}]};
+ const summary={days:[
+  {date:"2026-11-14",count:0,people:0,reportedPeople:1},
+  {date:"2026-11-15",count:7,people:2,reportedPeople:2}
+ ]};
  const original=JSON.stringify(summary);
  vm.runInNewContext(code,{$:get,summary,
   document:{createElement:tag=>new El(tag)},
@@ -336,6 +339,9 @@ test("standalone day cards keep exact saved day totals and do not invent reporti
  assert.equal(dayCards[0].children[0].textContent,"2026-11-14");
  assert.equal(dayCards[0].children[1].textContent,"0件");
  assert.equal(dayCards[1].children[1].textContent,"7件");
+ // A saved 0-count row is reported, not missing. Preserve the existing
+ // positive performer count separately from submitted-reporter count.
+ assert.equal(dayCards[0].children[2].textContent,"実績登録 1人");
  assert.equal(dayCards[1].children[2].textContent,"実績登録 2人");
  assert.equal(JSON.stringify(summary),original);
  assert.doesNotMatch(code,/setDoc\(|deleteDoc\(|updateDoc\(|formatYen\(|unitPrice|totalRevenue|cashback/i);
@@ -346,13 +352,18 @@ test("personal target day-rate is read-only and preserves unsaved goal input",()
  const end=source.indexOf("function renderCountGoal(){",begin);
  assert.ok(begin>0&&end>begin);
  const code=source.slice(begin,end);
+ const helperStart=source.indexOf("function countGoalHasIdentity(){");
+ const helperEnd=source.indexOf("// An optional estimate",helperStart);
+ assert(helperStart>0&&helperEnd>helperStart,"checked goal identity helpers missing");
+ const helpers=source.slice(helperStart,helperEnd);
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,new El());return nodes.get(id)};
  get("countGoalDays").value="10";get("countGoal").value="250";
  let reads=0;
  const ctx={$:get,countPeriod:"month",countExportRows:{summary:{total:90}},
+  activeCodeSession:"",codeCountGoalByMonth:new Map(),
   auth:{currentUser:{uid:"owner"}},countGoalKey:()=>"day-test",
   localStorage:{getItem:key=>{assert.equal(key,"day-test");reads++;return "120"}}};
- const fn=vm.runInNewContext(code+"\nrenderCountGoalDailyEstimate;",ctx);
+ const fn=vm.runInNewContext(helpers+code+"\nrenderCountGoalDailyEstimate;",ctx);
  fn();
  assert.equal(get("countGoalDailyEstimate").textContent,"残り必要件数 30件｜1日あたり 3件");
  assert.equal(get("countGoal").value,"250");

@@ -81,6 +81,10 @@ jobs:
           # Reuse the existing service fixture: real save transaction -> immediate
           # verified day/month partner ranks -> correction -> non-duplicated totals.
           node --test tests/partner-workspace.test.cjs
+          # Review the original count-only browser behaviors as part of the
+          # current integration; stale standalone branch hashes do not stand
+          # in for behavior/regression coverage.
+          node --test tests/partner-money-free-workspace.test.cjs tests/partner-original-team-card-parity.test.mjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: No deployment
