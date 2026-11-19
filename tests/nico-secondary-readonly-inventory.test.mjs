@@ -16,6 +16,29 @@ const sample=(override={})=>({context,user,oldMember,oldCompany,partnerMember,pa
 test('even revenue=false old internal member has original money read path',()=>{
  assert.equal(classifySecondary(sample()),'internal_finance_read_path');
 });
+test('unknown active context with legacy internal member money path is never labeled safe',()=>{
+ const changed=sample({context:{...context,kind:'legacy_unknown'}});
+ assert.equal(classifySecondary(changed),'unrecognized_active_legacy_finance_read_path');
+ assert.equal(classifySecondary({...changed,partnerCompany:null}),
+  'unrecognized_active_legacy_finance_read_path');
+ const missingPartner=sample({partnerMember:null});
+ assert.equal(classifySecondary(missingPartner),
+  'unrecognized_active_legacy_finance_read_path');
+ assert.equal(classifySecondary(sample({context:{...context,kind:'legacy_unknown',active:false}})),
+  'inactive_or_unrecognized');
+ assert.equal(classifySecondary(sample({context:{...context,kind:'legacy_unknown'},
+  user:{...user,accessKind:'partner'}})),'inactive_or_unrecognized');
+ assert.equal(classifySecondary(sample({context:{...context,kind:'legacy_unknown'},
+  oldMember:{...oldMember,active:false}})),'inactive_or_unrecognized');
+ const report=publicInventorySummary({totalContexts:1,activeUnknownOldFinancePaths:1,
+  activeUnknownSecondaryContexts:1});
+ assert.equal(report.oldInternalFinancePathPresent,true);
+ assert.equal(report.unrecognizedActiveOldFinanceReadPotential,true);
+ assert.equal(report.safeToDeploy,false);
+ const emitted=JSON.stringify(report);
+ for(const secret of ['test_uid','internal_company','activeUnknownOldFinancePaths'])
+  assert(!emitted.includes(secret));
+});
 test('same Firebase UID as internal company Owner is release blocker',()=>{
  assert.equal(classifySecondary(sample({oldCompany:{...oldCompany,ownerUid:'test_uid'}})),'owner_conflict');
  assert.equal(classifySecondary(sample({oldMember:{...oldMember,companyRole:'owner'}})),'owner_conflict');
