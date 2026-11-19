@@ -49,7 +49,29 @@ const validPartnerName=x=>typeof x==='string'&&/^[\p{L}\p{N} 　・ー（）()_.
 const internalKind=x=>x===undefined||x==='internal'||x==='direct';
 const internalAccess=x=>x===undefined||x==='internal';
 
+/**
+ * Potential legacy money READ as currently authorized by isCompanyMember().
+ * This is a conservative SOURCE-level audit, not an actual user-token proof.
+ * An active context with unexpected kind (or missing partner docs) can still
+ * retain a full internal member path. Ignoring it would mark a risk as safe.
+ */
+function possibleOldInternalMoneyRead(context,user,member,company){
+ return context?.active===true&&ID.test(context.primaryCompanyId||'')&&
+  !!user&&!!member&&!!company&&
+  user.companyId===context.primaryCompanyId&&
+  user.active!==false&&member.active!==false&&
+  (company.companyKind===undefined||company.companyKind==='internal')&&
+  internalAccess(user.accessKind)&&internalAccess(member.accessKind)&&
+  legacyType(user.memberType)&&legacyType(member.memberType);
+}
+
 export function classifySecondary({context,user,oldMember,oldCompany,partnerMember,partnerCompany}){
+ // Even an invalid or unrecognized partner context MUST NOT be declared
+ // safe when the historical internal financial membership is still readable.
+ if(context?.active===true&&
+    (context.kind!=='partner_secondary'||!partnerMember||!partnerCompany)&&
+    possibleOldInternalMoneyRead(context,user,oldMember,oldCompany))
+  return 'unrecognized_active_legacy_finance_read_path';
  const exists=!!context&&!!user&&!!oldMember&&!!oldCompany&&!!partnerMember&&!!partnerCompany;
  if(!exists)return 'broken';
  if(context.kind!=='partner_secondary'||context.active!==true)return 'inactive_or_unrecognized';
@@ -160,7 +182,7 @@ export async function inventory({db,credential,authService,request=fetch,include
   bounded(db,'partnerHistoricalTransfers',['uid','sourceCompanyId','destinationCompanyId'])
  ]);
  const values={totalContexts:contexts.length,activeSecondaryContexts:0,
-  ownerConflicts:0,nonOwnerOldFinancePaths:0,inactiveOrUnknownContexts:0,
+  ownerConflicts:0,nonOwnerOldFinancePaths:0,activeUnknownOldFinancePaths:0,inactiveOrUnknownContexts:0,
   inactiveSecondaryContexts:0,activeUnknownSecondaryContexts:0,
   inconsistentContexts:0,internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
@@ -191,6 +213,14 @@ export async function inventory({db,credential,authService,request=fetch,include
   }
   if(kind==='owner_conflict'){values.ownerConflicts++;values.activeSecondaryContexts++;}
   else if(kind==='internal_finance_read_path'){values.nonOwnerOldFinancePaths++;values.activeSecondaryContexts++;}
+  else if(kind==='unrecognized_active_legacy_finance_read_path'){
+   values.activeUnknownOldFinancePaths++;
+   values.activeSecondaryContexts++;
+   if(x.kind!=='partner_secondary'){
+    values.inactiveOrUnknownContexts++;
+    values.activeUnknownSecondaryContexts++;
+   }else values.inconsistentContexts++;
+  }
   else if(kind==='inactive_or_unrecognized'){
    values.inactiveOrUnknownContexts++;
    if(x.active===true)values.activeUnknownSecondaryContexts++;
@@ -242,7 +272,9 @@ export function publicInventorySummary(result){
  return Object.freeze({
   project:PROJECT,mode:'READ_ONLY',productionWrites:0,
   secondaryContextsPresent:Boolean(result.totalContexts),
-  oldInternalFinancePathPresent:Boolean(result.nonOwnerOldFinancePaths),
+  oldInternalFinancePathPresent:Boolean(result.nonOwnerOldFinancePaths||
+    result.activeUnknownOldFinancePaths),
+  unrecognizedActiveOldFinanceReadPotential:Boolean(result.activeUnknownOldFinancePaths),
   ownerContextConflictPresent:Boolean(result.ownerConflicts||result.internalOwnerContexts),
   unrecognizedContextPresent:Boolean(result.inactiveOrUnknownContexts||result.inconsistentContexts),
   activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||result.inconsistentContexts),
@@ -277,7 +309,8 @@ async function main(){
  console.log('NICO_SECONDARY_READ_ONLY '+JSON.stringify(publicInventorySummary(result)));
  // A successful inventory is not a deploy authorization.
  if(result.ownerConflicts||result.internalOwnerContexts)console.log('BLOCK_OWNER_SECONDARY_CONTEXT');
- if(result.nonOwnerOldFinancePaths)console.log('BLOCK_PARTNER_OLD_FINANCE_READ_PATH');
+ if(result.nonOwnerOldFinancePaths||result.activeUnknownOldFinancePaths)
+  console.log('BLOCK_PARTNER_OLD_FINANCE_READ_PATH');
  if(result.inconsistentContexts)console.log('BLOCK_SECONDARY_CONTEXT_INVALID');
  if(!result.exactReviewedPhase1RulesActive)console.log('BLOCK_PHASE1_FINANCE_BOUNDARY_NOT_ACTIVE');
  if(result.liveRulesSourceUnrecognized)console.log('BLOCK_LIVE_RULESET_UNRECOGNIZED');
