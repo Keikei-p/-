@@ -20,7 +20,7 @@ const sha=v=>createHash('sha256').update(v.replace(/\r\n/g,'\n').trim()).digest(
 // Fixed reviewed sources; SHA/Blob prove EXACT live source bytes, not a UI switch.
 const sourceFingerprint='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
 const reviewedPhase1GitBlob='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
-const originalMainGitBlob='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
+const originalMainGitBlob='6d3f165791188394d473417414e34208cd56bae6';
 const sha1Blob=v=>createHash('sha1').update('blob '+Buffer.byteLength(v,'utf8')+String.fromCharCode(0)).update(v,'utf8').digest('hex');
 
 /** Static classification ONLY. A matching rule candidate is NOT real-user proof. */
@@ -161,6 +161,7 @@ export async function inventory({db,credential,authService,request=fetch,include
  ]);
  const values={totalContexts:contexts.length,activeSecondaryContexts:0,
   ownerConflicts:0,nonOwnerOldFinancePaths:0,inactiveOrUnknownContexts:0,
+  inactiveSecondaryContexts:0,activeUnknownSecondaryContexts:0,
   inconsistentContexts:0,internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
  for(const c of contexts){
@@ -190,8 +191,11 @@ export async function inventory({db,credential,authService,request=fetch,include
   }
   if(kind==='owner_conflict'){values.ownerConflicts++;values.activeSecondaryContexts++;}
   else if(kind==='internal_finance_read_path'){values.nonOwnerOldFinancePaths++;values.activeSecondaryContexts++;}
-  else if(kind==='inactive_or_unrecognized')values.inactiveOrUnknownContexts++;
-  else values.inconsistentContexts++;
+  else if(kind==='inactive_or_unrecognized'){
+   values.inactiveOrUnknownContexts++;
+   if(x.active===true)values.activeUnknownSecondaryContexts++;
+   else values.inactiveSecondaryContexts++;
+  }else values.inconsistentContexts++;
  }
  for(const c of companies){
   const x=c.data()||{};
@@ -241,6 +245,8 @@ export function publicInventorySummary(result){
   oldInternalFinancePathPresent:Boolean(result.nonOwnerOldFinancePaths),
   ownerContextConflictPresent:Boolean(result.ownerConflicts||result.internalOwnerContexts),
   unrecognizedContextPresent:Boolean(result.inactiveOrUnknownContexts||result.inconsistentContexts),
+  activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||result.inconsistentContexts),
+  inactiveContextPresent:Boolean(result.inactiveSecondaryContexts),
   unapprovedTransferPresent:Boolean(result.transferNeedsReview),
   transferCandidatePresent:Boolean(result.transferEligibleCandidates),
   historicalTransferPresent:Boolean(result.historicalTransfersPresent),

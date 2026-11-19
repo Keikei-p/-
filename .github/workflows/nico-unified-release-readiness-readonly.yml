@@ -53,12 +53,12 @@ jobs:
           node --check tools/production/audit-secondary-contexts-readonly.mjs
           node --check tools/production/audit-live-firestore-rules-readonly.mjs
           node --check tools/production/inspect-project-billing-readonly.mjs
-          node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs
-          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
-          test "$(git hash-object index.html)" = '5edde6d5e5459ba283d12d157c021d4eee03d587'
+          node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs
+          test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
+          test "$(git hash-object index.html)" = 'c7ea13635ce6aac306529707863f5d2fd04e9126'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = '614f3216e008642ddf5eda6b93c35cc0469557c3'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '42eea81ab01449bedbbedabdc1a8fb6bfba1e284'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
           test "$(git hash-object finance-boundary-check.html)" = 'ba0de47af53174d3ef37a9a047818568c0527035'
           echo 'PASS_NICO_NO_DEPLOY_READINESS_ONLY'
   live:
@@ -88,10 +88,10 @@ jobs:
           set -euo pipefail
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
-          test "$(git hash-object firestore.rules)" = 'd9f4df6a2ac0f8b5720534a2461ec66b94379190'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '90d51246477cf5cfa6966f3e822326ef06cccd0f'
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = '614f3216e008642ddf5eda6b93c35cc0469557c3'
-          node --test tests/unified-release-readiness-readonly.test.mjs
+          test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
+          test "$(git hash-object functions-partner-workspace/index.js)" = '42eea81ab01449bedbbedabdc1a8fb6bfba1e284'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
+          node --test tests/unified-release-readiness-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs
       - name: Install existing read-only Firebase SDK dependencies before secrets
         shell: bash
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund

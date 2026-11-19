@@ -16,7 +16,7 @@ export const PROJECT="sales-management-cc116";
 export const RELEASE_URL="https://firebaserules.googleapis.com/v1/projects/"+
  PROJECT+"/releases/cloud.firestore";
 const RULESET_PREFIX="https://firebaserules.googleapis.com/v1/";
-const MATCH_SHA="d9f4df6a2ac0f8b5720534a2461ec66b94379190";
+const MATCH_SHA="6d3f165791188394d473417414e34208cd56bae6";
 const halt=code=>{throw Error("STOP_NICO_LIVE_RULES_READONLY_"+code)};
 const shape=value=>value!==null&&typeof value==="object"&&!Array.isArray(value);
 export function gitBlob(source){
