@@ -1,0 +1,96 @@
+name: NICO 光/AIR separate input, combined ranking and old-product swap (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/light-air-split.cjs'
+      - 'functions-partner-workspace/service.cjs'
+      - 'functions-partner-workspace/index.js'
+      - 'partner-workspace.html'
+      - 'ranking/owner-product-visibility-panel.mjs'
+      - 'tests/light-air-split-contract.test.cjs'
+      - 'tests/light-air-cutover-ui.test.mjs'
+      - 'tests/partner-workspace.test.cjs'
+      - '.github/workflows/nico-light-air-separated-entry-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  exact-cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_PARTNER_LIGHT_AIR_SPLIT_ENABLED: ''
+      NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Fail on product, finance, live-index, Rules or deployed-code changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_PARTNER_LIGHT_AIR_SPLIT_ENABLED"
+          test -z "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED"
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-light-air-separated-entry-no-deploy.yml' \
+            'functions-partner-workspace/index.js' \
+            'functions-partner-workspace/light-air-split.cjs' \
+            'functions-partner-workspace/service.cjs' \
+            'partner-workspace.html' \
+            'ranking/owner-product-visibility-panel.mjs' \
+            'tests/light-air-cutover-ui.test.mjs' \
+            'tests/light-air-split-contract.test.cjs' \
+            'tests/partner-workspace.test.cjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/approved.txt"
+          diff -u "$RUNNER_TEMP/approved.txt" "$RUNNER_TEMP/changed.txt"
+          node -e "const fs=require('fs');if(JSON.parse(fs.readFileSync('.firebaserc')).projects.default!=='sales-management-cc116')process.exit(1)"
+      - name: Check server, Owner switch and partner-page syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check functions-partner-workspace/light-air-split.cjs
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/index.js
+          node --check ranking/owner-product-visibility-panel.mjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html=fs.readFileSync('partner-workspace.html','utf8');
+          const src=html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+          if(!src||!src.includes('sbSeparateInputEnabled')||
+             /\bgetFirestore\(|firebase-firestore\.js/.test(html))
+             throw Error('STOP_PARTNER_SPLIT_BROWSER_CONTRACT');
+          fs.writeFileSync('/tmp/nico-light-air-split-ui.mjs',src);
+          NODE
+          node --check /tmp/nico-light-air-split-ui.mjs
+      - name: Test real in-memory server count writes, old history, OFF and 4 ranking outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/light-air-split-contract.test.cjs \
+            tests/light-air-cutover-ui.test.mjs \
+            tests/partner-workspace.test.cjs \
+            tests/owner-product-visibility-panel.test.mjs
+          echo 'LIGHT_AIR_SPLIT_OFFLINE_PASS_ZERO_PRODUCTION_WRITES'
+      - name: Check immutability and no financial originals in partner API
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/partner-publication-write-ranking-consistency.test.cjs \
+            tests/partner-production-sequenced.test.cjs
+          if grep -Eq 'firebase[[:space:]]+deploy|gh[[:space:]]+workflow[[:space:]]+run' \
+            functions-partner-workspace/light-air-split.cjs; then exit 1; fi
+          echo 'FINANCE_AND_LEGACY_RANKING_PRESERVED'

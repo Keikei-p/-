@@ -14,6 +14,9 @@ const service=makeWorkspace({
  // Separate hard OFF: existing count save/correction behavior is unchanged
  // until owner SKU publication, finance denial and restore are verified.
  submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled",
+ // New separate 光/AIR count inputs; stays OFF until client, audit and
+ // server-enforced published category contract all pass real-account tests.
+ separateLightAirEnabled:()=>process.env.NICO_PARTNER_LIGHT_AIR_SPLIT_ENABLED==="enabled",
  // Independent gates; neither list nor correction is enabled by the workspace.
  ownerCorrectionReadEnabled:()=>process.env.NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED==="enabled",
  ownerCorrectionWriteEnabled:()=>process.env.NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED==="enabled"
