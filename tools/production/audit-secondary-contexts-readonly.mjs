@@ -20,7 +20,7 @@ const sha=v=>createHash('sha256').update(v.replace(/\r\n/g,'\n').trim()).digest(
 // Fixed reviewed sources; SHA/Blob prove EXACT live source bytes, not a UI switch.
 const sourceFingerprint='d1d9998d874a1a31c81ddf6996e08cd9de3a3d13bd684e245140bf03cab32179';
 const reviewedPhase1GitBlob='6d6ac7fd3544b0326823e419a3acd7e1d060b714';
-const originalMainGitBlob='d9f4df6a2ac0f8b5720534a2461ec66b94379190';
+const originalMainGitBlob='6d3f165791188394d473417414e34208cd56bae6';
 const sha1Blob=v=>createHash('sha1').update('blob '+Buffer.byteLength(v,'utf8')+String.fromCharCode(0)).update(v,'utf8').digest('hex');
 
 /** Static classification ONLY. A matching rule candidate is NOT real-user proof. */

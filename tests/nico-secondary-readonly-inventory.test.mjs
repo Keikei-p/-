@@ -88,7 +88,10 @@ test('EXACT current main Rules are recognized, but not mistaken for reviewed Pha
  const original=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
  const observed=classifyLiveRules(original);
  assert.equal(observed.exactOriginalMainRules,true);
- assert.equal(observed.matchesReviewedLegacyLive,true);
+ // Current production Rules were changed via reviewed Owner product Rules release.
+ // Keep the old legacy content fingerprint historical; do not assert that
+ // current main has the bytes of the prior legacy release.
+ assert.equal(observed.matchesReviewedLegacyLive,false);
  assert.equal(observed.exactReviewedPhase1Boundary,false);
  assert.equal(observed.actualAuthenticatedBoundaryVerified,false);
  // A single-byte change must NEVER be certified as a known source.
