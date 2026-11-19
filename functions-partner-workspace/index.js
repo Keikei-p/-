@@ -11,6 +11,9 @@ const service=makeWorkspace({
  enabled:()=>process.env.PARTNER_WORKSPACE_ENABLED==="enabled",
  // Must be explicitly enabled only after approved SKU mapping and finance proof.
  sharedRankingEnabled:()=>process.env.NICO_PARTNER_SHARED_RANKING_ENABLED==="enabled",
+ // User-approved simplification: all already-recorded count categories are
+ // shared; no per-product ON/OFF configuration. Kept OFF until E2E / finance.
+ unifiedRankingEnabled:()=>process.env.NICO_PARTNER_UNIFIED_COUNT_RANKING_ENABLED==="enabled",
  // Separate hard OFF: existing count save/correction behavior is unchanged
  // until owner SKU publication, finance denial and restore are verified.
  submissionPublicationEnabled:()=>process.env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled",
