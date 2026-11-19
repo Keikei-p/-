@@ -14,7 +14,7 @@ function setup({emailSignedIn=true,signoutError=false,signoutLeavesIdentity=fals
  const sessionStorage={setItem(k,v){events.push(["store",k,v]);}};
  const context=vm.createContext({
   auth,activeCodeSession:null,companyCodeSession:false,
-  codeCountSessionEpoch:0,countLoadId:0,countDayCache:new Map(),
+  codeCountSessionEpoch:0,codeCountGoalByMonth:new Map([["2026-11","100"]]),countLoadId:0,countDayCache:new Map(),
   resetPartnerPublishedCountPanels:()=>events.push(["reset"]),
   clearCountOnlyDashboard:()=>events.push(["clear"]),
   signOut:async()=>{
@@ -45,6 +45,7 @@ test("switching from old email signs out before enabling count-only code token",
  await x.run({sessionToken:TOKEN});
  assert.equal(x.auth.currentUser,null);
  assert.equal(x.context.activeCodeSession,TOKEN);
+ assert.equal(x.context.codeCountGoalByMonth.size,0);
  assert.deepEqual(x.events.map(y=>y[0]),["signout","reset","clear","store","refresh"]);
  assert.deepEqual(x.events[3],["store","nicoPartnerCodeSession",TOKEN]);
  assert.equal(x.context.codeCountSessionEpoch,1);
