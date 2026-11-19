@@ -724,11 +724,20 @@ const dateParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",
 .formatToParts(new Date()).map(p=>[p.type,p.value]));
 $("date").value=[dateParts.year,dateParts.month,dateParts.day].join("-");
 let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard",companyCodeSession=false;
+// Non-secret, monotonically increasing marker: never key cached company counts
+// by the company-code bearer token, nor reuse another company's async results.
+let codeCountSessionEpoch=0;
 let activeCodeSession="";
 try{activeCodeSession=sessionStorage.getItem("nicoPartnerCodeSession")||""}catch{}
 // Server validates every request; a stored token alone grants no client-side rights.
 const clearCompanySession=()=>{
+ ++codeCountSessionEpoch;
  activeCodeSession="";companyCodeSession=false;
+ // Invalidate every outstanding period read and Owner tab publication fetch.
+ ++countLoadId;
+ countDayCache.clear();
+ resetPartnerPublishedCountPanels();
+ clearCountOnlyDashboard();
  try{sessionStorage.removeItem("nicoPartnerCodeSession")}catch{}
 };
 let countPeriod="month",countLoadId=0,countExportRows=null;
@@ -1378,7 +1387,12 @@ function clearCountOnlyDashboard(){
   "countProductSummary","countTrendChart","countProductRank","countDailyRows","countDailyCards",
   "countTeamProducts","countTeamPeople"])$(id).replaceChildren();
 }
-function currentCountIdentity(){return activeCodeSession?"code:"+(workspaceCompanyId||"active"):auth.currentUser?.uid;}
+function currentCountIdentity(){
+ if(activeCodeSession)return "code-session-epoch:"+codeCountSessionEpoch;
+ const uid=auth.currentUser?.uid;
+ // A verified email account can hold more than one secondary company scope.
+ return uid?"email:"+uid+":workspace:"+workspaceCompanyId:"";
+}
 // The server-verified count contract is the ONLY authority for a public
 // combined rank. Existing signed-in partner ranks remain a safe fallback
 // while the joint endpoint is OFF/unavailable; they are not joint ranks.
@@ -1913,21 +1927,27 @@ $("hubInviteCompanySelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubIn
 $("hubInviteTeamSelect").onchange=()=>{$("hubInviteOut").hidden=true;$("hubInviteUrl").value=""};
 $("staffSelect").onchange=renderSelected;
 async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.currentUser.emailVerified))return;
- const current=++nonce;loading=true;$("save").disabled=true;try{
- const res=(await get({date:$("date").value})).data;if(current!==nonce)return;
+ const current=++nonce,session=activeCodeSession,user=auth.currentUser,
+  company=workspaceCompanyId;
+ loading=true;$("save").disabled=true;try{
+ const res=(await get({date:$("date").value})).data;
+ if(current!==nonce||session!==activeCodeSession||
+    user!==auth.currentUser||company!==workspaceCompanyId)return;
  if(!res||!Array.isArray(res.categories)||res.categories.join("|")!==KEYS.join("|"))throw Error("schema");
  if(res.enabledCategories!==undefined&&
     (!Array.isArray(res.enabledCategories)||
      new Set(res.enabledCategories).size!==res.enabledCategories.length||
      res.enabledCategories.some(key=>!KEYS.includes(key))))throw Error("publication_schema");
- data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});
+ data=res;countDayCache.set(currentCountIdentity()+"|"+res.date,
+  {savedAt:Date.now(),response:res});
  resetPartnerPublishedCountPanels();
  draw();
  if(usePartnerPublishedCountPanels())void loadPartnerPublishedCountPanels();
  notice("最新の件数を読み込みました。");
  void mountVerifiedJointMonthForPartner();
  }catch(e){
-  if(current!==nonce)return;
+  if(current!==nonce||session!==activeCodeSession||
+     user!==auth.currentUser||company!==workspaceCompanyId)return;
   data=null;resetPartnerPublishedCountPanels();resetApprovedRanking();resetVerifiedJointMonth();$("appBox").hidden=true;
   if(activeCodeSession&&["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
    clearCompanySession();
@@ -2031,6 +2051,11 @@ async function enterIsolatedCompanyCodeSession(result){
   if(auth.currentUser)throw Error("old_email_session_still_active");
  }
  if(auth.currentUser)throw Error("old_email_session_still_active");
+ ++codeCountSessionEpoch;
+ ++countLoadId;
+ countDayCache.clear();
+ resetPartnerPublishedCountPanels();
+ clearCountOnlyDashboard();
  activeCodeSession=token;
  try{sessionStorage.setItem("nicoPartnerCodeSession",activeCodeSession)}catch{}
  companyCodeSession=true;
@@ -2167,7 +2192,7 @@ $("logout").onclick=async()=>{
  if(activeCodeSession){
   const previous=activeCodeSession;
   try{await codeLogout({codeSessionToken:previous})}catch{ /* local logout even offline */ }
-  clearCompanySession();++nonce;loading=false;data=null;countDayCache.clear();resetApprovedRanking();resetVerifiedJointMonth();
+  clearCompanySession();++nonce;loading=false;data=null;resetApprovedRanking();resetVerifiedJointMonth();
   $("appBox").hidden=true;$("loginBox").hidden=false;
   notice("協力店の会社コードからログアウトしました。");
   return;

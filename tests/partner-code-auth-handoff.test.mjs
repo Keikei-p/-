@@ -14,6 +14,9 @@ function setup({emailSignedIn=true,signoutError=false,signoutLeavesIdentity=fals
  const sessionStorage={setItem(k,v){events.push(["store",k,v]);}};
  const context=vm.createContext({
   auth,activeCodeSession:null,companyCodeSession:false,
+  codeCountSessionEpoch:0,countLoadId:0,countDayCache:new Map(),
+  resetPartnerPublishedCountPanels:()=>events.push(["reset"]),
+  clearCountOnlyDashboard:()=>events.push(["clear"]),
   signOut:async()=>{
    events.push(["signout"]);
    if(signoutError)throw Error("signout_failed");
@@ -42,8 +45,10 @@ test("switching from old email signs out before enabling count-only code token",
  await x.run({sessionToken:TOKEN});
  assert.equal(x.auth.currentUser,null);
  assert.equal(x.context.activeCodeSession,TOKEN);
- assert.deepEqual(x.events.map(y=>y[0]),["signout","store","refresh"]);
- assert.deepEqual(x.events[1],["store","nicoPartnerCodeSession",TOKEN]);
+ assert.deepEqual(x.events.map(y=>y[0]),["signout","reset","clear","store","refresh"]);
+ assert.deepEqual(x.events[3],["store","nicoPartnerCodeSession",TOKEN]);
+ assert.equal(x.context.codeCountSessionEpoch,1);
+ assert.equal(x.context.countLoadId,1);
 });
 test("sign-out failure cannot retain mixed email and company-code identities",async()=>{
  for(const cfg of [{signoutError:true},{signoutLeavesIdentity:true}]){
@@ -57,7 +62,7 @@ test("sign-out failure cannot retain mixed email and company-code identities",as
 test("code-only sign-in does not call old email sign-out or mix financial permissions",async()=>{
  const x=setup({emailSignedIn:false});
  await x.run({sessionToken:TOKEN});
- assert.deepEqual(x.events.map(e=>e[0]),["store","refresh"]);
+ assert.deepEqual(x.events.map(e=>e[0]),["reset","clear","store","refresh"]);
  assert.equal(x.auth.currentUser,null);
 });
 test("invalid code session is never stored or activated",async()=>{
