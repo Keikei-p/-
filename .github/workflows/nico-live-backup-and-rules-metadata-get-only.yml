@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/nico-live-backup-and-rules-metadata-get-only.yml'
       - 'security/secondary-finance-read-fence.mjs'
+      - 'tools/production/audit-secondary-contexts-readonly.mjs'
+      - 'tests/nico-secondary-readonly-inventory.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,7 +43,7 @@ jobs:
           node --check tools/production/audit-secondary-contexts-readonly.mjs
           node --check tools/production/audit-login-readiness-live-readonly.mjs
           node --check tools/production/inspect-partner-full-history-readonly.mjs
-          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs tests/nico-secondary-readonly-inventory.test.mjs
           node security/secondary-finance-read-fence.mjs --check
       - name: Run existing metadata parser regression tests with zero credentials
         shell: bash
@@ -108,6 +110,8 @@ jobs:
               oldInternalFinancePathPresent:safe.oldInternalFinancePathPresent,
               ownerContextConflictPresent:safe.ownerContextConflictPresent,
               unrecognizedContextPresent:safe.unrecognizedContextPresent,
+              activeUnrecognizedContextPresent:safe.activeUnrecognizedContextPresent,
+              inactiveContextPresent:safe.inactiveContextPresent,
               historicalTransferPresent:safe.historicalTransferPresent,
               realPartnerFinanceDenyVerified:false,
               productionWrites:0

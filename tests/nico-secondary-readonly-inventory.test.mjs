@@ -127,3 +127,21 @@ test('public report is boolean-only and NEVER says security is already proven',(
  assert.equal(report.authenticatedBoundaryProofStillRequired,true);
  assert.equal(JSON.stringify(report).includes('totalRevenue'),false);
 });
+
+test('inactive historical secondary context is not an active unknown-finance risk',()=>{
+ const inactive={totalContexts:1,inactiveOrUnknownContexts:1,inactiveSecondaryContexts:1,
+  activeUnknownSecondaryContexts:0,inconsistentContexts:0};
+ const safe=publicInventorySummary(inactive);
+ assert.equal(safe.unrecognizedContextPresent,true);
+ assert.equal(safe.inactiveContextPresent,true);
+ assert.equal(safe.activeUnrecognizedContextPresent,false);
+ assert.equal(safe.safeToDeploy,false);
+ const active=publicInventorySummary({...inactive,activeUnknownSecondaryContexts:1,
+  inactiveSecondaryContexts:0});
+ assert.equal(active.activeUnrecognizedContextPresent,true);
+ assert.equal(active.inactiveContextPresent,false);
+ assert.equal(publicInventorySummary({...inactive,inconsistentContexts:1}).activeUnrecognizedContextPresent,true);
+ const published=JSON.stringify(safe);
+ for(const k of ['emailLower','uid','inactiveSecondaryContexts','activeUnknownSecondaryContexts'])
+  assert(!published.includes(k));
+});

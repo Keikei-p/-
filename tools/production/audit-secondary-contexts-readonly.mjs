@@ -161,6 +161,7 @@ export async function inventory({db,credential,authService,request=fetch,include
  ]);
  const values={totalContexts:contexts.length,activeSecondaryContexts:0,
   ownerConflicts:0,nonOwnerOldFinancePaths:0,inactiveOrUnknownContexts:0,
+  inactiveSecondaryContexts:0,activeUnknownSecondaryContexts:0,
   inconsistentContexts:0,internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
  for(const c of contexts){
@@ -190,8 +191,11 @@ export async function inventory({db,credential,authService,request=fetch,include
   }
   if(kind==='owner_conflict'){values.ownerConflicts++;values.activeSecondaryContexts++;}
   else if(kind==='internal_finance_read_path'){values.nonOwnerOldFinancePaths++;values.activeSecondaryContexts++;}
-  else if(kind==='inactive_or_unrecognized')values.inactiveOrUnknownContexts++;
-  else values.inconsistentContexts++;
+  else if(kind==='inactive_or_unrecognized'){
+   values.inactiveOrUnknownContexts++;
+   if(x.active===true)values.activeUnknownSecondaryContexts++;
+   else values.inactiveSecondaryContexts++;
+  }else values.inconsistentContexts++;
  }
  for(const c of companies){
   const x=c.data()||{};
@@ -241,6 +245,8 @@ export function publicInventorySummary(result){
   oldInternalFinancePathPresent:Boolean(result.nonOwnerOldFinancePaths),
   ownerContextConflictPresent:Boolean(result.ownerConflicts||result.internalOwnerContexts),
   unrecognizedContextPresent:Boolean(result.inactiveOrUnknownContexts||result.inconsistentContexts),
+  activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||result.inconsistentContexts),
+  inactiveContextPresent:Boolean(result.inactiveSecondaryContexts),
   unapprovedTransferPresent:Boolean(result.transferNeedsReview),
   transferCandidatePresent:Boolean(result.transferEligibleCandidates),
   historicalTransferPresent:Boolean(result.historicalTransfersPresent),
