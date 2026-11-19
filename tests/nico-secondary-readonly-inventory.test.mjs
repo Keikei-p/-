@@ -166,8 +166,42 @@ test('inactive historical secondary context is not an active unknown-finance ris
   inactiveSecondaryContexts:0});
  assert.equal(active.activeUnrecognizedContextPresent,true);
  assert.equal(active.inactiveContextPresent,false);
- assert.equal(publicInventorySummary({...inactive,inconsistentContexts:1}).activeUnrecognizedContextPresent,true);
+ // An inactive historical record can be malformed without creating a
+ // CURRENT active member. It still stays in inventory and cannot grant deploy.
+ const malformedHistorical=publicInventorySummary({
+  ...inactive,inconsistentContexts:1,inactiveSecondaryContexts:1,
+  activeInconsistentContexts:0
+ });
+ assert.equal(malformedHistorical.unrecognizedContextPresent,true);
+ assert.equal(malformedHistorical.activeUnrecognizedContextPresent,false);
+ assert.equal(malformedHistorical.inactiveContextPresent,true);
+ assert.equal(malformedHistorical.safeToDeploy,false);
+ // An active malformed membership remains an explicit security blocker.
+ const malformedActive=publicInventorySummary({
+  ...inactive,inconsistentContexts:1,activeInconsistentContexts:1,
+  activeMissingContextDocuments:1
+ });
+ assert.equal(malformedActive.activeUnrecognizedContextPresent,true);
+ assert.equal(malformedActive.activeContextDocumentsMissingPresent,true);
+ assert.equal(malformedActive.activeContextMembershipMismatchPresent,false);
+ const malformedMember=publicInventorySummary({
+  ...inactive,inconsistentContexts:1,activeInconsistentContexts:1,
+  activeMismatchedContextDocuments:1
+ });
+ assert.equal(malformedMember.activeContextMembershipMismatchPresent,true);
+ const unknownKind=publicInventorySummary({
+  ...inactive,activeUnknownSecondaryContexts:1,activeUnsupportedContextKinds:1
+ });
+ assert.equal(unknownKind.activeUnrecognizedContextPresent,true);
+ assert.equal(unknownKind.activeContextUnsupportedKindPresent,true);
+ const financePotential=publicInventorySummary({
+  ...inactive,activeUnknownOldFinancePaths:1
+ });
+ assert.equal(financePotential.oldInternalFinancePathPresent,true);
+ assert.equal(financePotential.activeUnrecognizedContextPresent,true);
  const published=JSON.stringify(safe);
- for(const k of ['emailLower','uid','inactiveSecondaryContexts','activeUnknownSecondaryContexts'])
+ for(const k of ['emailLower','uid','inactiveSecondaryContexts','activeUnknownSecondaryContexts',
+  'activeInconsistentContexts','activeMissingContextDocuments',
+  'activeMismatchedContextDocuments','activeUnsupportedContextKinds'])
   assert(!published.includes(k));
 });
