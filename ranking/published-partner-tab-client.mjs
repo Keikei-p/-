@@ -32,12 +32,16 @@ function validRankRows(rows,tab){
    tab==="individual"?["rank","name","company","count"]:
    ["rank","name","company","count","own"];
   if(!exact(row,keys)||!label(row.name)||!count(row.count)||
-    !Number.isSafeInteger(row.rank)||row.rank<1||row.rank>i+1||
+  // The authenticated server may redact earlier participants but preserves
+  // their original competition ranks (e.g. 1, 3 or first visible rank 2).
+  // Never invent dense ranks locally; still reject reversed order, fake ties,
+  // null/negative ranks, unsorted counts and unverified finance fields.
+    !Number.isSafeInteger(row.rank)||row.rank<i+1||
     (tab!=="product"&&!label(row.company))||
     (tab==="team"&&typeof row.own!=="boolean")||
     row.count>before||
     (row.count===lastCount&&row.rank!==lastRank)||
-    (row.count!==lastCount&&row.rank!==i+1))return false;
+    (row.count!==lastCount&&row.rank<=lastRank))return false;
   before=row.count;lastCount=row.count;lastRank=row.rank;
  }
  return true;
