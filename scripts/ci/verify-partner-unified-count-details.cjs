@@ -88,6 +88,25 @@ if(integrated){
   integration.includes("persist-credentials: false")&&
   integration.includes("REAL_ACCOUNT_E2E_UNPROVEN"),
   "Integrated CI must not claim real user security proof or deploy");
+ // The shared server-side read-only modules are deployed from the
+ // Functions directory, and these four root copies must be exactly equal.
+ // Lock both sides to the already reviewed vendor blob fingerprints.
+ const checkedReadOnlyModules={
+  "canonical-joint-count-sku-reader.mjs":"579d9694ce8448ada21c4f646623156a3e39be86",
+  "partner-month-readonly-loader.mjs":"8315e982761c366c26a3e962cd91a366586ac6ce",
+  "partner-workspace-count-source.mjs":"2e25df7c18f0edead0fa2a19aedc6a178858abbf",
+  "zero-setup-count-linker.mjs":"7deadcc4fb63aa6ec0a55f1dff216189032226d8"
+ };
+ for(const [name,pinnedBlob] of Object.entries(checkedReadOnlyModules)){
+  const root="ranking/"+name;
+  const vendor="functions-ranking-approvals/ranking/"+name;
+  assert.equal(fs.readFileSync(root,"utf8"),fs.readFileSync(vendor,"utf8"),
+   "Canonical count-only source diverges from the reviewed Functions code: "+name);
+  for(const file of [root,vendor])
+   assert.equal(cp.execFileSync("git",["hash-object",file],{
+    encoding:"utf8"
+   }).trim(),pinnedBlob,"Unreviewed count-only source change: "+file);
+ }
  // Historical rank tests may only acknowledge the verified own-team bit,
  // without changing their expected counts, owner visibility or finance fence.
  assert.equal(
@@ -159,6 +178,10 @@ const integrationOnly=[
  "tests/audit-login-readiness-live-readonly.test.mjs",
  "tests/owner-product-visibility-rankings.test.mjs",
  "tests/owner-visible-count-server-handler.test.mjs",
+ "ranking/canonical-joint-count-sku-reader.mjs",
+ "ranking/partner-month-readonly-loader.mjs",
+ "ranking/partner-workspace-count-source.mjs",
+ "ranking/zero-setup-count-linker.mjs",
  "tools/production/audit-login-readiness-live-readonly.mjs"
 ];
 assert(changed.every(file=>legacyAllowed.includes(file)||
