@@ -363,7 +363,7 @@ font:inherit;font-size:13px;line-height:1.6}
 <div id="partnerPanel-goal" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">🎯 目標日割り計算</h3>
  <div id="countGoalBox" class="count-section" hidden>
-  <p class="partner-panel-note">個人アカウントのこの端末にだけ保存。会社の実績原票は変更しません。</p>
+  <p class="partner-panel-note">メールの目標はこの端末に保存。会社コードではログイン中だけ保持し、ログアウトで消去します。実績原票は変更しません。</p>
   <div class="row"><div><label for="countGoal">月間目標件数</label>
    <input id="countGoal" type="number" inputmode="numeric" min="1" max="999999" step="1" placeholder="例：100"></div>
    <button id="countGoalSave" type="button">目標保存</button>
@@ -375,7 +375,7 @@ font:inherit;font-size:13px;line-height:1.6}
   </label></div>
   <p id="countGoalDailyEstimate" class="partner-panel-note" role="status" aria-live="polite"></p>
  </div>
- <p id="countGoalUnavailable" class="partner-panel-note" hidden>目標を表示するには、月別と個人メールアカウントを選んでください。</p>
+ <p id="countGoalUnavailable" class="partner-panel-note" hidden>ログイン後、月別の件数を読み込んでください。</p>
 </div>
 <div id="partnerPanel-daily" class="dashboard-app-content" hidden>
  <h3 class="partner-panel-title">📅 日別</h3>
@@ -727,11 +727,14 @@ let data=null,loading=false,nonce=0,activeWorkspaceTab="Dashboard",companyCodeSe
 // Non-secret, monotonically increasing marker: never key cached company counts
 // by the company-code bearer token, nor reuse another company's async results.
 let codeCountSessionEpoch=0;
+// Shared company-code login goals exist only in RAM for the current login.
+const codeCountGoalByMonth=new Map();
 let activeCodeSession="";
 try{activeCodeSession=sessionStorage.getItem("nicoPartnerCodeSession")||""}catch{}
 // Server validates every request; a stored token alone grants no client-side rights.
 const clearCompanySession=()=>{
  ++codeCountSessionEpoch;
+ codeCountGoalByMonth.clear();
  activeCodeSession="";companyCodeSession=false;
  // Invalidate every outstanding period read and Owner tab publication fetch.
  ++countLoadId;
@@ -1157,14 +1160,22 @@ function countGoalKey(){
  return "nico-partner-month-goal-v1:"+auth.currentUser.uid+":"+
  encodeURIComponent(data.companyName||"")+":"+$("dashboardPartnerMonth").value;
 }
+function countGoalHasIdentity(){
+ return activeCodeSession?!auth.currentUser:!!auth.currentUser?.uid;
+}
+function countGoalStoredValue(){
+ return activeCodeSession?
+  codeCountGoalByMonth.get($("dashboardPartnerMonth").value)||null:
+  localStorage.getItem(countGoalKey());
+}
 // An optional estimate from the existing personal monthly target. Never
 // writes user counts, target records, or the unsaved goal field.
 function renderCountGoalDailyEstimate(){
  const target=$("countGoalDailyEstimate");target.textContent="";
- if(countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid)return;
+ if(countPeriod!=="month"||!countExportRows||!countGoalHasIdentity())return;
  const daysRaw=$("countGoalDays").value.trim();
  let saved;
- try{saved=localStorage.getItem(countGoalKey())}
+ try{saved=countGoalStoredValue()}
  catch{target.textContent="端末の目標を読み込めませんでした。";return}
  if(!/^[1-9][0-9]{0,5}$/.test(saved||""))return;
  if(!/^[1-9][0-9]{0,2}$/.test(daysRaw)||Number(daysRaw)>366){
@@ -1175,11 +1186,11 @@ function renderCountGoalDailyEstimate(){
 }
 function renderCountGoal(){
  $("countGoalDailyEstimate").textContent="";
- $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows||!auth.currentUser?.uid;
+ $("countGoalBox").hidden=countPeriod!=="month"||!countExportRows||!countGoalHasIdentity();
  $("countGoalUnavailable").hidden=!$("countGoalBox").hidden;
  if($("countGoalBox").hidden)return;
  let raw;
- try{raw=localStorage.getItem(countGoalKey())}catch{
+ try{raw=countGoalStoredValue()}catch{
   $("countGoalStatus").textContent="端末への保存を利用できません。";return}
  const goal=/^[1-9][0-9]{0,5}$/.test(raw||"")?Number(raw):0;
  $("countGoal").value=goal?String(goal):"";
@@ -1525,15 +1536,23 @@ $("countProductMode").onchange=()=>{
 $("countTeamSelect").onchange=renderTeamCountDetail;
 $("countGoalDays").addEventListener("input",renderCountGoalDailyEstimate);
 $("countGoalSave").onclick=()=>{
- if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
+ if(!countExportRows||countPeriod!=="month"||!countGoalHasIdentity())return;
  const raw=$("countGoal").value.trim();
  if(!/^[1-9][0-9]{0,5}$/.test(raw)){
   $("countGoalStatus").textContent="1〜999999件の整数を入力してください。";return}
+ if(activeCodeSession){
+  codeCountGoalByMonth.set($("dashboardPartnerMonth").value,raw);
+  renderCountGoal();return;
+ }
  try{localStorage.setItem(countGoalKey(),raw);renderCountGoal()}
  catch{$("countGoalStatus").textContent="端末に保存できませんでした。"}
 };
 $("countGoalClear").onclick=()=>{
- if(!countExportRows||countPeriod!=="month"||!auth.currentUser)return;
+ if(!countExportRows||countPeriod!=="month"||!countGoalHasIdentity())return;
+ if(activeCodeSession){
+  codeCountGoalByMonth.delete($("dashboardPartnerMonth").value);
+  renderCountGoal();return;
+ }
  try{localStorage.removeItem(countGoalKey());renderCountGoal()}
  catch{$("countGoalStatus").textContent="目標を解除できませんでした。"}
 };
@@ -2062,6 +2081,7 @@ async function enterIsolatedCompanyCodeSession(result){
  }
  if(auth.currentUser)throw Error("old_email_session_still_active");
  ++codeCountSessionEpoch;
+ codeCountGoalByMonth.clear();
  ++countLoadId;
  countDayCache.clear();
  resetPartnerPublishedCountPanels();
