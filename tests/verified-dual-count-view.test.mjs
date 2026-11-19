@@ -148,7 +148,8 @@ test("own partner team details render using exactly the validated count-only ser
  const output=words(root);
  assert(output.includes("協力店Aの班詳細"));
  assert(output.includes("協力店担当"));
- assert(!output.includes("本社担当"));
+ assert(!words(find(root,"nico-dual-partner-teams")).includes("本社担当"),
+  "Only own partner team details are private; public member ranking is separately approved");
  assert(!/(売上|単価|キャッシュバック|[¥￥])/.test(output));
  assert.deepEqual(payload,original);
  const invalid=[

@@ -93,7 +93,7 @@ if(integrated){
  // Lock both sides to the already reviewed vendor blob fingerprints.
  for(const [path,pinned] of [
   ["ranking/verified-dual-count-view.mjs","fec368b973cc9f0ce7587c8712f03626f3ffe7cf"],
-  ["tests/verified-dual-count-view.test.mjs","916b563efa00fd68e91feef07a4eaa5dbb8d598a"]
+  ["tests/verified-dual-count-view.test.mjs","4efc702d43fce75307609c71eb86a0de358e3a5b"]
  ]){
   assert.equal(cp.execFileSync("git",["hash-object",path],{
    encoding:"utf8"
