@@ -4413,6 +4413,23 @@ body.product-reordering .product-list {
 #dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
 
+<style id="nicoUnifiedCompanyCodeLoginStyle">
+/* Company-code identity stays out of all finance screens. Email UI unchanged. */
+#authScreen .nico-main-code-panel[hidden]{display:none!important}
+#authScreen .nico-main-code-form[hidden]{display:none!important}
+#authScreen[data-nico-code-login="true"] .nico-main-email-field,
+#authScreen[data-nico-code-login="true"] #nameGroup,
+#authScreen[data-nico-code-login="true"] #authButton,
+#authScreen[data-nico-code-login="true"] .auth-card > .switch-text,
+#authScreen[data-nico-code-login="true"] #authRecoveryControls{display:none!important}
+#nicoMainCompanyCodeToggle{width:100%;min-height:44px;margin-top:12px}
+#nicoMainCompanyCodePanel{margin-top:14px;text-align:left}
+#nicoMainCompanyCodePanel .form-group{margin-top:12px}
+#nicoMainCompanyCodePanel input{width:100%;box-sizing:border-box;min-height:46px}
+#nicoMainCompanyCodeSubmit{width:100%;min-height:48px}
+#nicoMainCodeBack{min-height:44px;width:100%;margin-top:8px}
+#nicoMainCompanyCodeStatus{font-size:13px;line-height:1.6;min-height:20px}
+</style>
 <style id="nicoPartnerSameAppStyle">
 /* Keep existing login and invite routes. Hide duplicate local-only scoreboards
    and direct management shortcuts; the existing safe hamburger remains. */
@@ -4707,7 +4724,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 
       </div>
 
-      <div class="form-group">
+      <div class="form-group nico-main-email-field">
 
         <label for="email">
           メールアドレス
@@ -4721,7 +4738,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 
       </div>
 
-      <div class="form-group">
+      <div class="form-group nico-main-email-field">
 
         <label for="password">
           パスワード
@@ -4754,6 +4771,25 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
         </button>
 
       </div>
+
+      <!-- One entry screen, existing isolated partner-code backend and count-only destination. -->
+      <button id="nicoMainCompanyCodeToggle" type="button" class="link-button" aria-expanded="false" aria-controls="nicoMainCompanyCodePanel">協力店は会社コードでログイン</button>
+      <section id="nicoMainCompanyCodePanel" class="nico-main-code-panel" hidden aria-label="協力店の会社コードログイン">
+        <p style="font-size:13px;line-height:1.6;">自社は従来のメールログイン、協力店は会社コードとパスワードを入力します。協力店に売上・単価は公開されません。</p>
+        <form id="nicoMainCompanyCodeForm" class="nico-main-code-form" autocomplete="on">
+          <div class="form-group">
+            <label for="nicoMainCompanyCode">会社コード</label>
+            <input id="nicoMainCompanyCode" name="nicoCompanyCode" type="text" inputmode="text" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="29" placeholder="NICO-XXXXXXXXXXXXXXXXXXXXXXXX" required>
+          </div>
+          <div class="form-group">
+            <label for="nicoMainCompanyPassword">協力店パスワード</label>
+            <input id="nicoMainCompanyPassword" name="nicoCompanyPassword" type="password" autocomplete="current-password" maxlength="128" required>
+          </div>
+          <button id="nicoMainCompanyCodeSubmit" type="submit" class="primary-button">会社コードでログイン</button>
+        </form>
+        <button id="nicoMainCodeBack" type="button" class="link-button">メールログインに戻る</button>
+        <p id="nicoMainCompanyCodeStatus" role="status" aria-live="polite"></p>
+      </section>
 
       <!-- Shown only when a partner opens the Firebase authentication email link. -->
       <section id="partnerEmailLinkVerifyPanel" hidden style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:12px;">
@@ -11469,6 +11505,83 @@ async function register() {
 
 }
 
+
+/* One login entry; the company-code session is kept in this tab only.
+   No Finance auth, Firestore original read, email account creation or writes. */
+function nicoShowMainCompanyCodeLogin(open){
+ const panel=document.getElementById("nicoMainCompanyCodePanel");
+ const toggle=document.getElementById("nicoMainCompanyCodeToggle");
+ if(!panel||!toggle)return;
+ authScreen.dataset.nicoCodeLogin=open?"true":"false";
+ panel.hidden=!open;
+ toggle.setAttribute("aria-expanded",open?"true":"false");
+ toggle.textContent=open?"協力店（会社コード）でログイン中":"協力店は会社コードでログイン";
+ const status=document.getElementById("nicoMainCompanyCodeStatus");
+ if(status)status.textContent="";
+ if(!open){
+  const password=document.getElementById("nicoMainCompanyPassword");
+  if(password)password.value="";
+ }
+}
+async function nicoEnterCompanyCodeFromMain(result){
+ const token=result?.sessionToken;
+ if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+  throw Error("invalid_company_code_session");
+ // Never mix an existing email Firebase identity with a count-only code.
+ if(typeof auth.authStateReady==="function")await auth.authStateReady();
+ if(auth.currentUser)await signOut(auth);
+ if(auth.currentUser)throw Error("old_email_session_still_active");
+ // Same tab + same origin: existing partner workspace independently checks
+ // server session, company membership, and no-finance flags on EVERY API call.
+ sessionStorage.setItem("nicoPartnerCodeSession",token);
+ if(auth.currentUser){
+  sessionStorage.removeItem("nicoPartnerCodeSession");
+  throw Error("old_email_session_still_active");
+ }
+ try{
+  location.assign(new URL("/partner-workspace.html",location.origin).href);
+ }catch{
+  sessionStorage.removeItem("nicoPartnerCodeSession");
+  throw Error("company_code_navigation_failed");
+ }
+}
+const nicoMainCodeToggle=document.getElementById("nicoMainCompanyCodeToggle");
+const nicoMainCodePanel=document.getElementById("nicoMainCompanyCodePanel");
+const nicoMainCodeForm=document.getElementById("nicoMainCompanyCodeForm");
+const nicoMainCodeBack=document.getElementById("nicoMainCodeBack");
+let nicoMainCodeLoginBusy=false;
+nicoMainCodeToggle.onclick=()=>nicoShowMainCompanyCodeLogin(true);
+nicoMainCodeBack.onclick=()=>nicoShowMainCompanyCodeLogin(false);
+nicoMainCodeForm.onsubmit=async event=>{
+ event.preventDefault();
+ if(nicoMainCodeLoginBusy||nicoMainCodePanel.hidden)return;
+ const code=document.getElementById("nicoMainCompanyCode").value.trim().toUpperCase();
+ const field=document.getElementById("nicoMainCompanyPassword");
+ const password=field.value;
+ const status=document.getElementById("nicoMainCompanyCodeStatus");
+ if(!/^NICO-[A-F0-9]{24}$/.test(code)||!password||password.length>128){
+  status.textContent="会社コードとパスワードを確認してください。";
+  field.value="";
+  return;
+ }
+ nicoMainCodeLoginBusy=true;
+ const submit=document.getElementById("nicoMainCompanyCodeSubmit");
+ submit.disabled=true;
+ status.textContent="協力店のログイン権限を確認しています…";
+ try{
+  // Reuse existing isolated callable. It has its OWN default-OFF server flag.
+  const loginCode=httpsCallable(partnerCountFunctions,"loginPartnerCompanyCode",{timeout:15000});
+  const result=(await loginCode({companyCode:code,password})).data;
+  field.value="";
+  await nicoEnterCompanyCodeFromMain(result);
+ }catch{
+  // Deliberately do not log credentials, token, Firestore IDs or raw errors.
+  field.value="";
+  status.textContent="ログインできませんでした。会社コード・パスワード・協力店認証サービスの公開状態を確認してください。";
+ }finally{
+  nicoMainCodeLoginBusy=false;submit.disabled=false;
+ }
+};
 
 /* =====================================================
    ログイン
