@@ -686,10 +686,10 @@ function renderApprovedCountRankingDetails(){
 // Match the existing backend's exact Mon-Sun week boundaries, including
 // weeks crossing month/year and unfinished current weeks. Zero financial reads.
 function approvedRankingDateRange(month,period,selected,today){
- const validDate=s=>/^20\\d\\d-(0[1-9]|1[0-2])-([0-2]\\d|3[01])$/.test(s)&&
+ const validDate=s=>/^20\d\d-(0[1-9]|1[0-2])-([0-2]\d|3[01])$/.test(s)&&
    Number.isFinite(Date.parse(s+"T12:00:00Z"))&&
    new Date(s+"T12:00:00Z").toISOString().slice(0,10)===s;
- if(!/^20\\d\\d-(0[1-9]|1[0-2])$/.test(month)||
+ if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||
    !["day","week","month"].includes(period)||!validDate(today))
   throw Error("invalid_ranking_period");
  const lastOfMonth=new Date(Date.UTC(Number(month.slice(0,4)),
