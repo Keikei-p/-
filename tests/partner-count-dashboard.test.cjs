@@ -82,8 +82,10 @@ test("partner page mirrors original dashboard visuals without copying finance ba
  assert.match(page,/action:"moveStaff"/);
  assert.match(page,/countDayCache\.clear\(\)/);
  assert.match(page,/function currentCountIdentity\(\)/);
- assert.equal((page.match(/if\(gen!==countLoadId\|\|currentCountIdentity\(\)!==uid\)return/g)||[]).length,2,
-  "both async read checkpoints must reject login/session changes");
+ assert.equal((page.match(/if\(gen!==countLoadId\|\|currentCountIdentity\(\)!==uid\)return/g)||[]).length,3,
+  "all three async checkpoints must reject login/session changes before caching and display");
+ assert.match(page,/response\.companyName!==data\.companyName/,
+  "day-by-day scope must reject responses from another partner company");
  assert.match(page,/if\(start!==nonce\|\|!sameView\(\)\)return;\s*ownedNonce=start\+1;\s*await refresh\(\)/);
  assert.doesNotMatch(page,/firebase-firestore\.js|\bgetFirestore\(|\bgetDoc\(|\bgetDocs\(/);
  assert.doesNotMatch(page,/\brevenuePerUnit\b|\btotalRevenue\b|\bunitPrice\b|\bpricingOptions\b/);
