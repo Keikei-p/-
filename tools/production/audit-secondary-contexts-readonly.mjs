@@ -96,6 +96,36 @@ export function classifySecondary({context,user,oldMember,oldCompany,partnerMemb
 }
 
 /**
+ * Bounded server-only diagnosis for ACTIVE but inconsistent secondary docs.
+ * Only three coarse boolean categories may reach a public Actions log.
+ * Does not expose document values, identities, paths or individual counts.
+ * Never interprets a code mismatch as permission to edit old memberships.
+ */
+export function classifyActiveContextMismatch({
+ context,user,oldMember,oldCompany,partnerMember,partnerCompany
+}={}){
+ const active=context?.active===true;
+ const complete=!!user&&!!oldMember&&!!oldCompany&&!!partnerMember&&!!partnerCompany;
+ if(!active||!complete)return Object.freeze({
+  contextPair:false,primary:false,partner:false
+ });
+ return Object.freeze({
+  contextPair:!ID.test(context.primaryCompanyId||'')||
+   !ID.test(context.partnerCompanyId||'')||
+   context.primaryCompanyId===context.partnerCompanyId,
+  primary:user.companyId!==context.primaryCompanyId||
+   oldMember.active===false||user.active===false||
+   oldCompany.active===false||!internalKind(oldCompany.companyKind)||
+   !internalAccess(user.accessKind)||!internalAccess(oldMember.accessKind)||
+   !legacyType(user.memberType)||!legacyType(oldMember.memberType),
+  partner:partnerCompany.companyKind!=='partner'||
+   partnerCompany.active===false||partnerMember.active===false||
+   partnerMember.accessKind!=='partner'||
+   partnerMember.memberType!=='cooperator'
+ });
+}
+
+/**
  * Strict dry-run only. A primary conversion must never be issued solely from
  * this boolean; the user's live client session and immutable backup remain
  * separate deployment gates.
@@ -186,7 +216,8 @@ export async function inventory({db,credential,authService,request=fetch,include
   inactiveSecondaryContexts:0,activeUnknownSecondaryContexts:0,
   inconsistentContexts:0,activeInconsistentContexts:0,
   activeMissingContextDocuments:0,activeMismatchedContextDocuments:0,
-  activeUnsupportedContextKinds:0,
+  activeInvalidCompanyPair:0,activePrimaryRecordMismatch:0,
+  activePartnerRecordMismatch:0,activeUnsupportedContextKinds:0,
   internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
  for(const c of contexts){
@@ -228,7 +259,15 @@ export async function inventory({db,credential,authService,request=fetch,include
     values.activeInconsistentContexts++;
     if(!user||!oldMember||!oldCompany||!partnerMember||!partnerCompany)
      values.activeMissingContextDocuments++;
-    else values.activeMismatchedContextDocuments++;
+    else{
+     values.activeMismatchedContextDocuments++;
+     const cause=classifyActiveContextMismatch({
+      context:x,user,oldMember,oldCompany,partnerMember,partnerCompany
+     });
+     if(cause.contextPair)values.activeInvalidCompanyPair++;
+     if(cause.primary)values.activePrimaryRecordMismatch++;
+     if(cause.partner)values.activePartnerRecordMismatch++;
+    }
    }
   }
   else if(kind==='inactive_or_unrecognized'){
@@ -245,7 +284,15 @@ export async function inventory({db,credential,authService,request=fetch,include
     values.activeInconsistentContexts++;
     if(!user||!oldMember||!oldCompany||!partnerMember||!partnerCompany)
      values.activeMissingContextDocuments++;
-    else values.activeMismatchedContextDocuments++;
+    else{
+     values.activeMismatchedContextDocuments++;
+     const cause=classifyActiveContextMismatch({
+      context:x,user,oldMember,oldCompany,partnerMember,partnerCompany
+     });
+     if(cause.contextPair)values.activeInvalidCompanyPair++;
+     if(cause.primary)values.activePrimaryRecordMismatch++;
+     if(cause.partner)values.activePartnerRecordMismatch++;
+    }
    }else values.inactiveSecondaryContexts++;
   }
  }
@@ -305,6 +352,9 @@ export function publicInventorySummary(result){
     result.activeInconsistentContexts||result.activeUnknownOldFinancePaths),
   activeContextDocumentsMissingPresent:Boolean(result.activeMissingContextDocuments),
   activeContextMembershipMismatchPresent:Boolean(result.activeMismatchedContextDocuments),
+  activeContextCompanyPairInvalidPresent:Boolean(result.activeInvalidCompanyPair),
+  activeContextPrimaryRecordMismatchPresent:Boolean(result.activePrimaryRecordMismatch),
+  activeContextPartnerRecordMismatchPresent:Boolean(result.activePartnerRecordMismatch),
   activeContextUnsupportedKindPresent:Boolean(result.activeUnsupportedContextKinds),
   inactiveContextPresent:Boolean(result.inactiveSecondaryContexts),
   unapprovedTransferPresent:Boolean(result.transferNeedsReview),
