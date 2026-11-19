@@ -119,3 +119,50 @@ test("company-code auth never inherits a stale email workspace or prior code bea
   ("workspaceCompanyId" in x.data||"codeSessionToken" in x.data)),false);
  assert(!/deleteUser\(|updateDoc\(|setDoc\(|firebase deploy/.test(html.slice(start,end)));
 });
+
+test("legacy email signout is enforced before company-code login and activation",async()=>{
+ const begin=html.indexOf("async function endEmailSessionBeforeCompanyCodeAuth(){");
+ const end=html.indexOf("// A company-code session and an old Firebase email identity",begin);
+ assert(begin>0&&end>begin);
+ const source=html.slice(begin,end);
+ const login=html.slice(html.indexOf('$("companyCodeLoginForm").onsubmit='),
+  html.indexOf('$("companyCodeActivateForm").onsubmit='));
+ const activation=html.slice(html.indexOf('$("companyCodeActivateForm").onsubmit='),
+  html.indexOf('$("companyCodeExisting").onchange='));
+ for(const [snippet,backend] of [
+  [login,"await codeLogin({companyCode,password})"],
+  [activation,"await activateCompanyCode({companyCode,password})"]
+ ]){
+  const guard=snippet.indexOf("await endEmailSessionBeforeCompanyCodeAuth()");
+  assert(guard>=0&&guard<snippet.indexOf(backend),
+   "old email Auth must sign out before "+backend);
+ }
+ for(const config of [
+  {signedIn:true,signoutError:false,remain:false,expected:1},
+  {signedIn:false,signoutError:false,remain:false,expected:0}
+ ]){
+  const auth={currentUser:config.signedIn?{uid:"disabledOld"}:null};
+  let signouts=0;
+  const context=vm.createContext({auth,signOut:async()=>{
+   signouts++;
+   if(!config.remain)auth.currentUser=null;
+  }});
+  const guard=vm.runInContext(source+"\nendEmailSessionBeforeCompanyCodeAuth",context);
+  await guard();
+  assert.equal(auth.currentUser,null);
+  assert.equal(signouts,config.expected);
+ }
+ for(const failing of [{throwError:true},{remain:true}]){
+  const auth={currentUser:{uid:"disabledOld"}},events=[];
+  const context=vm.createContext({auth,signOut:async()=>{
+   events.push("signout");
+   if(failing.throwError)throw Error("fail");
+   if(!failing.remain)auth.currentUser=null;
+  }});
+  const guard=vm.runInContext(source+"\nendEmailSessionBeforeCompanyCodeAuth",context);
+  await assert.rejects(guard());
+  assert.deepEqual(events,["signout"]);
+  assert.equal(auth.currentUser?.uid,"disabledOld");
+ }
+ assert(!/deleteUser\(|updateDoc\(|setDoc\(|firebase deploy/.test(source));
+});
