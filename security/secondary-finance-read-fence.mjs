@@ -1,7 +1,8 @@
 /**
  * Candidate financial raw-GET/LIST/WRITE fence for active secondary partners.
- * EMULATOR ONLY. This generator never changes the production Rules file.
- * Pinned to current main Rules blob 6d3f165 (2026-11-19 JST).\n * Legacy internal input can break: preserve count-only Function access and
+ * EMULATOR ONLY. Pinned to the reviewed November 19 main Rules blob. This
+ * generator never modifies or deploys the production Rules file.
+ * Legacy internal input can break: preserve count-only Function access and
  * require independently verified real-user continuity before any cutover.
  */
 import {readFileSync} from "node:fs";

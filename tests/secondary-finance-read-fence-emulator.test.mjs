@@ -1,9 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {proposeSecondaryFinanceFence,originalRules,COLLECTIONS} from
+import {createHash} from "node:crypto";
+import {proposeSecondaryFinanceFence,originalRules,COLLECTIONS,ORIGINAL_BLOB} from
  "../security/secondary-finance-read-fence.mjs";
 const current=originalRules(),candidate=proposeSecondaryFinanceFence();
+const gitBlob=source=>{
+ const data=Buffer.from(source,"utf8");
+ return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
+};
+test("finance deny candidate is pinned to the reviewed active Rules exact blob",()=>{
+ assert.equal(gitBlob(current),ORIGINAL_BLOB);
+ assert.equal(ORIGINAL_BLOB,"6d3f165791188394d473417414e34208cd56bae6");
+ assert.notEqual(candidate,current);
+});
 
 test("future candidate narrows financial reads and writes only; production sources are untouched",()=>{
  assert.equal(COLLECTIONS.length,4);
