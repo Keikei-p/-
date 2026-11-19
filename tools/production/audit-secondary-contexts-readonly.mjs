@@ -237,6 +237,8 @@ export async function inventory({db,credential,authService,request=fetch,include
   activeMissingContextDocuments:0,activeMismatchedContextDocuments:0,
   activeInvalidCompanyPair:0,activePrimaryRecordMismatch:0,
   activePrimaryIdentityLinkMismatch:0,activePrimaryInactiveState:0,
+  activePrimaryUserDisabled:0,activePrimaryMemberDisabled:0,
+  activePrimaryCompanyDisabled:0,
   activePrimaryAccessMarkerMismatch:0,activePrimaryMemberTypeMismatch:0,
   activePrimaryCompanyKindMismatch:0,
   activePartnerRecordMismatch:0,activeUnsupportedContextKinds:0,
@@ -293,7 +295,14 @@ export async function inventory({db,credential,authService,request=fetch,include
        context:x,user,oldMember,oldCompany
       });
       if(primary.link)values.activePrimaryIdentityLinkMismatch++;
-      if(primary.inactive)values.activePrimaryInactiveState++;
+      if(primary.inactive){
+       values.activePrimaryInactiveState++;
+       // Distinguish an intentionally disabled primary membership from a
+       // disabled Auth user or company, without printing who it belongs to.
+       if(user.active===false)values.activePrimaryUserDisabled++;
+       if(oldMember.active===false)values.activePrimaryMemberDisabled++;
+       if(oldCompany.active===false)values.activePrimaryCompanyDisabled++;
+      }
       if(primary.access)values.activePrimaryAccessMarkerMismatch++;
       if(primary.type)values.activePrimaryMemberTypeMismatch++;
       if(primary.companyKind)values.activePrimaryCompanyKindMismatch++;
@@ -328,7 +337,14 @@ export async function inventory({db,credential,authService,request=fetch,include
        context:x,user,oldMember,oldCompany
       });
       if(primary.link)values.activePrimaryIdentityLinkMismatch++;
-      if(primary.inactive)values.activePrimaryInactiveState++;
+      if(primary.inactive){
+       values.activePrimaryInactiveState++;
+       // Distinguish an intentionally disabled primary membership from a
+       // disabled Auth user or company, without printing who it belongs to.
+       if(user.active===false)values.activePrimaryUserDisabled++;
+       if(oldMember.active===false)values.activePrimaryMemberDisabled++;
+       if(oldCompany.active===false)values.activePrimaryCompanyDisabled++;
+      }
       if(primary.access)values.activePrimaryAccessMarkerMismatch++;
       if(primary.type)values.activePrimaryMemberTypeMismatch++;
       if(primary.companyKind)values.activePrimaryCompanyKindMismatch++;
@@ -398,6 +414,9 @@ export function publicInventorySummary(result){
   activeContextPrimaryRecordMismatchPresent:Boolean(result.activePrimaryRecordMismatch),
   activePrimaryIdentityLinkMismatchPresent:Boolean(result.activePrimaryIdentityLinkMismatch),
   activePrimaryInactiveStatePresent:Boolean(result.activePrimaryInactiveState),
+  activePrimaryAuthUserDisabledPresent:Boolean(result.activePrimaryUserDisabled),
+  activePrimaryOldMemberDisabledPresent:Boolean(result.activePrimaryMemberDisabled),
+  activePrimaryOldCompanyDisabledPresent:Boolean(result.activePrimaryCompanyDisabled),
   activePrimaryAccessMarkerMismatchPresent:Boolean(result.activePrimaryAccessMarkerMismatch),
   activePrimaryMemberTypeMismatchPresent:Boolean(result.activePrimaryMemberTypeMismatch),
   activePrimaryCompanyKindMismatchPresent:Boolean(result.activePrimaryCompanyKindMismatch),

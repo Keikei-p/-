@@ -119,6 +119,34 @@ test('exact primary mismatch group is diagnosed safely without exposing old memb
  }
 });
 
+test('disabled primary audit separates user, old membership and company, no identities or live write',()=>{
+ const userOnly=publicInventorySummary({
+  totalContexts:1,activePrimaryInactiveState:1,activePrimaryUserDisabled:1
+ });
+ assert.equal(userOnly.activePrimaryAuthUserDisabledPresent,true);
+ assert.equal(userOnly.activePrimaryOldMemberDisabledPresent,false);
+ assert.equal(userOnly.activePrimaryOldCompanyDisabledPresent,false);
+ const memberOnly=publicInventorySummary({
+  totalContexts:1,activePrimaryInactiveState:1,activePrimaryMemberDisabled:1
+ });
+ assert.equal(memberOnly.activePrimaryAuthUserDisabledPresent,false);
+ assert.equal(memberOnly.activePrimaryOldMemberDisabledPresent,true);
+ assert.equal(memberOnly.activePrimaryOldCompanyDisabledPresent,false);
+ const companyOnly=publicInventorySummary({
+  totalContexts:1,activePrimaryInactiveState:1,activePrimaryCompanyDisabled:1
+ });
+ assert.equal(companyOnly.activePrimaryOldCompanyDisabledPresent,true);
+ for(const value of [userOnly,memberOnly,companyOnly]){
+  assert.equal(value.safeToDeploy,false);
+  assert.equal(value.realPartnerFinanceDenyVerified,false);
+  const emitted=JSON.stringify(value);
+  for(const secret of ['test_uid','internal_company','partner_company',
+   '"activePrimaryUserDisabled":','"activePrimaryMemberDisabled":',
+   '"activePrimaryCompanyDisabled":'])
+   assert(!emitted.includes(secret));
+ }
+});
+
 test('non-owner verified partner secondary has a read-only eligible transition plan',()=>{
  const ready={...sample(),context:{...context,role:'member',teamId:'partner_team',emailLower:'person@example.test'},
   partnerCompany:{...partnerCompany,hubCompanyId:'internal_company'},
