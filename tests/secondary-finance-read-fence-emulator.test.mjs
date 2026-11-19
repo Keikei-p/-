@@ -7,7 +7,7 @@ import {proposeSecondaryFinanceFence,originalRules,COLLECTIONS,ORIGINAL_BLOB} fr
 const current=originalRules(),candidate=proposeSecondaryFinanceFence();
 const gitBlob=source=>{
  const data=Buffer.from(source,"utf8");
- return createHash("sha1").update(Buffer.from("blob "+data.length+"\\0")).update(data).digest("hex");
+ return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
 };
 test("finance deny candidate is pinned to the reviewed active Rules exact blob",()=>{
  assert.equal(gitBlob(current),ORIGINAL_BLOB);
