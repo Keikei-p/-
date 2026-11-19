@@ -17,6 +17,7 @@ on:
       - 'tests/partner-zero-reported-day-parity.test.mjs'
       - 'tests/partner-count-dashboard.test.cjs'
       - 'tests/partner-company-code-goal-parity.test.mjs'
+      - 'tests/partner-save-receipt-idempotency.test.mjs'
       - 'partner-workspace.html'
 permissions:
   contents: read
@@ -75,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/same-app-joint-count-wire.test.mjs tests/joint-count-http-adapter.test.cjs tests/partner-unified-count-team-view.test.mjs tests/partner-tab-publication-callables.test.mjs tests/partner-tab-publication-firestore.test.mjs tests/partner-tab-publication-token.test.mjs tests/partner-optional-four-tab-read.test.mjs tests/partner-optional-client.test.mjs tests/published-partner-tab-server.test.mjs tests/published-partner-tab-client.test.mjs tests/nico-eight-tab-release-preflight.test.mjs tests/partner-tab-visibility-policy.test.mjs tests/owner-partner-eight-tab-settings-panel.test.mjs tests/partner-eight-tab-navigation-bridge.test.mjs
-          node --test tests/partner-code-count-readonly-safety.test.mjs tests/partner-code-auth-handoff.test.mjs tests/main-company-code-entry.test.mjs tests/partner-code-owner-published-tabs.test.mjs tests/partner-code-session-count-isolation.test.mjs tests/partner-zero-reported-day-parity.test.mjs tests/partner-count-dashboard.test.cjs tests/partner-company-code-goal-parity.test.mjs
+          node --test tests/partner-code-count-readonly-safety.test.mjs tests/partner-code-auth-handoff.test.mjs tests/main-company-code-entry.test.mjs tests/partner-code-owner-published-tabs.test.mjs tests/partner-code-session-count-isolation.test.mjs tests/partner-zero-reported-day-parity.test.mjs tests/partner-count-dashboard.test.cjs tests/partner-company-code-goal-parity.test.mjs tests/partner-save-receipt-idempotency.test.mjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: No deployment

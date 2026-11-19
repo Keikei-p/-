@@ -735,6 +735,7 @@ try{activeCodeSession=sessionStorage.getItem("nicoPartnerCodeSession")||""}catch
 const clearCompanySession=()=>{
  ++codeCountSessionEpoch;
  codeCountGoalByMonth.clear();
+ pendingPartnerSaveReceipts.clear();
  activeCodeSession="";companyCodeSession=false;
  // Invalidate every outstanding period read and Owner tab publication fetch.
  ++countLoadId;
@@ -864,6 +865,10 @@ $("dashboardPartnerMonth").onchange=()=>{
  loadCountDashboard();
 };
 const countDayCache=new Map(),countKeys=KEYS.slice();
+// The server may commit a report even if its verification GET later fails.
+// Pending receipts are memory-only, identity-scoped and block duplicate writes
+// for the exact staff/day until a fresh server GET resolves them.
+const pendingPartnerSaveReceipts=new Map();
 const notice=(s,bad=false)=>{$("notice").textContent=s;$("notice").className="notice"+(bad?" error":"")};
 const fail=e=>{
  const code=String(e?.code||"unknown");
@@ -882,7 +887,9 @@ const fail=e=>{
   "functions/unauthenticated":"ログイン情報をサービスで確認できませんでした。ログインし直してください。",
   "functions/permission-denied":"ログイン済みですが、協力店の所属・招待権限が確認できません。本人宛の招待リンクから参加するか、管理者に所属を確認してください。",
   "functions/failed-precondition":"ログイン済みですが、協力店の登録・承認または招待期限を確認できません。管理者へお問い合わせください。",
-  "functions/unavailable":"ログインできても協力店サービスが利用できません。管理者に公開状況を確認してください。"
+  "functions/unavailable":"ログインできても協力店サービスが利用できません。管理者に公開状況を確認してください。",
+  "save/verification-pending":"サーバーへの保存受付後、最新の件数を照合できませんでした。二重保存を防いでいます。「更新」を押して照合してください。再登録はしないでください。",
+  "save/verified-different":"保存後に読み込んだ値が入力内容と一致しません。最新の履歴を確認し、管理者に連絡してください。自動再登録はしていません。"
  };
  notice(messages[code]||"操作できませんでした（"+code.split("/").pop()+"）。認証・招待期限・入力権限を確認してください。",true);
 };
@@ -1407,6 +1414,30 @@ function currentCountIdentity(){
  const uid=auth.currentUser?.uid;
  // A verified email account can hold more than one secondary company scope.
  return uid?"email:"+uid+":workspace:"+workspaceCompanyId:"";
+}
+function partnerSaveReceiptKey(date,staffId){
+ return currentCountIdentity()+"|"+date+"|"+staffId;
+}
+function reviewPendingPartnerSaves(response){
+ const outcome={confirmed:0,different:0,pending:0};
+ if(!response||!Array.isArray(response.records)||typeof response.date!=="string")
+  return outcome;
+ const identity=currentCountIdentity();
+ for(const [key,receipt] of pendingPartnerSaveReceipts){
+  if(receipt.identity!==identity||receipt.date!==response.date)continue;
+  if(response.companyName!==receipt.companyName){++outcome.pending;continue;}
+  const record=response.records.find(r=>r.staffId===receipt.staffId);
+  if(!record||!Number.isSafeInteger(record.version)||
+     record.version<receipt.version){++outcome.pending;continue;}
+  const exact=record.version===receipt.version&&
+   KEYS.every(k=>record.counts?.[k]===receipt.counts[k])&&
+   Object.entries(receipt.privateCounts).every(([id,n])=>record.privateCounts?.[id]===n);
+  // A newer authenticated version is also authoritative, but not equal to
+  // the receipt. Never claim the user's previous numbers were confirmed.
+  pendingPartnerSaveReceipts.delete(key);
+  if(exact)++outcome.confirmed;else ++outcome.different;
+ }
+ return outcome;
 }
 // The server-verified count contract is the ONLY authority for a public
 // combined rank. Existing signed-in partner ranks remain a safe fallback
@@ -1967,12 +1998,16 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
     (!Array.isArray(res.enabledCategories)||
      new Set(res.enabledCategories).size!==res.enabledCategories.length||
      res.enabledCategories.some(key=>!KEYS.includes(key))))throw Error("publication_schema");
+ const recon=reviewPendingPartnerSaves(res);
  data=res;countDayCache.set(currentCountIdentity()+"|"+res.date,
   {savedAt:Date.now(),response:res});
  resetPartnerPublishedCountPanels();
  draw();
  if(usePartnerPublishedCountPanels())void loadPartnerPublishedCountPanels();
- notice("最新の件数を読み込みました。");
+ if(recon.different)notice("前回の保存内容と最新の登録値が異なります。履歴を確認してから修正してください。",true);
+ else if(recon.confirmed)notice("前回の保存を最新データで再照合しました。二重登録はありません。");
+ else if(recon.pending)notice("保存受付後の件数をまだ照合できません。「更新」で再取得してください。二重登録は停止中です。",true);
+ else notice("最新の件数を読み込みました。");
  void mountVerifiedJointMonthForPartner();
  }catch(e){
   if(current!==nonce||session!==activeCodeSession||
@@ -2042,20 +2077,50 @@ $("makeInvite").onclick=()=>action(async()=>{
 });
 $("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("inviteUrl").value);notice("招待リンクをコピーしました")}catch{ $("inviteUrl").select();notice("リンクを選択しました。コピーしてください。")}};
 $("save").onclick=()=>action(async()=>{
- const date=$("date").value,user=auth.currentUser,session=activeCodeSession;
+ const date=$("date").value,user=auth.currentUser,session=activeCodeSession,
+  company=workspaceCompanyId,identity=currentCountIdentity();
  if(!data||data.date!==date)throw Error("save_not_verified");
- const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),counts=values();
- const privateCounts=privateValues();
+ const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),
+  key=partnerSaveReceiptKey(date,staffId);
+ // If the previous write was acknowledged but re-read failed, a second tap
+ // must only try to VERIFY it, never create a new audit version or duplicate.
+ if(pendingPartnerSaveReceipts.has(key)){
+  try{
+   const verified=(await get({date})).data;
+   if(currentCountIdentity()!==identity||auth.currentUser!==user||
+      activeCodeSession!==session||workspaceCompanyId!==company)return;
+   const review=reviewPendingPartnerSaves(verified);
+   if(review.confirmed)return "前回の保存を確認しました。新たな件数は送信していません。";
+   if(review.different)throw Object.assign(Error("save_mismatch"),
+    {code:"save/verified-different"});
+  }catch(error){
+   if(error?.code==="save/verified-different")throw error;
+  }
+  throw Object.assign(Error("save_pending"),{code:"save/verification-pending"});
+ }
+ const counts=values(),privateCounts=privateValues(),priorVersion=record?.version??0;
  const result=(await save({date,staffId,counts,privateCounts,
-  expectedVersion:record?.version??0})).data;
- // Verify after actual API write, never show confirmation based on optimistic state.
- if(auth.currentUser!==user||activeCodeSession!==session)return;
- const verified=(await get({date})).data;
- const check=verified?.records?.find(r=>r.staffId===staffId);
- if(verified?.date!==date||!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k])||
-    Object.entries(privateCounts).some(([id,n])=>check.privateCounts?.[id]!==n))
+  expectedVersion:priorVersion})).data;
+ // Never trust a malformed response or show optimistic success.
+ if(auth.currentUser!==user||activeCodeSession!==session||
+    workspaceCompanyId!==company||currentCountIdentity()!==identity)return;
+ if(result?.saved!==true||result.staffId!==staffId||result.date!==date||
+    !Number.isSafeInteger(result.version)||result.version!==priorVersion+1)
   throw Error("save_not_verified");
- return "保存・再取得照合が成功しました。第"+result.version+"版";
+ pendingPartnerSaveReceipts.set(key,{identity,companyName:data.companyName,
+  date,staffId,version:result.version,counts:{...counts},privateCounts:{...privateCounts}});
+ try{
+  const verified=(await get({date})).data;
+  if(auth.currentUser!==user||activeCodeSession!==session||
+     workspaceCompanyId!==company||currentCountIdentity()!==identity)return;
+  const review=reviewPendingPartnerSaves(verified);
+  if(review.confirmed===1)return "保存・再取得照合が成功しました。第"+result.version+"版";
+  if(review.different)throw Object.assign(Error("save_mismatch"),
+    {code:"save/verified-different"});
+ }catch(error){
+  if(error?.code==="save/verified-different")throw error;
+ }
+ throw Object.assign(Error("save_pending"),{code:"save/verification-pending"});
 });
 
 const setLoginMode=code=>{
@@ -2082,6 +2147,7 @@ async function enterIsolatedCompanyCodeSession(result){
  if(auth.currentUser)throw Error("old_email_session_still_active");
  ++codeCountSessionEpoch;
  codeCountGoalByMonth.clear();
+ pendingPartnerSaveReceipts.clear();
  ++countLoadId;
  countDayCache.clear();
  resetPartnerPublishedCountPanels();
@@ -2235,6 +2301,7 @@ onAuthStateChanged(auth,async u=>{
  $("transferExistingInternal").checked=false;
  $("keepInternalMembership").checked=false;
  ++nonce;++countLoadId;loading=false;companyCodeSession=false;data=null;countDayCache.clear();
+ pendingPartnerSaveReceipts.clear();
  clearCountOnlyDashboard();resetApprovedRanking();resetVerifiedJointMonth();resetPartnerPublishedCountPanels();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
  $("appBox").hidden=true;$("loginBox").hidden=false;
