@@ -939,7 +939,9 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
     if(typeof p.name!=="string"||typeof p.active!=="boolean"||!p.name.trim())throw Error("private catalog");
     if(!Object.hasOwn(products,"独自："+p.name))products["独自："+p.name]=0;
   }
-  let dayCount=0,dayPeople=0;
+  // A saved 0-count day is REPORTED, not missing. Keep positive performers
+ // separate from submitted records without mutating any historical count.
+ let dayCount=0,dayPeople=0,dayReportedPeople=0;
   const seen=new Set();
   for(const record of response.records){
    if(seen.has(record.staffId)||!staff.has(record.staffId))throw Error("unverified staff");
@@ -967,6 +969,7 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
    }
    if(privateTotal!==(record.privateTotalCount??0))throw Error("private total mismatch");
    count+=privateTotal;
+   ++dayReportedPeople;
    if(count>0)dayPeople++;
    dayCount+=count;total+=count;
    const id=record.staffId;
@@ -998,7 +1001,8 @@ function summarizeCountOnlyResponses(responses,teamList,keys){
     }
     byTeam.set(id,byMember);teamPersonProducts.set(groupId,byTeam);
   }
-  days.push({date:response.date,count:dayCount,people:dayPeople});
+  days.push({date:response.date,count:dayCount,people:dayPeople,
+   reportedPeople:dayReportedPeople});
  }
  return {total,products,groups:[...group].map(([id,count])=>({
    id,name:id==="__unverified__"?"所属班未確認":teams.get(id)||"所属班未確認",count
@@ -1327,11 +1331,11 @@ function renderCountOnlyDashboard(summary,days){
   const label=document.createElement("div");label.className="summary-label";label.textContent=day.date;
   const value=document.createElement("div");value.className="summary-value";value.textContent=day.count+"件";
   const meta=document.createElement("div");meta.className="partner-panel-note";
-  meta.textContent="実績登録 "+day.people+"人";
+  meta.textContent="実績登録 "+day.reportedPeople+"人";
   card.append(label,value,meta);dayCards.append(card);
  }
  $("countDailyRows").replaceChildren(countTable(["日付","合計件数","実績あり"],
-  summary.days.map(d=>[d.date,d.count+"件",d.people+"人"])));
+  summary.days.map(d=>[d.date,d.count+"件",d.reportedPeople+"人"])));
  countExportRows={summary,days};
  const teamSelect=$("countTeamSelect"),previous=teamSelect.value;teamSelect.replaceChildren();
  for(const team of summary.groups){const option=document.createElement("option");option.value=team.id;
@@ -1483,7 +1487,13 @@ async function loadCountDashboard(){
     let entry=countDayCache.get(uid+"|"+date);
     if(!entry||Date.now()-entry.savedAt>60000){
       const response=date===day&&data?.date===date?data:(await get({date})).data;
+      // A late response from a previous login or company cannot repopulate
+      // even an obsolete cache key after a code switch/logout.
+      if(gen!==countLoadId||currentCountIdentity()!==uid)return null;
+      // Each day must belong to the same verified company. A role match is
+      // not enough; two independent partners can both be "owner".
       if(response?.role!==data?.role||response.date!==date||
+         response.companyName!==data.companyName||
          response.categories?.join("|")!==countKeys.join("|"))throw Error("incomplete response");
       entry={savedAt:Date.now(),response};
       countDayCache.set(uid+"|"+date,entry);
