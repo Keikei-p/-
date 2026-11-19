@@ -507,10 +507,19 @@ const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
 if(workspaceCompanyId&&!/^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
  workspaceCompanyId="";
+// Company-code login/activation is independent of an old email-workspace
+// selection or stale code bearer. Only the explicitly supplied credentials
+// may be sent. Never resurrect the disabled old Firebase Auth identity.
+const isolatedCompanyCodeCalls=new Set([
+ "issuePartnerCompanyCode","activatePartnerCompanyCode",
+ "loginPartnerCompanyCode","logoutPartnerCompanyCode"
+]);
 const call=name=>{
  const fn=httpsCallable(functions,name);
- return data=>fn({...data,...(workspaceCompanyId&&!activeCodeSession?{workspaceCompanyId}:{}),
-  ...(activeCodeSession?{codeSessionToken:activeCodeSession}:{})});
+ const isolated=isolatedCompanyCodeCalls.has(name);
+ return data=>fn({...data,
+  ...(!isolated&&workspaceCompanyId&&!activeCodeSession?{workspaceCompanyId}:{}),
+  ...(!isolated&&activeCodeSession?{codeSessionToken:activeCodeSession}:{})});
 };
 const get=call("getPartnerWorkspace"),manage=call("managePartnerWorkspace"),
  accept=call("acceptPartnerWorkspaceInvite"),save=call("submitPartnerWorkspaceCounts"),
