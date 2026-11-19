@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {classifySecondary,transferEligibility,publicInventorySummary,
+import {classifySecondary,classifyActiveContextMismatch,classifyPrimaryMembershipMismatch,transferEligibility,publicInventorySummary,
  classifyLiveRules,hasRecentReadyBackup} from '../tools/production/audit-secondary-contexts-readonly.mjs';
 const context={uid:'test_uid',kind:'partner_secondary',active:true,primaryCompanyId:'internal_company',
  partnerCompanyId:'partner_company',hubCompanyId:'internal_company'};
@@ -52,6 +52,99 @@ test('missing, disabled and unknown dual contexts fail closed',()=>{
 test('never equate partner owner flags with internal money privileges',()=>{
  assert.equal(classifySecondary(sample({oldCompany:{...oldCompany,ownerUid:'test_uid'},
   user:{...user,companyRole:'owner',canViewRevenue:true,canViewUnitPrice:true}})),'owner_conflict');
+});
+
+test('active inconsistent membership reasons distinguish context, primary and partner paths without IDs',()=>{
+ const base=classifyActiveContextMismatch(sample());
+ assert.deepEqual(base,{contextPair:false,primary:false,partner:false});
+ const unknownId=classifyActiveContextMismatch(
+  sample({context:{...context,partnerCompanyId:context.primaryCompanyId}}));
+ assert.deepEqual(unknownId,{contextPair:true,primary:false,partner:false});
+ const old=classifyActiveContextMismatch(sample({user:{...user,companyId:'different'}}));
+ assert.deepEqual(old,{contextPair:false,primary:true,partner:false});
+ const partner=classifyActiveContextMismatch(sample({
+  partnerMember:{...partnerMember,memberType:'member'}}));
+ assert.deepEqual(partner,{contextPair:false,primary:false,partner:true});
+ const disabled=classifyActiveContextMismatch(sample({
+  context:{...context,active:false},partnerMember:{...partnerMember,memberType:'member'}}));
+ assert.deepEqual(disabled,{contextPair:false,primary:false,partner:false});
+ const missing=classifyActiveContextMismatch(sample({partnerMember:null}));
+ assert.deepEqual(missing,{contextPair:false,primary:false,partner:false});
+ const report=publicInventorySummary({
+  totalContexts:1,inconsistentContexts:1,activeInconsistentContexts:1,
+  activeMismatchedContextDocuments:1,activePrimaryRecordMismatch:1,
+  readyBackups:0
+ });
+ assert.equal(report.activeUnrecognizedContextPresent,true);
+ assert.equal(report.activeContextPrimaryRecordMismatchPresent,true);
+ assert.equal(report.activeContextPartnerRecordMismatchPresent,false);
+ assert.equal(report.activeContextCompanyPairInvalidPresent,false);
+ assert.equal(report.safeToDeploy,false);
+ const serialized=JSON.stringify(report);
+ for(const value of ['different','internal_company','partner_company','activePrimaryRecordMismatch'])
+  assert(!serialized.includes(value));
+});
+
+test('exact primary mismatch group is diagnosed safely without exposing old membership fields',()=>{
+ const none={link:false,inactive:false,access:false,type:false,companyKind:false};
+ assert.deepEqual(classifyPrimaryMembershipMismatch(sample()),none);
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({context:{...context,active:false}})),none);
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldMember:null})),none);
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({user:{...user,companyId:'other'}})),{...none,link:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldMember:{...oldMember,active:false}})),{...none,inactive:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({user:{...user,accessKind:'partner'}})),{...none,access:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldMember:{...oldMember,memberType:'cooperator'}})),{...none,type:true});
+ assert.deepEqual(classifyPrimaryMembershipMismatch(
+  sample({oldCompany:{...oldCompany,companyKind:'partner'}})),{...none,companyKind:true});
+ const report=publicInventorySummary({
+  activePrimaryRecordMismatch:1,activePrimaryAccessMarkerMismatch:1,
+  activeInconsistentContexts:1,totalContexts:1
+ });
+ assert.equal(report.activeContextPrimaryRecordMismatchPresent,true);
+ assert.equal(report.activePrimaryAccessMarkerMismatchPresent,true);
+ assert.equal(report.activePrimaryIdentityLinkMismatchPresent,false);
+ assert.equal(report.activePrimaryInactiveStatePresent,false);
+ assert.equal(report.activePrimaryMemberTypeMismatchPresent,false);
+ assert.equal(report.safeToDeploy,false);
+ for(const forbidden of ['test_uid','cooperator','primaryCompanyId','memberType',
+  '"activePrimaryAccessMarkerMismatch":']){
+  assert(!JSON.stringify(report).includes(forbidden),
+   'Never emit a raw identity or private numeric counter: '+forbidden);
+ }
+});
+
+test('disabled primary audit separates user, old membership and company, no identities or live write',()=>{
+ const userOnly=publicInventorySummary({
+  totalContexts:1,activePrimaryInactiveState:1,activePrimaryUserDisabled:1
+ });
+ assert.equal(userOnly.activePrimaryAuthUserDisabledPresent,true);
+ assert.equal(userOnly.activePrimaryOldMemberDisabledPresent,false);
+ assert.equal(userOnly.activePrimaryOldCompanyDisabledPresent,false);
+ const memberOnly=publicInventorySummary({
+  totalContexts:1,activePrimaryInactiveState:1,activePrimaryMemberDisabled:1
+ });
+ assert.equal(memberOnly.activePrimaryAuthUserDisabledPresent,false);
+ assert.equal(memberOnly.activePrimaryOldMemberDisabledPresent,true);
+ assert.equal(memberOnly.activePrimaryOldCompanyDisabledPresent,false);
+ const companyOnly=publicInventorySummary({
+  totalContexts:1,activePrimaryInactiveState:1,activePrimaryCompanyDisabled:1
+ });
+ assert.equal(companyOnly.activePrimaryOldCompanyDisabledPresent,true);
+ for(const value of [userOnly,memberOnly,companyOnly]){
+  assert.equal(value.safeToDeploy,false);
+  assert.equal(value.realPartnerFinanceDenyVerified,false);
+  const emitted=JSON.stringify(value);
+  for(const secret of ['test_uid','internal_company','partner_company',
+   '"activePrimaryUserDisabled":','"activePrimaryMemberDisabled":',
+   '"activePrimaryCompanyDisabled":'])
+   assert(!emitted.includes(secret));
+ }
 });
 
 test('non-owner verified partner secondary has a read-only eligible transition plan',()=>{
@@ -166,8 +259,42 @@ test('inactive historical secondary context is not an active unknown-finance ris
   inactiveSecondaryContexts:0});
  assert.equal(active.activeUnrecognizedContextPresent,true);
  assert.equal(active.inactiveContextPresent,false);
- assert.equal(publicInventorySummary({...inactive,inconsistentContexts:1}).activeUnrecognizedContextPresent,true);
+ // An inactive historical record can be malformed without creating a
+ // CURRENT active member. It still stays in inventory and cannot grant deploy.
+ const malformedHistorical=publicInventorySummary({
+  ...inactive,inconsistentContexts:1,inactiveSecondaryContexts:1,
+  activeInconsistentContexts:0
+ });
+ assert.equal(malformedHistorical.unrecognizedContextPresent,true);
+ assert.equal(malformedHistorical.activeUnrecognizedContextPresent,false);
+ assert.equal(malformedHistorical.inactiveContextPresent,true);
+ assert.equal(malformedHistorical.safeToDeploy,false);
+ // An active malformed membership remains an explicit security blocker.
+ const malformedActive=publicInventorySummary({
+  ...inactive,inconsistentContexts:1,activeInconsistentContexts:1,
+  activeMissingContextDocuments:1
+ });
+ assert.equal(malformedActive.activeUnrecognizedContextPresent,true);
+ assert.equal(malformedActive.activeContextDocumentsMissingPresent,true);
+ assert.equal(malformedActive.activeContextMembershipMismatchPresent,false);
+ const malformedMember=publicInventorySummary({
+  ...inactive,inconsistentContexts:1,activeInconsistentContexts:1,
+  activeMismatchedContextDocuments:1
+ });
+ assert.equal(malformedMember.activeContextMembershipMismatchPresent,true);
+ const unknownKind=publicInventorySummary({
+  ...inactive,activeUnknownSecondaryContexts:1,activeUnsupportedContextKinds:1
+ });
+ assert.equal(unknownKind.activeUnrecognizedContextPresent,true);
+ assert.equal(unknownKind.activeContextUnsupportedKindPresent,true);
+ const financePotential=publicInventorySummary({
+  ...inactive,activeUnknownOldFinancePaths:1
+ });
+ assert.equal(financePotential.oldInternalFinancePathPresent,true);
+ assert.equal(financePotential.activeUnrecognizedContextPresent,true);
  const published=JSON.stringify(safe);
- for(const k of ['emailLower','uid','inactiveSecondaryContexts','activeUnknownSecondaryContexts'])
+ for(const k of ['emailLower','uid','inactiveSecondaryContexts','activeUnknownSecondaryContexts',
+  'activeInconsistentContexts','activeMissingContextDocuments',
+  'activeMismatchedContextDocuments','activeUnsupportedContextKinds'])
   assert(!published.includes(k));
 });
