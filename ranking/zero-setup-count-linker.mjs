@@ -11,9 +11,11 @@
  * never dropped, guessed, or added to a different sale.
  */
 import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
+import {createHash} from "node:crypto";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
+const PRIVATE=/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/;
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const BAD=/(?:売上|単価|収益|原価|価格|キャッシュバック|報酬|利益|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const stop=()=>{throw Error("ZERO_SETUP_COUNT_SOURCE_UNVERIFIED");};
@@ -70,22 +72,32 @@ export function linkAllRegisteredCountsWithoutSetup({
      seenCompanies.has(partner.companyId)||partner.kind!=="partner"||
      partner.consentVerified!==true||partner.isComplete!==true||
      partner.readTime!==hubSource.readTime||
-     !Array.isArray(partner.products)||partner.products.length!==contract.size)stop();
+     !Array.isArray(partner.products)||
+     partner.products.length<contract.size||
+     partner.products.length>contract.size+100)stop();
   seenCompanies.add(partner.companyId);
   const seenProducts=new Set(),mappedHub=new Set();
   for(const p of partner.products){
    if(!p||p.companyId!==partner.companyId||
-      !valid(p.sourceId)||!contract.has(p.sourceId)||
-      !label(p.name)||p.active!==true||seenProducts.has(p.sourceId)||
-      norm(p.name)!==norm(contract.get(p.sourceId)))stop();
+      !valid(p.sourceId)||!label(p.name)||
+      typeof p.active!=="boolean"||seenProducts.has(p.sourceId))stop();
+   const isOriginal=contract.has(p.sourceId);
+   const isPrivate=PRIVATE.test(p.sourceId);
+   if(!isOriginal&&!isPrivate)stop();
+   // Historic private products can now be inactive without losing counts.
+   if(isOriginal&&(p.active!==true||
+      norm(p.name)!==norm(contract.get(p.sourceId))))stop();
    seenProducts.add(p.sourceId);
-   // Restrict cross-company joining to the exact known category contract.
-   // Never infer product identity from fuzzy or substring text.
+   // Standard categories keep reviewed exact aliases; previously private
+   // products may match ONLY a uniquely named active hub product.
    const possible=new Map();
-   for(const alias of aliases.get(p.sourceId)){
-    for(const candidate of byName.get(alias)||[])
-     if(candidate.active===true)possible.set(candidate.sourceId,candidate);
-   }
+   if(isOriginal){
+    for(const alias of aliases.get(p.sourceId)){
+     for(const candidate of byName.get(alias)||[])
+      if(candidate.active===true)possible.set(candidate.sourceId,candidate);
+    }
+   }else for(const candidate of byName.get(norm(p.name))||[])
+    if(candidate.active===true)possible.set(candidate.sourceId,candidate);
    let target=possible.size===1?[...possible.values()][0]:null;
    // Old SB光・AIR does not identify a separately sold Hikari or Air SKU.
    if(p.sourceId==="partnerSku05"&&target&&
@@ -93,7 +105,10 @@ export function linkAllRegisteredCountsWithoutSetup({
    // One hub SKU cannot be claimed by two categories in the SAME company.
    if(target&&mappedHub.has(target.sourceId))target=null;
    if(target)mappedHub.add(target.sourceId);
-   const unmatched="partnerUnmatched:"+p.sourceId;
+   const unmatched=isPrivate?
+    "partnerPrivateUnmatched:"+createHash("sha256").update(
+     partner.companyId+"\n"+p.sourceId).digest("hex").slice(0,32):
+    "partnerUnmatched:"+p.sourceId;
    if(own.has(unmatched))stop();
    result.push({
     companyId:partner.companyId,productId:p.sourceId,
@@ -101,6 +116,7 @@ export function linkAllRegisteredCountsWithoutSetup({
     groupName:target?.name||p.name
    });
   }
+  if([...contract.keys()].some(id=>!seenProducts.has(id)))stop();
  }
  // All registered partner categories remain present in the result even
  // when there is no safe cross-company matching hub product.
