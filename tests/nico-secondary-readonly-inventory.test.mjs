@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {classifySecondary,transferEligibility,publicInventorySummary,
+import {classifySecondary,classifyActiveContextMismatch,transferEligibility,publicInventorySummary,
  classifyLiveRules,hasRecentReadyBackup} from '../tools/production/audit-secondary-contexts-readonly.mjs';
 const context={uid:'test_uid',kind:'partner_secondary',active:true,primaryCompanyId:'internal_company',
  partnerCompanyId:'partner_company',hubCompanyId:'internal_company'};
@@ -52,6 +52,37 @@ test('missing, disabled and unknown dual contexts fail closed',()=>{
 test('never equate partner owner flags with internal money privileges',()=>{
  assert.equal(classifySecondary(sample({oldCompany:{...oldCompany,ownerUid:'test_uid'},
   user:{...user,companyRole:'owner',canViewRevenue:true,canViewUnitPrice:true}})),'owner_conflict');
+});
+
+test('active inconsistent membership reasons distinguish context, primary and partner paths without IDs',()=>{
+ const base=classifyActiveContextMismatch(sample());
+ assert.deepEqual(base,{contextPair:false,primary:false,partner:false});
+ const unknownId=classifyActiveContextMismatch(
+  sample({context:{...context,partnerCompanyId:context.primaryCompanyId}}));
+ assert.deepEqual(unknownId,{contextPair:true,primary:false,partner:false});
+ const old=classifyActiveContextMismatch(sample({user:{...user,companyId:'different'}}));
+ assert.deepEqual(old,{contextPair:false,primary:true,partner:false});
+ const partner=classifyActiveContextMismatch(sample({
+  partnerMember:{...partnerMember,memberType:'member'}}));
+ assert.deepEqual(partner,{contextPair:false,primary:false,partner:true});
+ const disabled=classifyActiveContextMismatch(sample({
+  context:{...context,active:false},partnerMember:{...partnerMember,memberType:'member'}}));
+ assert.deepEqual(disabled,{contextPair:false,primary:false,partner:false});
+ const missing=classifyActiveContextMismatch(sample({partnerMember:null}));
+ assert.deepEqual(missing,{contextPair:false,primary:false,partner:false});
+ const report=publicInventorySummary({
+  totalContexts:1,inconsistentContexts:1,activeInconsistentContexts:1,
+  activeMismatchedContextDocuments:1,activePrimaryRecordMismatch:1,
+  readyBackups:0
+ });
+ assert.equal(report.activeUnrecognizedContextPresent,true);
+ assert.equal(report.activeContextPrimaryRecordMismatchPresent,true);
+ assert.equal(report.activeContextPartnerRecordMismatchPresent,false);
+ assert.equal(report.activeContextCompanyPairInvalidPresent,false);
+ assert.equal(report.safeToDeploy,false);
+ const serialized=JSON.stringify(report);
+ for(const value of ['different','internal_company','partner_company','activePrimaryRecordMismatch'])
+  assert(!serialized.includes(value));
 });
 
 test('non-owner verified partner secondary has a read-only eligible transition plan',()=>{
