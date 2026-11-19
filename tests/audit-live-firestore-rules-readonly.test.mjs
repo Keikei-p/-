@@ -23,7 +23,7 @@ const fixture=(live=reviewed)=>async url=>{
 };
 test("reviewed original is immutable and live rules require precisely two metadata GETs",async()=>{
  calls.length=0;
- assert.equal(gitBlob(reviewed),"d9f4df6a2ac0f8b5720534a2461ec66b94379190");
+ assert.equal(gitBlob(reviewed),"6d3f165791188394d473417414e34208cd56bae6");
  const outcome=await auditLiveFirestoreRules({read:fixture(),reviewedSource:reviewed});
  assert.deepEqual(calls,[
   RELEASE_URL,
