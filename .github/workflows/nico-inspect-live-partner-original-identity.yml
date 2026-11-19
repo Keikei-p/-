@@ -1,0 +1,32 @@
+name: NICO public partner HTML historical identity and diff (GET only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/production/inspect-live-partner-original-identity.mjs'
+      - '.github/workflows/nico-inspect-live-partner-original-identity.yml'
+permissions:
+  contents: read
+jobs:
+  inspect-public-html:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate public-only audit
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          node --check tools/production/inspect-live-partner-original-identity.mjs
+      - name: Compare public Hosting HTML to reviewed main and prior versions, never write
+        run: node tools/production/inspect-live-partner-original-identity.mjs
