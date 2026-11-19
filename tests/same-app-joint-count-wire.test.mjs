@@ -856,3 +856,51 @@ test("true one-snapshot read-only transaction reads private SKU originals and ad
  assert.deepEqual(byKey([...docs]),byKey(before),
   "Reinsertion order in the test Map cannot be mistaken for a source change");
 });
+
+
+test("same-app release never shows stale partner-only rank cards and opens verified own-team detail",()=>{
+ const html=readFileSync(new URL("../index.html",import.meta.url),"utf8");
+ const start=html.indexOf("function renderPartnerRankingOnlyPanel(){");
+ const end=html.indexOf("\nlet partnerSameAppSelectedPanel=",start);
+ assert(start>=0&&end>start,"Canonical partner ranking source must exist");
+ const source=html.slice(start,end);
+ const run=enabled=>{
+  const events={cleared:0,rows:[],legacyMessage:0};
+  const ranking={
+   replaceChildren(){events.cleared++},
+   classList:{add(){}},dataset:{}
+  };
+  const snap={role:"partner",categories:["NURO"],staff:[],teams:[],
+   records:[{totalCount:3,counts:{NURO:3}}],companyName:"協力店A"};
+  const context={
+   NICO_SAME_APP_JOINT_HTTP_ENABLED:enabled,
+   partnerInlineData:snap,partnerSameAppSelectedPanel:"product",
+   pInline:id=>{assert.equal(id,"pInlineRanking");return ranking;},
+   appendVerifiedCountRankRow:(_root,row)=>events.rows.push(row),
+   partnerMainAppendRow:()=>{events.legacyMessage++}
+  };
+  runInNewContext(source+"\nrenderPartnerRankingOnlyPanel();",context);
+  return events;
+ };
+ const old=run(false);
+ assert.equal(old.cleared,1);
+ assert.equal(old.rows.length,1);
+ assert.equal(old.rows[0].count,3);
+ const published=run(true);
+ assert.equal(published.cleared,1);
+ assert.equal(published.rows.length,0,"Release must never show stale local partner-only rank");
+ assert.equal(published.legacyMessage,0);
+ const selectStart=html.indexOf("function partnerSameAppSelectPanel(name){");
+ const selectEnd=html.indexOf("function partnerSameAppTogglePanel(name){",selectStart);
+ assert(selectStart>=0&&selectEnd>selectStart);
+ const selected=html.slice(selectStart,selectEnd);
+ assert(selected.includes('if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true){'));
+ assert(selected.includes('oldDetail.closest(".p-inline-card")'));
+ assert(selected.includes('oldCard.hidden=true'));
+ assert(selected.includes('oldDetail.hidden=true'));
+ assert(selected.includes('void loadSharedDailyStandings("partnerDetail",true);'));
+ assert(selected.includes('}else oldDetail.hidden=false;'),
+  "Unreleased original detail screen must be unchanged");
+ assert(html.includes("const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;"));
+ assert(html.includes("const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;"));
+});

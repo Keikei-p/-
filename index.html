@@ -13980,6 +13980,10 @@ function renderPartnerRankingOnlyPanel(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
+ // When the verified published joint endpoint is selected, NEVER display
+ // old partner-only scores next to the new shared standings. This is a
+ // presentation-only guard; existing count save/history remains unchanged.
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true)return;
  // Rank by the immutable staff ID / saved team snapshot, never by a current
  // name/team assignment. Retain departed staff and inactive historical teams.
  const staffById=new Map((snap.staff||[]).map(x=>[x.id,x]));
@@ -14103,9 +14107,24 @@ function partnerSameAppSelectPanel(name){
   renderPartnerRankingOnlyPanel();
   void loadSharedDailyStandings("partner");
  }
- // Partner's own saved team/people are already rendered from getPartnerWorkspace.
- // Do not load unrelated companies for this detail tab or expose finance data.
- if(partnerInlineData&&name==="detail")pInline("pInlineTeamDetails").hidden=false;
+ // Before cutover, the original own-team detail remains unchanged. Once the
+ // verified joint endpoint is released, open its Owner-published count-only
+ // resource on first tap; do not require a second Refresh tap or duplicate
+ // the old own-team detail against the same published figures.
+ if(partnerInlineData&&name==="detail"){
+  const oldDetail=pInline("pInlineTeamDetails");
+  if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true){
+   const oldCard=oldDetail.closest(".p-inline-card");
+   if(oldCard)oldCard.hidden=true;
+   const published=pInline("partnerSharedDetailTree").closest(".p-inline-card");
+   if(published){
+    const heading=published.querySelector("h3");
+    if(heading)heading.textContent="公開済み協力店の班詳細（件数のみ）";
+   }
+   oldDetail.hidden=true;
+   void loadSharedDailyStandings("partnerDetail",true);
+  }else oldDetail.hidden=false;
+ }
  if(partnerInlineData&&name==="history"&&
     !partnerOptionalPublicationProtectionActive())
   void loadPartnerRevisionHistory();
