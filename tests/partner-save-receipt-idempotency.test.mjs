@@ -18,7 +18,7 @@ const serverResponse=(v,version=2)=>({date:"2026-11-19",companyName:"協力店A"
 function fixture({code=true,failFirstRead=false}={}){
  const auth={currentUser:code?null:{uid:"email-1",emailVerified:true}};
  const nodes={
-  date:{value:"2026-11-19"},staffSelect:{value:"A"},
+  date:{value:"2026-11-19"},staffSelect:{value:"A"},save:{},
  };
  const calls={save:[],get:[]};
  let failRead=failFirstRead,received=null;
