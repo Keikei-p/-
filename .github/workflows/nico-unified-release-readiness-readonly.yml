@@ -53,7 +53,7 @@ jobs:
           node --check tools/production/audit-secondary-contexts-readonly.mjs
           node --check tools/production/audit-live-firestore-rules-readonly.mjs
           node --check tools/production/inspect-project-billing-readonly.mjs
-          node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs
+          node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs
           test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
           test "$(git hash-object index.html)" = 'c7ea13635ce6aac306529707863f5d2fd04e9126'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
@@ -91,7 +91,7 @@ jobs:
           test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
           test "$(git hash-object functions-partner-workspace/index.js)" = '42eea81ab01449bedbbedabdc1a8fb6bfba1e284'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
-          node --test tests/unified-release-readiness-readonly.test.mjs
+          node --test tests/unified-release-readiness-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs
       - name: Install existing read-only Firebase SDK dependencies before secrets
         shell: bash
         run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
