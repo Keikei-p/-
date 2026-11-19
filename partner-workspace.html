@@ -2174,6 +2174,14 @@ const setLoginMode=code=>{
 };
 $("selectCodeLogin").onclick=()=>setLoginMode(true);
 $("selectEmailLogin").onclick=()=>setLoginMode(false);
+// A disabled legacy email identity must not be attached as Authorization
+// to a partner-code login or activation request. Sign out before calling the
+// server, not only after obtaining a code session. Failure must halt safely.
+async function endEmailSessionBeforeCompanyCodeAuth(){
+ if(!auth.currentUser)return;
+ await signOut(auth);
+ if(auth.currentUser)throw Error("old_email_session_still_active");
+}
 // A company-code session and an old Firebase email identity must NEVER overlap.
 // Complete and verify Firebase sign-out BEFORE storing the new count-only token.
 // An unsuccessful sign-out keeps the code session out of browser storage.
@@ -2206,6 +2214,7 @@ $("companyCodeLoginForm").onsubmit=async e=>{
   notice("会社コードとパスワードを確認しています…");
   const companyCode=$("companyLoginCode").value.trim().toUpperCase();
   const password=$("companyLoginPassword").value;
+  await endEmailSessionBeforeCompanyCodeAuth();
   const {data:result}=await codeLogin({companyCode,password});
   await enterIsolatedCompanyCodeSession(result);
   $("companyLoginPassword").value="";
@@ -2220,6 +2229,7 @@ $("companyCodeActivateForm").onsubmit=async e=>{
   notice("会社コードの初回パスワードを設定しています…");
   const companyCode=$("companyActivationCode").value.trim().toUpperCase();
   const password=$("companyActivationPassword").value;
+  await endEmailSessionBeforeCompanyCodeAuth();
   const activated=(await activateCompanyCode({companyCode,password})).data;
   if(activated?.activated!==true)throw Error("activation_not_verified");
   const {data:result}=await codeLogin({companyCode,password});
