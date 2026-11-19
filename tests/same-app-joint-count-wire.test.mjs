@@ -904,3 +904,50 @@ test("same-app release never shows stale partner-only rank cards and opens verif
  assert(html.includes("const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;"));
  assert(html.includes("const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;"));
 });
+
+
+test("published partner rankings retain trusted competition-rank gaps without touching counts",()=>{
+ const p=partner(),before=structuredClone(p);
+ // The upstream count-only validator allows gaps for a redacted published subset.
+ // Every list remains count-only and uses the server-provided rank unchanged.
+ for(const key of ["members","products","teams","companies"]){
+  p.publicRanking[key][0].rank=2;
+  p.publicRanking[key][1].rank=4;
+ }
+ const ranked=project(p,{partner:true});
+ for(const field of ["personRows","productRows","teamRows","companyRows"])
+  assert.deepEqual(ranked[field].map(x=>x.rank),[2,4],field);
+ assert.equal(ranked.ownCount,3);
+ assert.equal(ranked.financeIncluded,false);
+ assert.equal(ranked.teamDetails.find(t=>t.name==="協力店A・1班").count,3);
+ assert.deepEqual(before.own,p.own);
+});
+
+test("published rank gaps never allow false ties, out-of-order ranks or null ranks",()=>{
+ const differentRanks=partner();
+ differentRanks.publicRanking.members[1].count=5;
+ differentRanks.publicRanking.members[1].rank=4;
+ assert.throws(()=>project(differentRanks,{partner:true}),/SAME_APP_JOINT_COUNT_UNVERIFIED/);
+ const decreasing=partner();
+ decreasing.publicRanking.teams[0].rank=4;
+ decreasing.publicRanking.teams[1].rank=2;
+ assert.throws(()=>project(decreasing,{partner:true}),/SAME_APP_JOINT_COUNT_UNVERIFIED/);
+ const tooSmall=partner();
+ tooSmall.publicRanking.companies[1].rank=1;
+ assert.throws(()=>project(tooSmall,{partner:true}),/SAME_APP_JOINT_COUNT_UNVERIFIED/);
+ const noRank=partner();
+ noRank.publicRanking.products[0].rank=null;
+ assert.throws(()=>project(noRank,{partner:true}),/SAME_APP_JOINT_COUNT_UNVERIFIED/);
+});
+
+test("published zero-count ties preserve 1,1 and never convert missing reports to zero",()=>{
+ const p=partner();
+ p.publicRanking.products[0].count=4;
+ p.publicRanking.products[1].count=4;
+ p.publicRanking.products[1].rank=1;
+ const view=project(p,{partner:true});
+ assert.deepEqual(view.productRows.map(x=>[x.count,x.rank]),[[4,1],[4,1]]);
+ const invalid=partner();
+ invalid.publicRanking.products[0].revenue=10000;
+ assert.throws(()=>project(invalid,{partner:true}),/SAME_APP_JOINT_COUNT_UNVERIFIED/);
+});
