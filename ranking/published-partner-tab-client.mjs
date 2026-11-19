@@ -36,7 +36,8 @@ function validRankRows(rows,tab){
   // their original competition ranks (e.g. 1, 3 or first visible rank 2).
   // Never invent dense ranks locally; still reject reversed order, fake ties,
   // null/negative ranks, unsorted counts and unverified finance fields.
-    !Number.isSafeInteger(row.rank)||row.rank<i+1||
+    !Number.isSafeInteger(row.rank)||row.rank<1||
+    (row.count!==lastCount&&row.rank<i+1)||
     (tab!=="product"&&!label(row.company))||
     (tab==="team"&&typeof row.own!=="boolean")||
     row.count>before||
