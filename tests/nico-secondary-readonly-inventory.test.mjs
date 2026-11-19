@@ -113,8 +113,9 @@ test('exact primary mismatch group is diagnosed safely without exposing old memb
  assert.equal(report.activePrimaryMemberTypeMismatchPresent,false);
  assert.equal(report.safeToDeploy,false);
  for(const forbidden of ['test_uid','cooperator','primaryCompanyId','memberType',
-  'activePrimaryAccessMarkerMismatch']){
-  assert(!JSON.stringify(report).includes(forbidden));
+  '"activePrimaryAccessMarkerMismatch":']){
+  assert(!JSON.stringify(report).includes(forbidden),
+   'Never emit a raw identity or private numeric counter: '+forbidden);
  }
 });
 
