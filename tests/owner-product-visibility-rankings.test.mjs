@@ -221,10 +221,19 @@ test("all four partner leaderboards honor exact hub SKU ON/OFF and corrections",
  assert.deepEqual(rank.publicRanking.teams.map(x=>x.count),[5,2]);
  assert.equal(rank.publicRanking.members.find(x=>x.company==="協力店A").count,5);
  assert.equal(rank.publicRanking.products[0].count,7);
+ // The joint-count endpoint requires an explicit trusted own-team bit.
+ // Keep the original company/count/rank fields, and verify the new bit is
+ // bound to the signed-in partner rather than allowing another company detail.
  assert.deepEqual(rank.publicRanking.teams.map(x=>Object.keys(x).sort()),[
-  ["rank","name","company","count"].sort(),
-  ["rank","name","company","count"].sort()
+  ["rank","name","company","count","own"].sort(),
+  ["rank","name","company","count","own"].sort()
  ]);
+ assert.equal(rank.publicRanking.teams.filter(x=>x.own).length,1);
+ assert(rank.publicRanking.teams.every(x=>
+  x.own=== (x.company==="協力店A")));
+ assert(rank.publicRanking.teams.every(x=>
+  !Object.hasOwn(x,"revenue")&&!Object.hasOwn(x,"unitPrice")&&
+  !Object.hasOwn(x,"cashback")));
  const off=run(partner,publication([]));
  assert.equal(off.publicRanking.companies.reduce((n,x)=>n+x.count,0),0);
  assert.equal(off.publicRanking.teams.reduce((n,x)=>n+x.count,0),0);
