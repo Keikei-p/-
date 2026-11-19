@@ -398,9 +398,9 @@ font:inherit;font-size:13px;line-height:1.6}
  <h2>🏆 協力店の件数ランキング</h2>
  <p class="partner-panel-note">承認済み・公開ON商材の件数のみ。直営の実績は未統合です。未報告と0件は区別します。</p>
  <div class="row">
-  <div><label for="approvedSharedRankPeriod">期間</label><select id="approvedSharedRankPeriod"><option value="month">月別</option><option value="day">日別</option></select></div>
+  <div><label for="approvedSharedRankPeriod">期間</label><select id="approvedSharedRankPeriod"><option value="month">月別</option><option value="week">週別</option><option value="day">日別</option></select></div>
   <div><label for="approvedSharedRankMonth">対象月</label><input id="approvedSharedRankMonth" type="month"></div>
-  <button id="approvedSharedRankRefresh" type="button">合同件数を更新</button>
+  <button id="approvedSharedRankRefresh" type="button">協力店の件数を更新</button>
  </div>
  <p id="approvedSharedRankStatus" class="partner-panel-note" role="status"></p>
  <h3>🏢 会社別ランキング</h3><div id="approvedSharedRankCompanies" class="scroll"></div>
@@ -683,6 +683,32 @@ function renderApprovedCountRankingDetails(){
   p.teamName||"所属班未確認",p.name,p.totalCount+"件"
  ])));
 }
+// Match the existing backend's exact Mon-Sun week boundaries, including
+// weeks crossing month/year and unfinished current weeks. Zero financial reads.
+function approvedRankingDateRange(month,period,selected,today){
+ const validDate=s=>/^20\\d\\d-(0[1-9]|1[0-2])-([0-2]\\d|3[01])$/.test(s)&&
+   Number.isFinite(Date.parse(s+"T12:00:00Z"))&&
+   new Date(s+"T12:00:00Z").toISOString().slice(0,10)===s;
+ if(!/^20\\d\\d-(0[1-9]|1[0-2])$/.test(month)||
+   !["day","week","month"].includes(period)||!validDate(today))
+  throw Error("invalid_ranking_period");
+ const lastOfMonth=new Date(Date.UTC(Number(month.slice(0,4)),
+  Number(month.slice(5,7)),0)).toISOString().slice(0,10);
+ const date=period==="month"?(month===today.slice(0,7)?today:lastOfMonth):selected;
+ if(!validDate(date)||date>today||date.slice(0,7)!==month)
+  throw Error("invalid_ranking_date");
+ const shift=(source,days)=>{
+  const d=new Date(source+"T12:00:00Z");
+  d.setUTCDate(d.getUTCDate()+days);
+  return d.toISOString().slice(0,10);
+ };
+ const start=period==="month"?month+"-01":
+  period==="week"?shift(date,-((new Date(date+"T12:00:00Z").getUTCDay()+6)%7)):date;
+ const boundary=period==="week"?shift(start,6):date;
+ const end=boundary<today?boundary:today;
+ if(end<start)throw Error("invalid_ranking_dates");
+ return {date,start,end,period};
+}
 async function loadApprovedCountRanking(){
  if(!NICO_APPROVED_PARTNER_RANKING_RELEASED||!data||
   !$("approvedSharedRankings")||$("approvedSharedRankings").hidden)return;
@@ -690,16 +716,21 @@ async function loadApprovedCountRanking(){
  const identity=auth.currentUser,session=activeCodeSession,company=workspaceCompanyId;
  const month=$("approvedSharedRankMonth").value,
        period=$("approvedSharedRankPeriod").value;
- if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||!["day","month"].includes(period))return;
- const today=[dateParts.year,dateParts.month,dateParts.day].join("-");
- const date=period==="month"?(month===today.slice(0,7)?today:
-  new Date(Date.UTC(+month.slice(0,4),+month.slice(5,7),0)).toISOString().slice(0,10)):
-  $("date").value;
- const start=period==="month"?month+"-01":date,end=date;
- if(date>today||date.slice(0,7)!==month)return;
+ // Clear the previous company's/period's rows BEFORE validating new inputs.
+ // Invalid or future dates must never leave an old rank looking current.
  approvedRankData=null;
  for(const suffix of approvedRankIds)$("approvedSharedRank"+suffix).replaceChildren();
  $("approvedSharedRankCompanySelect").replaceChildren();
+ let range;
+ try{
+  range=approvedRankingDateRange(month,period,$("date").value,
+   [dateParts.year,dateParts.month,dateParts.day].join("-"));
+ }catch{
+  $("approvedSharedRankStatus").textContent=
+   "対象期間が正しくありません。選択月と対象日を確認してください。";
+  return;
+ }
+ const {date,start,end}=range;
  $("approvedSharedRankStatus").textContent="承認済み件数を照合中…";
  try{
   const value=(await get({date,rankingPeriod:period,sharedCountRankings:true})).data;
@@ -708,7 +739,8 @@ async function loadApprovedCountRanking(){
   approvedRankData=verifyApprovedCountRanking(value,start,end);
   renderApprovedCountRanking(approvedRankData);
  }catch{
-  if(gen!==approvedRankGeneration)return;
+  if(gen!==approvedRankGeneration||auth.currentUser!==identity||
+   activeCodeSession!==session||workspaceCompanyId!==company)return;
   approvedRankData=null;
   $("approvedSharedRankStatus").textContent=
    "件数を検証できません。公開商材設定・承認・アクセス権を確認してください。";
