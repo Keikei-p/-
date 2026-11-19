@@ -72,3 +72,50 @@ test("invalid code session is never stored or activated",async()=>{
  assert.deepEqual(x.events,[]);
  assert.equal(x.context.activeCodeSession,null);
 });
+
+test("company-code auth never inherits a stale email workspace or prior code bearer",async()=>{
+ const start=html.indexOf("const isolatedCompanyCodeCalls=new Set([");
+ const end=html.indexOf('const get=call("getPartnerWorkspace")',start);
+ assert(start>0&&end>start,"company-code scope guard must be present");
+ const calls=[],token="S".repeat(43);
+ const context=vm.createContext({
+  functions:{},workspaceCompanyId:"previousWorkspace",activeCodeSession:"",
+  httpsCallable:(_functions,name)=>async data=>{
+   calls.push({name,data:JSON.parse(JSON.stringify(data))});
+   return {data:{saved:false}};
+  }
+ });
+ const call=vm.runInContext(html.slice(start,end)+"\ncall",context);
+ const issue=call("issuePartnerCompanyCode");
+ const activate=call("activatePartnerCompanyCode");
+ const login=call("loginPartnerCompanyCode");
+ const logout=call("logoutPartnerCompanyCode");
+ const get=call("getPartnerWorkspace");
+ await login({companyCode:"NICO-TEST",password:"placeholder"});
+ await activate({companyCode:"NICO-TEST",password:"placeholder"});
+ await issue({companyName:"協力店"});
+ await get({date:"2026-11-20"});
+ assert.deepEqual(calls.slice(0,3).map(x=>x.data),[
+  {companyCode:"NICO-TEST",password:"placeholder"},
+  {companyCode:"NICO-TEST",password:"placeholder"},
+  {companyName:"協力店"}
+ ]);
+ assert.deepEqual(calls[3].data,{
+  date:"2026-11-20",workspaceCompanyId:"previousWorkspace"
+ },"legacy email workspace remains available on the existing count-only GET");
+ context.activeCodeSession=token;
+ await login({companyCode:"NICO-TEST",password:"new-password"});
+ await logout({codeSessionToken:"explicit-token"});
+ await get({date:"2026-11-20"});
+ assert.deepEqual(calls[4].data,{
+  companyCode:"NICO-TEST",password:"new-password"
+ },"re-login must never receive previous code bearer");
+ assert.deepEqual(calls[5].data,{codeSessionToken:"explicit-token"},
+  "logout uses only the explicitly supplied code session");
+ assert.deepEqual(calls[6].data,{
+  date:"2026-11-20",codeSessionToken:token
+ },"existing count-only GET still uses a single server-verified bearer");
+ assert.equal(calls.some(x=>x.name==="loginPartnerCompanyCode"&&
+  ("workspaceCompanyId" in x.data||"codeSessionToken" in x.data)),false);
+ assert(!/deleteUser\(|updateDoc\(|setDoc\(|firebase deploy/.test(html.slice(start,end)));
+});
