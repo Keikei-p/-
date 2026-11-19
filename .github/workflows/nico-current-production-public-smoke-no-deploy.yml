@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/nico-current-production-public-smoke-no-deploy.yml'
       - 'tools/production/nico-live-public-release-audit.mjs'
+      - 'tools/production/inspect-live-sales-public-drift-readonly.mjs'
+      - 'tests/inspect-live-sales-public-drift-readonly.test.mjs'
       - 'index.html'
       - 'partner-workspace.html'
 permissions:
@@ -48,3 +50,13 @@ jobs:
           if(!result.callableAnonymousProtected||!result.gatewayAnonymousProtected)
             throw Error('STOP_NICO_ANONYMOUS_FINANCE_OR_COUNT_BOUNDARY_NOT_CONFIRMED');
           NODE
+      - name: Verify exact public HTML revisions and distinguish draft from live (GET ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$FIREBASE_TOKEN"
+          node --test tests/inspect-live-sales-public-drift-readonly.test.mjs
+          node tools/production/inspect-live-sales-public-drift-readonly.mjs
+          echo 'PUBLIC_BYTE_FINGERPRINT_GET_ONLY_NOT_A_RELEASE_AUTHORIZATION'
