@@ -738,8 +738,86 @@ $("dashboardPartnerMonth").max=jstMonth;
 let currentCountPanel=null;
 const countPanelNames=new Set(["analysis","individual","productRanking","teamRanking",
   "trend","teamDetail","productSummary","report","goal","daily","history"]);
+// The same eight Owner-published tabs must apply to email and company-code partners.
+// Disabled until the real code/email accounts, finance-denial and recovery are verified.
+// This flag does NOT authorize a backend call, publication, or production release.
+const NICO_PARTNER_SAME_SCREEN_TABS_ENABLED=false;
+const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED=false;
+const partnerPublishedCountPanelMap=Object.freeze({
+ product:"productRanking",team:"teamRanking",individual:"individual",
+ detail:"teamDetail",report:"report",daily:"daily",history:"history",goal:"goal"
+});
+let partnerPublishedCountPanelIds=null,partnerPublishedCountGeneration=0;
+const usePartnerPublishedCountPanels=()=>NICO_PARTNER_SAME_SCREEN_TABS_ENABLED===true&&
+ NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true;
+function partnerCountPanelAllowed(key){
+ if(!countPanelNames.has(key))return false;
+ if(!usePartnerPublishedCountPanels()||data?.role==="hub")return true;
+ return partnerPublishedCountPanelIds?.has(key)===true;
+}
+function applyPartnerPublishedCountPanels(){
+ if(!usePartnerPublishedCountPanels())return;
+ for(const button of document.querySelectorAll("[data-count-panel]")){
+  const key=button.dataset.countPanel;
+  const allowed=partnerCountPanelAllowed(key);
+  button.hidden=!allowed;
+  if(!allowed){
+   button.setAttribute("aria-pressed","false");
+   button.setAttribute("aria-expanded","false");
+   const panel=$("partnerPanel-"+key);
+   if(panel)panel.hidden=true;
+  }
+ }
+ if(currentCountPanel&&!partnerCountPanelAllowed(currentCountPanel)){
+  currentCountPanel=null;
+  $("partnerDashboardDetail").hidden=true;
+ }
+}
+function resetPartnerPublishedCountPanels(){
+ ++partnerPublishedCountGeneration;
+ partnerPublishedCountPanelIds=new Set();
+ applyPartnerPublishedCountPanels();
+}
+async function loadPartnerPublishedCountPanels(){
+ if(!usePartnerPublishedCountPanels()||!data||data.role==="hub")return false;
+ const session=activeCodeSession,user=auth.currentUser,company=workspaceCompanyId,
+  generation=++partnerPublishedCountGeneration;
+ if(!session&&(!user||user.emailVerified!==true))return false;
+ if(session&&user)return false; // never combine company code and Firebase Auth
+ try{
+  const payload=session?{codeSessionToken:session}:
+   (company?{workspaceCompanyId:company}:{});
+  const read=httpsCallable(functions,"getPartnerPublishedTabs",{timeout:12000});
+  const policy=(await read(payload)).data;
+  if(generation!==partnerPublishedCountGeneration||
+     session!==activeCodeSession||user!==auth.currentUser||
+     company!==workspaceCompanyId||!data||data.role==="hub")return false;
+  const canonical=["product","team","individual","detail","report","daily","history","goal"];
+  if(policy?.schema!=="nico-partner-tabs-v1"||
+     !Number.isSafeInteger(policy.revision)||policy.revision<0||
+     typeof policy.published!=="boolean"||
+     !Array.isArray(policy.tabs)||policy.tabs.length>8||
+     new Set(policy.tabs).size!==policy.tabs.length||
+     policy.tabs.some(tab=>!canonical.includes(tab))||
+     (!policy.published&&policy.tabs.length!==0)||
+     canonical.filter(tab=>policy.tabs.includes(tab)).join("|")!==policy.tabs.join("|"))
+   throw Error("partner_publication_invalid");
+  partnerPublishedCountPanelIds=new Set(policy.published?
+   policy.tabs.map(tab=>partnerPublishedCountPanelMap[tab]):[]);
+  applyPartnerPublishedCountPanels();
+  return true;
+ }catch{
+  if(generation!==partnerPublishedCountGeneration||
+     session!==activeCodeSession||user!==auth.currentUser||
+     company!==workspaceCompanyId)return false;
+  // A revoked/disabled/unavailable policy NEVER grants an optional tab.
+  partnerPublishedCountPanelIds=new Set();
+  applyPartnerPublishedCountPanels();
+  return false;
+ }
+}
 function openCountPanel(key){
- if(!countPanelNames.has(key))return;
+ if(!partnerCountPanelAllowed(key))return;
  currentCountPanel=currentCountPanel===key?null:key;
  for(const btn of document.querySelectorAll("[data-count-panel]")){
   const active=btn.dataset.countPanel===currentCountPanel;
@@ -1842,11 +1920,15 @@ async function refresh(){if(!activeCodeSession&&(!auth.currentUser||!auth.curren
     (!Array.isArray(res.enabledCategories)||
      new Set(res.enabledCategories).size!==res.enabledCategories.length||
      res.enabledCategories.some(key=>!KEYS.includes(key))))throw Error("publication_schema");
- data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});draw();notice("最新の件数を読み込みました。");
+ data=res;countDayCache.set((activeCodeSession?"code-session":"email-"+auth.currentUser.uid)+"|"+res.date,{savedAt:Date.now(),response:res});
+ resetPartnerPublishedCountPanels();
+ draw();
+ if(usePartnerPublishedCountPanels())void loadPartnerPublishedCountPanels();
+ notice("最新の件数を読み込みました。");
  void mountVerifiedJointMonthForPartner();
  }catch(e){
   if(current!==nonce)return;
-  data=null;resetApprovedRanking();resetVerifiedJointMonth();$("appBox").hidden=true;
+  data=null;resetPartnerPublishedCountPanels();resetApprovedRanking();resetVerifiedJointMonth();$("appBox").hidden=true;
   if(activeCodeSession&&["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
    clearCompanySession();
    notice("会社コードのログイン期限が切れたか、権限が変更されました。もう一度ログインしてください。",true);
@@ -2098,7 +2180,7 @@ onAuthStateChanged(auth,async u=>{
  $("transferExistingInternal").checked=false;
  $("keepInternalMembership").checked=false;
  ++nonce;++countLoadId;loading=false;companyCodeSession=false;data=null;countDayCache.clear();
- clearCountOnlyDashboard();resetApprovedRanking();resetVerifiedJointMonth();$("companyOverview").hidden=true;
+ clearCountOnlyDashboard();resetApprovedRanking();resetVerifiedJointMonth();resetPartnerPublishedCountPanels();$("companyOverview").hidden=true;
  $("workspaceTitle").textContent="NICO FACTORY｜協力店 実績管理";
  $("appBox").hidden=true;$("loginBox").hidden=false;
  $("loginLogout").hidden=!u;$("inviteAccept").hidden=true;$("verify").hidden=true;
