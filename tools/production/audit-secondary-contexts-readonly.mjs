@@ -184,7 +184,10 @@ export async function inventory({db,credential,authService,request=fetch,include
  const values={totalContexts:contexts.length,activeSecondaryContexts:0,
   ownerConflicts:0,nonOwnerOldFinancePaths:0,activeUnknownOldFinancePaths:0,inactiveOrUnknownContexts:0,
   inactiveSecondaryContexts:0,activeUnknownSecondaryContexts:0,
-  inconsistentContexts:0,internalOwnersScanned:0,internalOwnerContexts:0,
+  inconsistentContexts:0,activeInconsistentContexts:0,
+  activeMissingContextDocuments:0,activeMismatchedContextDocuments:0,
+  activeUnsupportedContextKinds:0,
+  internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
  for(const c of contexts){
   const x=c.data()||{};
@@ -219,13 +222,32 @@ export async function inventory({db,credential,authService,request=fetch,include
    if(x.kind!=='partner_secondary'){
     values.inactiveOrUnknownContexts++;
     values.activeUnknownSecondaryContexts++;
-   }else values.inconsistentContexts++;
+    values.activeUnsupportedContextKinds++;
+   }else{
+    values.inconsistentContexts++;
+    values.activeInconsistentContexts++;
+    if(!user||!oldMember||!oldCompany||!partnerMember||!partnerCompany)
+     values.activeMissingContextDocuments++;
+    else values.activeMismatchedContextDocuments++;
+   }
   }
   else if(kind==='inactive_or_unrecognized'){
    values.inactiveOrUnknownContexts++;
-   if(x.active===true)values.activeUnknownSecondaryContexts++;
-   else values.inactiveSecondaryContexts++;
-  }else values.inconsistentContexts++;
+   if(x.active===true){
+    values.activeUnknownSecondaryContexts++;
+    if(x.kind!=='partner_secondary')values.activeUnsupportedContextKinds++;
+   }else values.inactiveSecondaryContexts++;
+  }else{
+   // "broken" includes both active inconsistencies and already disabled
+   // historical contexts. Only the former can block current live access.
+   values.inconsistentContexts++;
+   if(x.active===true){
+    values.activeInconsistentContexts++;
+    if(!user||!oldMember||!oldCompany||!partnerMember||!partnerCompany)
+     values.activeMissingContextDocuments++;
+    else values.activeMismatchedContextDocuments++;
+   }else values.inactiveSecondaryContexts++;
+  }
  }
  for(const c of companies){
   const x=c.data()||{};
@@ -277,7 +299,13 @@ export function publicInventorySummary(result){
   unrecognizedActiveOldFinanceReadPotential:Boolean(result.activeUnknownOldFinancePaths),
   ownerContextConflictPresent:Boolean(result.ownerConflicts||result.internalOwnerContexts),
   unrecognizedContextPresent:Boolean(result.inactiveOrUnknownContexts||result.inconsistentContexts),
-  activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||result.inconsistentContexts),
+  // A disabled/inactive broken historical context is not an active user.
+  // Never infer current active access from the general inconsistency counter.
+  activeUnrecognizedContextPresent:Boolean(result.activeUnknownSecondaryContexts||
+    result.activeInconsistentContexts||result.activeUnknownOldFinancePaths),
+  activeContextDocumentsMissingPresent:Boolean(result.activeMissingContextDocuments),
+  activeContextMembershipMismatchPresent:Boolean(result.activeMismatchedContextDocuments),
+  activeContextUnsupportedKindPresent:Boolean(result.activeUnsupportedContextKinds),
   inactiveContextPresent:Boolean(result.inactiveSecondaryContexts),
   unapprovedTransferPresent:Boolean(result.transferNeedsReview),
   transferCandidatePresent:Boolean(result.transferEligibleCandidates),
