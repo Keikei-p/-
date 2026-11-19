@@ -73,7 +73,7 @@ test("logging out invalidates outstanding counts, publication and visible local 
  const call=[];
  const ctx=vm.createContext({
   codeCountSessionEpoch:3,activeCodeSession:TOKEN_A,companyCodeSession:true,
-  codeCountGoalByMonth:new Map([["2026-11","100"]]),countLoadId:9,countDayCache:new Map([["old",{}]]),
+  codeCountGoalByMonth:new Map([["2026-11","100"]]),pendingPartnerSaveReceipts:new Map([["pending",{version:2}]]),countLoadId:9,countDayCache:new Map([["old",{}]]),
   sessionStorage:{removeItem:k=>call.push("remove:"+k)},
   resetPartnerPublishedCountPanels:()=>call.push("reset"),
   clearCountOnlyDashboard:()=>call.push("clear")
@@ -86,13 +86,14 @@ test("logging out invalidates outstanding counts, publication and visible local 
  assert.equal(ctx.countLoadId,10);
  assert.equal(ctx.countDayCache.size,0);
  assert.equal(ctx.codeCountGoalByMonth.size,0);
+ assert.equal(ctx.pendingPartnerSaveReceipts.size,0);
  assert.deepEqual(call,["reset","clear","remove:nicoPartnerCodeSession"]);
  assert.match(html,/clearCompanySession\(\);\+\+nonce;loading=false;data=null;/);
 });
 test("verified count GET aborts when a company session changes before response",()=>{
  assert.match(html,/session=activeCodeSession,user=auth\.currentUser/);
  assert.match(html,/session!==activeCodeSession\|\|\s*user!==auth\.currentUser\|\|company!==workspaceCompanyId/);
- assert.match(html,/\+\+codeCountSessionEpoch;\s*codeCountGoalByMonth\.clear\(\);\s*\+\+countLoadId;\s*countDayCache\.clear\(\);/);
+ assert.match(html,/\+\+codeCountSessionEpoch;\s*codeCountGoalByMonth\.clear\(\);\s*pendingPartnerSaveReceipts\.clear\(\);\s*\+\+countLoadId;\s*countDayCache\.clear\(\);/);
  assert.match(html,/const NICO_PARTNER_SAME_SCREEN_TABS_ENABLED=false;/);
  assert.match(html,/const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED=false;/);
 });

@@ -14,7 +14,7 @@ function setup({emailSignedIn=true,signoutError=false,signoutLeavesIdentity=fals
  const sessionStorage={setItem(k,v){events.push(["store",k,v]);}};
  const context=vm.createContext({
   auth,activeCodeSession:null,companyCodeSession:false,
-  codeCountSessionEpoch:0,codeCountGoalByMonth:new Map([["2026-11","100"]]),countLoadId:0,countDayCache:new Map(),
+  codeCountSessionEpoch:0,codeCountGoalByMonth:new Map([["2026-11","100"]]),pendingPartnerSaveReceipts:new Map(),countLoadId:0,countDayCache:new Map(),
   resetPartnerPublishedCountPanels:()=>events.push(["reset"]),
   clearCountOnlyDashboard:()=>events.push(["clear"]),
   signOut:async()=>{
