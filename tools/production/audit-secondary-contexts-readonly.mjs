@@ -126,6 +126,25 @@ export function classifyActiveContextMismatch({
 }
 
 /**
+ * Additional safe diagnosis for primary membership mismatches ONLY.
+ * NEVER use any result as a permission grant or an update instruction.
+ * All output becomes boolean-only aggregate flags with zero account IDs.
+ */
+export function classifyPrimaryMembershipMismatch({
+ context,user,oldMember,oldCompany
+}={}){
+ if(context?.active!==true||!user||!oldMember||!oldCompany)
+  return Object.freeze({link:false,inactive:false,access:false,type:false,companyKind:false});
+ return Object.freeze({
+  link:user.companyId!==context.primaryCompanyId,
+  inactive:user.active===false||oldMember.active===false||oldCompany.active===false,
+  access:!internalAccess(user.accessKind)||!internalAccess(oldMember.accessKind),
+  type:!legacyType(user.memberType)||!legacyType(oldMember.memberType),
+  companyKind:!internalKind(oldCompany.companyKind)
+ });
+}
+
+/**
  * Strict dry-run only. A primary conversion must never be issued solely from
  * this boolean; the user's live client session and immutable backup remain
  * separate deployment gates.
@@ -217,6 +236,9 @@ export async function inventory({db,credential,authService,request=fetch,include
   inconsistentContexts:0,activeInconsistentContexts:0,
   activeMissingContextDocuments:0,activeMismatchedContextDocuments:0,
   activeInvalidCompanyPair:0,activePrimaryRecordMismatch:0,
+  activePrimaryIdentityLinkMismatch:0,activePrimaryInactiveState:0,
+  activePrimaryAccessMarkerMismatch:0,activePrimaryMemberTypeMismatch:0,
+  activePrimaryCompanyKindMismatch:0,
   activePartnerRecordMismatch:0,activeUnsupportedContextKinds:0,
   internalOwnersScanned:0,internalOwnerContexts:0,
   historicalTransfersPresent:transfers.length,transferEligibleCandidates:0,transferNeedsReview:0};
@@ -265,7 +287,17 @@ export async function inventory({db,credential,authService,request=fetch,include
       context:x,user,oldMember,oldCompany,partnerMember,partnerCompany
      });
      if(cause.contextPair)values.activeInvalidCompanyPair++;
-     if(cause.primary)values.activePrimaryRecordMismatch++;
+     if(cause.primary){
+      values.activePrimaryRecordMismatch++;
+      const primary=classifyPrimaryMembershipMismatch({
+       context:x,user,oldMember,oldCompany
+      });
+      if(primary.link)values.activePrimaryIdentityLinkMismatch++;
+      if(primary.inactive)values.activePrimaryInactiveState++;
+      if(primary.access)values.activePrimaryAccessMarkerMismatch++;
+      if(primary.type)values.activePrimaryMemberTypeMismatch++;
+      if(primary.companyKind)values.activePrimaryCompanyKindMismatch++;
+     }
      if(cause.partner)values.activePartnerRecordMismatch++;
     }
    }
@@ -290,7 +322,17 @@ export async function inventory({db,credential,authService,request=fetch,include
       context:x,user,oldMember,oldCompany,partnerMember,partnerCompany
      });
      if(cause.contextPair)values.activeInvalidCompanyPair++;
-     if(cause.primary)values.activePrimaryRecordMismatch++;
+     if(cause.primary){
+      values.activePrimaryRecordMismatch++;
+      const primary=classifyPrimaryMembershipMismatch({
+       context:x,user,oldMember,oldCompany
+      });
+      if(primary.link)values.activePrimaryIdentityLinkMismatch++;
+      if(primary.inactive)values.activePrimaryInactiveState++;
+      if(primary.access)values.activePrimaryAccessMarkerMismatch++;
+      if(primary.type)values.activePrimaryMemberTypeMismatch++;
+      if(primary.companyKind)values.activePrimaryCompanyKindMismatch++;
+     }
      if(cause.partner)values.activePartnerRecordMismatch++;
     }
    }else values.inactiveSecondaryContexts++;
@@ -354,6 +396,11 @@ export function publicInventorySummary(result){
   activeContextMembershipMismatchPresent:Boolean(result.activeMismatchedContextDocuments),
   activeContextCompanyPairInvalidPresent:Boolean(result.activeInvalidCompanyPair),
   activeContextPrimaryRecordMismatchPresent:Boolean(result.activePrimaryRecordMismatch),
+  activePrimaryIdentityLinkMismatchPresent:Boolean(result.activePrimaryIdentityLinkMismatch),
+  activePrimaryInactiveStatePresent:Boolean(result.activePrimaryInactiveState),
+  activePrimaryAccessMarkerMismatchPresent:Boolean(result.activePrimaryAccessMarkerMismatch),
+  activePrimaryMemberTypeMismatchPresent:Boolean(result.activePrimaryMemberTypeMismatch),
+  activePrimaryCompanyKindMismatchPresent:Boolean(result.activePrimaryCompanyKindMismatch),
   activeContextPartnerRecordMismatchPresent:Boolean(result.activePartnerRecordMismatch),
   activeContextUnsupportedKindPresent:Boolean(result.activeUnsupportedContextKinds),
   inactiveContextPresent:Boolean(result.inactiveSecondaryContexts),
