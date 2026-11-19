@@ -88,7 +88,10 @@ test('EXACT current main Rules are recognized, but not mistaken for reviewed Pha
  const original=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
  const observed=classifyLiveRules(original);
  assert.equal(observed.exactOriginalMainRules,true);
- assert.equal(observed.matchesReviewedLegacyLive,true);
+ // Current production Rules were changed via reviewed Owner product Rules release.
+ // Keep the old legacy content fingerprint historical; do not assert that
+ // current main has the bytes of the prior legacy release.
+ assert.equal(observed.matchesReviewedLegacyLive,false);
  assert.equal(observed.exactReviewedPhase1Boundary,false);
  assert.equal(observed.actualAuthenticatedBoundaryVerified,false);
  // A single-byte change must NEVER be certified as a known source.
@@ -126,4 +129,22 @@ test('public report is boolean-only and NEVER says security is already proven',(
  assert.equal(report.safeToDeploy,false);
  assert.equal(report.authenticatedBoundaryProofStillRequired,true);
  assert.equal(JSON.stringify(report).includes('totalRevenue'),false);
+});
+
+test('inactive historical secondary context is not an active unknown-finance risk',()=>{
+ const inactive={totalContexts:1,inactiveOrUnknownContexts:1,inactiveSecondaryContexts:1,
+  activeUnknownSecondaryContexts:0,inconsistentContexts:0};
+ const safe=publicInventorySummary(inactive);
+ assert.equal(safe.unrecognizedContextPresent,true);
+ assert.equal(safe.inactiveContextPresent,true);
+ assert.equal(safe.activeUnrecognizedContextPresent,false);
+ assert.equal(safe.safeToDeploy,false);
+ const active=publicInventorySummary({...inactive,activeUnknownSecondaryContexts:1,
+  inactiveSecondaryContexts:0});
+ assert.equal(active.activeUnrecognizedContextPresent,true);
+ assert.equal(active.inactiveContextPresent,false);
+ assert.equal(publicInventorySummary({...inactive,inconsistentContexts:1}).activeUnrecognizedContextPresent,true);
+ const published=JSON.stringify(safe);
+ for(const k of ['emailLower','uid','inactiveSecondaryContexts','activeUnknownSecondaryContexts'])
+  assert(!published.includes(k));
 });
