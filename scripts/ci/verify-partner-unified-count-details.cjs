@@ -91,6 +91,14 @@ if(integrated){
  // The shared server-side read-only modules are deployed from the
  // Functions directory, and these four root copies must be exactly equal.
  // Lock both sides to the already reviewed vendor blob fingerprints.
+ for(const [path,pinned] of [
+  ["ranking/verified-dual-count-view.mjs","fec368b973cc9f0ce7587c8712f03626f3ffe7cf"],
+  ["tests/verified-dual-count-view.test.mjs","916b563efa00fd68e91feef07a4eaa5dbb8d598a"]
+ ]){
+  assert.equal(cp.execFileSync("git",["hash-object",path],{
+   encoding:"utf8"
+  }).trim(),pinned,"Approved partner team/count-only UI changed: "+path);
+ }
  const checkedReadOnlyModules={
   "canonical-joint-count-sku-reader.mjs":"579d9694ce8448ada21c4f646623156a3e39be86",
   "partner-month-readonly-loader.mjs":"8315e982761c366c26a3e962cd91a366586ac6ce",
@@ -115,7 +123,7 @@ if(integrated){
   }).trim(),"6daa5a18563506237f66fb59c68731e26db4d08e",
   "Owner SKU + own-team projection regression must match approved test");
 }
-assert(changed.length<=(integrated?60:54),
+assert(changed.length<=(integrated?62:54),
  "unexpected scope of feature change: "+changed.join(","));
 const legacyAllowed=[
  "index.html","ranking/partner-unified-count-team-view.mjs",
@@ -178,6 +186,8 @@ const integrationOnly=[
  "tests/audit-login-readiness-live-readonly.test.mjs",
  "tests/owner-product-visibility-rankings.test.mjs",
  "tests/owner-visible-count-server-handler.test.mjs",
+ "ranking/verified-dual-count-view.mjs",
+ "tests/verified-dual-count-view.test.mjs",
  "ranking/canonical-joint-count-sku-reader.mjs",
  "ranking/partner-month-readonly-loader.mjs",
  "ranking/partner-workspace-count-source.mjs",

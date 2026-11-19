@@ -141,6 +141,35 @@ test("owner and partner both exclude unreported company/team, but rank a submitt
   assert(!/(売上|単価|キャッシュバック|[¥￥])/.test(words(root)));
  }
 });
+test("own partner team details render using exactly the validated count-only server shape",()=>{
+ const root=new Node("main"),payload=buildVerifiedCountDashboard(input("partner_owner"));
+ const original=structuredClone(payload);
+ renderVerifiedDualCountDashboard({document:doc,root,payload});
+ const output=words(root);
+ assert(output.includes("協力店Aの班詳細"));
+ assert(output.includes("協力店担当"));
+ assert(!output.includes("本社担当"));
+ assert(!/(売上|単価|キャッシュバック|[¥￥])/.test(output));
+ assert.deepEqual(payload,original);
+ const invalid=[
+  d=>{delete d.own.teamDetails;},
+  d=>{d.own.teamDetails[0].members[0].count+=1;},
+  d=>{d.own.teamDetails[0].products[0].count+=1;},
+  d=>{d.own.teamDetails[0].products[0].name="単価５０００円";},
+  d=>{d.publicRanking.teams.find(t=>t.own).own=false;},
+  d=>{d.publicRanking.teams.find(t=>!t.own).own=true;},
+  d=>{d.own.teamDetails[0].memberId="private-uid";}
+ ];
+ for(const change of invalid){
+  const forged=structuredClone(payload);
+  change(forged);
+  assert.throws(()=>renderVerifiedDualCountDashboard({
+   document:doc,root,payload:forged
+  }),/件数の権限/);
+  assert.equal(root.children.length,0,"Invalid detail clears old team information");
+ }
+});
+
 test("partner sees own results and public rankings only, not any hub internal team or finance details",()=>{
  const root=new Node("main"),data=buildVerifiedCountDashboard(input("partner_owner"));
  renderVerifiedDualCountDashboard({document:doc,root,payload:data});
