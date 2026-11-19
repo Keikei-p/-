@@ -66,7 +66,9 @@ test("valid code session uses only opaque token; published eight tabs are visibl
  assert(x.names.every(n=>n.hidden));
  const result=await x.expr("loadPartnerPublishedCountPanels()");
  assert.equal(result,true);
- assert.deepEqual(x.calls,[{codeSessionToken:x.token}]);
+ assert.equal(x.calls.length,1);
+ assert.deepEqual(Object.keys(x.calls[0]),["codeSessionToken"]);
+ assert.equal(x.calls[0].codeSessionToken,x.token);
  for(const n of x.names)assert.equal(n.hidden,["analysis","trend","productSummary"].includes(n.dataset.countPanel));
  assert.equal(x.expr("partnerCountPanelAllowed('analysis')"),false);
  assert.equal(x.expr("partnerCountPanelAllowed('teamDetail')"),true);
@@ -77,7 +79,9 @@ test("verified secondary email passes only workspaceCompanyId, no code impersona
  const x=subject({code:false});
  x.expr("resetPartnerPublishedCountPanels()");
  assert.equal(await x.expr("loadPartnerPublishedCountPanels()"),true);
- assert.deepEqual(x.calls,[{workspaceCompanyId:"partner-C"}]);
+ assert.equal(x.calls.length,1);
+ assert.deepEqual(Object.keys(x.calls[0]),["workspaceCompanyId"]);
+ assert.equal(x.calls[0].workspaceCompanyId,"partner-C");
 });
 test("unpublished, invalid, or unavailable policy is fail closed for all optional tabs",async()=>{
  const variants=[
