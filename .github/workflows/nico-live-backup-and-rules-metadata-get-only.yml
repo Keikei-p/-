@@ -1,7 +1,7 @@
 name: NICO live backup and finance Rules metadata GET ONLY (NO DEPLOY)
 on:
   push:
-    branches: [fix/partner-eight-tab-release-preflight-20261118]
+    branches: [audit/sales-live-release-metadata-20261119]
     paths:
       - '.github/workflows/nico-live-backup-and-rules-metadata-get-only.yml'
       - 'security/secondary-finance-read-fence.mjs'
@@ -28,9 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = 'Keikei-p/-'
-          test "$GITHUB_REF" = 'refs/heads/fix/partner-eight-tab-release-preflight-20261118'
+          test "$GITHUB_REF" = 'refs/heads/audit/sales-live-release-metadata-20261119'
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
-          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = 'b2c59c0412335e678c4317fbedd7c4d9b87330fe'
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = 'b1e4d526ec4b03e12caf67be03ada472acdf0330'
           test "$FIREBASE_PROJECT_ID" = 'sales-management-cc116'
           test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
