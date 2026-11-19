@@ -32,6 +32,8 @@ function make({code=true,mixed=false}={}){
 test("company-code partner calculates monthly and daily targets without an email account",()=>{
  const t=make();t.run("renderCountGoal()");
  assert.equal(t.dom.get("countGoalBox").hidden,false);
+ // The initial render correctly clears an unset field; simulate a real user entering 12.
+ t.dom.get("countGoal").value="12";
  t.run('$("countGoalSave").onclick()');
  assert.equal(t.ctx.codeCountGoalByMonth.get("2026-11"),"12");
  assert.match(t.dom.get("countGoalStatus").textContent,/現在 5\/12件/);
