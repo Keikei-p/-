@@ -14440,6 +14440,36 @@ function partnerInlineFillSelect(id,items,label,preferred){
  if(items.some(x=>x.id===pick))select.value=pick;
  return select.value;
 }
+/**
+ * Partner count-entry picker mirrors the internal company -> team -> person
+ * hierarchy, but uses ONLY the already verified count-only workspace snapshot.
+ * Keep actual staff IDs as option values. Identical names remain distinct and
+ * saved teamIdSnapshot is NEVER rewritten when a person changes team.
+ */
+function partnerInlineFillGroupedStaff(staff,teams,companyName){
+ const select=pInline("pInlineStaff"),before=select.value;
+ const teamById=new Map(teams.map(t=>[t.id,t]));
+ const groups=new Map();
+ select.replaceChildren();
+ for(const person of staff){
+  const team=teamById.get(person.teamId);
+  const groupName=companyName+" → "+(team?.name||
+   "所属班未確認");
+  let group=groups.get(groupName);
+  if(!group){
+   group=document.createElement("optgroup");
+   group.label=groupName;
+   groups.set(groupName,group);
+   select.append(group);
+  }
+  const option=document.createElement("option");
+  option.value=person.id;
+  option.textContent=person.name;
+  group.append(option);
+ }
+ if(staff.some(person=>person.id===before))select.value=before;
+ return select.value;
+}
 // Only a new server-issued, verified Owner catalog may retire the old private
 // product editor. Until then the existing user-facing entry paths MUST remain
 // available to avoid stopping reporting or destroying historical input support.
@@ -14676,8 +14706,7 @@ function partnerInlineRender(){
   }
   list.append(row);
  }
- partnerInlineFillSelect("pInlineStaff",staff,
-  p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
+ partnerInlineFillGroupedStaff(staff,allTeams,snap.companyName);
  partnerInlineRenderCounts();
  renderPartnerCountOnlyExtras();
  // Aggregate day data for the detail and daily views. Rankings reuse
