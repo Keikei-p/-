@@ -502,6 +502,11 @@ const app=initializeApp({apiKey:"AIzaSyDhwCVqn28Rne0IjEjbihI0GNZOBrSKd94",
 authDomain:"sales-management-cc116.firebaseapp.com",projectId:"sales-management-cc116",
 appId:"1:904932511564:web:6583e8b0c585231b9049e"});
 const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
+// Anonymous Firebase app for partner company-code password validation.
+// Do not use or revive the old signed-in Firebase Auth identity; failed
+// credentials must leave its login and all existing data untouched.
+const codeAuthApp=initializeApp(app.options,"nico-partner-code-auth-isolated");
+const anonymousCodeFunctions=getFunctions(codeAuthApp,"asia-northeast1");
 // Existing internal accounts can open the separate count-only partner tenant
 // without changing their original user profile. The server validates context.
 let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
@@ -514,8 +519,9 @@ const isolatedCompanyCodeCalls=new Set([
  "issuePartnerCompanyCode","activatePartnerCompanyCode",
  "loginPartnerCompanyCode","logoutPartnerCompanyCode"
 ]);
+const anonymousCodeAuthCalls=new Set(["activatePartnerCompanyCode","loginPartnerCompanyCode"]);
 const call=name=>{
- const fn=httpsCallable(functions,name);
+ const fn=httpsCallable(anonymousCodeAuthCalls.has(name)?anonymousCodeFunctions:functions,name);
  const isolated=isolatedCompanyCodeCalls.has(name);
  return data=>fn({...data,
   ...(!isolated&&workspaceCompanyId&&!activeCodeSession?{workspaceCompanyId}:{}),
@@ -2174,14 +2180,9 @@ const setLoginMode=code=>{
 };
 $("selectCodeLogin").onclick=()=>setLoginMode(true);
 $("selectEmailLogin").onclick=()=>setLoginMode(false);
-// A disabled legacy email identity must not be attached as Authorization
-// to a partner-code login or activation request. Sign out before calling the
-// server, not only after obtaining a code session. Failure must halt safely.
-async function endEmailSessionBeforeCompanyCodeAuth(){
- if(!auth.currentUser)return;
- await signOut(auth);
- if(auth.currentUser)throw Error("old_email_session_still_active");
-}
+// Company-code credentials are checked using the separate anonymous Functions
+// instance above. Only a successfully verified session may trigger the
+// existing sign-out-and-handoff below. Failed credentials never sign out Owner.
 // A company-code session and an old Firebase email identity must NEVER overlap.
 // Complete and verify Firebase sign-out BEFORE storing the new count-only token.
 // An unsuccessful sign-out keeps the code session out of browser storage.
@@ -2214,7 +2215,6 @@ $("companyCodeLoginForm").onsubmit=async e=>{
   notice("会社コードとパスワードを確認しています…");
   const companyCode=$("companyLoginCode").value.trim().toUpperCase();
   const password=$("companyLoginPassword").value;
-  await endEmailSessionBeforeCompanyCodeAuth();
   const {data:result}=await codeLogin({companyCode,password});
   await enterIsolatedCompanyCodeSession(result);
   $("companyLoginPassword").value="";
@@ -2229,7 +2229,6 @@ $("companyCodeActivateForm").onsubmit=async e=>{
   notice("会社コードの初回パスワードを設定しています…");
   const companyCode=$("companyActivationCode").value.trim().toUpperCase();
   const password=$("companyActivationPassword").value;
-  await endEmailSessionBeforeCompanyCodeAuth();
   const activated=(await activateCompanyCode({companyCode,password})).data;
   if(activated?.activated!==true)throw Error("activation_not_verified");
   const {data:result}=await codeLogin({companyCode,password});
