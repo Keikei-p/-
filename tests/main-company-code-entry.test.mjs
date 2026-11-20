@@ -381,3 +381,32 @@ test("company-code page uses count-only API for read, write and corrections with
  assert.doesNotMatch(source,/\b(?:getFirestore|getDoc|setDoc|updateDoc|revenueGoals|pricingOptions)\b/);
  assert.match(html,/if\(partnerMainCodeActive\(\)\)\{\s*const token=partnerMainCodeToken;\s*partnerMainCodeForget\(\)/);
 });
+
+test("company-code Owner keeps same-app count member/team and archived catalog management",()=>{
+ const start=html.indexOf("function partnerPublishedTabAllowed(name){");
+ const end=html.indexOf("\nasync function refreshPartnerPublishedTabNavigation()",start);
+ assert(start>=0&&end>start,"Owner publication selector exists");
+ const source=html.slice(start,end);
+ const codeOwner=vm.runInNewContext(source+"\npartnerPublishedTabAllowed",{
+  partnerMainCodeActive:()=>true,
+  NICO_PARTNER_TAB_UI_ENABLED:false,
+  NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED:false
+ });
+ for(const name of ["record","teams","members","catalog","account"])
+  assert.equal(codeOwner(name),true,"Verified count-only principal must retain "+name);
+ assert.equal(codeOwner("invite"),false,
+  "Email invitation must not use an unauthenticated company code");
+ const emailOwner=vm.runInNewContext(source+"\npartnerPublishedTabAllowed",{
+  partnerMainCodeActive:()=>false,
+  NICO_PARTNER_TAB_UI_ENABLED:false
+ });
+ assert.equal(emailOwner("invite"),true,
+  "Original verified email invitation workflow remains unchanged");
+ const server=readFileSync(new URL("../functions-partner-workspace/service.cjs",import.meta.url),"utf8");
+ assert.match(server,/if\(op==="addManaged"\)/);
+ assert.match(server,/if\(op==="moveStaff"\)/);
+ assert.match(server,/if\(op==="addPrivateProduct"\)/);
+ assert.match(html,/partnerMainCountManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
+ assert.match(html,/partnerMainCountManage\(partnerInlinePayload\(\{action:"moveStaff",staffId,teamId\}\)\)/);
+ assert.match(html,/partnerUsesVerifiedOwnerCatalog\(snap\)/);
+});
