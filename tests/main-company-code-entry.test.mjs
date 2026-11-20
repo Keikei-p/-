@@ -85,3 +85,76 @@ test("navigation errors revoke the pending local session before returning failur
  assert.equal(x.values.size,0);
  assert.deepEqual(x.calls,["ready","signout","store","navigate","remove"]);
 });
+
+test("main company-code form signs out restored legacy email before requesting code login",async()=>{
+ const start=html.indexOf("nicoMainCodeForm.onsubmit=async event=>{");
+ const end=html.indexOf("\n/* =====================================================\n   ログイン",start);
+ assert(start>0&&end>start,"main code login handler is present");
+ const handler=html.slice(start,end);
+ assert(handler.indexOf('await auth.authStateReady()')>=0);
+ assert(handler.indexOf("await signOut(auth)")>handler.indexOf("await auth.authStateReady()"));
+ assert(handler.indexOf('if(auth.currentUser)throw Error("old_email_session_still_active")')>
+  handler.indexOf("await signOut(auth)"));
+ assert(handler.indexOf('await signOut(auth)')<
+  handler.indexOf('loginCode({companyCode:code,password})'),
+  "must sign out before the backend request, not just after the response");
+ const CODE="NICO-"+"A".repeat(24);
+ async function runScenario({initialEmail=true,restoresEmail=false,
+  logoutThrows=false,logoutRetains=false}={}){
+  const events=[],submit={disabled:false},status={textContent:""},
+   field={value:"not-a-real-password"},code={value:CODE};
+  const nodes={nicoMainCompanyCode:code,nicoMainCompanyPassword:field,
+   nicoMainCompanyCodeStatus:status,nicoMainCompanyCodeSubmit:submit};
+  const auth={currentUser:initialEmail?{uid:"old-email"}:null,
+   async authStateReady(){
+    events.push("ready");
+    if(restoresEmail)auth.currentUser={uid:"restored-old-email"};
+   }};
+  const form={onsubmit:null};
+  const ctx=vm.createContext({
+   nicoMainCodeForm:form,nicoMainCodePanel:{hidden:false},auth,
+   document:{getElementById:key=>nodes[key]},
+   signOut:async()=>{
+    events.push("signout");
+    if(logoutThrows)throw Error("signout_failed");
+    if(!logoutRetains)auth.currentUser=null;
+   },
+   partnerCountFunctions:{},
+   httpsCallable:(_functions,name,opts)=>{
+    assert.equal(name,"loginPartnerCompanyCode");
+    assert.equal(opts.timeout,15000);
+    return async args=>{
+     events.push("backend");
+     assert.equal(auth.currentUser,null,"no legacy Firebase ID token on login");
+     assert.equal(args.companyCode,CODE);
+     assert.equal(args.password,"not-a-real-password");
+     return {data:{sessionToken:"X".repeat(43)}};
+    };
+   },
+   nicoEnterCompanyCodeFromMain:async response=>{
+    events.push("handoff");
+    assert.equal(response.sessionToken,"X".repeat(43));
+    assert.equal(auth.currentUser,null);
+   }
+  });
+  vm.runInContext("let nicoMainCodeLoginBusy=false;\n"+handler,ctx);
+  await form.onsubmit({preventDefault:()=>events.push("prevent")});
+  assert.equal(field.value,"","password erased on success or error");
+  assert.equal(submit.disabled,false,"button always unlocked");
+  return {events,status:status.textContent,auth};
+ }
+ const normal=await runScenario();
+ assert.deepEqual(normal.events,["prevent","ready","signout","backend","handoff"]);
+ assert.equal(normal.auth.currentUser,null);
+ const codeOnly=await runScenario({initialEmail:false});
+ assert.deepEqual(codeOnly.events,["prevent","ready","backend","handoff"]);
+ const restored=await runScenario({initialEmail:false,restoresEmail:true});
+ assert.deepEqual(restored.events,["prevent","ready","signout","backend","handoff"]);
+ for(const options of [{logoutThrows:true},{logoutRetains:true}]){
+  const stopped=await runScenario(options);
+  assert.deepEqual(stopped.events,["prevent","ready","signout"]);
+  assert.match(stopped.status,/ログインできませんでした/);
+  assert.equal(stopped.events.includes("backend"),false);
+  assert.equal(stopped.events.includes("handoff"),false);
+ }
+});
