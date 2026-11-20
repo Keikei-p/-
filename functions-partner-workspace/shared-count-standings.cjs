@@ -47,7 +47,11 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
  let totalCount=0,reportCount=0,unverifiedTeamCount=0,
   unverifiedPersonCount=0,historicalCompanyOnlyCount=0;
  // Missing attribution is still missing for a VERIFIED zero-count entry.
+ // Legacy partner-private counts are saved originals, but the nine-SKU
+ // public leaderboard has no verified identity/name mapping for them.
+ // Never silently certify its partial totals as complete.
  let missingTeamIdentity=false,missingPersonIdentity=false;
+ let unmappedLegacyPrivateCounts=false;
  for(const s of sources){
   if(!s||!id(s.cid)||s.cid===hubId||seen.has(s.cid)||
      s.approved!==true||!Array.isArray(s.teams)||
@@ -80,6 +84,19 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    entries.set(personDay,e);
    const raw=counts(e.counts);
    if(raw.total!==e.totalCount)fail();
+   // Old private products belong to the very same saved staff entry.
+   // Inspect only the count metadata: no price/catalog lookup or original edit.
+   // This reader cannot place an unapproved category into an ON-only rank.
+   const savedPrivate=e.privateCounts??{};
+   if(!savedPrivate||typeof savedPrivate!=="object"||
+      Array.isArray(savedPrivate)||Object.keys(savedPrivate).length>100)fail();
+   let savedPrivateTotal=0;
+   for(const [privateId,amount] of Object.entries(savedPrivate)){
+    if(!id(privateId)||!Number.isSafeInteger(amount)||amount<0||amount>9999)fail();
+    savedPrivateTotal=sum(savedPrivateTotal,amount);
+   }
+   if((e.privateTotalCount??0)!==savedPrivateTotal)fail();
+   if(savedPrivateTotal>0)unmappedLegacyPrivateCounts=true;
    const c=visible(raw);
    // A report containing ONLY currently OFF categories is not a submitted
    // zero for ranking purposes. Keep its original entry and daily summary;
@@ -192,14 +209,19 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   products:ranked(reportCount===0?[]:KEYS.flatMap((k,i)=>published.has(k)?
    [{key:"product-"+(i+1),name:k,totalCount:products[k]}]:[])),
   totalCount,reportCount,unreportedCompanies,
-  partnerCountsComplete:unreportedCompanies.length===0&&historicalCompanyOnlyCount===0,
+  // This boolean does not expose names, product IDs or an OFF category total.
+  // The trusted zero-setup linker must map historical private product labels
+  // before a nine-SKU-only total is presented as full shared count parity.
+  legacyPrivateCountMappingPending:unmappedLegacyPrivateCounts,
+  partnerCountsComplete:unreportedCompanies.length===0&&
+   historicalCompanyOnlyCount===0&&!unmappedLegacyPrivateCounts,
   unverifiedTeamCount,unverifiedPersonCount,
   historicalCompanyOnlyCount,
   peopleComplete:unreportedCompanies.length===0&&
-   historicalCompanyOnlyCount===0&&unverifiedPersonCount===0&&
+   historicalCompanyOnlyCount===0&&!unmappedLegacyPrivateCounts&&unverifiedPersonCount===0&&
    !missingPersonIdentity,
   teamComplete:unreportedCompanies.length===0&&
-   historicalCompanyOnlyCount===0&&unverifiedTeamCount===0&&
+   historicalCompanyOnlyCount===0&&!unmappedLegacyPrivateCounts&&unverifiedTeamCount===0&&
    !missingTeamIdentity};
 }
 module.exports={buildApprovedPartnerCountStandings,KEYS};
