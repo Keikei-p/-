@@ -206,3 +206,57 @@ test("company-code owner manages two teams and invites a separate leader who can
  assert.equal(nextInvite.token.length,43);
  assert.equal(f.db.store.get("records/historical").totalRevenue,250000);
 });
+
+test("company-code managed-staff archive keeps all past counts, original finance and revisions unchanged",async()=>{
+ const f=fixture();
+ const issued=await f.service.issue(f.hubReq({companyName:"協力会社・保存履歴"}));
+ const activated=await f.service.activate({data:{
+  companyCode:issued.companyCode,password:"SafeArchivePassword#2026"
+ }});
+ const cid=activated.companyId,credentials=f.db.store.get("partnerCodeCredentials/"+cid);
+ f.setIdentity(credentials.principalUid,cid);
+ const login=await f.service.login({data:{
+  companyCode:issued.companyCode,password:"SafeArchivePassword#2026"
+ }});
+ f.setSession(login.sessionToken);
+ const team=(await f.workspace.manage(f.codeReq({action:"addTeam",name:"保存班"}))).teamId;
+ const staff=(await f.workspace.manage(f.codeReq({
+  action:"addManaged",name:"履歴あり班員",teamId:team
+ }))).staffId;
+ const date="2026-11-01",counts=Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?3:0]));
+ const saved=await f.workspace.submit(f.codeReq({
+  date,staffId:staff,counts,expectedVersion:0
+ }));
+ assert.equal(saved.version,1);
+ const entryPath="companies/"+cid+"/partnerWorkEntries/"+date+"__"+staff;
+ const reportPath="companies/hub/partnerWorkCountDays/"+date+"/reports/"+cid;
+ const staffPath="companies/"+cid+"/partnerWorkStaff/"+staff;
+ const entry=structuredClone(f.db.store.get(entryPath));
+ const report=structuredClone(f.db.store.get(reportPath));
+ const finance=structuredClone(f.db.store.get("records/historical"));
+ const auditBefore=[...f.db.store].filter(([name])=>name.includes("partnerWorkAudits"));
+ const archived=await f.workspace.manage(f.codeReq({
+  action:"removeManaged",staffId:staff
+ }));
+ assert.deepEqual(archived,{archived:true,staffId:staff});
+ const inactive=f.db.store.get(staffPath);
+ assert.equal(inactive.active,false,"archive staff instead of deleting or resetting it");
+ assert.equal(inactive.kind,"managed");
+ assert.equal(inactive.teamId,team,"historical team cannot be removed");
+ assert.equal(inactive.archivedByUid,credentials.principalUid);
+ assert.deepEqual(f.db.store.get(entryPath),entry,"historical daily counts unchanged");
+ assert.deepEqual(f.db.store.get(reportPath),report,"hub reporting unchanged");
+ assert.deepEqual(f.db.store.get("records/historical"),finance,"finance original unchanged");
+ assert.deepEqual([...f.db.store].filter(([name])=>name.includes("partnerWorkAudits")),auditBefore);
+ const after=await f.workspace.view(f.codeReq({date}));
+ assert.equal(after.records.find(row=>row.staffId===staff)?.totalCount,3,
+  "previously reported count remains readable after the staff is archived");
+ await assert.rejects(f.workspace.manage(f.codeReq({
+  action:"removeManaged",staffId:staff
+ })),e=>e.code==="failed-precondition","repeat archive must fail safely");
+ await assert.rejects(f.workspace.manage(f.hubReq({
+  action:"removeManaged",staffId:staff
+ })),e=>e.code==="invalid-argument"||e.code==="permission-denied");
+ assert.deepEqual(f.db.store.get(entryPath),entry);
+ assert.deepEqual(f.db.store.get(reportPath),report);
+});
