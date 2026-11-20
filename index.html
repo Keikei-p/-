@@ -11602,24 +11602,20 @@ async function nicoEnterCompanyCodeFromMain(result){
  if(typeof auth.authStateReady==="function")await auth.authStateReady();
  if(auth.currentUser)await signOut(auth);
  if(auth.currentUser)throw Error("old_email_session_still_active");
- // Retain only an opaque, server-verified count session, never the password.
- // No navigation to /partner-workspace.html: the identical dashboard shell is used.
+ // Never reuse an Owner's old page DOM, financial subscriptions, JS
+ // closures or rendered totals when switching to a count-only code login.
+ // A same-origin hard reload preserves ONLY the opaque sessionStorage token.
+ // The NEW index.html verifies code scope again before showing count input.
  sessionStorage.setItem("nicoPartnerCodeSession",token);
  if(auth.currentUser){
   sessionStorage.removeItem("nicoPartnerCodeSession");
   throw Error("old_email_session_still_active");
  }
- partnerMainCodeToken=token;
- ++partnerMainCodeEpoch;
- const verified=await openSameAppCompanyCodeWorkspace();
- if(verified!==true){
-  // A broken GET after a successful password check cannot leave a reusable
-  // session or show a partially initialized count dashboard.
-  partnerMainCodeForget();
-  resetPartnerInline();
-  appScreen.style.display="none";
-  authScreen.style.display="block";
-  throw Error("company_code_workspace_not_ready");
+ try{
+  location.replace(new URL("/",location.origin).href);
+ }catch{
+  sessionStorage.removeItem("nicoPartnerCodeSession");
+  throw Error("company_code_navigation_failed");
  }
 }
 const nicoMainCodeToggle=document.getElementById("nicoMainCompanyCodeToggle");
