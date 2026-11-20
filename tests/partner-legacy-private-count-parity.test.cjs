@@ -60,6 +60,8 @@ test("private-only historical report must not create false 0-count ranked staff,
  assert.equal(out.people.length,0);
  assert.equal(out.teams.length,0);
  assert.equal(out.unreportedCompanies.length,1);
+ assert.equal(out.unreportedCompanies[0].status,"legacy_mapping_pending",
+  "existing private report must NOT be called unreported");
 });
 
 test("true all-zero original count report is distinguishable from private-only positive report",()=>{
@@ -102,5 +104,19 @@ test("historical OFF standard SKU plus private category never creates an imagina
  assert.equal(out.legacyPrivateCountMappingPending,true);
  assert.equal(out.reportCount,0);
  assert.equal(out.companies.length,0);
+ assert.equal(out.people.length,0);
+});
+
+test("a genuinely absent company still stays not_reported, never enters a zero rank",()=>{
+ const date="2026-11-20";
+ const out=buildApprovedPartnerCountStandings({hubId:"hub-a",start:date,end:date,
+  sources:[{cid:"partner-a",name:"協力店A",approved:true,
+   allowedCategories:["NURO"],teams:[{id:"team-a",name:"1班"}],
+   entries:[],reports:[{date,data:null}]}]});
+ assert.equal(out.reportCount,0);
+ assert.equal(out.unreportedCompanies.length,1);
+ assert.equal(out.unreportedCompanies[0].status,"not_reported");
+ assert.equal(out.legacyPrivateCountMappingPending,false);
+ assert.equal(out.partnerCountsComplete,false);
  assert.equal(out.people.length,0);
 });
