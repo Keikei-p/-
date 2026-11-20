@@ -43,7 +43,7 @@ jobs:
           test -z "$NICO_RULES_APPROVAL"
           test -z "$NICO_PARTNER_OWNER_CORRECTION_V3_ENABLED"
           test -z "$NICO_PARTNER_OWNER_CORRECTION_READ_ENABLED"
-          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           node --check security/secondary-finance-read-fence.mjs
           node --check functions-partner-workspace/service.cjs
