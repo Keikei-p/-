@@ -48,7 +48,7 @@ jobs:
           node --test tests/legacy-finance-entry-guard.test.mjs
 
       - name: Enforce 2026-11-20 confirmed one-app and no-money partner scope
-        run: node --test tests/sales-shared-app-confirmed-scope.test.mjs tests/internal-owner-finance-visibility.test.cjs
+        run: node --test tests/sales-shared-app-confirmed-scope.test.mjs tests/partner-same-app-auth-status.test.mjs tests/internal-owner-finance-visibility.test.cjs
 
       - name: Check sales input and correction regressions
         run: node --test tests/sales-regressions.cjs tests/count-pricing-update-hotfix.test.cjs tests/count-pricing-live-package.test.mjs tests/count-pricing-release.test.mjs tests/surgical-existing-index.test.mjs
