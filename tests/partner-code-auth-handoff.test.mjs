@@ -15,10 +15,7 @@ function setup({emailSignedIn=true,signoutError=false,signoutLeavesIdentity=fals
  const sessionStorage={setItem(k,v){events.push(["store",k,v]);}};
  const context=vm.createContext({
   auth,
-  $:id=>{
-   assert.equal(id,"date");
-   return {value:"2026-11-20"};
-  },
+  dateParts:{year:"2026",month:"11",day:"20"},
   preflightCodeWorkspace:async data=>{
    events.push(["preflight",data.date]);
    assert.equal(data.date,"2026-11-20");
