@@ -69,7 +69,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    total:KEYS.reduce((a,k)=>sum(a,allowed.has(k)?raw.counts[k]:0),0)});
   const companyName=name(s.name),companyKey=key("company",hubId,s.cid),teamNames=new Map(),pMap=new Map(),
    tMap=new Map(),reportedStaffIdsByTeam=new Map(),entries=new Map(),reports=new Set(),publishedStaffDates=new Set();
-  let companyPersonIdentityMissing=false;
+  let companyPersonIdentityMissing=false,legacyOnlyWithoutPublicRank=false;
   for(const t of s.teams){
    if(!t||!id(t.id)||teamNames.has(t.id))fail();
    teamNames.set(t.id,name(t.name));
@@ -101,7 +101,12 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    // A report containing ONLY currently OFF categories is not a submitted
    // zero for ranking purposes. Keep its original entry and daily summary;
    // a genuine all-zero staff submission remains eligible for rank 0.
-   if((raw.total>0||savedPrivateTotal>0)&&c.total===0)continue;
+   if((raw.total>0||savedPrivateTotal>0)&&c.total===0){
+    // A saved private-category report is not an unreported company. Hold its
+    // public ranking pending verified SKU mapping; never invent a 0-count rank.
+    if(savedPrivateTotal>0)legacyOnlyWithoutPublicRank=true;
+    continue;
+   }
    publishedStaffDates.add(e.date);
    const tid=id(e.teamIdSnapshot)&&teamNames.has(e.teamIdSnapshot)?e.teamIdSnapshot:null;
    const personName=e.staffNameSnapshot==null?null:name(e.staffNameSnapshot);
@@ -183,7 +188,9 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
   }
   if([...entries.values()].some(e=>!reports.has(e.date)))fail();
   totalCount=sum(totalCount,companyCount);
-  if(!reportedDays)unreportedCompanies.push({key:key("company",hubId,s.cid),name:companyName,status:"not_reported"});
+  if(!reportedDays)unreportedCompanies.push({key:key("company",hubId,s.cid),
+   name:companyName,status:legacyOnlyWithoutPublicRank?
+    "legacy_mapping_pending":"not_reported"});
   const safeCounts=raw=>Object.fromEntries(s.allowedCategories.map(k=>[k,raw[k]]));
   if(reportedDays&&allowed.size){
    companies.push({key:companyKey,name:companyName,
