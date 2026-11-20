@@ -38,14 +38,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Current protected original source, untouched Rules and all release switches OFF
+      - name: Current protected original source, reviewed PR-only finance Rules and release switches OFF
         shell: bash
         run: |
           set -euo pipefail
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_TOKEN"
-          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
           test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
@@ -112,13 +112,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Verify immutable live finance and count originals before emulator
+      - name: Verify reviewed staged finance Rules and immutable count sources before emulator
         run: |
           set -euo pipefail
           test "$FIREBASE_PROJECT_ID" = 'demo-nico-secondary-finance-fence'
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
-          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
           node security/secondary-finance-read-fence.mjs --check
       - name: Install emulator without production credentials
