@@ -14215,7 +14215,7 @@ function renderPartnerRankingOnlyPanel(){
  // name/team assignment. Retain departed staff and inactive historical teams.
  const staffById=new Map((snap.staff||[]).map(x=>[x.id,x]));
  const teams=new Map((snap.teams||[]).map(x=>[x.id,x]));
- const rows=[];
+ const rows=[],notReportedTeams=[];
  const records=Array.isArray(snap.records)?snap.records:[];
  for(const entry of records){
   if(!Number.isSafeInteger(entry.totalCount)||entry.totalCount<0){
@@ -14223,19 +14223,28 @@ function renderPartnerRankingOnlyPanel(){
    return;
   }
  }
+ if(records.length===0){
+  partnerMainAppendRow(rankings,"未報告","登録済み実績なし・順位は付けません");
+  return;
+ }
  if(partnerSameAppSelectedPanel==="product"){
   for(const key of (snap.enabledCategories??snap.categories)){
    const n=records.reduce((sum,r)=>sum+(r.counts?.[key]||0),0);
    rows.push({name:key,n});
   }
  }else if(partnerSameAppSelectedPanel==="team"){
-  const totals=new Map();
-  for(const r of records)if(teams.has(r.teamIdSnapshot))
+  const totals=new Map(),reportedTeams=new Set();
+  for(const r of records)if(teams.has(r.teamIdSnapshot)){
+   // A persisted zero count IS a submitted report, unlike a team with no
+   // historical entry. Both must never be shown as the same rank.
+   reportedTeams.add(r.teamIdSnapshot);
    totals.set(r.teamIdSnapshot,(totals.get(r.teamIdSnapshot)||0)+r.totalCount);
-  for(const [id,t] of teams)rows.push({
-   name:snap.companyName+"・"+t.name+(t.active?"":"（過去の班）"),
-   n:totals.get(id)||0
-  });
+  }
+  for(const [id,t] of teams){
+   const name=snap.companyName+"・"+t.name+(t.active?"":"（過去の班）");
+   if(!reportedTeams.has(id)){notReportedTeams.push(name);continue;}
+   rows.push({name,n:totals.get(id)});
+  }
  }else{
   // Multiple records for one staff ID must become ONE person, not multiple
   // ranks. Never combine different staff who happen to share a name.
@@ -14259,7 +14268,10 @@ function renderPartnerRankingOnlyPanel(){
   appendVerifiedCountRankRow(rankings,{name:row.name,count:row.n,rank});
   previous=row.n;
  }
- if(!rows.length)partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
+ for(const name of notReportedTeams)
+  partnerMainAppendRow(rankings,name,"未報告（順位なし）");
+ if(!rows.length&&!notReportedTeams.length)
+  partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
 }
 
 let partnerSameAppSelectedPanel="record";
@@ -14317,7 +14329,9 @@ function partnerSameAppSelectPanel(name){
  if(safeAccount)safeAccount.hidden=name!=="account";
  pInline("partnerRankingHeading").textContent=
   ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",
-   team:"👥 班ランキング"}[name]||"ランキング");
+   team:"👥 班ランキング"}[name]||"ランキング")+
+  (["individual","product","team"].includes(name)&&
+   NICO_SAME_APP_JOINT_HTTP_ENABLED!==true?"（協力店内・件数のみ）":"");
  for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
   pInline(nav).querySelectorAll("[data-partner-panel]").forEach(button=>{
    const selected=button.dataset.partnerPanel===name;
@@ -14332,7 +14346,10 @@ function partnerSameAppSelectPanel(name){
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
-  if(!partnerMainCodeActive())void loadSharedDailyStandings("partner");
+  if(partnerMainCodeActive()){
+   pInline("partnerSharedRankingsStatus").textContent=
+    "合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。";
+  }else void loadSharedDailyStandings("partner");
  }
  // Before cutover, the original own-team detail remains unchanged. Once the
  // verified joint endpoint is released, open its Owner-published count-only
@@ -15023,6 +15040,10 @@ async function partnerInlineFetch(){
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
   // scoreboard currently on screen; never reuse the previous day's figures.
+  if(partnerMainCodeActive()&&
+     ["individual","product","team"].includes(partnerSameAppSelectedPanel))
+   pInline("partnerSharedRankingsStatus").textContent=
+    "合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。";
   if(!partnerMainCodeActive()&&["individual","product","team"].includes(partnerSameAppSelectedPanel))
    void loadSharedDailyStandings("partner",true);
   else if(!partnerMainCodeActive()&&partnerSameAppSelectedPanel==="detail")
