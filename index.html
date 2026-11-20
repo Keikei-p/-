@@ -7611,6 +7611,8 @@ const partnerCountFunctions = getFunctions(app,"asia-northeast1");
 // leaves the original app's email session intact on invalid credentials.
 const partnerAnonymousCodeApp = initializeApp(firebaseConfig,"nico-partner-code-login-isolated");
 const partnerAnonymousCodeFunctions = getFunctions(partnerAnonymousCodeApp,"asia-northeast1");
+const partnerAnonymousWorkspacePreflight = httpsCallable(partnerAnonymousCodeFunctions,
+  "getPartnerWorkspace",{timeout:15000});
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
@@ -11532,6 +11534,16 @@ async function nicoEnterCompanyCodeFromMain(result){
  const token=result?.sessionToken;
  if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
   throw Error("invalid_company_code_session");
+ // A valid company-code PASSWORD is not sufficient to abandon a live Owner
+ // login. Verify the count-only workspace is ACTUALLY usable first; a disabled
+ // workspace/function or broken membership must leave old email Auth intact.
+ const day=partnerMainDate();
+ const checked=(await partnerAnonymousWorkspacePreflight({
+  date:day,codeSessionToken:token
+ })).data;
+ if(checked?.date!==day||!["owner","leader","member"].includes(checked?.role)||
+    !Array.isArray(checked?.categories)||!checked.categories.length)
+  throw Error("company_code_workspace_not_ready");
  // Never mix an existing email Firebase identity with a count-only code.
  if(typeof auth.authStateReady==="function")await auth.authStateReady();
  if(auth.currentUser)await signOut(auth);
