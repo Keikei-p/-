@@ -535,3 +535,47 @@ test("partner-local ranking keeps unsent teams unranked while reported zero rema
  assert.match(html,/合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。/);
  assert.match(html,/協力店内・件数のみ/);
 });
+
+test("company-code login reaches ONLY the verified joint-count ranking bridge after release gates",async()=>{
+ const a=html.indexOf("async function tryLoadVerifiedSameAppJointCount({");
+ const b=html.indexOf("\nasync function loadSharedDailyStandings(",a);
+ assert(a>0&&b>a,"canonical joint count dispatch exists");
+ const source=html.slice(a,b);
+ assert.match(source,/createPublishedPartnerCodeCountBridge\(\{/);
+ assert.match(source,/createPublishedPartnerCountBridge\(\{/);
+ assert.match(source,/serverGuardVerified:NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true/);
+ assert.match(source,/getCodeSessionToken:\(\)=>partnerMainCodeActive\(\)\?partnerMainCodeToken:""/);
+ assert.match(source,/partnerInlineIdentity\(\)!==identity/);
+ assert.match(source,/renderPublishedPartnerCountTab\(\{/);
+ assert.match(source,/if\(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true\)/);
+ assert.doesNotMatch(source,/getPartnerWorkspace\(|sharedRankings:true|readPartnerWorkDay\(/);
+ assert.match(html,/else void loadSharedDailyStandings\("partner"\);/);
+ assert.match(html,/void loadSharedDailyStandings\("partnerDetail",true\)/);
+ const {createPublishedPartnerCodeCountBridge}=await import(
+  "../ranking/published-partner-tab-client.mjs");
+ let sent=0,session="A".repeat(43);
+ const args={
+  featureEnabled:true,serverGuardVerified:true,
+  getCodeSessionToken:()=>session,
+  fetcher:async(url,req)=>{
+   sent++;
+   assert.match(url,/getVerifiedJointCountRanking\?day=2026-11-20&tab=individual$/);
+   assert.equal(req.headers.Authorization,"Bearer "+"A".repeat(43));
+   assert.equal(req.method,"GET");
+   assert.equal(req.credentials,"omit");
+   return {status:403,headers:{get:()=> "application/json"},
+    text:async()=>JSON.stringify({error:"request_blocked"})};
+  }
+ };
+ const candidate=createPublishedPartnerCodeCountBridge(args);
+ await assert.rejects(candidate.load({tab:"individual",day:"2026-11-20"}),
+  /PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED/);
+ assert.equal(sent,1,"a denied server request must not fall back to a local or finance rank");
+ assert.throws(()=>createPublishedPartnerCodeCountBridge({
+  ...args,serverGuardVerified:false
+ }),/PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED/);
+ assert.throws(()=>createPublishedPartnerCodeCountBridge({
+  ...args,featureEnabled:false
+ }),/PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED/);
+ assert.equal(sent,1,"disabled flags never send a request");
+});
