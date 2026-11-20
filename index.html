@@ -11827,6 +11827,9 @@ async function enterApplication(
       );
 
 
+    // The server may answer after the user signed out or signed into a
+    // different account. Old async results cannot reopen the app.
+    if (auth.currentUser?.uid !== user.uid) return;
     if (!ready) {
 
       return;
@@ -11863,11 +11866,14 @@ async function enterApplication(
 
     await loadNotificationSettings();
 
-
+    // No stale financial Firestore subscriptions after an account switch.
+    if (auth.currentUser?.uid !== user.uid) return;
     startRealtimeListeners();
 
   } catch (error) {
 
+    // An old failed request may never hide a newly authenticated screen.
+    if (auth.currentUser?.uid !== user.uid) return;
     console.error(
       "ログイン後初期化エラー:",
       error
