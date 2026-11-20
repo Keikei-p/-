@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
+import {proposeSecondaryFinanceFence,originalRules} from
+  "../security/secondary-finance-read-fence.mjs";
 
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 const file=name=>readFileSync(join(root,name),"utf8");
@@ -64,6 +66,21 @@ test("partner clients have no direct finance SDK route, internal route remains u
   assert.match(originalRules,/match \/recordCorrections\/\{correctionId\}/);
   assert.match(originalRules,/match \/revenueGoals\/\{goalId\}/);
   assert.equal(firebase.firestore.rules,"firestore.rules");
+});
+
+test("actual PR Firebase Rules match the exact reviewed money-denial candidate",()=>{
+  const current=file("firestore.rules"),baseline=originalRules();
+  assert.notEqual(current,baseline,"old secondary finance gap is still present");
+  assert.equal(current,proposeSecondaryFinanceFence(baseline),
+    "only the 4 reviewed finance collections may be narrowed");
+  assert.equal(firebase.firestore.rules,"firestore.rules");
+  assert.match(current,/function activeSecondaryPartnerContext\(\)/);
+  for(const collection of ["products","records","recordCorrections","revenueGoals"]){
+    const start=current.indexOf("match /"+collection+"/{");
+    const end=current.indexOf("\n    match /",start+7);
+    const body=current.slice(start,end<0?undefined:end);
+    assert.match(body,/&& !activeSecondaryPartnerContext\(\)/,collection);
+  }
 });
 
 test("confirmed scope is NOT a live denial proof or deploy authorization",()=>{
