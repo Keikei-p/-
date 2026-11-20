@@ -101,7 +101,7 @@ function buildApprovedPartnerCountStandings({hubId,start,end,sources}={}){
    // A report containing ONLY currently OFF categories is not a submitted
    // zero for ranking purposes. Keep its original entry and daily summary;
    // a genuine all-zero staff submission remains eligible for rank 0.
-   if(raw.total>0&&c.total===0)continue;
+   if((raw.total>0||savedPrivateTotal>0)&&c.total===0)continue;
    publishedStaffDates.add(e.date);
    const tid=id(e.teamIdSnapshot)&&teamNames.has(e.teamIdSnapshot)?e.teamIdSnapshot:null;
    const personName=e.staffNameSnapshot==null?null:name(e.staffNameSnapshot);
