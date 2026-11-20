@@ -14,8 +14,15 @@ function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=f
  const calls=[],auth={currentUser:user?{uid:"old-email"}:null,authStateReady:async()=>calls.push("ready")};
  const values=new Map();
  const sessionStorage={
-  setItem(k,v){calls.push("store");if(storageFails)throw Error("storage_failure");values.set(k,v);},
-  removeItem(k){calls.push("remove");values.delete(k);}
+  setItem(k,v){
+   calls.push(k==="nicoPartnerCodeSessionProbe"?"probe":"store");
+   if(storageFails)throw Error("storage_failure");
+   values.set(k,v);
+  },
+  removeItem(k){
+   calls.push(k==="nicoPartnerCodeSessionProbe"?"unprobe":"remove");
+   values.delete(k);
+  }
  };
  const location={origin:"https://nico-factory.web.app",assign(url){
   calls.push("navigate");
@@ -65,13 +72,13 @@ test("existing company-code backend session and count-only page are reused",()=>
 test("old email identity is signed out BEFORE code session is saved",async()=>{
  const a=subject();
  await a.go({sessionToken:TOKEN});
- assert.deepEqual(a.calls,["preflight","ready","signout","store","navigate"]);
+ assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","signout","store","navigate"]);
  assert.equal(a.auth.currentUser,null);
 });
 test("code-only account can navigate without email Auth or old account mutation",async()=>{
  const a=subject({user:false});
  await a.go({sessionToken:TOKEN});
- assert.deepEqual(a.calls,["preflight","ready","store","navigate"]);
+ assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","store","navigate"]);
 });
 test("blocked email logout cannot expose a new code session",async()=>{
  for(const options of [{logoutFails:true},{logoutRetains:true}]){
@@ -87,6 +94,9 @@ test("invalid session and browser storage failure fail closed",async()=>{
  assert.deepEqual(x.calls,[]);
  const y=subject({storageFails:true});
  await assert.rejects(y.go({sessionToken:TOKEN}),/storage_failure/);
+ assert.deepEqual(y.calls,["preflight","probe"]);
+ assert.equal(y.auth.currentUser.uid,"old-email","storage error must not sign out Owner");
+ assert(!y.calls.includes("signout"));
  assert(!y.calls.includes("navigate"));
  assert.equal(y.values.size,0);
 });
@@ -94,7 +104,7 @@ test("navigation errors revoke the pending local session before returning failur
  const x=subject({navigationFails:true});
  await assert.rejects(x.go({sessionToken:TOKEN}),/company_code_navigation_failed/);
  assert.equal(x.values.size,0);
- assert.deepEqual(x.calls,["preflight","ready","signout","store","navigate","remove"]);
+ assert.deepEqual(x.calls,["preflight","probe","unprobe","ready","signout","store","navigate","remove"]);
 });
 
 test("invalid code or unusable workspace leaves the original email session untouched",async()=>{
