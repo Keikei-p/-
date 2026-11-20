@@ -479,3 +479,59 @@ test("code-auth bootstrap after hard reload only opens count-only page and never
  assert.match(entry,/const ready=await partnerInlineFetch\(\)/);
  assert.doesNotMatch(entry,/(?:startRealtimeListeners|loadUserData|getDocFromServer|getDocsFromServer)\(/);
 });
+
+test("partner-local ranking keeps unsent teams unranked while reported zero remains a valid rank",()=>{
+ const begin=html.indexOf("function renderPartnerRankingOnlyPanel(){");
+ const end=html.indexOf("\nlet partnerSameAppSelectedPanel=",begin);
+ assert(begin>0&&end>begin,"actual partner count ranking function");
+ const code=html.slice(begin,end);
+ const teams=[{id:"t1",name:"第1班",active:true},
+  {id:"t2",name:"第2班",active:true},
+  {id:"t3",name:"第3班",active:true},
+  {id:"t4",name:"第4班",active:false}];
+ const base={role:"owner",companyName:"協力会社",teams,
+  categories:["NURO","SBMNP"],enabledCategories:["NURO","SBMNP"],
+  staff:[{id:"s1",name:"担当1"},{id:"s2",name:"担当2"},{id:"s3",name:"担当3"}]};
+ function project(records,tab="team"){
+  const actual=[],notes=[];
+  const grid={replaceChildren(){actual.length=0;notes.length=0},
+   classList:{add(){}},dataset:{}};
+  const ctx=vm.createContext({
+   partnerInlineData:{...base,records},
+   partnerSameAppSelectedPanel:tab,
+   NICO_SAME_APP_JOINT_HTTP_ENABLED:false,
+   pInline:id=>{assert.equal(id,"pInlineRanking");return grid},
+   appendVerifiedCountRankRow:(element,row)=>{assert.equal(element,grid);actual.push(row)},
+   partnerMainAppendRow:(element,title,details)=>{
+    assert.equal(element,grid);notes.push({title,details});
+   }
+  });
+  vm.runInContext(code+"\nrenderPartnerRankingOnlyPanel()",ctx);
+  return {actual:JSON.parse(JSON.stringify(actual)),notes};
+ }
+ let result=project([]);
+ assert.deepEqual(result.actual,[],"no entries means no fabricated zero rank");
+ assert.equal(result.notes[0].title,"未報告");
+ assert.match(result.notes[0].details,/順位は付けません/);
+ const records=[
+  {staffId:"s1",teamIdSnapshot:"t1",totalCount:4,counts:{NURO:4,SBMNP:0}},
+  {staffId:"s2",teamIdSnapshot:"t2",totalCount:4,counts:{NURO:3,SBMNP:1}},
+  {staffId:"s3",teamIdSnapshot:"t3",totalCount:0,counts:{NURO:0,SBMNP:0}}
+ ];
+ result=project(records);
+ assert.deepEqual(result.actual.map(r=>({name:r.name,count:r.count,rank:r.rank})),[
+  {name:"協力会社・第1班",count:4,rank:1},
+  {name:"協力会社・第2班",count:4,rank:1},
+  {name:"協力会社・第3班",count:0,rank:3}
+ ]);
+ assert.deepEqual(result.notes,[{
+  title:"協力会社・第4班（過去の班）",
+  details:"未報告（順位なし）"
+ }],"archived team with no report must not rank");
+ result=project(records,"product");
+ assert.deepEqual(result.actual.map(r=>r.name),["NURO","SBMNP"],
+  "products are exactly those on the server-approved visible list");
+ assert.deepEqual(result.notes,[]);
+ assert.match(html,/合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。/);
+ assert.match(html,/協力店内・件数のみ/);
+});
