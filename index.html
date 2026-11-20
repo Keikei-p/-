@@ -11569,6 +11569,14 @@ nicoMainCodeForm.onsubmit=async event=>{
  submit.disabled=true;
  status.textContent="協力店のログイン権限を確認しています…";
  try{
+  // Firebase SDK can still be restoring an old email session at form submit.
+  // Do not send that legacy Authorization ID token to the company-code login.
+  // Only a fully signed-out browser may request a count-only code session.
+  if(typeof auth.authStateReady==="function")await auth.authStateReady();
+  if(auth.currentUser){
+   await signOut(auth);
+   if(auth.currentUser)throw Error("old_email_session_still_active");
+  }
   // Reuse existing isolated callable. It has its OWN default-OFF server flag.
   const loginCode=httpsCallable(partnerCountFunctions,"loginPartnerCompanyCode",{timeout:15000});
   const result=(await loginCode({companyCode:code,password})).data;
