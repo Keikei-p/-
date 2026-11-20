@@ -2203,6 +2203,12 @@ async function enterIsolatedCompanyCodeSession(result){
  if(verified?.date!==day||!["owner","leader","member"].includes(verified?.role)||
     !Array.isArray(verified?.categories)||!verified.categories.length)
   throw Error("code_workspace_not_ready");
+ // If mobile/private browsing cannot persist a code session, leave the
+ // existing email login untouched instead of signing out first.
+ try{
+  sessionStorage.setItem("nicoPartnerCodeSessionProbe","ok");
+  sessionStorage.removeItem("nicoPartnerCodeSessionProbe");
+ }catch{throw Error("code_session_storage_unavailable");}
  if(auth.currentUser){
   await signOut(auth);
   if(auth.currentUser)throw Error("old_email_session_still_active");
