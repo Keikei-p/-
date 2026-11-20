@@ -13,7 +13,7 @@ const html=file("index.html");
 const workspace=file("partner-workspace.html");
 const partnerService=file("functions-partner-workspace/service.cjs");
 const countSource=file("functions-ranking-approvals/ranking/partner-workspace-count-source.mjs");
-const originalRules=file("firestore.rules");
+const repoFinanceRules=file("firestore.rules");
 const firebase=JSON.parse(file("firebase.json"));
 
 test("2026-11-20 approved one-app design is the protected integration scope",()=>{
@@ -61,10 +61,10 @@ test("legacy partner counts, private products and audit history remain readable 
 test("partner clients have no direct finance SDK route, internal route remains unchanged",()=>{
   assert.doesNotMatch(workspace,/firebase-firestore\.js|getFirestore\(|revenuePerUnit|unitPrice|totalRevenue/);
   assert.doesNotMatch(partnerService,/\bdb\.collection\((?:"|'|`)(?:products|records|recordCorrections|revenueGoals)(?:"|'|`)/);
-  assert.match(originalRules,/match \/products\/\{productId\}/);
-  assert.match(originalRules,/match \/records\/\{recordId\}/);
-  assert.match(originalRules,/match \/recordCorrections\/\{correctionId\}/);
-  assert.match(originalRules,/match \/revenueGoals\/\{goalId\}/);
+  assert.match(repoFinanceRules,/match \/products\/\{productId\}/);
+  assert.match(repoFinanceRules,/match \/records\/\{recordId\}/);
+  assert.match(repoFinanceRules,/match \/recordCorrections\/\{correctionId\}/);
+  assert.match(repoFinanceRules,/match \/revenueGoals\/\{goalId\}/);
   assert.equal(firebase.firestore.rules,"firestore.rules");
 });
 
