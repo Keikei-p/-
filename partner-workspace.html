@@ -213,6 +213,10 @@ font:inherit;font-size:13px;line-height:1.6}
 <p class="muted" id="joinModeDescription">移籍・兼務のどちらも選ばれるまで招待承諾は実行しません。<strong>自社所属のある方が「兼務」を選ぶ場合、金額原票への旧権限が残る可能性があります。</strong>金額完全遮断が検証されるまで、管理者の確認なしに兼務を選ばないでください。移籍には自社オーナーの事前引継ぎが必要な場合があります。</p>
 <button id="join" type="button">この会社に参加する</button></section>
 <section id="appBox" hidden><div class="row"><strong id="who"></strong><button id="logout" class="secondary" type="button">ログアウト</button></div>
+<div class="row">
+ <button id="openMainSalesApp" type="button">🏠 メインの営業実績アプリで件数入力・ランキングを見る</button>
+</div>
+<p class="muted">既存の保存済み件数・班・履歴はそのまま利用します。未保存の入力は移動前に保存してください。</p>
 <div id="companyOverview" class="company-panel" hidden>
 <div class="company-kicker" id="companyKicker">会社別実績</div>
 <h2 id="companyHeading"></h2>
@@ -2365,6 +2369,47 @@ $("join").onclick=async()=>{
    "自社の現役所属を終了し、協力店へ移籍しました。以前の実績・売上・班履歴は元の自社に保存されています。":
    "協力店へ参加しました。";
 })};
+// Existing bookmarks can enter the SAME production app without registering a
+// new account or copying/migrating any saved counts. Old invites still work.
+function legacyPartnerHasUnsavedCountInput(){
+ if(!data||data.role==="hub")return false;
+ if($("date").value!==data.date)return true;
+ const rec=(data.records||[]).find(r=>r.staffId===$("staffSelect").value);
+ for(const input of $("countGrid").querySelectorAll("input[data-key]")){
+  if(input.disabled)continue;
+  const current=input.value.trim(),n=Number(current);
+  if(!current||!Number.isSafeInteger(n)||n<0||n>9999||
+     n!==(rec?.counts?.[input.dataset.key]??0))return true;
+ }
+ for(const input of $("privateCountGrid").querySelectorAll("input[data-private-id]")){
+  if(input.disabled)continue;
+  const current=input.value.trim(),n=Number(current);
+  if(!current||!Number.isSafeInteger(n)||n<0||n>9999||
+     n!==(rec?.privateCounts?.[input.dataset.privateId]??0))return true;
+ }
+ return false;
+}
+$("openMainSalesApp").onclick=()=>{
+ if(loading||!data||pendingPartnerSaveReceipts.size>0){
+  notice("件数の保存・再確認が終わってからメインアプリに移動してください。",true);
+  return;
+ }
+ if(!activeCodeSession&&!auth.currentUser?.emailVerified){
+  notice("ログイン状態を確認できません。再ログインしてください。",true);
+  return;
+ }
+ if(legacyPartnerHasUnsavedCountInput()){
+  notice("未保存の件数があります。現在の画面で保存してから移動してください。",true);
+  return;
+ }
+ // Same origin and SAME credentials. Company-code session is already stored
+ // in tab-scoped sessionStorage; verified email Auth persists in this tab.
+ const destination=new URL("/",location.origin);
+ if(!activeCodeSession&&workspaceCompanyId&&
+    /^[A-Za-z0-9_-]{1,128}$/.test(workspaceCompanyId))
+  destination.searchParams.set("workspaceCompanyId",workspaceCompanyId);
+ location.assign(destination.href);
+};
 $("logout").onclick=async()=>{
  if(activeCodeSession){
   const previous=activeCodeSession;
