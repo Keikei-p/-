@@ -15,7 +15,55 @@ function gitBlob(value){
  const data=Buffer.from(value,"utf8");
  return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
 }
-export const originalRules=()=>readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
+// Keep the reviewed historical source as a logical baseline when the exact
+// emulator-proven candidate is present in the integration PR's firestore.rules.
+// Reject ANY other Rules drift; never infer that a production deploy occurred.
+export const originalRules=()=>{
+ const actual=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
+ if(gitBlob(actual)===ORIGINAL_BLOB)return actual;
+ let base=actual;
+ for(const name of COLLECTIONS){
+  const id={products:"productId",records:"recordId",
+   recordCorrections:"correctionId",revenueGoals:"goalId"}[name];
+  const marker="    match /"+name+"/{"+id+"} {";
+  const pos=base.indexOf(marker);
+  if(pos<0||base.indexOf(marker,pos+marker.length)!==-1)
+   throw Error("FINANCE_READ_FENCE_UNKNOWN_INTEGRATED_RULES_"+name);
+  let end=base.indexOf("\n    match /",pos+marker.length);
+  if(end<0)end=base.lastIndexOf("\n  }\n}");
+  if(end<=pos)throw Error("FINANCE_READ_FENCE_UNKNOWN_INTEGRATED_BOUNDARY_"+name);
+  let chunk=base.slice(pos,end);
+  const old=name==="revenueGoals"?
+   "      allow read: if resource.data.companyId != null\n"+
+   "        && sameCompany(resource.data.companyId)\n"+
+   "        && (":
+   "      allow read: if resource.data.companyId != null\n"+
+   "        && sameCompany(resource.data.companyId);";
+  const safe=name==="revenueGoals"?
+   "      allow read: if resource.data.companyId != null\n"+
+   "        && sameCompany(resource.data.companyId)\n"+
+   "        && !activeSecondaryPartnerContext()\n"+
+   "        && (":
+   "      allow read: if resource.data.companyId != null\n"+
+   "        && sameCompany(resource.data.companyId)\n"+
+   "        && !activeSecondaryPartnerContext();";
+  chunk=replaceOnce(chunk,safe,old,name+"_READ_ROLLBACK");
+  for(const op of name==="recordCorrections"?["create"]:["create","update"])
+   chunk=replaceOnce(chunk,
+    "      allow "+op+": if !activeSecondaryPartnerContext()\n        && ",
+    "      allow "+op+": if ",name+"_WRITE_ROLLBACK_"+op);
+  if(name==="records")chunk=replaceOnce(chunk,
+   "      allow get: if !activeSecondaryPartnerContext()\n        && verifiedUser()",
+   "      allow get: if verifiedUser()","records_GET_ROLLBACK");
+  base=base.slice(0,pos)+chunk+base.slice(end);
+ }
+ base=replaceOnce(base,
+  guard+"\n\n    match /products/{productId} {",
+  "    match /products/{productId} {","GUARD_ROLLBACK");
+ if(gitBlob(base)!==ORIGINAL_BLOB||proposeSecondaryFinanceFence(base)!==actual)
+  throw Error("FINANCE_READ_FENCE_INTEGRATED_RULES_NOT_EXACT_CANDIDATE");
+ return base;
+};
 function replaceOnce(source,before,after,name){
  if(typeof source!=="string"||source.split(before).length!==2)
   throw Error("FINANCE_READ_FENCE_UNKNOWN_RULES_"+name);
