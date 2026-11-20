@@ -14010,17 +14010,31 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
   const tab=detail?"detail":partnerSameAppSelectedPanel;
   if(!["individual","product","team","detail"].includes(tab))
    throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
-  const {createPublishedPartnerCountBridge,renderPublishedPartnerCountTab}=
+  const {createPublishedPartnerCountBridge,createPublishedPartnerCodeCountBridge,
+   renderPublishedPartnerCountTab}=
    await import("./ranking/published-partner-tab-client.mjs");
-  const bridge=createPublishedPartnerCountBridge({
-   featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
+  // Both login methods use the SAME canonical joint-count endpoint and the
+  // SAME financial allowlist. Opaque company-code credentials must NEVER be
+  // inserted into Firebase Auth or sent to a separate ranking service.
+  const codeIdentity=partnerMainCodeActive();
+  const identity=partnerInlineIdentity();
+  const fetcher=(...args)=>fetch(...args);
+  const bridge=codeIdentity?createPublishedPartnerCodeCountBridge({
+   featureEnabled:true,
+   serverGuardVerified:NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true,
+   getCodeSessionToken:()=>partnerMainCodeActive()?partnerMainCodeToken:"",
+   fetcher
+  }):createPublishedPartnerCountBridge({
+   featureEnabled:true,auth,fetcher,
    getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
   });
   let published;
   try{published=await bridge.load({tab,day:date});}
   catch{throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");}
   if(!sharedDailyRankingIsCurrent(where,epoch,seq)||
-     auth.currentUser?.uid!==uid||date!==pInline("pInlineDate").value||
+     partnerInlineIdentity()!==identity||
+     (!codeIdentity&&auth.currentUser?.uid!==uid)||
+     date!==pInline("pInlineDate").value||
      tab!==(detail?"detail":partnerSameAppSelectedPanel))return true;
   renderPublishedPartnerCountTab({
    document,root:content,status,payload:published
@@ -14346,10 +14360,10 @@ function partnerSameAppSelectPanel(name){
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
-  if(partnerMainCodeActive()){
+  if(partnerMainCodeActive()&&NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)
    pInline("partnerSharedRankingsStatus").textContent=
     "合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。";
-  }else void loadSharedDailyStandings("partner");
+  else void loadSharedDailyStandings("partner");
  }
  // Before cutover, the original own-team detail remains unchanged. Once the
  // verified joint endpoint is released, open its Owner-published count-only
@@ -14366,7 +14380,7 @@ function partnerSameAppSelectPanel(name){
     if(heading)heading.textContent="公開済み協力店の班詳細（件数のみ）";
    }
    oldDetail.hidden=true;
-   if(!partnerMainCodeActive())void loadSharedDailyStandings("partnerDetail",true);
+   void loadSharedDailyStandings("partnerDetail",true);
   }else oldDetail.hidden=false;
  }
  if(partnerInlineData&&name==="history"&&
@@ -15044,9 +15058,11 @@ async function partnerInlineFetch(){
      ["individual","product","team"].includes(partnerSameAppSelectedPanel))
    pInline("partnerSharedRankingsStatus").textContent=
     "合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。";
-  if(!partnerMainCodeActive()&&["individual","product","team"].includes(partnerSameAppSelectedPanel))
+  if(["individual","product","team"].includes(partnerSameAppSelectedPanel)&&
+     (!partnerMainCodeActive()||NICO_SAME_APP_JOINT_HTTP_ENABLED===true))
    void loadSharedDailyStandings("partner",true);
-  else if(!partnerMainCodeActive()&&partnerSameAppSelectedPanel==="detail")
+  else if(partnerSameAppSelectedPanel==="detail"&&
+     (!partnerMainCodeActive()||NICO_SAME_APP_JOINT_HTTP_ENABLED===true))
    void loadSharedDailyStandings("partnerDetail",true);
   else if(partnerOptionalPublicationProtectionActive()&&
      ["report","daily","history","goal"].includes(partnerSameAppSelectedPanel))
