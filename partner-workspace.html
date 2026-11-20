@@ -2194,7 +2194,9 @@ async function enterIsolatedCompanyCodeSession(result){
  // Confirm code-only workspace membership before ending the current email
  // session. Bad credentials, expired code, disabled Functions or incomplete
  // partner setup must never sign out a working Owner/employee.
- const day=$("date").value;
+ // A previously selected historical date must not prevent logging in.
+ // Scope-check against the current JST day, not the sales input picker.
+ const day=[dateParts.year,dateParts.month,dateParts.day].join("-");
  const verified=(await preflightCodeWorkspace({
   date:day,codeSessionToken:token
  })).data;
