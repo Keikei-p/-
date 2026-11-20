@@ -11782,6 +11782,9 @@ async function enterApplication(
   user
 ) {
 
+  // Auth-state callbacks and slow workspace discovery can finish after
+  // logout/account switch. A stale user may never reopen the dashboard.
+  if (!user?.uid || auth.currentUser?.uid !== user.uid) return;
   resetPartnerInline();
   currentUser =
     user;
@@ -16075,6 +16078,9 @@ onAuthStateChanged(
             typeof error?.code==="string"?error.code:"unavailable");
         }
       }
+      // Discovery may reject after the user already logged out or switched
+      // accounts. Never start a stale workspace or finance-capable bootstrap.
+      if(auth.currentUser?.uid!==user.uid)return;
       if(partnerWorkspaceId){
         if(!partnerMainValidId(partnerWorkspaceId)){
           showLegacyFinanceEntryBlocked("blocked");
