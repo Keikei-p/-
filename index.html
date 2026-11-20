@@ -14453,13 +14453,13 @@ function partnerInlineFillGroupedStaff(staff,teams,companyName){
  select.replaceChildren();
  for(const person of staff){
   const team=teamById.get(person.teamId);
-  const groupName=companyName+" → "+(team?.name||
-   "所属班未確認");
-  let group=groups.get(groupName);
+  const groupKey=team?.id||"__unverified_team__";
+  const groupName=companyName+" → "+(team?.name||"所属班未確認");
+  let group=groups.get(groupKey);
   if(!group){
    group=document.createElement("optgroup");
    group.label=groupName;
-   groups.set(groupName,group);
+   groups.set(groupKey,group);
    select.append(group);
   }
   const option=document.createElement("option");
