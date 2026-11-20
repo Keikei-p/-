@@ -11544,6 +11544,12 @@ async function nicoEnterCompanyCodeFromMain(result){
  if(checked?.date!==day||!["owner","leader","member"].includes(checked?.role)||
     !Array.isArray(checked?.categories)||!checked.categories.length)
   throw Error("company_code_workspace_not_ready");
+ // Check sessionStorage BEFORE any sign-out. Safari/private storage failures
+ // must keep the current Owner/employee login instead of losing both modes.
+ try{
+  sessionStorage.setItem("nicoPartnerCodeSessionProbe","ok");
+  sessionStorage.removeItem("nicoPartnerCodeSessionProbe");
+ }catch{throw Error("company_code_storage_unavailable");}
  // Never mix an existing email Firebase identity with a count-only code.
  if(typeof auth.authStateReady==="function")await auth.authStateReady();
  if(auth.currentUser)await signOut(auth);
