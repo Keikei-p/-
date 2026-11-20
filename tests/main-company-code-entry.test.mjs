@@ -93,7 +93,7 @@ test("invalid session and browser storage failure fail closed",async()=>{
  await assert.rejects(x.go({sessionToken:"not-a-token"}),/invalid_company_code_session/);
  assert.deepEqual(x.calls,[]);
  const y=subject({storageFails:true});
- await assert.rejects(y.go({sessionToken:TOKEN}),/storage_failure/);
+ await assert.rejects(y.go({sessionToken:TOKEN}),/company_code_storage_unavailable/);
  assert.deepEqual(y.calls,["preflight","probe"]);
  assert.equal(y.auth.currentUser.uid,"old-email","storage error must not sign out Owner");
  assert(!y.calls.includes("signout"));
