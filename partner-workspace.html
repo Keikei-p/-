@@ -507,6 +507,7 @@ const auth=getAuth(app),functions=getFunctions(app,"asia-northeast1");
 // credentials must leave its login and all existing data untouched.
 const codeAuthApp=initializeApp(app.options,"nico-partner-code-auth-isolated");
 const anonymousCodeFunctions=getFunctions(codeAuthApp,"asia-northeast1");
+const preflightCodeWorkspace=httpsCallable(anonymousCodeFunctions,"getPartnerWorkspace");
 // Existing internal accounts can open the separate count-only partner tenant
 // without changing their original user profile. The server validates context.
 let workspaceCompanyId=new URL(location.href).searchParams.get("workspaceCompanyId")||"";
@@ -2190,6 +2191,16 @@ async function enterIsolatedCompanyCodeSession(result){
  const token=result?.sessionToken;
  if(!/^[A-Za-z0-9_-]{43}$/.test(token||""))
   throw Error("invalid_code_session");
+ // Confirm code-only workspace membership before ending the current email
+ // session. Bad credentials, expired code, disabled Functions or incomplete
+ // partner setup must never sign out a working Owner/employee.
+ const day=$("date").value;
+ const verified=(await preflightCodeWorkspace({
+  date:day,codeSessionToken:token
+ })).data;
+ if(verified?.date!==day||!["owner","leader","member"].includes(verified?.role)||
+    !Array.isArray(verified?.categories)||!verified.categories.length)
+  throw Error("code_workspace_not_ready");
  if(auth.currentUser){
   await signOut(auth);
   if(auth.currentUser)throw Error("old_email_session_still_active");
