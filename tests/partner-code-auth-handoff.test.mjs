@@ -199,7 +199,7 @@ test("disabled count workspace cannot end email Auth after valid password",async
 
 test("blocked Safari sessionStorage leaves prior email login and counts unchanged",async()=>{
  const x=setup({storageFails:true}),before=x.auth.currentUser;
- await assert.rejects(x.run({sessionToken:TOKEN}),/storage_failure/);
+ await assert.rejects(x.run({sessionToken:TOKEN}),/code_session_storage_unavailable/);
  assert.deepEqual(x.events.map(e=>e[0]),["preflight","probe"]);
  assert.equal(x.auth.currentUser,before);
  assert.equal(x.context.activeCodeSession,null);
