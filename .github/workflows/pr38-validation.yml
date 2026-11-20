@@ -50,6 +50,9 @@ jobs:
       - name: Enforce 2026-11-20 confirmed one-app and no-money partner scope
         run: node --test tests/sales-shared-app-confirmed-scope.test.mjs tests/partner-same-app-auth-status.test.mjs tests/partner-legacy-private-count-parity.test.cjs tests/internal-owner-finance-visibility.test.cjs
 
+      - name: Guard immutable original internal dashboard, input and finance rendering
+        run: node --test tests/sales-self-dashboard-frozen.test.mjs
+
       - name: Verify original company-code session, safe same-app counts and managed staff archive
         run: |
           node --check functions-partner-workspace/service.cjs
