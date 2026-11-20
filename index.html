@@ -11533,6 +11533,51 @@ function nicoShowMainCompanyCodeLogin(open){
   if(password)password.value="";
  }
 }
+
+// Company-code and email login use the SAME existing count-only dashboard.
+// The isolated Firebase app has no Auth identity and cannot inherit Owner money.
+const partnerMainCodeCountGet=httpsCallable(partnerAnonymousCodeFunctions,
+ "getPartnerWorkspace",{timeout:18000});
+const partnerMainCodeCountSave=httpsCallable(partnerAnonymousCodeFunctions,
+ "submitPartnerWorkspaceCounts",{timeout:22000});
+const partnerMainCodeCountManage=httpsCallable(partnerAnonymousCodeFunctions,
+ "managePartnerWorkspace",{timeout:18000});
+const partnerMainCodeLogout=httpsCallable(partnerAnonymousCodeFunctions,
+ "logoutPartnerCompanyCode",{timeout:15000});
+let partnerMainCodeToken="",partnerMainCodeEpoch=0;
+try{
+ const stored=sessionStorage.getItem("nicoPartnerCodeSession")||"";
+ if(/^[A-Za-z0-9_-]{43}$/.test(stored))partnerMainCodeToken=stored;
+ else if(stored)sessionStorage.removeItem("nicoPartnerCodeSession");
+}catch{/* Private browsing may disable session restoration. */}
+const partnerMainCodeActive=()=>!!partnerMainCodeToken&&!auth.currentUser;
+function partnerMainCodeForget(){
+ ++partnerMainCodeEpoch;
+ partnerMainCodeToken="";
+ try{sessionStorage.removeItem("nicoPartnerCodeSession")}catch{}
+}
+function partnerInlineIdentity(){
+ if(partnerMainCodeToken)return partnerMainCodeActive()?
+  "code-session-epoch:"+partnerMainCodeEpoch:"";
+ const user=auth.currentUser;
+ return user?.emailVerified&&partnerMainValidId(user.uid)?
+  "email:"+user.uid+":workspace:"+partnerInlineWorkspaceCompany:"";
+}
+function partnerMainCountCall(codeCallable,emailCallable,data){
+ if(partnerMainCodeToken){
+  if(!partnerMainCodeActive()||data?.workspaceCompanyId)throw Error("code_auth_mixed");
+  return codeCallable({...data,codeSessionToken:partnerMainCodeToken});
+ }
+ if(!auth.currentUser?.emailVerified)throw Error("email_partner_auth_required");
+ return emailCallable(data);
+}
+const partnerMainCountRead=data=>partnerMainCountCall(
+ partnerMainCodeCountGet,readPartnerWorkDay,data);
+const partnerMainCountSubmit=data=>partnerMainCountCall(
+ partnerMainCodeCountSave,partnerInlineSave,data);
+const partnerMainCountManage=data=>partnerMainCountCall(
+ partnerMainCodeCountManage,partnerInlineManage,data);
+
 async function nicoEnterCompanyCodeFromMain(result){
  const token=result?.sessionToken;
  if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
@@ -11557,19 +11602,17 @@ async function nicoEnterCompanyCodeFromMain(result){
  if(typeof auth.authStateReady==="function")await auth.authStateReady();
  if(auth.currentUser)await signOut(auth);
  if(auth.currentUser)throw Error("old_email_session_still_active");
- // Same tab + same origin: existing partner workspace independently checks
- // server session, company membership, and no-finance flags on EVERY API call.
+ // Retain only an opaque, server-verified count session, never the password.
+ // No navigation to /partner-workspace.html: the identical dashboard shell is used.
  sessionStorage.setItem("nicoPartnerCodeSession",token);
  if(auth.currentUser){
   sessionStorage.removeItem("nicoPartnerCodeSession");
   throw Error("old_email_session_still_active");
  }
- try{
-  location.assign(new URL("/partner-workspace.html",location.origin).href);
- }catch{
-  sessionStorage.removeItem("nicoPartnerCodeSession");
-  throw Error("company_code_navigation_failed");
- }
+ partnerMainCodeToken=token;
+ ++partnerMainCodeEpoch;
+ const verified=await openSameAppCompanyCodeWorkspace();
+ if(verified!==true)throw Error("company_code_workspace_not_ready");
 }
 const nicoMainCodeToggle=document.getElementById("nicoMainCompanyCodeToggle");
 const nicoMainCodePanel=document.getElementById("nicoMainCompanyCodePanel");
@@ -11726,7 +11769,16 @@ passwordInput.addEventListener(
 
 logoutButton.onclick =
   async () => {
-
+    if(partnerMainCodeActive()){
+      const token=partnerMainCodeToken;
+      partnerMainCodeForget();resetPartnerInline();
+      currentUser=null;currentUserData=null;currentCompanyData=null;
+      appScreen.style.display="none";authScreen.style.display="block";
+      loginStatus.textContent="未ログイン";
+      try{await partnerMainCodeLogout({codeSessionToken:token});}
+      catch{/* Revoked or unreachable: local code session is already closed. */}
+      return;
+    }
     try {
 
       await stopRealtimeListeners();
@@ -13092,6 +13144,8 @@ const partnerOptionalPublicationProtectionActive=()=>
  NICO_PARTNER_TAB_UI_ENABLED===true||
  NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true;
 function partnerPublishedTabAllowed(name){
+ if(partnerMainCodeActive()&&["invite","members","catalog"].includes(name))
+  return false;
  if(NICO_PARTNER_TAB_UI_ENABLED!==true)return true; // existing released UI untouched
  if(["record","invite","teams","members","catalog","account"].includes(name))return true;
  return partnerPublishedTabIds?.has(name)===true;
@@ -13559,7 +13613,7 @@ function mountPartnerSafeManagementMenu(){
    const snap=partnerInlineData;
    close();
    if(!snap)return;
-   if(action==="invite"&&!["leader","owner"].includes(snap.role)){
+   if(action==="invite"&&(partnerMainCodeActive()||!["leader","owner"].includes(snap.role))){
     partnerInlineStatus("招待リンクの発行は協力店リーダーが行えます。",true);return;
    }
    if(action==="account"){
@@ -13571,7 +13625,7 @@ function mountPartnerSafeManagementMenu(){
     partnerSameAppSelectPanel("account");
    }else{
     partnerSameAppSelectPanel(action);
-    if(action==="invite"&&["leader","owner"].includes(snap.role))
+    if(action==="invite"&&["leader","owner"].includes(snap.role)&&!partnerMainCodeActive())
      pInline("pInlineInviteEmail").focus();
     if(action==="catalog"&&["leader","owner"].includes(snap.role))
      pInline("pInlineCustomName").focus();
@@ -14256,7 +14310,7 @@ function partnerSameAppSelectPanel(name){
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
-  void loadSharedDailyStandings("partner");
+  if(!partnerMainCodeActive())void loadSharedDailyStandings("partner");
  }
  // Before cutover, the original own-team detail remains unchanged. Once the
  // verified joint endpoint is released, open its Owner-published count-only
@@ -14273,7 +14327,7 @@ function partnerSameAppSelectPanel(name){
     if(heading)heading.textContent="公開済み協力店の班詳細（件数のみ）";
    }
    oldDetail.hidden=true;
-   void loadSharedDailyStandings("partnerDetail",true);
+   if(!partnerMainCodeActive())void loadSharedDailyStandings("partnerDetail",true);
   }else oldDetail.hidden=false;
  }
  if(partnerInlineData&&name==="history"&&
@@ -14364,7 +14418,7 @@ function renderPartnerPrivateProductCatalog(){
    toggle.className="team-action-button";
    toggle.textContent=product.active?"商材を非表示にする":"再表示する";
    toggle.onclick=()=>partnerInlineRun(async()=>{
-    await partnerInlineManage(partnerInlinePayload({
+    await partnerMainCountManage(partnerInlinePayload({
      action:"setPrivateProduct",productId:product.id,name:product.name,active:!product.active
     }));
     return "商材の表示を更新しました。過去の実績は保持されます。";
@@ -14776,8 +14830,8 @@ async function loadPartnerPublishedOptionalPanel(tab){
 // original sales history editor. Historical audit entries remain append-only:
 // never re-submit an older revision as if it were the current version.
 async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
- if(partnerInlineBusy||!partnerInlineData||!auth.currentUser?.uid)return;
- const uid=auth.currentUser.uid,workspace=partnerInlineWorkspaceCompany;
+ if(partnerInlineBusy||!partnerInlineData||!partnerInlineIdentity())return;
+ const identity=partnerInlineIdentity(),workspace=partnerInlineWorkspaceCompany;
  if(partnerInlineData.date!==expectedDate||
     pInline("pInlineDate").value!==expectedDate){
   partnerInlineStatus("履歴の日付が変更されました。登録履歴を開き直してください。",true);
@@ -14792,8 +14846,8 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
   // other leaders' later changes. submit() still enforces expectedVersion.
   const payload={date:expectedDate};
   if(workspace)payload.workspaceCompanyId=workspace;
-  const fresh=(await readPartnerWorkDay(payload)).data;
-  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany||
+  const fresh=(await partnerMainCountRead(payload)).data;
+  if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany||
      expectedDate!==pInline("pInlineDate").value)return;
   if(!fresh||fresh.date!==expectedDate||
      fresh.companyName!==partnerInlineData.companyName||
@@ -14822,7 +14876,7 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
   partnerInlineStatus("履歴の実績を編集できます。保存前の内容は変更されていません。");
   pInline("partnerPanelRecord").scrollIntoView({behavior:"smooth",block:"start"});
  }catch(error){
-  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)return;
+  if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany)return;
   partnerInlineStatus("実績の編集画面を開けません。最新の所属・履歴を更新してください。入力内容は変更していません。",true);
  }finally{
   // Do not re-render after setting the edit guidance: that would erase the
@@ -14837,8 +14891,8 @@ async function loadPartnerRevisionHistory(){
  if(partnerOptionalPublicationProtectionActive()){
   void loadPartnerPublishedOptionalPanel("history");return;
  }
- const snap=partnerInlineData,uid=auth.currentUser?.uid;
- if(!snap||!uid)return;
+ const snap=partnerInlineData,identity=partnerInlineIdentity();
+ if(!snap||!identity)return;
  const date=pInline("pInlineDate").value;
  const workspace=partnerInlineWorkspaceCompany;
  const seq=++partnerAuditNonce,area=pInline("pInlineHistory");
@@ -14847,8 +14901,8 @@ async function loadPartnerRevisionHistory(){
  try{
   const payload={date,includeAuditHistory:true};
   if(workspace)payload.workspaceCompanyId=workspace;
-  const reply=(await readPartnerWorkDay(payload)).data;
-  if(seq!==partnerAuditNonce||uid!==auth.currentUser?.uid||
+  const reply=(await partnerMainCountRead(payload)).data;
+  if(seq!==partnerAuditNonce||identity!==partnerInlineIdentity()||
      date!==pInline("pInlineDate").value||
      workspace!==partnerInlineWorkspaceCompany)return;
   if(reply?.date!==date||reply?.companyName!==snap.companyName||
@@ -14915,20 +14969,21 @@ async function loadPartnerRevisionHistory(){
   if(!reply.audits.length)partnerMainAppendRow(area,
     "この日の訂正履歴はありません","登録のない日は未報告として扱います。");
  }catch(error){
-  if(seq!==partnerAuditNonce||uid!==auth.currentUser?.uid)return;
+  if(seq!==partnerAuditNonce||identity!==partnerInlineIdentity())return;
   area.replaceChildren();
   partnerMainAppendRow(area,"履歴を検証できません","日付・権限・通信を確認して更新してください。");
  }
 }
 async function partnerInlineFetch(){
- if(!auth.currentUser?.emailVerified)return;
- const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
+ const identity=partnerInlineIdentity();
+ if(!identity)return false;
+ const seq=++partnerInlineNonce;
  partnerInlineStatus("件数を読み込み中...");
  try{
   const payload={date:pInline("pInlineDate").value};
   if(partnerInlineWorkspaceCompany)payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
-  const snap=(await readPartnerWorkDay(payload)).data;
-  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
+  const snap=(await partnerMainCountRead(payload)).data;
+  if(seq!==partnerInlineNonce||partnerInlineIdentity()!==identity)return;
   if(!snap||!["owner","leader","member"].includes(snap.role)||
      !Array.isArray(snap.teams)||!Array.isArray(snap.staff)||
      !Array.isArray(snap.categories)||!Array.isArray(snap.records)||
@@ -14946,9 +15001,9 @@ async function partnerInlineFetch(){
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
   // scoreboard currently on screen; never reuse the previous day's figures.
-  if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+  if(!partnerMainCodeActive()&&["individual","product","team"].includes(partnerSameAppSelectedPanel))
    void loadSharedDailyStandings("partner",true);
-  else if(partnerSameAppSelectedPanel==="detail")
+  else if(!partnerMainCodeActive()&&partnerSameAppSelectedPanel==="detail")
    void loadSharedDailyStandings("partnerDetail",true);
   else if(partnerOptionalPublicationProtectionActive()&&
      ["report","daily","history","goal"].includes(partnerSameAppSelectedPanel))
@@ -14957,7 +15012,7 @@ async function partnerInlineFetch(){
    void loadPartnerRevisionHistory();
   return true;
  }catch(e){
-  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return false;
+  if(seq!==partnerInlineNonce||partnerInlineIdentity()!==identity)return false;
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
@@ -14973,6 +15028,52 @@ pInline("pInlineReturnToOwnCompany").onclick=()=>{
  // The normal internal app STILL checks fresh server-side finance permissions.
  location.replace(new URL("/",location.origin).href);
 };
+async function openSameAppCompanyCodeWorkspace(){
+ const identity=partnerInlineIdentity();
+ if(!identity||!partnerMainCodeActive())return false;
+ // Stop every old finance listener. Code principal NEVER starts the internal app.
+ await stopRealtimeListeners();
+ if(identity!==partnerInlineIdentity())return false;
+ resetPartnerInline();
+ currentUser=null;currentUserData=null;currentCompanyData=null;
+ partnerInlineWorkspaceCompany="";
+ verificationScreen.style.display="none";
+ companySetupScreen.style.display="none";
+ authScreen.style.display="none";
+ appScreen.dataset.partnerCountOnly="true";
+ appScreen.style.display="block";
+ pInline("partnerInlineWorkspace").hidden=false;
+ pInline("pInlineReturnToOwnCompany").hidden=true;
+ userName.textContent="協力店";
+ userEmail.textContent="";
+ userRole.textContent="協力店・件数管理";
+ loginStatus.textContent="会社コードの件数認証を確認中";
+ databaseStatus.textContent="件数API確認中";
+ pInline("pInlineDate").value=partnerMainDate();
+ pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
+ partnerInlineEditingStaffId="";
+ if(!mountPartnerCanonicalNavigation()){
+  loginStatus.textContent="共通画面を確認できません";return false;
+ }
+ mountPartnerSafeManagementMenu();
+ partnerSameAppSelectPanel("record");
+ const ready=await partnerInlineFetch();
+ if(identity!==partnerInlineIdentity())return false;
+ if(ready!==true){
+  loginStatus.textContent="会社コードの件数権限を確認できません";
+  databaseStatus.textContent="件数API認証未確認";
+  pInline("pInlineSave").disabled=true;
+  return false;
+ }
+ userName.textContent=partnerInlineData.companyName;
+ userRole.textContent=partnerInlineData.role==="owner"?"協力店管理者・件数のみ":
+  "協力店・件数のみ";
+ loginStatus.textContent="ログイン済み・協力店";
+ databaseStatus.textContent="件数API接続済み";
+ return true;
+}
+// Existing Firebase email partner behavior remains untouched.
+
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  if(!user?.emailVerified||!partnerMainValidId(user.uid))return;
  // Do not load legacy sales products, records, prices, or Firestore listeners.
@@ -15076,7 +15177,8 @@ function partnerCountSaveFailureMessage(error){
 async function partnerInlineRun(work){
  const refresh=arguments[1]?.refresh!==false;
  if(partnerInlineBusy||!partnerInlineData)return;
- const uid=auth.currentUser?.uid;
+ const identity=partnerInlineIdentity();
+ if(!identity)return;
  let completed=false,resultMessage="";
  partnerInlineBusy=true;
  if(arguments[1]?.kind==="save"){
@@ -15095,7 +15197,7 @@ async function partnerInlineRun(work){
  pInline("pInlineSave").disabled=true;
  try{
   const message=await work();
-  if(uid!==auth.currentUser?.uid)return;
+  if(identity!==partnerInlineIdentity())return;
   // Only a confirmed write refreshes the count fields; do not erase inputs
   // when a save or invitation fails and the user needs to retry.
   if(refresh){
@@ -15122,7 +15224,7 @@ async function partnerInlineRun(work){
  }finally{
   locks.forEach((node,i)=>{node.disabled=prior[i];});
   partnerInlineBusy=false;
-  if(partnerInlineData&&uid===auth.currentUser?.uid){
+  if(partnerInlineData&&identity===partnerInlineIdentity()){
    if(completed){
     // Creating an invitation is not a count write: do not reset unfinished input.
     if(refresh)partnerInlineRenderCounts();
@@ -15142,6 +15244,10 @@ async function partnerInlineRun(work){
  }
 }
 function partnerInlinePayload(data){
+ if(partnerMainCodeToken){
+  if(!partnerMainCodeActive())throw Error("code_auth_mixed");
+  return {...data,codeSessionToken:partnerMainCodeToken};
+ }
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
 }
 function partnerInlineChangeDate(which){
@@ -15200,14 +15306,14 @@ pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineTeamName").value.trim();
  if(!name)throw Error("name");
- await partnerInlineManage(partnerInlinePayload({action:"addTeam",name}));
+ await partnerMainCountManage(partnerInlinePayload({action:"addTeam",name}));
  pInline("pInlineTeamName").value="";return "班を作成しました。";
 });
 pInline("pInlineMove").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const staffId=pInline("pInlineMoveStaff").value,teamId=pInline("pInlineManageTeam").value;
  if(!partnerMainValidId(staffId)||!partnerMainValidId(teamId))throw Error("input");
- await partnerInlineManage(partnerInlinePayload({action:"moveStaff",staffId,teamId}));
+ await partnerMainCountManage(partnerInlinePayload({action:"moveStaff",staffId,teamId}));
  return "班を変更しました。過去の実績の班は保持されます。";
 });
 // Only archive email-less managed staff. Never delete a registered
@@ -15226,7 +15332,7 @@ async function partnerInlineRemoveManagedStaff(staffId,name){
     !window.confirm("入力途中の件数が残っています。未保存の入力を破棄して班員を削除しますか？"))
   return;
  await partnerInlineRun(async()=>{
-  const result=(await partnerInlineManage(partnerInlinePayload({
+  const result=(await partnerMainCountManage(partnerInlinePayload({
    action:"removeManaged",staffId
   }))).data;
   if(result?.archived!==true||result.staffId!==staffId)
@@ -15240,7 +15346,7 @@ pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
  const name=pInline("pInlineManagedName").value.trim();
  const teamId=pInline("pInlineManageTeam").value;
  if(!name||!partnerMainValidId(teamId))throw Error("input");
- await partnerInlineManage(partnerInlinePayload({action:"addManaged",name,teamId}));
+ await partnerMainCountManage(partnerInlinePayload({action:"addManaged",name,teamId}));
  pInline("pInlineManagedName").value="";return "メールなしのメンバーを追加しました。";
 });
 // Invite credentials stay in memory only; never persist links or tokens in Firestore/UI logs.
@@ -15270,7 +15376,7 @@ async function partnerLeaderSendInviteEmail(invite){
  if(!Number.isFinite(latest.expiresAt)||Date.now()>=latest.expiresAt){
   // Never resend an expired token. Reissue with the same role/team/email after
   // server-side company and leader checks; the previous invitation is not changed.
-  const response=(await partnerInlineManage(partnerInlinePayload({
+  const response=(await partnerMainCountManage(partnerInlinePayload({
    action:"createInvite",email:latest.email,teamId:latest.teamId,role:latest.role
   }))).data;
   if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||"")||
@@ -15337,7 +15443,7 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  partnerLeaderInviteFormFeedback("招待リンクを作成しています…");
  let response;
  try{
-  response=(await partnerInlineManage(partnerInlinePayload({
+  response=(await partnerMainCountManage(partnerInlinePayload({
    action:"createInvite",email,teamId,role
   }))).data;
  }catch(error){
@@ -15397,7 +15503,7 @@ pInline("pInlineAddPrivateProduct").onclick=()=>partnerInlineRun(async()=>{
  // published catalog. Do not call it from the unified Owner-managed UI.
  if(partnerUsesVerifiedOwnerCatalog(snap))throw Error("shared_catalog_owner_only");
  if(!["owner","leader"].includes(snap.role)||!name||name.length>80)throw Error("product");
- await partnerInlineManage(partnerInlinePayload({action:"addPrivateProduct",name}));
+ await partnerMainCountManage(partnerInlinePayload({action:"addPrivateProduct",name}));
  pInline("pInlineCustomName").value="";
  return "商材を追加しました。実績入力に反映します。";
 });
@@ -15418,8 +15524,8 @@ function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLoca
 }
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
- const date=snap?.date,workspace=partnerInlineWorkspaceCompany,uid=auth.currentUser?.uid;
- if(!snap||!uid||date!==pInline("pInlineDate").value||
+ const date=snap?.date,workspace=partnerInlineWorkspaceCompany,identity=partnerInlineIdentity();
+ if(!snap||!identity||date!==pInline("pInlineDate").value||
     date!==pInline("pInlineRecordDate").value)throw Error("date_changed");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const workLocation=pInline("pInlineWorkLocation").value.trim();
@@ -15469,20 +15575,20 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
  try{
-  result=(await partnerInlineSave(partnerInlinePayload({
+  result=(await partnerMainCountSubmit(partnerInlinePayload({
    date,staffId,counts:wireCounts,workLocation,
    ...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,
    expectedVersion:expected.expectedVersion
   }))).data;
  }catch(error){saveError=error;}
- if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+ if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
  // Even on an uncertain callable response, reconcile by GET only.
  // No automatic second save; protects audit versions and double counting.
  let verified=null;
- try{verified=(await readPartnerWorkDay(partnerInlinePayload({date}))).data;}
+ try{verified=(await partnerMainCountRead(partnerInlinePayload({date}))).data;}
  catch(error){if(!saveError)throw Error("save_verify");}
- if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+ if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
  const readback=partnerSavedCountReadbackState(verified,expected);
  // Positive feedback ONLY when the saved version matches the server GET.
@@ -16051,6 +16157,7 @@ onAuthStateChanged(
     }
 
     if (user) {
+      if(partnerMainCodeToken)partnerMainCodeForget();
 
       currentUser =
         user;
@@ -16112,6 +16219,13 @@ onAuthStateChanged(
       );
 
     } else {
+      // A verified code principal uses the exact same DOM count workspace.
+      // No Firestore money user/profile/member lookup is executed in this path.
+      if(partnerMainCodeActive()){
+        if(nicoMainCodeLoginBusy)return;
+        if(await openSameAppCompanyCodeWorkspace())return;
+        partnerMainCodeForget();
+      }
 
       if(currentUser?.uid)clearOwnCompanyPreference(currentUser.uid);
       resetPartnerInline();
