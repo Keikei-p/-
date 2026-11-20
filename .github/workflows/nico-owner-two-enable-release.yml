@@ -1,0 +1,195 @@
+name: NICO enable existing TWO Owner correction v3 Functions (STRICT ONE-SHOT)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-two-enable-release.yml'
+      - 'tools/production/owner-two-enabled-transition-scope.mjs'
+      - 'tests/owner-two-enabled-transition-scope.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-owner-two-enable-release.yml'
+      - 'tools/production/owner-two-enabled-transition-scope.mjs'
+      - 'tests/owner-two-enabled-transition-scope.test.mjs'
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Audit existing Owner correction Functions and strict live flag transition
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node --check tools/production/owner-two-disabled-release-scope.mjs
+          node --test tests/owner-two-enabled-transition-scope.test.mjs
+          node --test tests/partner-owner-correction-v3-auth.test.cjs tests/partner-owner-correction-v3.test.cjs
+          node --test tests/prepare-hub-owner-correction-v3-package.test.mjs
+          echo 'EXACT_EXISTING_TWO_OWNER_CORRECTION_CALLABLES_REVIEWED_NO_DEPLOY'
+  activate-existing-two-only:
+    concurrency:
+      group: nico-partner-workspace-production
+      cancel-in-progress: false
+    needs: offline
+    if: >-
+      ${{ github.event_name == 'push' &&
+          github.repository == 'Keikei-p/-' &&
+          github.ref == 'refs/heads/main' &&
+          startsWith(github.event.head_commit.message, 'release: owner correction v3 enable 20261109') &&
+          needs.offline.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact reviewed main and original function/rules hashes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq .commit.sha)"
+          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object index.html)" = 88ef5636bfe9254e71f2109d452b6d3049f99861
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/index.js)" = 38da7e9174ffea7c406c92292dccfc651b565eb0
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = b94a6aba231dc2569009580a178297a5b6194bda
+          node --test tests/owner-two-enabled-transition-scope.test.mjs tests/partner-owner-correction-v3-auth.test.cjs tests/partner-owner-correction-v3.test.cjs
+      - name: Install isolated Firebase SDK for the NEW codebase and pinned CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix functions --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Load existing Firebase identity into ephemeral private file
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-owner-v3.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-owner-v3.private.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-owner-v3.private.json" >> "$GITHUB_ENV"
+      - name: Require existing exact two Owner callables ACTIVE and feature disabled before any write
+        shell: bash
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" --json > "$RUNNER_TEMP/nico-owner-v3-before.private.json" 2> "$RUNNER_TEMP/nico-owner-v3-cli.private.log"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {beforeDisabled} from './tools/production/owner-two-enabled-transition-scope.mjs';
+          const j=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/nico-owner-v3-before.private.json','utf8'));
+          beforeDisabled(j);
+          console.log('EXISTING_OWNER_TWO_DISABLED_ACTIVE_AND_SCOPED');
+          NODE
+      - name: Fingerprint original six deployed Finance and partner Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/protect-ranking-original-functions-versions.mjs before
+      - name: Build EXACT two-function package in a private disposable runner location
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/production/prepare-hub-owner-correction-v3-package.mjs --prepare
+          root="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          test "$(find "$root" -type f | wc -l)" -eq 6
+          node --check "$root/functions-hub-owner-correction/index.js"
+          node --input-type=module - "$root" <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {inspectReviewedSource} from './tools/production/owner-two-disabled-release-scope.mjs';
+          const root=process.argv[2];
+          inspectReviewedSource({
+            index:readFileSync(root+'/functions-hub-owner-correction/index.js','utf8'),
+            config:readFileSync(root+'/firebase.owner-correction.json','utf8')
+          });
+          console.log('STRICT_ISOLATED_TWO_TARGETS_CODEBASE_SCOPE_OK');
+          NODE
+          npm install --prefix "$root/functions-hub-owner-correction"             --ignore-scripts --no-audit --no-fund --package-lock=false
+          test ! -e "$root/functions-hub-owner-correction/.env.sales-management-cc116"
+          printf 'HUB_OWNER_COUNT_CORRECTION_V3_ENABLED=enabled\n'             > "$root/functions-hub-owner-correction/.env.sales-management-cc116"
+          chmod 600 "$root/functions-hub-owner-correction/.env.sales-management-cc116"
+          test "$(grep -c '=enabled' "$root/functions-hub-owner-correction/.env.sales-management-cc116" || true)" = 1
+      - name: Enable ONLY two existing Owner count correction callables without changing any originals
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="$(node --input-type=module -e "import {TARGETS,exactDeploymentTarget} from './tools/production/owner-two-disabled-release-scope.mjs';process.stdout.write(exactDeploymentTarget(TARGETS.join(',')))")"
+          root="$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          (
+            cd "$root"
+            status=0
+            firebase deploy --non-interactive --project "$FIREBASE_PROJECT_ID" \
+              --config firebase.owner-correction.json --only "$TARGET" \
+              > "$RUNNER_TEMP/nico-owner-v3-deploy.private.log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              # The previous run returned CLI error while both Cloud Functions
+              # operations had succeeded. Never automatically re-run it.
+              echo 'NO_RETRY_IF_FIREBASE_CLI_REPORTS_ERROR'
+            else
+              echo 'OWNER_CORRECTION_ENABLE_CLI_COMPLETE'
+            fi
+          )
+          echo 'OWNER_CORRECTION_ENABLE_ATTEMPT_COMPLETE_CHECK_LIVE_METADATA'
+      - name: Require BOTH existing targets enabled, identical Function IDs and original six unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            firebase functions:list --project "$FIREBASE_PROJECT_ID" --json \
+              > "$RUNNER_TEMP/nico-owner-v3-after.private.json" \
+              2>> "$RUNNER_TEMP/nico-owner-v3-cli.private.log"
+            if node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {afterEnabled} from './tools/production/owner-two-enabled-transition-scope.mjs';
+          afterEnabled(JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/nico-owner-v3-after.private.json','utf8')));
+          NODE
+            then break; fi
+            sleep 8
+          done
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {inspectActivation} from './tools/production/owner-two-enabled-transition-scope.mjs';
+          const root=process.env.RUNNER_TEMP;
+          const before=JSON.parse(readFileSync(root+'/nico-owner-v3-before.private.json','utf8'));
+          const after=JSON.parse(readFileSync(root+'/nico-owner-v3-after.private.json','utf8'));
+          console.log('OWNER_TWO_ENABLED_METADATA '+JSON.stringify(inspectActivation(before,after)));
+          NODE
+          node tools/production/protect-ranking-original-functions-versions.mjs after
+      - name: Confirm anonymous requests cannot succeed on Owner-only endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in listHubPartnerCounts correctHubPartnerCounts; do
+            url="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/$name"
+            code="$(curl --connect-timeout 5 --max-time 15 --silent --show-error               --output /dev/null --write-out '%{http_code}' --request POST               --header 'Content-Type: application/json' --data '{"data":{}}' "$url" || true)"
+            if [ "$code" = 200 ] || [ "$code" = 204 ]; then
+              echo 'STOP_UNEXPECTED_OWNER_CORRECTION_EXPOSURE'
+              exit 1
+            fi
+          done
+          echo 'OWNER_CORRECTION_CALLABLES_ENABLED_OWNER_ONLY_NO_DATA_WRITES_ON_DEPLOY'
+          echo 'FIRESTORE_RULES_CHANGED=NO HOSTING_CHANGED=NO ORIGINAL_FUNCTIONS_CHANGED=NO'
+      - name: Destroy private runner credentials, package, logs and function inventories
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          rm -f "$RUNNER_TEMP/nico-owner-v3.private.json"             "$RUNNER_TEMP/nico-owner-v3-before.private.json"             "$RUNNER_TEMP/nico-owner-v3-after.private.json"             "$RUNNER_TEMP/nico-owner-v3-cli.private.log"             "$RUNNER_TEMP/nico-owner-v3-deploy.private.log"             "$RUNNER_TEMP/nico-original-six-immutable-versions.private.json"
