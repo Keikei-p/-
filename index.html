@@ -11612,7 +11612,15 @@ async function nicoEnterCompanyCodeFromMain(result){
  partnerMainCodeToken=token;
  ++partnerMainCodeEpoch;
  const verified=await openSameAppCompanyCodeWorkspace();
- if(verified!==true)throw Error("company_code_workspace_not_ready");
+ if(verified!==true){
+  // A broken GET after a successful password check cannot leave a reusable
+  // session or show a partially initialized count dashboard.
+  partnerMainCodeForget();
+  resetPartnerInline();
+  appScreen.style.display="none";
+  authScreen.style.display="block";
+  throw Error("company_code_workspace_not_ready");
+ }
 }
 const nicoMainCodeToggle=document.getElementById("nicoMainCompanyCodeToggle");
 const nicoMainCodePanel=document.getElementById("nicoMainCompanyCodePanel");
@@ -13251,6 +13259,8 @@ function resetPartnerInline(){
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
+ ++partnerPublishedTabGeneration;++partnerOptionalTabGeneration;
+ partnerPublishedTabIds=null;partnerOptionalVerifiedGoal=null;
  partnerInlineEditingStaffId="";
  const saveStatus=pInline("pInlineSaveStatus");
  if(saveStatus)saveStatus.textContent="";
@@ -15207,6 +15217,7 @@ async function partnerInlineRun(work){
   completed=true;resultMessage=message||"更新しました。";
   if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
+  if(identity!==partnerInlineIdentity())return;
   const conflict=error?.code==="functions/aborted"||error?.message==="aborted";
   const message=conflict?
    "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
@@ -16157,7 +16168,11 @@ onAuthStateChanged(
     }
 
     if (user) {
-      if(partnerMainCodeToken)partnerMainCodeForget();
+      if(partnerMainCodeToken){
+        partnerMainCodeForget();
+        resetPartnerInline();
+        appScreen.style.display="none";
+      }
 
       currentUser =
         user;
