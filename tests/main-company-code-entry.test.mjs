@@ -9,7 +9,7 @@ const b=html.indexOf("\nconst nicoMainCodeToggle=",a);
 assert(a>0&&b>a,"main company-code handoff must be declared before form bindings");
 const block=html.slice(a,b);
 const TOKEN="X".repeat(43);
-function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=false,navigationFails=false,
+function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=false,workspaceFails=false,
  preflightFails=false,preflightInvalid=false}={}){
  const calls=[],auth={currentUser:user?{uid:"old-email"}:null,authStateReady:async()=>calls.push("ready")};
  const values=new Map();
@@ -24,14 +24,22 @@ function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=f
    values.delete(k);
   }
  };
- const location={origin:"https://nico-factory.web.app",assign(url){
-  calls.push("navigate");
-  if(navigationFails)throw Error("bad_location");
-  assert.equal(url,"https://nico-factory.web.app/partner-workspace.html");
-  assert.equal(auth.currentUser,null);
-  assert.equal(values.get("nicoPartnerCodeSession"),TOKEN);
- }};
- const sandbox=vm.createContext({auth,location,sessionStorage,URL,
+ const appScreen={style:{display:"none"}},authScreen={style:{display:"none"}};
+ const sandbox=vm.createContext({auth,sessionStorage,URL,appScreen,authScreen,
+  partnerMainCodeToken:"",partnerMainCodeEpoch:0,
+  openSameAppCompanyCodeWorkspace:async()=>{
+   calls.push("open");
+   assert.equal(auth.currentUser,null,"code view must not inherit owner Auth");
+   assert.equal(values.get("nicoPartnerCodeSession"),TOKEN);
+   assert.equal(sandbox.partnerMainCodeToken,TOKEN);
+   return !workspaceFails;
+  },
+  partnerMainCodeForget:()=>{
+   sandbox.partnerMainCodeToken="";
+   calls.push("remove");
+   values.delete("nicoPartnerCodeSession");
+  },
+  resetPartnerInline:()=>calls.push("reset"),
   partnerMainDate:()=> "2026-11-20",
   partnerAnonymousWorkspacePreflight:async data=>{
    calls.push("preflight");
@@ -46,7 +54,7 @@ function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=f
   if(!logoutRetains)auth.currentUser=null;
  }});
  const go=vm.runInContext(block+"\nnicoEnterCompanyCodeFromMain",sandbox);
- return {go,calls,auth,values};
+ return {go,calls,auth,values,appScreen,authScreen,sandbox};
 }
 test("unified login has company-code input without replacing original email login",()=>{
  for(const id of ["nicoMainCompanyCodeToggle","nicoMainCompanyCodePanel",
@@ -62,30 +70,33 @@ test("unified login has company-code input without replacing original email logi
  assert.match(html,/const NICO_PARTNER_TAB_UI_ENABLED = false;/);
  assert.match(html,/const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;/);
 });
-test("existing company-code backend session and count-only page are reused",()=>{
+test("existing company-code backend session and SAME page count-only API are reused",()=>{
  assert.match(partner,/sessionStorage\.getItem\("nicoPartnerCodeSession"\)/);
  assert.match(partner,/session\.active!==true|activeCodeSession/);
  assert.match(block,/sessionStorage\.setItem\("nicoPartnerCodeSession",token\)/);
- assert.match(block,/location\.assign\(new URL\("\/partner-workspace\.html",location\.origin\)\.href\)/);
+ assert.match(block,/await openSameAppCompanyCodeWorkspace\(\)/);
+ assert.doesNotMatch(block,/location\.assign\(|\/partner-workspace\.html",location\.origin/);
+ assert.match(html,/const partnerMainCodeCountGet=httpsCallable\(partnerAnonymousCodeFunctions/);
+ assert.match(html,/const partnerMainCodeCountSave=httpsCallable\(partnerAnonymousCodeFunctions/);
  assert.doesNotMatch(block,/\b(?:setDoc|updateDoc|deleteDoc|getDoc|deleteUser|createUser|records|products|unitPrice|revenueGoals)\b/);
 });
 test("old email identity is signed out BEFORE code session is saved",async()=>{
  const a=subject();
  await a.go({sessionToken:TOKEN});
- assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","signout","store","navigate"]);
+ assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","signout","store","open"]);
  assert.equal(a.auth.currentUser,null);
 });
-test("code-only account can navigate without email Auth or old account mutation",async()=>{
+test("code-only account uses the existing dashboard without email Auth or navigation",async()=>{
  const a=subject({user:false});
  await a.go({sessionToken:TOKEN});
- assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","store","navigate"]);
+ assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","store","open"]);
 });
 test("blocked email logout cannot expose a new code session",async()=>{
  for(const options of [{logoutFails:true},{logoutRetains:true}]){
   const x=subject(options);
   await assert.rejects(x.go({sessionToken:TOKEN}));
   assert.equal(x.values.size,0);
-  assert(!x.calls.includes("navigate"));
+  assert(!x.calls.includes("open"));
  }
 });
 test("invalid session and browser storage failure fail closed",async()=>{
@@ -97,14 +108,17 @@ test("invalid session and browser storage failure fail closed",async()=>{
  assert.deepEqual(y.calls,["preflight","probe"]);
  assert.equal(y.auth.currentUser.uid,"old-email","storage error must not sign out Owner");
  assert(!y.calls.includes("signout"));
- assert(!y.calls.includes("navigate"));
+ assert(!y.calls.includes("open"));
  assert.equal(y.values.size,0);
 });
-test("navigation errors revoke the pending local session before returning failure",async()=>{
- const x=subject({navigationFails:true});
- await assert.rejects(x.go({sessionToken:TOKEN}),/company_code_navigation_failed/);
+test("failed same-page count GET clears stored session and hides partial dashboard",async()=>{
+ const x=subject({workspaceFails:true});
+ await assert.rejects(x.go({sessionToken:TOKEN}),/company_code_workspace_not_ready/);
  assert.equal(x.values.size,0);
- assert.deepEqual(x.calls,["preflight","probe","unprobe","ready","signout","store","navigate","remove"]);
+ assert.equal(x.sandbox.partnerMainCodeToken,"");
+ assert.equal(x.appScreen.style.display,"none");
+ assert.equal(x.authScreen.style.display,"block");
+ assert.deepEqual(x.calls,["preflight","probe","unprobe","ready","signout","store","open","remove","reset"]);
 });
 
 test("invalid code or unusable workspace leaves the original email session untouched",async()=>{
@@ -187,7 +201,7 @@ test("old account workspace discovery cannot reopen stale login after logout",as
   let observed;
   const ctx=vm.createContext({
    auth,URL,location:{href:"https://nico-factory.web.app/"},
-   currentUser:null,partnerEmailLinkPending:false,partnerEmailLinkBusy:false,
+   currentUser:null,partnerMainCodeToken:"",partnerEmailLinkPending:false,partnerEmailLinkBusy:false,
    partnerEmailLinkPasswordState:null,
    partnerMainPendingInvite:()=>null,
    partnerMainOwnCompanyPreferred:()=>false,
@@ -274,4 +288,96 @@ test("internal bootstrap never subscribes old login after sign-out or account sw
      "stale failure cannot hide a new account's screen");
   }
  }
+});
+
+test("company-code count calls are isolated from email Auth and never receive a finance bearer",async()=>{
+ const start=html.indexOf("function partnerMainCountCall(");
+ const end=html.indexOf("const partnerMainCountRead=",start);
+ assert(start>0&&end>start);
+ const code=html.slice(start,end);
+ const payload={date:"2026-11-20"},calls=[];
+ const ctx=vm.createContext({
+  partnerMainCodeToken:TOKEN,auth:{currentUser:null,emailVerified:false},
+  partnerMainCodeActive:()=>true,
+  partnerMainCodeCountGet:()=>{},readPartnerWorkDay:()=>{}
+ });
+ const call=vm.runInContext(code+"\npartnerMainCountCall",ctx);
+ const result=await call(async data=>{calls.push(["code",data]);return {data:{verified:true}};},
+  async()=>{calls.push(["email"]);throw Error("email_mixed")},payload);
+ assert.equal(result.data.verified,true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0][0],"code");
+ assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1])),{
+  date:"2026-11-20",codeSessionToken:TOKEN});
+ ctx.auth.currentUser={uid:"owner",emailVerified:true};
+ ctx.partnerMainCodeActive=()=>false;
+ assert.throws(()=>call(()=>{},()=>{},payload),/code_auth_mixed/);
+ assert.throws(()=>call(()=>{},()=>{},{
+  date:"2026-11-20",workspaceCompanyId:"foreign"}),/code_auth_mixed/);
+ ctx.partnerMainCodeToken="";
+ const sent=await call(()=>{throw Error("code_mixed")},data=>{
+  calls.push(["email",data]);return {data:{normal:true}}},payload);
+ assert.equal(sent.data.normal,true);
+ assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))),["email",payload]);
+});
+test("same-page code workspace displays shared count dashboard only after server GET succeeds",async()=>{
+ const start=html.indexOf("async function openSameAppCompanyCodeWorkspace(){");
+ const end=html.indexOf("async function openSameAppPartnerWorkspace(",start);
+ assert(start>0&&end>start);
+ const body=html.slice(start,end);
+ assert.doesNotMatch(body,/location\.(?:assign|replace)|startRealtimeListeners|loadUserData/);
+ const calls=[],nodes=new Map();
+ const node=id=>{
+  if(!nodes.has(id))nodes.set(id,{value:"",textContent:"",hidden:false,disabled:false});
+  return nodes.get(id);
+ };
+ const auth={currentUser:null};
+ const appScreen={dataset:{},style:{display:"none"}};
+ const authScreen={style:{display:"block"}},verificationScreen={style:{}},
+  companySetupScreen={style:{}};
+ const ctx=vm.createContext({
+  auth,appScreen,authScreen,verificationScreen,companySetupScreen,
+  currentUser:{uid:"stale"},currentUserData:{money:true},currentCompanyData:{money:true},
+  userName:{textContent:""},userEmail:{textContent:""},
+  userRole:{textContent:""},loginStatus:{textContent:""},databaseStatus:{textContent:""},
+  partnerInlineData:null,partnerInlineWorkspaceCompany:"other",
+  partnerInlineEditingStaffId:"old",pInline:node,
+  partnerMainCodeActive:()=>true,partnerInlineIdentity:()=> "code-session-epoch:7",
+  partnerMainDate:()=> "2026-11-20",
+  stopRealtimeListeners:async()=>calls.push("stop_finance"),
+  resetPartnerInline:()=>calls.push("reset_old_count"),
+  mountPartnerCanonicalNavigation:()=>{calls.push("mount_original_cards");return true},
+  mountPartnerSafeManagementMenu:()=>calls.push("mount_count_menu"),
+  partnerSameAppSelectPanel:name=>calls.push("select_"+name),
+  partnerInlineFetch:async()=>{
+   calls.push("count_get");
+   ctx.partnerInlineData={companyName:"協力店A",role:"owner"};
+   return true;
+  }
+ });
+ const open=vm.runInContext(body+"\nopenSameAppCompanyCodeWorkspace",ctx);
+ assert.equal(await open(),true);
+ assert.deepEqual(calls,["stop_finance","reset_old_count","mount_original_cards",
+  "mount_count_menu","select_record","count_get"]);
+ assert.equal(appScreen.dataset.partnerCountOnly,"true");
+ assert.equal(appScreen.style.display,"block");
+ assert.equal(authScreen.style.display,"none");
+ assert.equal(ctx.currentUser,null);
+ assert.equal(ctx.currentUserData,null);
+ assert.equal(ctx.currentCompanyData,null);
+ assert.equal(ctx.userEmail.textContent,"");
+ assert.equal(ctx.loginStatus.textContent,"ログイン済み・協力店");
+ assert.equal(node("partnerInlineWorkspace").hidden,false);
+ assert.equal(node("pInlineReturnToOwnCompany").hidden,true);
+});
+test("company-code page uses count-only API for read, write and corrections with server-verified readback",()=>{
+ const source=html.slice(html.indexOf("function partnerInlinePayload(data){"),
+  html.indexOf("// Hub Owner-only partner count correction."));
+ assert.match(source,/codeSessionToken:partnerMainCodeToken/);
+ assert.match(source,/partnerMainCountRead\(/);
+ assert.match(source,/partnerMainCountSubmit\(/);
+ assert.match(source,/partnerMainCountManage\(/);
+ assert.match(source,/partnerSavedCountReadbackState\(verified,expected\)/);
+ assert.doesNotMatch(source,/\b(?:getFirestore|getDoc|setDoc|updateDoc|revenueGoals|pricingOptions)\b/);
+ assert.match(html,/if\(partnerMainCodeActive\(\)\)\{\s*const token=partnerMainCodeToken;\s*partnerMainCodeForget\(\)/);
 });
