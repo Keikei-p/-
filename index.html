@@ -11145,6 +11145,9 @@ function firebaseErrorMessage(error) {
     "auth/user-not-found":
       "ユーザーが見つかりません。",
 
+    "auth/user-disabled":
+      "このログインアカウントは停止されています。自動で権限を戻すことはできません。管理者に確認し、有効なアカウントでログインしてください。",
+
     "auth/wrong-password":
       "パスワードが正しくありません。",
 
@@ -14993,8 +14996,8 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  userName.textContent=user.displayName||"協力店スタッフ";
  userEmail.textContent=user.email||"";
  userRole.textContent="協力店・件数管理";
- loginStatus.textContent="ログイン済み・協力店";
- databaseStatus.textContent="件数API";
+ loginStatus.textContent="協力店の件数認証を確認中";
+ databaseStatus.textContent="件数API確認中";
  pInline("pInlineDate").value=partnerMainDate();
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  partnerInlineEditingStaffId="";
@@ -15004,6 +15007,15 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  const loaded=await partnerInlineFetch();
  if(auth.currentUser?.uid!==user.uid||
     partnerInlineWorkspaceCompany!==workspaceRequested)return;
+ // An Auth session alone is NOT proof that a partner may submit counts.
+ // Show "logged in" only after the count-only callable verifies scope.
+ if(loaded===true){
+  loginStatus.textContent="ログイン済み・協力店";
+  databaseStatus.textContent="件数API接続済み";
+ }else{
+  loginStatus.textContent="協力店の件数利用を確認できません";
+  databaseStatus.textContent="件数API認証未確認";
+ }
  if(!workspaceRequested)return;
  if(loaded===true){
   clearOwnCompanyPreference(user.uid);
