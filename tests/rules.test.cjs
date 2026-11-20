@@ -817,7 +817,11 @@ test('existing-email secondary partner: active server context blocks four financ
   originalProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
  });
  const db=dbFor('owner');
- const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1';
+ // Original baseline demonstrates the old gap; the PR's reviewed Rules
+ // must deny by default, even without the optional emulator review flag.
+ const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1'
+   || fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')
+        .includes('function activeSecondaryPartnerContext()');
  for(const [coll,id] of finance){
   const single=getDoc(doc(db,coll,id));
   if(withCandidate)await assertFails(single,
