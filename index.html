@@ -13262,6 +13262,17 @@ function resetPartnerInline(){
  ++partnerPublishedTabGeneration;++partnerOptionalTabGeneration;
  partnerPublishedTabIds=null;partnerOptionalVerifiedGoal=null;
  partnerInlineEditingStaffId="";
+ // Clear previous partner/company count DOM before any new identity is shown.
+ // These are count-only dynamic roots; original Owner sales controls remain intact.
+ pInline("partnerSameAppDashboardDetails").hidden=true;
+ for(const id of ["pInlineCountFields","pInlineRanking","pInlineTeams",
+   "pInlinePeople","pInlineHistory","partnerSharedDetailTree",
+   "pPartnerProductSummary","pPartnerDaily","pInlinePrivateProductList"]){
+  const el=pInline(id);if(el?.replaceChildren)el.replaceChildren();
+ }
+ pInline("pPartnerReportText").value="";
+ pInline("pPartnerGoalResult").textContent="";
+ pInline("pInlineSave").disabled=true;
  const saveStatus=pInline("pInlineSaveStatus");
  if(saveStatus)saveStatus.textContent="";
  appScreen.removeAttribute("data-partner-count-only");
@@ -15023,6 +15034,16 @@ async function partnerInlineFetch(){
   return true;
  }catch(e){
   if(seq!==partnerInlineNonce||partnerInlineIdentity()!==identity)return false;
+  if(partnerMainCodeActive()&&
+     ["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
+   partnerMainCodeForget();
+   resetPartnerInline();
+   appScreen.style.display="none";
+   authScreen.style.display="block";
+   loginStatus.textContent="会社コードの有効期限・権限を確認してください";
+   databaseStatus.textContent="件数API認証失効";
+   return false;
+  }
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
