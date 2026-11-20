@@ -410,3 +410,65 @@ test("company-code Owner keeps same-app count member/team and archived catalog m
  assert.match(html,/partnerMainCountManage\(partnerInlinePayload\(\{action:"moveStaff",staffId,teamId\}\)\)/);
  assert.match(html,/partnerUsesVerifiedOwnerCatalog\(snap\)/);
 });
+
+test("stale save finalizer cannot unlock controls or clear a new account's pending operation",async()=>{
+ const a=html.indexOf("async function partnerInlineRun(work){");
+ const b=html.indexOf("\nfunction partnerInlinePayload(data){",a);
+ assert(a>0&&b>a,"actual production save runner exists");
+ const source=html.slice(a,b);
+ assert.match(html,/function resetPartnerInline\(\)\{\s*\+\+partnerInlineSessionEpoch;/);
+ for(const scenario of ["different-company","same-user-new-session","current-session"]){
+  const ids=["pInlineDate","pInlineRecordDate","pInlineStaff","pInlineWorkingTeam",
+   "pInlineWorkLocation","pInlineRefresh","pInlineZero","pInlineClear"];
+  const nodes=new Map(ids.map(id=>[id,{disabled:false,value:id==="pInlineStaff"?"worker":""}]));
+  const amountInput={disabled:false,value:"1"};
+  nodes.set("pInlineCountFields",{querySelectorAll:()=>[amountInput]});
+  nodes.set("pInlineSave",{disabled:false});
+  nodes.set("pInlineSaveStatus",{textContent:"",dataset:{}});
+  let company="a",rendered=0,notices=0;
+  const ctx=vm.createContext({
+   partnerInlineBusy:false,partnerInlineSessionEpoch:7,
+   partnerInlineIdentity:()=>company,
+   partnerInlineData:{staff:[{id:"worker",active:true}]},
+   pInline:id=>nodes.get(id),
+   partnerInlineStatus:()=>{++notices},
+   partnerInlineRenderCounts:()=>{++rendered},
+   renderPartnerPrivateProductCatalog:()=>{}
+  });
+  const run=vm.runInContext(source+"\npartnerInlineRun",ctx);
+  let finish;
+  const pending=new Promise(resolve=>{finish=resolve});
+  const task=run(()=>pending,{kind:"save",refresh:false});
+  assert.equal(ctx.partnerInlineBusy,true);
+  assert(ids.every(id=>nodes.get(id).disabled===true));
+  assert.equal(amountInput.disabled,true);
+  if(scenario!=="current-session"){
+   // Model resetPartnerInline and the next account's own save. The earlier
+   // promise must not restore that account's DOM or mark its action idle.
+   if(scenario==="different-company")company="b";
+   else ctx.partnerInlineSessionEpoch++;
+   ctx.partnerInlineBusy=true;
+   ctx.partnerInlineData={staff:[{id:"new",active:true}]};
+   for(const id of ids)nodes.get(id).disabled=true;
+   amountInput.disabled=true;
+   nodes.get("pInlineSave").disabled=true;
+  }
+  finish("saved");
+  await task;
+  if(scenario==="current-session"){
+   assert.equal(ctx.partnerInlineBusy,false);
+   assert(ids.every(id=>nodes.get(id).disabled===false));
+   assert.equal(amountInput.disabled,false);
+   assert.equal(notices,1);
+   assert.equal(rendered,0);
+   assert.equal(nodes.get("pInlineSaveStatus").dataset.result,"info");
+  }else{
+   assert.equal(ctx.partnerInlineBusy,true,scenario+" must not interrupt new save");
+   assert(ids.every(id=>nodes.get(id).disabled===true),scenario+" must keep locks");
+   assert.equal(amountInput.disabled,true);
+   assert.equal(nodes.get("pInlineSave").disabled,true);
+   assert.equal(notices,0,scenario+" must never render stale feedback");
+   assert.equal(rendered,0);
+  }
+ }
+});
