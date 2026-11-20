@@ -13146,6 +13146,8 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+// Incremented whenever a count-only identity/workspace is reset.
+let partnerInlineSessionEpoch=0;
 let partnerPublishedTabGeneration=0,partnerPublishedTabIds=null;
 let partnerOptionalTabGeneration=0,partnerOptionalVerifiedGoal=null;
 const partnerOptionalPublicationProtectionActive=()=>
@@ -13256,6 +13258,7 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
+ ++partnerInlineSessionEpoch;
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerAuditNonce;
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
@@ -15212,6 +15215,9 @@ async function partnerInlineRun(work){
  if(partnerInlineBusy||!partnerInlineData)return;
  const identity=partnerInlineIdentity();
  if(!identity)return;
+ const sessionEpoch=partnerInlineSessionEpoch;
+ const sameSession=()=>identity===partnerInlineIdentity()&&
+  sessionEpoch===partnerInlineSessionEpoch;
  let completed=false,resultMessage="";
  partnerInlineBusy=true;
  if(arguments[1]?.kind==="save"){
@@ -15230,17 +15236,21 @@ async function partnerInlineRun(work){
  pInline("pInlineSave").disabled=true;
  try{
   const message=await work();
-  if(identity!==partnerInlineIdentity())return;
+  if(!sameSession())return;
   // Only a confirmed write refreshes the count fields; do not erase inputs
   // when a save or invitation fails and the user needs to retry.
   if(refresh){
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
-   if(!await partnerInlineFetch())throw Error("refresh_after_write");
+   if(!await partnerInlineFetch()){
+    if(!sameSession())return;
+    throw Error("refresh_after_write");
+   }
+   if(!sameSession())return;
   }
   completed=true;resultMessage=message||"更新しました。";
   if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
-  if(identity!==partnerInlineIdentity())return;
+  if(!sameSession())return;
   const conflict=error?.code==="functions/aborted"||error?.message==="aborted";
   const message=conflict?
    "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
@@ -15256,9 +15266,12 @@ async function partnerInlineRun(work){
    feedback.dataset.result="error";
   }
  }finally{
+  // Never re-enable a newly signed-in person's input controls or mark their
+  // in-flight save idle when an old company's request resolves later.
+  if(!sameSession())return;
   locks.forEach((node,i)=>{node.disabled=prior[i];});
   partnerInlineBusy=false;
-  if(partnerInlineData&&identity===partnerInlineIdentity()){
+  if(partnerInlineData){
    if(completed){
     // Creating an invitation is not a count write: do not reset unfinished input.
     if(refresh)partnerInlineRenderCounts();
