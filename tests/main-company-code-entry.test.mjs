@@ -9,7 +9,7 @@ const b=html.indexOf("\nconst nicoMainCodeToggle=",a);
 assert(a>0&&b>a,"main company-code handoff must be declared before form bindings");
 const block=html.slice(a,b);
 const TOKEN="X".repeat(43);
-function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=false,workspaceFails=false,
+function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=false,navigationFails=false,
  preflightFails=false,preflightInvalid=false}={}){
  const calls=[],auth={currentUser:user?{uid:"old-email"}:null,authStateReady:async()=>calls.push("ready")};
  const values=new Map();
@@ -24,22 +24,15 @@ function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=f
    values.delete(k);
   }
  };
- const appScreen={style:{display:"none"}},authScreen={style:{display:"none"}};
- const sandbox=vm.createContext({auth,sessionStorage,URL,appScreen,authScreen,
-  partnerMainCodeToken:"",partnerMainCodeEpoch:0,
-  openSameAppCompanyCodeWorkspace:async()=>{
-   calls.push("open");
-   assert.equal(auth.currentUser,null,"code view must not inherit owner Auth");
-   assert.equal(values.get("nicoPartnerCodeSession"),TOKEN);
-   assert.equal(sandbox.partnerMainCodeToken,TOKEN);
-   return !workspaceFails;
-  },
-  partnerMainCodeForget:()=>{
-   sandbox.partnerMainCodeToken="";
-   calls.push("remove");
-   values.delete("nicoPartnerCodeSession");
-  },
-  resetPartnerInline:()=>calls.push("reset"),
+ const location={origin:"https://nico-factory.web.app",replace(url){
+  calls.push("reload");
+  assert.equal(url,"https://nico-factory.web.app/",
+   "must reload the same original app, never the separate partner page");
+  assert.equal(auth.currentUser,null,"old Owner Auth must be gone before reload");
+  assert.equal(values.get("nicoPartnerCodeSession"),TOKEN);
+  if(navigationFails)throw Error("navigation_blocked");
+ }};
+ const sandbox=vm.createContext({auth,sessionStorage,URL,location,
   partnerMainDate:()=> "2026-11-20",
   partnerAnonymousWorkspacePreflight:async data=>{
    calls.push("preflight");
@@ -54,7 +47,7 @@ function subject({user=true,logoutFails=false,logoutRetains=false,storageFails=f
   if(!logoutRetains)auth.currentUser=null;
  }});
  const go=vm.runInContext(block+"\nnicoEnterCompanyCodeFromMain",sandbox);
- return {go,calls,auth,values,appScreen,authScreen,sandbox};
+ return {go,calls,auth,values,sandbox};
 }
 test("unified login has company-code input without replacing original email login",()=>{
  for(const id of ["nicoMainCompanyCodeToggle","nicoMainCompanyCodePanel",
@@ -74,7 +67,10 @@ test("existing company-code backend session and SAME page count-only API are reu
  assert.match(partner,/sessionStorage\.getItem\("nicoPartnerCodeSession"\)/);
  assert.match(partner,/session\.active!==true|activeCodeSession/);
  assert.match(block,/sessionStorage\.setItem\("nicoPartnerCodeSession",token\)/);
- assert.match(block,/await openSameAppCompanyCodeWorkspace\(\)/);
+ assert.match(block,/location\.replace\(new URL\("\/",location\.origin\)\.href\)/);
+ assert.doesNotMatch(block,/await openSameAppCompanyCodeWorkspace\(\)/);
+ assert.match(html,/sessionStorage\.getItem\("nicoPartnerCodeSession"\)/);
+ assert.match(html,/if\(await openSameAppCompanyCodeWorkspace\(\)\)return;/);
  assert.doesNotMatch(block,/location\.assign\(|\/partner-workspace\.html",location\.origin/);
  assert.match(html,/const partnerMainCodeCountGet=httpsCallable\(partnerAnonymousCodeFunctions/);
  assert.match(html,/const partnerMainCodeCountSave=httpsCallable\(partnerAnonymousCodeFunctions/);
@@ -83,20 +79,20 @@ test("existing company-code backend session and SAME page count-only API are reu
 test("old email identity is signed out BEFORE code session is saved",async()=>{
  const a=subject();
  await a.go({sessionToken:TOKEN});
- assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","signout","store","open"]);
+ assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","signout","store","reload"]);
  assert.equal(a.auth.currentUser,null);
 });
-test("code-only account uses the existing dashboard without email Auth or navigation",async()=>{
+test("code-only account reloads the SAME app without inheriting email Auth",async()=>{
  const a=subject({user:false});
  await a.go({sessionToken:TOKEN});
- assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","store","open"]);
+ assert.deepEqual(a.calls,["preflight","probe","unprobe","ready","store","reload"]);
 });
 test("blocked email logout cannot expose a new code session",async()=>{
  for(const options of [{logoutFails:true},{logoutRetains:true}]){
   const x=subject(options);
   await assert.rejects(x.go({sessionToken:TOKEN}));
   assert.equal(x.values.size,0);
-  assert(!x.calls.includes("open"));
+  assert(!x.calls.includes("reload"));
  }
 });
 test("invalid session and browser storage failure fail closed",async()=>{
@@ -108,17 +104,14 @@ test("invalid session and browser storage failure fail closed",async()=>{
  assert.deepEqual(y.calls,["preflight","probe"]);
  assert.equal(y.auth.currentUser.uid,"old-email","storage error must not sign out Owner");
  assert(!y.calls.includes("signout"));
- assert(!y.calls.includes("open"));
+ assert(!y.calls.includes("reload"));
  assert.equal(y.values.size,0);
 });
-test("failed same-page count GET clears stored session and hides partial dashboard",async()=>{
- const x=subject({workspaceFails:true});
- await assert.rejects(x.go({sessionToken:TOKEN}),/company_code_workspace_not_ready/);
+test("same-origin reload refusal revokes the pending code token, never leaks Owner DOM",async()=>{
+ const x=subject({navigationFails:true});
+ await assert.rejects(x.go({sessionToken:TOKEN}),/company_code_navigation_failed/);
  assert.equal(x.values.size,0);
- assert.equal(x.sandbox.partnerMainCodeToken,"");
- assert.equal(x.appScreen.style.display,"none");
- assert.equal(x.authScreen.style.display,"block");
- assert.deepEqual(x.calls,["preflight","probe","unprobe","ready","signout","store","open","remove","reset"]);
+ assert.deepEqual(x.calls,["preflight","probe","unprobe","ready","signout","store","reload","remove"]);
 });
 
 test("invalid code or unusable workspace leaves the original email session untouched",async()=>{
@@ -471,4 +464,18 @@ test("stale save finalizer cannot unlock controls or clear a new account's pendi
    assert.equal(rendered,0);
   }
  }
+});
+
+test("code-auth bootstrap after hard reload only opens count-only page and never finance listeners",()=>{
+ const a=html.indexOf("onAuthStateChanged(\n  auth,\n  async user => {");
+ const b=html.indexOf("\n);\n\n\n/* =====================================================\n   ユーザー情報読み込み",a);
+ assert(a>0&&b>a);
+ const code=html.slice(a,b);
+ assert.match(code,/if\(partnerMainCodeActive\(\)\)\{\s*if\(nicoMainCodeLoginBusy\)return;\s*if\(await openSameAppCompanyCodeWorkspace\(\)\)return;/);
+ const entry=html.slice(html.indexOf("async function openSameAppCompanyCodeWorkspace(){"),
+  html.indexOf("async function openSameAppPartnerWorkspace("));
+ assert.match(entry,/await stopRealtimeListeners\(\)/);
+ assert.match(entry,/appScreen\.dataset\.partnerCountOnly="true"/);
+ assert.match(entry,/const ready=await partnerInlineFetch\(\)/);
+ assert.doesNotMatch(entry,/(?:startRealtimeListeners|loadUserData|getDocFromServer|getDocsFromServer)\(/);
 });
