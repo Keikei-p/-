@@ -33,9 +33,13 @@ before(async()=>{
      process.env.GOOGLE_APPLICATION_CREDENTIALS||
      process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
    throw Error('REFUSE_NON_DEMO_SECONDARY_FINANCE_FENCE_TEST');
-  const {proposeSecondaryFinanceFence}=await import('../security/secondary-finance-read-fence.mjs');
-  rules=proposeSecondaryFinanceFence(reviewedOriginal);
-  if(rules===reviewedOriginal||!rules.includes('activeSecondaryPartnerContext()'))
+  const {proposeSecondaryFinanceFence,originalRules}=await import('../security/secondary-finance-read-fence.mjs');
+  const baseline=originalRules();
+  const reviewedCandidate=proposeSecondaryFinanceFence(baseline);
+  if(reviewedOriginal!==baseline && reviewedOriginal!==reviewedCandidate)
+   throw Error('FINANCE_FENCE_UNREVIEWED_PRODUCTION_RULES');
+  rules=reviewedCandidate;
+  if(rules===baseline||!rules.includes('activeSecondaryPartnerContext()'))
    throw Error('FINANCE_FENCE_NOT_APPLIED');
  }
  env=await initializeTestEnvironment({projectId,firestore:{rules}});
