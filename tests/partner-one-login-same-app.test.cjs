@@ -45,11 +45,11 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/const partnerInlineManage = httpsCallable\(partnerCountFunctions,"managePartnerWorkspace"\)/);
  assert.match(index,/const partnerInlineSave = httpsCallable\(partnerCountFunctions,"submitPartnerWorkspaceCounts"\)/);
  assert.match(index,/partnerInlineData=snap;partnerInlineRender\(\)/);
- assert.match(index,/const snap=\(await readPartnerWorkDay\(payload\)\)\.data/);
- assert.match(index,/await partnerInlineManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
+ assert.match(index,/const snap=\(await partnerMainCountRead\(payload\)\)\.data/);
+ assert.match(index,/await partnerMainCountManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
  assert.match(index,/action:"createInvite",email,teamId,role/);
- assert.match(index,/partnerInlineSave\(partnerInlinePayload\(\{/);
- assert.match(index,/verified=\(await readPartnerWorkDay\(partnerInlinePayload\(\{date\}\)\)\)\.data/);
+ assert.match(index,/partnerMainCountSubmit\(partnerInlinePayload\(\{/);
+ assert.match(index,/verified=\(await partnerMainCountRead\(partnerInlinePayload\(\{date\}\)\)\)\.data/);
  assert.match(index,/const readback=partnerSavedCountReadbackState\(verified,expected\)/);
  assert.match(index,/result\.version!==expected\.expectedVersion\+1\|\|readback!=="saved"/);
  assert.match(index,/pInline\("pInlineTitle"\)\.textContent="🤝 "\+snap\.companyName/);
@@ -115,14 +115,15 @@ test("same-app save verifies by GET once and never retries or reports unverified
    partnerInlineSelectedCb:()=>({total:2,result:{0:2}}),
    partnerInlinePayload:data=>({...data,workspaceCompanyId:"partner"}),
    partnerInlineRun:(work,options)=>{assert.equal(options.kind,"save");return work();},
-   partnerInlineSave:async input=>{
+   partnerInlineIdentity:()=>context.auth.currentUser?.uid||"",
+   partnerMainCountSubmit:async input=>{
     calls.push("save");assert.equal(input.date,date);assert.equal(input.counts.NURO,2);
     if(scenario==="identity_changed")context.auth.currentUser={uid:"other"};
     if(scenario==="denied_not_saved")throw denial;
     if(scenario==="lost_response_saved")throw Object.assign(Error("timeout"),{code:"functions/unavailable"});
     return {data:{saved:scenario!=="ack_missing",date,staffId:"worker",version:1}};
    },
-   readPartnerWorkDay:async input=>{
+   partnerMainCountRead:async input=>{
     calls.push("get");assert.equal(input.date,date);
     return {data:{date,companyName:"検証会社",records:scenario==="denied_not_saved"?[]:[{
      staffId:"worker",version:1,counts:{NURO:scenario==="mismatch"?1:2},
