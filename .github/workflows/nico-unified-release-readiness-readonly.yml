@@ -56,7 +56,7 @@ jobs:
           node --check tools/production/inspect-project-billing-readonly.mjs
           node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs
           test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
-          test "$(git hash-object index.html)" = '21a2cafe9c86707a1b14d35d0033ca6a900773fe'
+          test "$(git hash-object index.html)" = '28ba2fd14cf92327f108e03e2c8ad64b7906e03e'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
           test "$(git hash-object functions-partner-workspace/index.js)" = '42eea81ab01449bedbbedabdc1a8fb6bfba1e284'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
