@@ -9,10 +9,16 @@ assert(start>0&&end>start,"Safe company-code handoff must be present before both
 const source=html.slice(start,end);
 const TOKEN="C".repeat(43);
 function setup({emailSignedIn=true,signoutError=false,signoutLeavesIdentity=false,
- preflightReject=false,preflightMalformed=false}={}){
+ preflightReject=false,preflightMalformed=false,storageFails=false}={}){
  const events=[];
  const auth={currentUser:emailSignedIn?{uid:"old-disabled-email"}:null};
- const sessionStorage={setItem(k,v){events.push(["store",k,v]);}};
+ const sessionStorage={
+  setItem(k,v){
+   events.push([k==="nicoPartnerCodeSessionProbe"?"probe":"store",k,v]);
+   if(storageFails)throw Error("storage_failure");
+  },
+  removeItem(k){events.push(["unprobe",k]);}
+ };
  const context=vm.createContext({
   auth,
   dateParts:{year:"2026",month:"11",day:"20"},
@@ -57,8 +63,8 @@ test("switching from old email signs out before enabling count-only code token",
  assert.equal(x.auth.currentUser,null);
  assert.equal(x.context.activeCodeSession,TOKEN);
  assert.equal(x.context.codeCountGoalByMonth.size,0);
- assert.deepEqual(x.events.map(y=>y[0]),["preflight","signout","reset","clear","store","refresh"]);
- assert.deepEqual(x.events[4],["store","nicoPartnerCodeSession",TOKEN]);
+ assert.deepEqual(x.events.map(y=>y[0]),["preflight","probe","unprobe","signout","reset","clear","store","refresh"]);
+ assert.deepEqual(x.events[6],["store","nicoPartnerCodeSession",TOKEN]);
  assert.equal(x.context.codeCountSessionEpoch,1);
  assert.equal(x.context.countLoadId,1);
 });
@@ -74,7 +80,7 @@ test("sign-out failure cannot retain mixed email and company-code identities",as
 test("code-only sign-in does not call old email sign-out or mix financial permissions",async()=>{
  const x=setup({emailSignedIn:false});
  await x.run({sessionToken:TOKEN});
- assert.deepEqual(x.events.map(e=>e[0]),["preflight","reset","clear","store","refresh"]);
+ assert.deepEqual(x.events.map(e=>e[0]),["preflight","probe","unprobe","reset","clear","store","refresh"]);
  assert.equal(x.auth.currentUser,null);
 });
 test("invalid code session is never stored or activated",async()=>{
@@ -189,4 +195,14 @@ test("disabled count workspace cannot end email Auth after valid password",async
   assert.equal(x.context.companyCodeSession,false);
   assert.equal(x.events.some(e=>e[0]==="store"),false);
  }
+});
+
+test("blocked Safari sessionStorage leaves prior email login and counts unchanged",async()=>{
+ const x=setup({storageFails:true}),before=x.auth.currentUser;
+ await assert.rejects(x.run({sessionToken:TOKEN}),/storage_failure/);
+ assert.deepEqual(x.events.map(e=>e[0]),["preflight","probe"]);
+ assert.equal(x.auth.currentUser,before);
+ assert.equal(x.context.activeCodeSession,null);
+ assert.equal(x.context.companyCodeSession,false);
+ assert.equal(x.events.some(e=>e[0]==="signout"||e[0]==="store"),false);
 });
