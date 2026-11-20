@@ -7606,6 +7606,11 @@ const db =
   getFirestore(app);
 
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
+// Never send the existing Owner/employee Firebase ID token on a company-code
+// password check. A SECOND Firebase app has no signed-in Auth instance; it
+// leaves the original app's email session intact on invalid credentials.
+const partnerAnonymousCodeApp = initializeApp(firebaseConfig,"nico-partner-code-login-isolated");
+const partnerAnonymousCodeFunctions = getFunctions(partnerAnonymousCodeApp,"asia-northeast1");
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
@@ -11569,16 +11574,11 @@ nicoMainCodeForm.onsubmit=async event=>{
  submit.disabled=true;
  status.textContent="協力店のログイン権限を確認しています…";
  try{
-  // Firebase SDK can still be restoring an old email session at form submit.
-  // Do not send that legacy Authorization ID token to the company-code login.
-  // Only a fully signed-out browser may request a count-only code session.
-  if(typeof auth.authStateReady==="function")await auth.authStateReady();
-  if(auth.currentUser){
-   await signOut(auth);
-   if(auth.currentUser)throw Error("old_email_session_still_active");
-  }
-  // Reuse existing isolated callable. It has its OWN default-OFF server flag.
-  const loginCode=httpsCallable(partnerCountFunctions,"loginPartnerCompanyCode",{timeout:15000});
+  // Validate credentials through an Auth-isolated Firebase app. Invalid code,
+  // unavailable Functions or network failure MUST NOT log out the existing
+  // Owner/employee. Only after a valid server session is returned will the
+  // existing handoff sign out the email app before storing the code session.
+  const loginCode=httpsCallable(partnerAnonymousCodeFunctions,"loginPartnerCompanyCode",{timeout:15000});
   const result=(await loginCode({companyCode:code,password})).data;
   field.value="";
   await nicoEnterCompanyCodeFromMain(result);
