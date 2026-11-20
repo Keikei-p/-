@@ -13152,8 +13152,10 @@ const partnerOptionalPublicationProtectionActive=()=>
  NICO_PARTNER_TAB_UI_ENABLED===true||
  NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true;
 function partnerPublishedTabAllowed(name){
- if(partnerMainCodeActive()&&["invite","members","catalog"].includes(name))
-  return false;
+ // A verified company-code Owner can manage count-only staff and its legacy
+ // private catalog through managePartnerWorkspace. Only email invitations
+ // require a verified email identity; do not remove existing staff workflows.
+ if(partnerMainCodeActive()&&name==="invite")return false;
  if(NICO_PARTNER_TAB_UI_ENABLED!==true)return true; // existing released UI untouched
  if(["record","invite","teams","members","catalog","account"].includes(name))return true;
  return partnerPublishedTabIds?.has(name)===true;
