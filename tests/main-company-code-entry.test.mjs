@@ -174,3 +174,104 @@ test("unified code login never logs out an Owner just to check a password",async
  assert.equal(success.auth.currentUser.uid,"existing-owner",
   "only the verified handoff, tested separately, may end email Auth");
 });
+
+test("old account workspace discovery cannot reopen stale login after logout",async()=>{
+ const a=html.indexOf("onAuthStateChanged(\n  auth,\n  async user => {");
+ const b=html.indexOf("\n);\n\n\n/* =====================================================\n   ユーザー情報読み込み",a);
+ assert(a>0&&b>a,"main auth-state callback must exist");
+ const source=html.slice(a,b+3);
+ assert.match(source,/if\(auth\.currentUser\?\.uid!==user\.uid\)return;\s*if\(partnerWorkspaceId\)/);
+ for(const changed of [true,false]){
+  const events=[],user={uid:"old-owner",emailVerified:true},
+   auth={currentUser:user};
+  let observed;
+  const ctx=vm.createContext({
+   auth,URL,location:{href:"https://nico-factory.web.app/"},
+   currentUser:null,partnerEmailLinkPending:false,partnerEmailLinkBusy:false,
+   partnerEmailLinkPasswordState:null,
+   partnerMainPendingInvite:()=>null,
+   partnerMainOwnCompanyPreferred:()=>false,
+   rememberedPartnerWorkspace:()=>"",
+   partnerMainDate:()=>"2026-11-20",
+   readPartnerWorkDay:async()=>{
+    events.push("lookup");
+    if(changed)auth.currentUser={uid:"new-owner",emailVerified:true};
+    throw Error("functions/unavailable");
+   },
+   console:{info:()=>events.push("lookup_failed")},
+   enterApplication:async found=>events.push("entered:"+found.uid),
+   openSameAppPartnerWorkspace:async()=>events.push("partner_entered"),
+   partnerMainValidId:()=>true,
+   onAuthStateChanged:(_auth,cb)=>{observed=cb}
+  });
+  vm.runInContext(source,ctx);
+  await observed(user);
+  assert.deepEqual(events,changed?
+   ["lookup","lookup_failed"]:
+   ["lookup","lookup_failed","entered:old-owner"]);
+  assert.equal(events.includes("partner_entered"),false);
+ }
+});
+test("internal bootstrap never subscribes old login after sign-out or account switch",async()=>{
+ const a=html.indexOf("async function enterApplication(\n  user\n) {");
+ const b=html.indexOf("\n\ncheckVerificationButton.onclick =",a);
+ assert(a>0&&b>a,"original internal login bootstrap must exist");
+ const source=html.slice(a,b);
+ for(const scenario of ["stale-at-entry","switch-during-load",
+  "switch-during-notifications","switch-and-throw","healthy"]){
+  const oldUser={uid:"old-owner",emailVerified:true,
+   getIdToken:async()=>events.push("token")};
+  const events=[],auth={currentUser:oldUser},
+   screens=()=>({style:{display:"initial"}});
+  const authScreen=screens(),appScreen=screens(),
+   verificationScreen=screens(),companySetupScreen=screens(),
+   loginStatus={textContent:""},databaseStatus={textContent:""};
+  if(scenario==="stale-at-entry")auth.currentUser={uid:"new-owner"};
+  const ctx=vm.createContext({
+   auth,currentUser:null,resetPartnerInline:()=>events.push("reset"),
+   authScreen,appScreen,verificationScreen,companySetupScreen,
+   loginStatus,databaseStatus,console,
+   loadUserData:async()=>{
+    events.push("load");
+    if(scenario==="switch-during-load"||scenario==="switch-and-throw"){
+     auth.currentUser={uid:"new-owner"};
+     if(scenario==="switch-and-throw"){
+      appScreen.style.display="new_user_screen";
+      throw Error("old_read_failed");
+     }
+    }
+    return true;
+   },
+   loadReportTemplateSettings:async()=>events.push("report"),
+   loadNotificationSettings:async()=>{
+    events.push("notify");
+    if(scenario==="switch-during-notifications"){
+     auth.currentUser={uid:"new-owner"};
+     appScreen.style.display="new_user_screen";
+    }
+   },
+   startRealtimeListeners:()=>events.push("subscribe"),
+   showError:()=>events.push("show-error"),
+   firebaseErrorMessage:()=> "redacted"
+  });
+  const run=vm.runInContext(source+"\nenterApplication",ctx);
+  await run(oldUser);
+  if(scenario==="healthy"){
+   assert.deepEqual(events,["reset","token","load","report","notify","subscribe"]);
+   assert.equal(appScreen.style.display,"block");
+  }else{
+   assert(!events.includes("subscribe"),scenario);
+   assert(!events.includes("show-error"),scenario);
+   if(scenario==="stale-at-entry"){
+    assert.deepEqual(events,[]);
+    assert.equal(appScreen.style.display,"initial");
+   }
+   if(scenario==="switch-during-load")assert.deepEqual(events,
+    ["reset","token","load"]);
+   if(scenario==="switch-during-notifications"||
+      scenario==="switch-and-throw")
+    assert.equal(appScreen.style.display,"new_user_screen",
+     "stale failure cannot hide a new account's screen");
+  }
+ }
+});
