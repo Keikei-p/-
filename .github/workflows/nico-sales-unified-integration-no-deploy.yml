@@ -35,6 +35,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Required to compare original internal UI to the reviewed main
+          # commit; a shallow PR checkout cannot resolve that immutable tree.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
