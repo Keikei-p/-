@@ -15079,6 +15079,13 @@ async function partnerInlineFetch(){
   partnerOptionalVerifiedGoal=null;
   ++partnerOptionalTabGeneration;
   partnerInlineData=snap;partnerInlineRender();
+  // The existing Refresh button is the recovery path after a temporary
+  // code-session API outage. Only this fresh server-verified GET may restore
+  // login/connection status and re-enable a valid count form.
+  if(partnerMainCodeActive()){
+   loginStatus.textContent="ログイン済み・協力店";
+   databaseStatus.textContent="件数API接続済み";
+  }
   void refreshPartnerPublishedTabNavigation();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
