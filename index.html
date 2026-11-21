@@ -15627,7 +15627,12 @@ function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLoca
  // A first-ever zero-count report is still a legitimate new record.
  const previous=snap?.records?.find(row=>row.staffId===staffId);
  if(!previous||String(previous.workLocation||"")!==workLocation)return false;
- return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
+ // OFF categories are immutable history, not a user's current editable
+ // fields. The server preserves their old numbers during an ON-only save.
+ const enabled=snap.enabledCategories??snap.categories;
+ if(!Array.isArray(enabled)||enabled.some(k=>!snap.categories.includes(k)))
+  return false;
+ return enabled.every(key=>previous.counts?.[key]===counts[key])&&
   Object.entries(privateCounts).every(([id,count])=>
    (previous.privateCounts?.[id]??0)===count);
 }
@@ -15654,6 +15659,16 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   counts[key]=n;
  }
  const before=snap.records.find(x=>x.staffId===staffId);
+ // Wire payload must carry zero for newly disabled SKUs. The server then
+ // restores immutable old values within its own verified transaction.
+ // Read-back must compare against the restored ledger, NEVER those wire zeros.
+ const expectedStoredCounts=Object.create(null);
+ for(const key of snap.categories){
+  const prior=before?.counts?.[key]??0;
+  if(!enabledKeys.includes(key)&&(!Number.isSafeInteger(prior)||
+     prior<0||prior>9999))throw Error("partner_count_schema");
+  expectedStoredCounts[key]=enabledKeys.includes(key)?counts[key]:prior;
+ }
  const workTeamId=pInline("pInlineWorkingTeam").value;
  if(!before&&(!partnerMainValidId(workTeamId)||
     !snap.teams.some(t=>t.id===workTeamId&&t.active===true)||
@@ -15679,7 +15694,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  // Otherwise serializer.mapValues can throw before any POST reaches Cloud Run.
  const wireCounts=Object.fromEntries(Object.entries(counts));
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
- const expected={date,staffId,counts,workLocation,workTeamId,
+ const expected={date,staffId,counts:expectedStoredCounts,workLocation,workTeamId,
   privateCounts,expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
