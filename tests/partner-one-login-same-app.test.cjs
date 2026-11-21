@@ -68,18 +68,19 @@ test("same-app save readback requires the exact persisted identity, version, cou
  vm.runInContext(index.slice(start,end),context);
  const expected={date:"2026-11-13",companyName:"検証会社",staffId:"worker",
   expectedVersion:0,categories:["NURO","SBMNP"],counts:{NURO:2,SBMNP:1},
-  privateCounts:{privateOne:2},
+  privateCounts:{privateOne:2},previousPrivateCounts:{},
   workLocation:"検証現場",workTeamId:"team"};
  const verified={date:expected.date,companyName:expected.companyName,records:[{
   staffId:"worker",version:1,counts:{...expected.counts},
-  privateCounts:{...expected.privateCounts},totalCount:3,
+  privateCounts:{...expected.privateCounts},privateTotalCount:2,totalCount:3,
   workLocation:expected.workLocation,teamIdSnapshot:"team"}]};
  assert.equal(context.partnerSavedCountReadbackState(verified,expected),"saved");
  const mutations=[
   x=>{x.date="2026-11-12";},x=>{x.companyName="別会社";},
   x=>{x.records[0].staffId="other";},x=>{x.records[0].version=2;},
   x=>{x.records[0].counts.NURO=1;},x=>{x.records[0].counts.SBMNP=1.5;},
-  x=>{x.records[0].privateCounts.privateOne=1;},x=>{x.records[0].totalCount=4;},
+  x=>{x.records[0].privateCounts.privateOne=1;},
+  x=>{x.records[0].privateTotalCount=1;},x=>{x.records[0].totalCount=4;},
   x=>{x.records[0].workLocation="別現場";},x=>{x.records[0].teamIdSnapshot="other";}
  ];
  for(const mutate of mutations){
@@ -127,7 +128,8 @@ test("same-app save verifies by GET once and never retries or reports unverified
     calls.push("get");assert.equal(input.date,date);
     return {data:{date,companyName:"検証会社",records:scenario==="denied_not_saved"?[]:[{
      staffId:"worker",version:1,counts:{NURO:scenario==="mismatch"?1:2},
-     privateCounts:{},totalCount:2,workLocation:"現場",teamIdSnapshot:"team"}]}};
+     privateCounts:{},privateTotalCount:0,totalCount:2,
+     workLocation:"現場",teamIdSnapshot:"team"}]}};
    }
   });
   vm.runInContext(index.slice(a,b)+index.slice(start,end),context);
