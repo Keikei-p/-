@@ -100,6 +100,8 @@ jobs:
           node --test tests/partner-same-app-off-history-save.test.mjs
           # A temporary company-code GET outage must not log out the isolated count principal.
           node --test tests/partner-same-app-company-code-transient-login.test.mjs
+          # Existing Owner ON public SKUs may enable unique exact category names without per-partner setup.
+          node --test tests/partner-owner-on-exact-auto-input.test.mjs
           # Owner-reviewed SKU IDs must win over zero-setup aliases; no original count write.
           node --test tests/owner-reviewed-zero-setup-linker.test.mjs
           # The completed internal dashboard must remain byte-identical.
