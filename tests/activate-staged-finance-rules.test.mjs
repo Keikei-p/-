@@ -143,3 +143,16 @@ test("main SHA revalidation uses real GitHub Actions token, not a placeholder",(
  assert.match(workflow,/options: \[inspect, apply, rollback\]/);
  assert.doesNotMatch(workflow,/firebase deploy|firebase firestore:delete/);
 });
+
+test("emergency rollback skips emulator and Functions CLI while apply stays gated",()=>{
+ const workflow=readFileSync(new URL(
+  "../.github/workflows/nico-staged-finance-rules-manual.yml",import.meta.url),"utf8");
+ const cli=readFileSync(new URL(
+  "../tools/production/finance-rule-switch-cli.mjs",import.meta.url),"utf8");
+ assert.match(workflow,/name: Prove count save\/correction plus raw finance deny[^]*?if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| inputs\.mode != 'rollback' \}\}/);
+ assert.match(workflow,/name: Install pinned Firebase CLI for inspect\/apply only\n\s+if: \$\{\{ inputs\.mode != 'rollback' \}\}/);
+ assert.match(workflow,/name: GET-only confirm 4 ACTIVE count Functions[^]*?if: \$\{\{ inputs\.mode != 'rollback' \}\}/);
+ assert.match(cli,/let ready=false;\s*if\(mode!=="rollback"\)\{/);
+ assert.match(cli,/if\(!scope\|\|path\.dirname/);
+ assert.match(cli,/switchFinanceRules\(\{[\s\S]*functionsReady:ready/);
+});
