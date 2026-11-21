@@ -228,12 +228,16 @@ test("zero-setup same month reconciles both companies and all counts without map
  assert.deepEqual(source,snapshot,"source records and financial masters are never edited");
  assert(!/(revenue|unitPrice|cashback|price|[¥￥])/.test(JSON.stringify(result)));
 });
-test("zero-setup mode never reads a mapping document even when it is absent",async()=>{
+test("zero-setup reads existing Owner mapping optionally; absent doc never requires new setup",async()=>{
  const f=fakeReader({noMapping:true});
  const read=createCanonicalCountTransactionReader({db:f.db,zeroSetupLink:true});
+ // The intentionally partial fake store lacks full count sources and still
+ // fails closed. An absent optional reviewed mapping is not the reason.
  await assert.rejects(read({tx:f.tx,context,month:"2026-11"}));
- assert(!f.seen.includes("companies/hub/rankingSkuMappings/shared"),
-  "the user must not be required to open a SKU mapping setup page");
+ assert(f.seen.includes("companies/hub/rankingSkuMappings/shared"),
+  "an existing reviewed map must be consulted in the same transaction");
+ // The complete-source case without ANY mapping is independently covered
+ // by the pure zero-setup count-conservation and Owner publication tests.
 });
 test("zero-setup mode rejects a mismatched role before any mapping or source reading",()=>{
  const invalid={...context,serverVerified:false};
