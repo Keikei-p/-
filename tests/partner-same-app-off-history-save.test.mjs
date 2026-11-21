@@ -34,16 +34,26 @@ function harness({previous=base(),entered="2",returned,authMode="code",enabled=[
   pInlineCountFields:{querySelectorAll:query=>query==="input[data-count-key]"?
    enabled.map(k=>({dataset:{countKey:k},value:k==="NURO"?entered:"0"})):[]}
  };
- const serverCounts=countMap({nuro:Number(entered),combined:previous?.counts?.["SB光・AIR"]??0});
- const server=returned??{
-  date,companyName:"協力店A",
-  records:[{...base(Number(entered),serverCounts["SB光・AIR"]),
-   version:previous?.version+1||1,counts:serverCounts}]
+ // Server storage is not the same as the partner's count-only GET.
+ // Simulate the verified server projection: OFF categories are zeroed and
+ // totalCount contains ONLY the published categories.
+ const source=previous?structuredClone(previous):null;
+ const redact=row=>{
+  if(!row)return null;
+  const visible=Object.fromEntries(categories.map(k=>[
+   k,enabled.includes(k)?row.counts[k]:0
+  ]));
+  return {...row,counts:visible,
+   totalCount:Object.values(visible).reduce((n,v)=>n+v,0)};
  };
+ const serverOriginal={...base(Number(entered),previous?.counts?.["SB光・AIR"]??0),
+  version:previous?.version+1||1};
+ const server=returned??{date,companyName:"協力店A",
+  records:[redact(serverOriginal)]};
  const snap={date,companyName:"協力店A",role:"owner",categories,
   enabledCategories:enabled,teams:[{id:"team1",active:true}],
   staff:[{id:"worker",active:true,teamId:"team1"}],
-  privateProducts:[],records:previous?[previous]:[]};
+  privateProducts:[],records:previous?[redact(previous)]:[]};
  const ctx=vm.createContext({
   partnerInlineData:snap,partnerInlineWorkspaceCompany:"",
   pInline:id=>controls[id],
@@ -61,7 +71,7 @@ function harness({previous=base(),entered="2",returned,authMode="code",enabled=[
   }
  });
  vm.runInContext(readback+save,ctx);
- return {ctx,snap,calls,run:()=>vm.runInContext('pInline("pInlineSave").onclick()',ctx)};
+ return {ctx,snap,source,calls,run:()=>vm.runInContext('pInline("pInlineSave").onclick()',ctx)};
 }
 test("Owner OFF historical categories do not make an unchanged ON report create a new audit",async()=>{
  for(const mode of ["code","email"]){
@@ -71,7 +81,7 @@ test("Owner OFF historical categories do not make an unchanged ON report create 
   assert.deepEqual(x.calls,[],"neither count POST nor readback GET should run");
  }
 });
-test("Owner ON correction preserves OFF saved counts in readback, but sends OFF zero on wire",async()=>{
+test("Owner ON correction reads back masked OFF counts without modifying the original source",async()=>{
  for(const mode of ["code","email"]){
   const x=harness({authMode:mode});
   assert.match(await x.run(),/実績を修正できました/);
@@ -82,23 +92,36 @@ test("Owner ON correction preserves OFF saved counts in readback, but sends OFF 
   assert.equal(x.calls[0].body.expectedVersion,1);
   assert.equal(x.calls[0].body.privateCounts!=null,true);
   assert.deepEqual(x.calls[1].body,{date:"2026-11-21"});
-  assert.equal(x.snap.records[0].counts["SB光・AIR"],4,
-   "unchanged source entry remains untouched in client");
+  assert.equal(x.snap.records[0].counts["SB光・AIR"],0,
+   "current server GET redacts OFF counts");
+  assert.equal(x.snap.records[0].totalCount,1);
+  assert.equal(x.source.counts["SB光・AIR"],4,
+   "immutable original source stays separate from the public projection");
  }
 });
-test("server drop of an OFF historic count must fail closed, not report saved",async()=>{
+test("redacted GET with inconsistent visible total must fail closed without retry",async()=>{
  const bad={date:"2026-11-21",companyName:"協力店A",records:[{
-  ...base(2,0),version:2,counts:countMap({nuro:2,combined:0})
+  ...base(2,0),version:2,totalCount:6,
+  counts:countMap({nuro:2,combined:0})
  }]};
  const x=harness({returned:bad});
  await assert.rejects(x.run(),/save_verify/);
  assert.deepEqual(x.calls.map(c=>c.kind),["POST","GET"],
-  "never perform a second count POST on a mismatch");
+  "never perform a second count POST on mismatch");
 });
-test("a malformed saved OFF counter aborts before POST instead of guessing a restored count",async()=>{
- const prior=base();prior.counts["SB光・AIR"]=-1;
- const x=harness({previous:prior});
- await assert.rejects(x.run(),/partner_count_schema/);
+test("an unredacted OFF category cannot pass the count-only GET readback",async()=>{
+ const bad={date:"2026-11-21",companyName:"協力店A",records:[{
+  ...base(2,4),version:2,counts:countMap({nuro:2,combined:4})
+ }]};
+ const x=harness({returned:bad});
+ await assert.rejects(x.run(),/save_verify/);
+ assert.deepEqual(x.calls.map(c=>c.kind),["POST","GET"]);
+});
+test("a partner cannot infer a historical OFF value from the authenticated GET",async()=>{
+ const x=harness({previous:base(1,9),entered:"1"});
+ assert.match(await x.run(),/変更がないため訂正履歴は追加していません/);
+ assert.equal(x.snap.records[0].counts["SB光・AIR"],0);
+ assert.equal(x.source.counts["SB光・AIR"],9);
  assert.deepEqual(x.calls,[]);
 });
 test("legacy all-products-ON mode still edits the original full ledger",async()=>{
