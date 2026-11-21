@@ -237,7 +237,8 @@ export async function inventory({db,credential,authService,request=fetch,include
   activeMissingContextDocuments:0,activeMismatchedContextDocuments:0,
   activeInvalidCompanyPair:0,activePrimaryRecordMismatch:0,
   activePrimaryIdentityLinkMismatch:0,activePrimaryInactiveState:0,
-  activePrimaryUserDisabled:0,activePrimaryMemberDisabled:0,
+  activePrimaryUserDisabled:0,activeFirebaseAuthDisabled:0,
+  activePrimaryMemberDisabled:0,
   activePrimaryCompanyDisabled:0,
   activePrimaryAccessMarkerMismatch:0,activePrimaryMemberTypeMismatch:0,
   activePrimaryCompanyKindMismatch:0,
@@ -262,6 +263,9 @@ export async function inventory({db,credential,authService,request=fetch,include
    refDoc(db,'partnerHistoricalTransfers',c.id).get().then(s=>s.exists),
    authService.getUser(c.id).then(a=>({email:a.email,emailVerified:a.emailVerified,disabled:a.disabled}))
   ]);
+  // Firebase Auth account disablement is NOT users/{uid}.active=false.
+  // Keep both facts separate; neither is permission to reactivate a user.
+  if(x.active===true&&auth?.disabled===true)values.activeFirebaseAuthDisabled++;
   const kind=classifySecondary({context:x,user,oldMember,oldCompany,partnerMember,partnerCompany});
   if(kind==='internal_finance_read_path'){
    const eligible=transferEligibility({context:x,user,oldMember,oldCompany,partnerMember,
@@ -414,7 +418,9 @@ export function publicInventorySummary(result){
   activeContextPrimaryRecordMismatchPresent:Boolean(result.activePrimaryRecordMismatch),
   activePrimaryIdentityLinkMismatchPresent:Boolean(result.activePrimaryIdentityLinkMismatch),
   activePrimaryInactiveStatePresent:Boolean(result.activePrimaryInactiveState),
-  activePrimaryAuthUserDisabledPresent:Boolean(result.activePrimaryUserDisabled),
+  // This flag reflects Firebase Auth, not Firestore users/{uid}.active.
+  activePrimaryAuthUserDisabledPresent:Boolean(result.activeFirebaseAuthDisabled),
+  activePrimaryProfileInactivePresent:Boolean(result.activePrimaryUserDisabled),
   activePrimaryOldMemberDisabledPresent:Boolean(result.activePrimaryMemberDisabled),
   activePrimaryOldCompanyDisabledPresent:Boolean(result.activePrimaryCompanyDisabled),
   activePrimaryAccessMarkerMismatchPresent:Boolean(result.activePrimaryAccessMarkerMismatch),
