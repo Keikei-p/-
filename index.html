@@ -15666,16 +15666,11 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   counts[key]=n;
  }
  const before=snap.records.find(x=>x.staffId===staffId);
- // Wire payload must carry zero for newly disabled SKUs. The server then
- // restores immutable old values within its own verified transaction.
- // Read-back must compare against the restored ledger, NEVER those wire zeros.
- const expectedStoredCounts=Object.create(null);
- for(const key of snap.categories){
-  const prior=before?.counts?.[key]??0;
-  if(!enabledKeys.includes(key)&&(!Number.isSafeInteger(prior)||
-     prior<0||prior>9999))throw Error("partner_count_schema");
-  expectedStoredCounts[key]=enabledKeys.includes(key)?counts[key]:prior;
- }
+ // The server retains OFF historical counts in its own trusted transaction,
+ // but deliberately REDACTS OFF categories to zero in getPartnerWorkspace.
+ // Compare only the authenticated count-only GET projection, not inaccessible
+ // original values; the server's immutable OFF guard is independently tested.
+ // A nonzero OFF value in the response fails the exact count read-back.
  const workTeamId=pInline("pInlineWorkingTeam").value;
  if(!before&&(!partnerMainValidId(workTeamId)||
     !snap.teams.some(t=>t.id===workTeamId&&t.active===true)||
@@ -15701,7 +15696,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  // Otherwise serializer.mapValues can throw before any POST reaches Cloud Run.
  const wireCounts=Object.fromEntries(Object.entries(counts));
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
- const expected={date,staffId,counts:expectedStoredCounts,workLocation,workTeamId,
+ const expected={date,staffId,counts,workLocation,workTeamId,
   privateCounts,expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
