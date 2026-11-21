@@ -85,6 +85,13 @@ jobs:
           # current integration; stale standalone branch hashes do not stand
           # in for behavior/regression coverage.
           node --test tests/partner-money-free-workspace.test.cjs tests/partner-original-team-card-parity.test.mjs
+          # Verify ALL historical partner count categories, not only the nine
+          # original SKUs: saved privateCounts, retired private products, old
+          # quick/staff overlaps, source conservation, pagination bounds and
+          # no financial fields. Synthetic/in-memory ONLY, never production GET.
+          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+          # The completed internal dashboard must remain byte-identical.
+          node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: No deployment
