@@ -32,7 +32,7 @@ function harness({previous=base(),entered="2",returned,authMode="code",enabled=[
   pInlineRecordDate:{value:date},pInlineWorkLocation:{value:"現場"},
   pInlineWorkingTeam:{value:"team1"},
   pInlineCountFields:{querySelectorAll:query=>query==="input[data-count-key]"?
-   [{dataset:{countKey:"NURO"},value:entered}]:[]}
+   enabled.map(k=>({dataset:{countKey:k},value:k==="NURO"?entered:"0"})):[]}
  };
  const serverCounts=countMap({nuro:Number(entered),combined:previous?.counts?.["SB光・AIR"]??0});
  const server=returned??{
