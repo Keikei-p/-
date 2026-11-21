@@ -88,6 +88,41 @@ test("busy login never clears pending code; no-code logout keeps the original be
  assert.equal(signedOut.ctx.authScreen.style.display,"block");
  assert.equal(signedOut.ctx.partnerRankingDailyCache.size,0);
 });
+
+test("Refresh recovers a temporarily unavailable code workspace only after verified count GET",async()=>{
+ const begin=html.indexOf("async function partnerInlineFetch(){");
+ const stop=html.indexOf('pInline("pInlineReturnToOwnCompany").onclick=',begin);
+ assert(begin>0&&stop>begin);
+ const fetchSource=html.slice(begin,stop);
+ const date="2026-11-21",saveControl={disabled:true};
+ const ctx=vm.createContext({
+  partnerInlineNonce:0,partnerOptionalVerifiedGoal:null,
+  partnerOptionalTabGeneration:0,partnerInlineData:null,
+  partnerInlineWorkspaceCompany:"",
+  partnerInlineIdentity:()=> "code-session-epoch:1",
+  partnerMainCodeActive:()=>true,
+  partnerMainCountRead:async req=>{
+   assert.equal(req.date,date);
+   return {data:{date,companyName:"協力店A",role:"owner",
+    teams:[],staff:[],categories:["NURO"],records:[],enabledCategories:["NURO"]}};
+  },
+  pInline:id=>id==="pInlineDate"?{value:date}:id==="pInlineSave"?saveControl:undefined,
+  partnerInlineStatus:()=>{},
+  partnerInlineRender:()=>{saveControl.disabled=false},
+  refreshPartnerPublishedTabNavigation:()=>{},
+  loginStatus:{textContent:"件数サービスの応答待ち"},
+  databaseStatus:{textContent:"件数API未確認"},
+  partnerSameAppSelectedPanel:"record",
+  partnerOptionalPublicationProtectionActive:()=>false
+ });
+ vm.runInContext(fetchSource,ctx);
+ assert.equal(await vm.runInContext("partnerInlineFetch()",ctx),true);
+ assert.equal(ctx.loginStatus.textContent,"ログイン済み・協力店");
+ assert.equal(ctx.databaseStatus.textContent,"件数API接続済み");
+ assert.equal(saveControl.disabled,false);
+ assert.equal(ctx.partnerInlineNonce,1);
+});
+
 test("original Owner auth pathway and server-side money gates are untouched",()=>{
  assert.match(source,/if \(user\) \{/);
  assert.match(source,/await enterApplication\(\s*user\s*\)/);
