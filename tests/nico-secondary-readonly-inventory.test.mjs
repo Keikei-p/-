@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {classifySecondary,classifyActiveContextMismatch,classifyPrimaryMembershipMismatch,transferEligibility,publicInventorySummary,
  classifyLiveRules,hasRecentReadyBackup} from '../tools/production/audit-secondary-contexts-readonly.mjs';
 const context={uid:'test_uid',kind:'partner_secondary',active:true,primaryCompanyId:'internal_company',
@@ -224,23 +225,31 @@ test('public actions summary excludes single-user inventory details and never au
    {...report,secondaryContextsPresent:false,oldInternalFinancePathPresent:false,readyBackupPresent:false});
 });
 
-test('EXACT current main Rules are recognized, but not mistaken for reviewed Phase-1 closure',()=>{
- const original=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
- const observed=classifyLiveRules(original);
- assert.equal(observed.exactOriginalMainRules,true);
- // Current production Rules were changed via reviewed Owner product Rules release.
- // Keep the old legacy content fingerprint historical; do not assert that
- // current main has the bytes of the prior legacy release.
+test('only exact main or reviewed Draft Rules blobs are recognized; neither proves live finance safety',()=>{
+ const source=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
+ const blob=createHash('sha1').update('blob '+Buffer.byteLength(source,'utf8')+'\\0').update(source,'utf8').digest('hex');
+ const originalMain='6d3f165791188394d473417414e34208cd56bae6';
+ const reviewedDraft='9eca5c49957d370bbf092b9783dfa0e97f1a735a';
+ assert([originalMain,reviewedDraft].includes(blob),
+  'unreviewed Rules changes must fail closed, never certify live release');
+ const observed=classifyLiveRules(source);
+ assert.equal(observed.exactOriginalMainRules,blob===originalMain);
+ // The Draft contains an unactivated security candidate, not production Rules.
+ // Never change classifyLiveRules to recognize it as deployed or approved.
  assert.equal(observed.matchesReviewedLegacyLive,false);
  assert.equal(observed.exactReviewedPhase1Boundary,false);
  assert.equal(observed.actualAuthenticatedBoundaryVerified,false);
- // A single-byte change must NEVER be certified as a known source.
- const modified=classifyLiveRules(original.replace('rules_version', 'rules_version '));
+ const altered=source.replace('rules_version','rules_version ');
+ assert.notEqual(altered,source);
+ const changedBlob=createHash('sha1').update('blob '+Buffer.byteLength(altered,'utf8')+'\\0').update(altered,'utf8').digest('hex');
+ assert(![originalMain,reviewedDraft].includes(changedBlob));
+ const modified=classifyLiveRules(altered);
  assert.equal(modified.exactOriginalMainRules,false);
  assert.equal(modified.exactReviewedPhase1Boundary,false);
  assert.equal(modified.actualAuthenticatedBoundaryVerified,false);
  assert.throws(()=>classifyLiveRules(''),/STOP_SECONDARY_INVENTORY_UNVERIFIED_RULES_SOURCE/);
 });
+
 test('READY backup must be no more than 48 hours old and never in the future',()=>{
  const now=Date.parse('2026-11-07T00:00:00.000Z');
  const withAge=(ms,readyBackups=1)=>({
