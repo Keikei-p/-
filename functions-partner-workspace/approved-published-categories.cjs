@@ -4,6 +4,21 @@
 // financial master fields, inactive products, raw IDs or cashback tier labels.
 const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
+// Fallback only for exact, long-established count category names. The Owner
+// must still have published the unique ACTIVE hub product in the public count
+// catalog; browser aliases, financial masters, fuzzy or partial names are banned.
+const ALIASES=Object.freeze([
+ ["NURO","NURO光"],
+ ["SBMNP","SoftBank MNP","ソフトバンクMNP"],
+ ["YMMNP","Y!mobile MNP","ワイモバイルMNP"],
+ ["YM純新規","ワイモバイル純新規"],
+ ["SB光・AIR","SB光・AIR（旧合算・未分類）","光/AIR",
+  "光・Air","SB光/AIR","ソフトバンク光/Air"],
+ ["ウォーター"],["つばさ・HTB"],["太陽光・蓄電池AP"],["U-NEXT"]
+]);
+const normalizeLabel=x=>x.normalize("NFKC").trim().toLowerCase().replace(/[\s　]+/g,"");
+if(ALIASES.length!==KEYS.length)throw Error("PARTNER_PUBLICATION_ALIAS_SCHEMA");
+
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const stop=()=>{throw Error("PARTNER_PUBLICATION_UNVERIFIED")};
@@ -65,6 +80,38 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
    !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))stop();
   binding.set(b.productId,b.hubProductId);
  }
+ // Exact Owner-reviewed IDs remain first priority. For genuinely unmapped
+ // categories ONLY, join a unique count-only hub label using pre-reviewed
+ // aliases. An ambiguous/duplicate or inactive label grants NO new input.
+ const byName=new Map();
+ for(const product of catalog.values()){
+  if(product.active!==true||typeof product.name!=="string"||
+     !product.name.trim()||product.name.length>80||
+     MONEY.test(product.name.normalize("NFKC")))continue;
+  const name=normalizeLabel(product.name),rows=byName.get(name)||[];
+  rows.push(product);byName.set(name,rows);
+ }
+ const proposed=new Map(),claims=new Map();
+ for(let i=0;i<KEYS.length;i++){
+  const sku="partnerSku"+String(i+1).padStart(2,"0");
+  if(binding.has(sku))continue;
+  const possible=new Map();
+  for(const alias of ALIASES[i]){
+   for(const row of byName.get(normalizeLabel(alias))||[])
+    possible.set(row.id,row);
+  }
+  if(possible.size!==1)continue;
+  const target=[...possible.values()][0];
+  if(seenHubSku.has(target.id))continue;
+  // Old light/AIR combined never becomes separate 光 or separate AIR.
+  if(sku==="partnerSku05"&&
+     !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))continue;
+  proposed.set(sku,target.id);
+  claims.set(target.id,(claims.get(target.id)||0)+1);
+ }
+ // Two different original categories cannot claim the same hub SKU.
+ for(const [sku,pid] of proposed)
+  if(claims.get(pid)===1)binding.set(sku,pid);
  return Object.freeze(KEYS.filter((category,i)=>{
   const sku="partnerSku"+String(i+1).padStart(2,"0"),pid=binding.get(sku);
   return pid&&approved.has(pid)&&scoped.has(pid)&&catalog.get(pid).active!==false;

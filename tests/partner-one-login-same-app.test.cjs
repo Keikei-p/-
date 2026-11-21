@@ -45,11 +45,11 @@ test("partner view is inside same app but legacy finance children are inaccessib
  assert.match(index,/const partnerInlineManage = httpsCallable\(partnerCountFunctions,"managePartnerWorkspace"\)/);
  assert.match(index,/const partnerInlineSave = httpsCallable\(partnerCountFunctions,"submitPartnerWorkspaceCounts"\)/);
  assert.match(index,/partnerInlineData=snap;partnerInlineRender\(\)/);
- assert.match(index,/const snap=\(await readPartnerWorkDay\(payload\)\)\.data/);
- assert.match(index,/await partnerInlineManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
+ assert.match(index,/const snap=\(await partnerMainCountRead\(payload\)\)\.data/);
+ assert.match(index,/await partnerMainCountManage\(partnerInlinePayload\(\{action:"addManaged",name,teamId\}\)\)/);
  assert.match(index,/action:"createInvite",email,teamId,role/);
- assert.match(index,/partnerInlineSave\(partnerInlinePayload\(\{/);
- assert.match(index,/verified=\(await readPartnerWorkDay\(partnerInlinePayload\(\{date\}\)\)\)\.data/);
+ assert.match(index,/partnerMainCountSubmit\(partnerInlinePayload\(\{/);
+ assert.match(index,/verified=\(await partnerMainCountRead\(partnerInlinePayload\(\{date\}\)\)\)\.data/);
  assert.match(index,/const readback=partnerSavedCountReadbackState\(verified,expected\)/);
  assert.match(index,/result\.version!==expected\.expectedVersion\+1\|\|readback!=="saved"/);
  assert.match(index,/pInline\("pInlineTitle"\)\.textContent="🤝 "\+snap\.companyName/);
@@ -68,18 +68,19 @@ test("same-app save readback requires the exact persisted identity, version, cou
  vm.runInContext(index.slice(start,end),context);
  const expected={date:"2026-11-13",companyName:"検証会社",staffId:"worker",
   expectedVersion:0,categories:["NURO","SBMNP"],counts:{NURO:2,SBMNP:1},
-  privateCounts:{privateOne:2},
+  privateCounts:{privateOne:2},previousPrivateCounts:{},
   workLocation:"検証現場",workTeamId:"team"};
  const verified={date:expected.date,companyName:expected.companyName,records:[{
   staffId:"worker",version:1,counts:{...expected.counts},
-  privateCounts:{...expected.privateCounts},totalCount:3,
+  privateCounts:{...expected.privateCounts},privateTotalCount:2,totalCount:3,
   workLocation:expected.workLocation,teamIdSnapshot:"team"}]};
  assert.equal(context.partnerSavedCountReadbackState(verified,expected),"saved");
  const mutations=[
   x=>{x.date="2026-11-12";},x=>{x.companyName="別会社";},
   x=>{x.records[0].staffId="other";},x=>{x.records[0].version=2;},
   x=>{x.records[0].counts.NURO=1;},x=>{x.records[0].counts.SBMNP=1.5;},
-  x=>{x.records[0].privateCounts.privateOne=1;},x=>{x.records[0].totalCount=4;},
+  x=>{x.records[0].privateCounts.privateOne=1;},
+  x=>{x.records[0].privateTotalCount=1;},x=>{x.records[0].totalCount=4;},
   x=>{x.records[0].workLocation="別現場";},x=>{x.records[0].teamIdSnapshot="other";}
  ];
  for(const mutate of mutations){
@@ -115,18 +116,20 @@ test("same-app save verifies by GET once and never retries or reports unverified
    partnerInlineSelectedCb:()=>({total:2,result:{0:2}}),
    partnerInlinePayload:data=>({...data,workspaceCompanyId:"partner"}),
    partnerInlineRun:(work,options)=>{assert.equal(options.kind,"save");return work();},
-   partnerInlineSave:async input=>{
+   partnerInlineIdentity:()=>context.auth.currentUser?.uid||"",
+   partnerMainCountSubmit:async input=>{
     calls.push("save");assert.equal(input.date,date);assert.equal(input.counts.NURO,2);
     if(scenario==="identity_changed")context.auth.currentUser={uid:"other"};
     if(scenario==="denied_not_saved")throw denial;
     if(scenario==="lost_response_saved")throw Object.assign(Error("timeout"),{code:"functions/unavailable"});
     return {data:{saved:scenario!=="ack_missing",date,staffId:"worker",version:1}};
    },
-   readPartnerWorkDay:async input=>{
+   partnerMainCountRead:async input=>{
     calls.push("get");assert.equal(input.date,date);
     return {data:{date,companyName:"検証会社",records:scenario==="denied_not_saved"?[]:[{
      staffId:"worker",version:1,counts:{NURO:scenario==="mismatch"?1:2},
-     privateCounts:{},totalCount:2,workLocation:"現場",teamIdSnapshot:"team"}]}};
+     privateCounts:{},privateTotalCount:0,totalCount:2,
+     workLocation:"現場",teamIdSnapshot:"team"}]}};
    }
   });
   vm.runInContext(index.slice(a,b)+index.slice(start,end),context);
@@ -173,4 +176,86 @@ test("partner company list errors are explicit, fail closed and never create a r
  assert.match(flow,/partner_company_list_unavailable/);
  assert.doesNotMatch(flow,/partnerInlineManage\(|tx\.create\(|setDoc\(/);
  assert.match(index,/if\s*\(!currentUser\?\.emailVerified\s*\|\|/);
+});
+
+test("main dashboard groups partner count input by verified company and team but keeps exact staff IDs",()=>{
+ const a=index.indexOf("function partnerInlineFillGroupedStaff(");
+ const b=index.indexOf("// Only a new server-issued, verified Owner catalog",a);
+ assert(a>0&&b>a,"same app input must group staff without touching internal form");
+ const select={value:"s2",children:[],replaceChildren(){this.children=[];this.value="";},
+  append(node){this.children.push(node)}};
+ const ctx=vm.createContext({
+  pInline:id=>{assert.equal(id,"pInlineStaff");return select;},
+  document:{createElement:tag=>({tag,children:[],append(node){this.children.push(node)}})}
+ });
+ vm.runInContext(index.slice(a,b),ctx);
+ const original=[
+  {id:"s1",name:"同名スタッフ",teamId:"a",active:true},
+  {id:"s2",name:"同名スタッフ",teamId:"b",active:true},
+  {id:"s3",name:"担当3",teamId:"unknown",active:true}
+ ];
+ const before=structuredClone(original);
+ ctx.partnerInlineFillGroupedStaff(original,[
+  {id:"a",name:"1班"},{id:"b",name:"1班"}],"協力店A");
+ assert.equal(select.value,"s2","the selected staff must be retained by immutable ID");
+ assert.deepEqual(select.children.map(c=>c.label),[
+  "協力店A → 1班","協力店A → 1班","協力店A → 所属班未確認"]);
+ assert.deepEqual(select.children.map(g=>g.children.map(c=>c.value)),[["s1"],["s2"],["s3"]],
+  "identically named people/teams may not be merged");
+ assert.deepEqual(original,before,"read-only display must not mutate company/team/staff");
+ const source=index.slice(index.indexOf("function partnerInlineRender(){"),
+  index.indexOf("function partnerInlineRenderCounts(){"));
+ // Some function orders differ. Check the actual render directly.
+ assert.match(index,/partnerInlineFillGroupedStaff\(staff,allTeams,snap\.companyName\)/);
+ assert.match(index,/id="pInlineCountFields"/);
+ assert.match(index,/partnerMainCountSubmit\(partnerInlinePayload\(\{/);
+});
+test("legacy partner login can continue into the SINGLE original app without resaving old counts",()=>{
+ assert.match(partner,/id="openMainSalesApp"/);
+ const a=partner.indexOf("// Existing bookmarks can enter the SAME production app");
+ const b=partner.indexOf('$("logout").onclick=async()=>{',a);
+ assert(a>0&&b>a);
+ const source=partner.slice(a,b);
+ assert.doesNotMatch(source,/\b(?:setDoc|updateDoc|deleteDoc|addDoc|submitPartnerWorkspaceCounts)\(/);
+ function run({code=true,dirty=false,pending=false,busy=false,verified=true}={}){
+  const routed=[],notices=[],date="2026-11-20";
+  const original={date,role:"owner",records:[{
+   staffId:"s1",counts:{NURO:3},privateCounts:{custom:2},version:2
+  }]};
+  const input={value:dirty?"4":"3",disabled:false,dataset:{key:"NURO"}};
+  const extra={value:"2",disabled:false,dataset:{privateId:"custom"}};
+  const nodes={
+   date:{value:date},staffSelect:{value:"s1"},
+   countGrid:{querySelectorAll:()=>[input]},
+   privateCountGrid:{querySelectorAll:()=>[extra]},
+   openMainSalesApp:{onclick:null}
+  };
+  const ctx=vm.createContext({
+   data:original,loading:busy,
+   activeCodeSession:code?"A".repeat(43):"",
+   auth:{currentUser:verified?{uid:"firebase-account",emailVerified:true}:null},
+   pendingPartnerSaveReceipts:new Map(pending?[["draft",{}]]:[]),
+   workspaceCompanyId:"partnerABC",
+   $:id=>nodes[id],notice:(text,bad)=>notices.push({text,bad}),
+   location:{origin:"https://nico-factory.web.app",assign:url=>routed.push(url)},
+   URL
+  });
+  vm.runInContext(source,ctx);
+  assert.equal(typeof nodes.openMainSalesApp.onclick,"function");
+  nodes.openMainSalesApp.onclick();
+  assert.deepEqual(original.records[0].counts,{NURO:3},"no mutation of archived data");
+  return {routed,notices};
+ }
+ assert.deepEqual(run().routed,["https://nico-factory.web.app/"],
+  "code session is kept in same-tab sessionStorage, not in URL");
+ assert.deepEqual(run({code:false}).routed,[
+  "https://nico-factory.web.app/?workspaceCompanyId=partnerABC"],
+  "verified email partner context routes to the main app");
+ for(const inputs of [{dirty:true},{pending:true},{busy:true},{code:false,verified:false}]){
+  const result=run(inputs);
+  assert.deepEqual(result.routed,[],"never discard unsaved or unverified counts");
+  assert.equal(result.notices.length,1);
+ }
+ assert.match(source,/location\.assign\(destination\.href\)/);
+ assert.doesNotMatch(source,/sessionStorage\.removeItem\(|signOut\(auth\)/);
 });

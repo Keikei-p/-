@@ -46,11 +46,22 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
           test "$NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED" = disabled
-          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
           test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
-          test "$(git hash-object functions-ranking-approvals/index.js)" = 31c96013df37d7d179ea9f2dcfa130d5393a2b19
+          test "$(git hash-object functions-ranking-approvals/index.js)" = 0d341bb50987d5c5a1cf147413d45f88531962d4
           test "$(git hash-object ranking/owner-product-visibility-firestore.mjs)" = 498be6e047c7afe8f8a80a7b83bef64faee0f75c
-          grep -Fq 'zeroSetupLink:false' functions-ranking-approvals/index.js
+          # Reviewed Draft integration now has an explicitly gated name linker.
+          # Its partner-facing mode must still apply Owner ON/OFF and one-tab disclosure.
+          test "$(git hash-object ranking/canonical-owner-count-server-factory.mjs)" = 0c8c398cf4adbf14243cf723f31b112b30f964d7
+          test "$(git hash-object ranking/owner-visible-count-server-handler.mjs)" = 47760880354ca63083a4785c70571c47782d66fe
+          cmp ranking/canonical-owner-count-server-factory.mjs functions-ranking-approvals/ranking/canonical-owner-count-server-factory.mjs
+          cmp ranking/owner-visible-count-server-handler.mjs functions-ranking-approvals/ranking/owner-visible-count-server-handler.mjs
+          grep -Fq 'zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'enforcePartnerTabPublication:true' functions-ranking-approvals/index.js
+          grep -Fq 'publishedOnly:true' functions-ranking-approvals/index.js
+          grep -Fq 'const enforceOwnerSelection=zeroSetupLink===true&&' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'enforcePartnerTabPublication===true;' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'buildOwnerVisibleCountRanking({input:rankingInput,publication})' ranking/owner-visible-count-server-handler.mjs
           if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
             echo 'ERROR: ranking must not bypass Owner ON/OFF'; exit 1
           fi

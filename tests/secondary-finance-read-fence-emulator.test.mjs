@@ -48,6 +48,94 @@ test("the source is never registered as live Firebase Rules or callable",()=>{
  assert.ok(!readFileSync(new URL("../.github/workflows/firebase-production-deploy.yml",
   import.meta.url),"utf8").includes("secondary-finance-read-fence"));
 });
+// Finance is role-scoped at the Firestore boundary, not merely hidden by
+// the partner HTML. This proves direct partner and company-code identities
+// cannot read even their own partner-company financial originals. Do not
+// change production Auth/users, counts, money documents or active membership.
+test("direct partner, partner-code principal, and anonymous code token have no raw finance access",{
+ skip:!process.env.FIRESTORE_EMULATOR_HOST,
+ timeout:120000
+},async()=>{
+ const {initializeTestEnvironment,assertSucceeds,assertFails}=
+  await import("@firebase/rules-unit-testing");
+ const {doc,setDoc,getDoc,collection,query,where,getDocsFromServer}=
+  await import("firebase/firestore");
+ for(const [mode,rules] of [["current",current],["candidate",candidate]]){
+  const env=await initializeTestEnvironment({
+   projectId:"demo-nico-secondary-finance-fence",firestore:{rules}
+  });
+  const actor=id=>env.authenticatedContext(id,{
+   email:id+"@example.test",email_verified:true
+  }).firestore();
+  try{
+   await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,"companies","directHub"),{
+     companyKind:"internal",active:true,ownerUid:"directOwner",masterUid:"directOwner"
+    });
+    await setDoc(doc(db,"companies","directPartner"),{
+     companyKind:"partner",active:true,hubCompanyId:"directHub",
+     ownerUid:"partnerOwner"
+    });
+    const owner={uid:"directOwner",companyId:"directHub",
+     companyRole:"owner",role:"leader",active:true,
+     accessKind:"internal",memberType:"direct",teamId:"t1"};
+    await setDoc(doc(db,"users","directOwner"),owner);
+    await setDoc(doc(db,"companies","directHub","members","directOwner"),owner);
+    for(const uid of ["partnerOwner","codePrincipal"]){
+     const profile={uid,companyId:"directPartner",
+      companyRole:"owner",role:"leader",active:true,
+      accessKind:"partner",memberType:"cooperator",
+      authKind:uid==="codePrincipal"?"partner_code_shared":"email",
+      canViewRevenue:false,canViewUnitPrice:false,teamId:null};
+     await setDoc(doc(db,"users",uid),profile);
+     await setDoc(doc(db,"companies","directPartner","members",uid),profile);
+    }
+    for(const name of COLLECTIONS){
+     for(const cid of ["directHub","directPartner"]){
+      await setDoc(doc(db,name,cid+"-immutable-money"),{
+       companyId:cid,teamId:"t1",unitPrice:12000,
+       totalRevenue:45000,cashback:9000,
+       marker:mode+"-untouched-"+name
+      });
+     }
+    }
+   });
+   for(const name of COLLECTIONS){
+    const ownerRaw=doc(actor("directOwner"),name,
+     "directHub-immutable-money");
+    await assertSucceeds(getDoc(ownerRaw));
+    for(const id of ["partnerOwner","codePrincipal"]){
+     for(const cid of ["directHub","directPartner"]){
+      await assertFails(getDoc(doc(actor(id),name,
+       cid+"-immutable-money")));
+      const cond=[where("companyId","==",cid)];
+      if(name==="revenueGoals")cond.push(where("teamId","==","t1"));
+      await assertFails(getDocsFromServer(query(
+       collection(actor(id),name),...cond
+      )));
+     }
+    }
+    const guest=env.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(guest,name,"directPartner-immutable-money")));
+    await assertFails(getDocsFromServer(query(collection(guest,name),
+     where("companyId","==","directPartner"))));
+   }
+   await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    for(const name of COLLECTIONS)
+     for(const cid of ["directHub","directPartner"]){
+      const v=(await getDoc(doc(db,name,cid+"-immutable-money"))).data();
+      assert.equal(v.unitPrice,12000);
+      assert.equal(v.totalRevenue,45000);
+      assert.equal(v.cashback,9000);
+      assert.equal(v.marker,mode+"-untouched-"+name);
+     }
+   });
+  }finally{await env.cleanup();}
+ }
+});
+
 // Completion-only security regression: do not confuse the current production
 // source with the un-deployed emulator fence. Uses fictional local identities.
 test("original Rules still grant legacy internal money to an active secondary partner; the candidate denies it",{

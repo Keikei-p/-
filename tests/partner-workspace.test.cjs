@@ -1810,3 +1810,137 @@ test("Owner correction updates exact approved joint rankings in both apps from s
  assert.equal(reenabled.totalCount,5);
  assert.equal(reenabled.people[0].totalCount,5);
 });
+
+test("end-to-end saved count correction immediately reflows company/team/person/product rankings exactly once",async()=>{
+ const {db,api,req,zero}=setup(true),date="2026-10-31";
+ db.seed("products/nuro",{companyId:"hub",name:"NURO光",active:true,unitPrice:77777});
+ db.seed("products/ym",{companyId:"hub",name:"YM純新規",active:true,unitPrice:88888});
+ db.seed("companies/hub/rankingProductVisibility/shared",{
+  hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:["nuro","ym"],partnerOverrides:{partner:["nuro"]}
+ });
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,
+  bindings:[{companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku04",hubProductId:"ym"}]
+ });
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{
+  schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",
+  ownerUid:"h",version:1,
+  products:[{id:"nuro",companyId:"hub",name:"NURO光",active:true},
+   {id:"ym",companyId:"hub",name:"YM純新規",active:true}]
+ });
+ const teamOne=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const teamTwo=(await api.manage(req("p",{action:"addTeam",name:"2班"}))).teamId;
+ const personOne=(await api.manage(req("p",{
+  action:"addManaged",name:"担当A",teamId:teamOne
+ }))).staffId;
+ const personTwo=(await api.manage(req("p",{
+  action:"addManaged",name:"担当B",teamId:teamTwo
+ }))).staffId;
+ const put=async (staffId,version,nu,off=2)=>{
+  const saved=await api.submit(req("p",{
+   date,staffId,expectedVersion:version,
+   counts:{...zero(),NURO:nu,"YM純新規":off}
+  }));
+  assert.equal(saved.saved,true);
+  assert.equal(saved.version,version+1);
+ };
+ await put(personOne,0,2);
+ await put(personTwo,0,1);
+ const verify=async total=>{
+  const stored=db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner");
+  assert.equal(stored.counts.NURO,total);
+  assert.equal(stored.counts["YM純新規"],4,"OFF-category history remains stored");
+  assert.equal(stored.totalCount,total+4);
+  const snapshot=clone([...db.store]);
+  const hub=await api.view(req("h",{
+   date,sharedCountRankings:true,rankingPeriod:"month"
+  }));
+  const partner=await api.view(req("p",{
+   date,sharedCountRankings:true,rankingPeriod:"day"
+  }));
+  for(const ranking of [hub,partner]){
+   assert.equal(ranking.totalCount,total);
+   assert.equal(ranking.companies.length,1);
+   assert.equal(ranking.companies[0].totalCount,total);
+   assert.equal(ranking.teams.reduce((sum,row)=>sum+row.totalCount,0),total);
+   assert.equal(ranking.people.reduce((sum,row)=>sum+row.totalCount,0),total);
+   assert.equal(ranking.products.reduce((sum,row)=>sum+row.totalCount,0),total);
+   assert.equal(ranking.products.length,1);
+   assert.equal(ranking.products[0].name,"NURO");
+   assert.equal(ranking.fullyJoint,false,"not falsely labeled as direct+partner");
+   assert.doesNotMatch(JSON.stringify(ranking),
+    /unitPrice|totalRevenue|77777|88888|YM純新規|cashback|privateCounts/);
+  }
+  assert.deepEqual([...db.store],snapshot,"ranking GET must be read-only");
+  return partner;
+ };
+ const first=await verify(3);
+ assert.deepEqual([...first.teams.map(x=>x.totalCount)],[2,1]);
+ assert.deepEqual([...first.people.map(x=>x.totalCount)],[2,1]);
+ // Correct one staff entry: replace 2 -> 5, never 2 + 5.
+ await put(personOne,1,5);
+ const second=await verify(6);
+ assert.deepEqual([...second.teams.map(x=>x.totalCount)],[5,1]);
+ assert.deepEqual([...second.people.map(x=>x.totalCount)],[5,1]);
+ const original=db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+personOne);
+ assert.equal(original.counts.NURO,5);
+ assert.equal(original.version,2);
+ assert(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+personOne+"__v1"));
+ assert(db.store.has("companies/partner/partnerWorkAudits/"+date+"__"+personOne+"__v2"));
+ assert.deepEqual(db.store.get("products/nuro"),{
+  companyId:"hub",name:"NURO光",active:true,unitPrice:77777});
+ assert.equal(db.store.get("records/old").totalRevenue,808080);
+});
+
+
+test("managed staff archive is reversible-in-data, blocks new counts, and preserves historical ledgers and finance",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"履歴保存班"}))).teamId;
+ const staffId=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId}))).staffId;
+ await api.submit(req("p",{date,staffId,expectedVersion:0,counts:{...zero(),NURO:3}}));
+ const staffPath="companies/partner/partnerWorkStaff/"+staffId;
+ const original=clone([...db.store]);
+ const result=await api.manage(req("p",{action:"removeManaged",staffId}));
+ assert.deepEqual(result,{archived:true,staffId});
+ const archived=db.store.get(staffPath);
+ assert.equal(archived.active,false);
+ assert.equal(archived.archivedByUid,"p");
+ assert(archived.archivedAt,"archival time is recorded");
+ assert.equal(db.store.size,original.length,"no new or deleted documents");
+ for(const [path,data] of original)if(path!==staffPath)
+  assert.deepEqual(db.store.get(path),data,"historical source changed: "+path);
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId})),
+  {code:"failed-precondition"});
+ await assert.rejects(api.submit(req("p",{date,staffId,expectedVersion:1,
+  counts:{...zero(),NURO:4}})),{code:"permission-denied"});
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staffId).totalCount,3);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner").totalCount,3);
+});
+
+test("managed staff archive refuses other roles, registered people and revoked manager without writes",async()=>{
+ const {db,api,req}=setup();
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"権限検証班"}))).teamId;
+ const staffId=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId}))).staffId;
+ const staffPath="companies/partner/partnerWorkStaff/"+staffId;
+ const registered="companies/partner/partnerWorkStaff/registered-member";
+ db.seed(registered,{active:true,companyId:"partner",kind:"registered",
+  uid:"registered-member",role:"member",name:"登録済み",teamId});
+ const original=clone([...db.store]);
+ await assert.rejects(api.manage(req("h",{action:"removeManaged",staffId})));
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"registered-member"})),
+  {code:"failed-precondition"});
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"missing"})),
+  {code:"failed-precondition"});
+ assert.deepEqual([...db.store],original,"rejected archives cannot mutate counts or memberships");
+ const tx=db.runTransaction.bind(db);
+ db.runTransaction=fn=>{
+  db.store.get("companies/partner/members/p").active=false;
+  return tx(fn);
+ };
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId})),
+  {code:"permission-denied"});
+ assert.equal(db.store.get(staffPath).active,true,"revoked manager cannot archive staff");
+});

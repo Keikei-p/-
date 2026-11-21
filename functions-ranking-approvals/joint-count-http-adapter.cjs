@@ -25,7 +25,8 @@ const PUBLIC_FIELDS=new Set([
  "teamId","teamName","uid","productId","count","unidentifiedCount",
  "ownCount","partnerCount","rank","reportStatus","reportedDays",
  "previousCount","change","growth","topProduct","remainingToGoal",
- "personalBestStatus","detail","goalCount","memberCount","scope"
+ "personalBestStatus","detail","goalCount","memberCount","scope",
+ "teamDetails","tab","rows"
 ]);
 const FINANCE_KEY=/(?:revenue|sales|amount|price|unitprice|cashback|commission|salary|profit|margin|payment|fee|売上|単価|金額|報酬|利益|キャッシュバック)/i;
 const PRIVATE_TEXT=/(?:[¥￥$€]|(?:[0-9０-９])[0-9０-９.,，]*\s*(?:万円|千円|円)|(?:売上|単価|キャッシュバック|cash\s*back|revenue|commission|salary|unit\s*price|CB)[\s:_=-]*[0-9０-９])/i;
@@ -94,13 +95,92 @@ const HUB_ENVELOPE=["schema","role","unit","period","range","readTime",
  "summary","memberRanking","productRanking","companyBreakdown","teamBreakdown","filters"];
 const PARTNER_ENVELOPE=["schema","role","unit","period","range","readTime",
  "own","publicRanking"];
-const PARTNER_OWN_FIELDS=new Set(["company","count","unidentifiedCount","people","products"]);
+const PARTNER_OWN_FIELDS=new Set(["company","count","unidentifiedCount","people","products","teamDetails"]);
 const OWN_PRODUCT_ROW=["id","name","count"];
 const OWN_PERSON_ROW=["id","name","companyId","companyName","teamId",
  "teamName","count","reportStatus","reportedDays","previousCount",
  "change","growth","topProduct","remainingToGoal","personalBestStatus","rank"];
 const ownRows=(rows,keys)=>Array.isArray(rows)&&rows.length<=10000&&
  rows.every(row=>exact(row,keys)&&Number.isSafeInteger(row.count)&&row.count>=0);
+const PARTNER_REPORTED=new Set(["未報告","確定0件","報告済","一部未報告"]);
+const OWN_DETAIL=["name","count","reportStatus","members","products"];
+const OWN_MEMBER=["name","count","reportStatus"];
+const OWN_PRODUCT=["name","count"];
+const TEAM_PUBLIC_FIELDS=["rank","name","company","count"];
+const TEAM_PUBLIC_WITH_OWN=[...TEAM_PUBLIC_FIELDS,"own"];
+const validCount=n=>Number.isSafeInteger(n)&&n>=0;
+const textLabel=s=>typeof s==="string"&&s.trim().length>0&&s.length<=150;
+function safeOwnDetails(ownData){
+ const details=ownData.teamDetails;
+ if(!Array.isArray(details)||details.length>400||
+    !textLabel(ownData.company)||!validCount(ownData.unidentifiedCount))return false;
+ let total=ownData.unidentifiedCount;
+ for(const d of details){
+  if(!exact(d,OWN_DETAIL)||!textLabel(d.name)||!validCount(d.count)||
+     !PARTNER_REPORTED.has(d.reportStatus)||
+     (d.reportStatus==="未報告"&&d.count!==0)||
+     !Array.isArray(d.members)||d.members.length>150||
+     !Array.isArray(d.products)||d.products.length>1000)return false;
+  let memberTotal=0,productTotal=0;
+  for(const m of d.members){
+   if(!exact(m,OWN_MEMBER)||!textLabel(m.name)||!validCount(m.count)||
+      !PARTNER_REPORTED.has(m.reportStatus)||
+      (m.reportStatus==="未報告"&&m.count!==0))return false;
+   memberTotal+=m.count;
+   if(!Number.isSafeInteger(memberTotal))return false;
+  }
+  for(const p of d.products){
+   if(!exact(p,OWN_PRODUCT)||!textLabel(p.name)||!validCount(p.count))return false;
+   productTotal+=p.count;
+   if(!Number.isSafeInteger(productTotal))return false;
+  }
+  if(memberTotal!==d.count||productTotal!==d.count||
+     (d.reportStatus==="未報告"&&d.members.some(m=>m.reportStatus!=="未報告")))
+    return false;
+  total+=d.count;
+  if(!Number.isSafeInteger(total))return false;
+ }
+ return total===ownData.count;
+}
+function partnerTeamRankingSafe(ownData,rows){
+ if(!Array.isArray(rows)||rows.length>10000)return false;
+ const hasDetail=own(ownData,"teamDetails");
+ const hasOwn=rows.some(r=>own(r,"own"));
+ if(hasDetail!==hasOwn&&!(hasDetail&&rows.length===0))return false;
+ if(!rows.every(r=>exact(r,hasOwn?TEAM_PUBLIC_WITH_OWN:TEAM_PUBLIC_FIELDS)&&
+      validCount(r.count)&&Number.isSafeInteger(r.rank)&&r.rank>0&&
+      textLabel(r.name)&&textLabel(r.company)&&
+      (!hasOwn||typeof r.own==="boolean")))return false;
+ if(!hasDetail)return true; // Existing unpublished/legacy payload unchanged.
+ const expected=ownData.teamDetails.filter(d=>d.reportStatus!=="未報告")
+  .map(d=>ownData.company+"・"+d.name+"|"+d.count).sort();
+ const actual=rows.filter(r=>r.own)
+  .map(r=>r.company+"・"+r.name+"|"+r.count).sort();
+ return expected.length===actual.length&&
+    expected.every((v,i)=>v===actual[i]);
+}
+const PARTNER_PUBLISHED_TAB_ENVELOPE=["schema","role","unit","period","range","readTime","tab","rows"];
+function publishedPartnerTabScopeSafe(data){
+ if(!exact(data,PARTNER_PUBLISHED_TAB_ENVELOPE)||
+    data.schema!=="nico-published-partner-count-tab-v1"||
+    data.role!=="partner_owner"||data.unit!=="件"||
+    !Array.isArray(data.rows)||data.rows.length>10000)return false;
+ switch(data.tab){
+  case "product":
+   return rankRows(data.rows,["rank","name","count"]);
+  case "individual":
+   return rankRows(data.rows,["rank","company","name","count"]);
+  case "team":
+   return data.rows.every(row=>exact(row,TEAM_PUBLIC_WITH_OWN)&&
+    Number.isSafeInteger(row.rank)&&row.rank>0&&validCount(row.count)&&
+    textLabel(row.name)&&textLabel(row.company)&&typeof row.own==="boolean");
+  case "detail":
+   return safeOwnDetails({company:"検証済み協力店",unidentifiedCount:0,
+    count:data.rows.reduce((n,x)=>n+(validCount(x?.count)?x.count:0),0),
+    teamDetails:data.rows});
+  default:return false;
+ }
+}
 function partnerOwnScopeSafe(ownData){
  if(!ownData||typeof ownData!=="object"||Array.isArray(ownData)||
     Object.keys(ownData).some(key=>!PARTNER_OWN_FIELDS.has(key))||
@@ -111,6 +191,7 @@ function partnerOwnScopeSafe(ownData){
      ownData.unidentifiedCount<0||ownData.unidentifiedCount>ownData.count))return false;
  if(own(ownData,"people")&&!ownRows(ownData.people,OWN_PERSON_ROW))return false;
  if(own(ownData,"products")&&!ownRows(ownData.products,OWN_PRODUCT_ROW))return false;
+ if(own(ownData,"teamDetails")&&!safeOwnDetails(ownData))return false;
  return true;
 }
 function partnerPublicScopeSafe(data){
@@ -123,7 +204,7 @@ function partnerPublicScopeSafe(data){
  return rankRows(p.members,["rank","company","name","count"])&&
   rankRows(p.products,["rank","name","count"])&&
   (!own(p,"companies")||rankRows(p.companies,["rank","name","count"]))&&
-  (!own(p,"teams")||rankRows(p.teams,["rank","name","company","count"]));
+  (!own(p,"teams")?!own(data.own,"teamDetails"):partnerTeamRankingSafe(data.own,p.teams));
 }
 /**
  * Calling this function never accesses live data. While the feature flag
@@ -134,7 +215,7 @@ function partnerPublicScopeSafe(data){
  * @param {()=>Promise<Function>|Function} config.loadHandler Auth+Rules
  *  verified canonical handler (never a browser-provided callback).
  */
-function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
+function createJointCountHttpAdapter({enabled=()=>false,loadHandler,publishedOnly=false}={}){
  if(typeof enabled!=="function"||typeof loadHandler!=="function")fail();
  let pending=null;
  return async function jointCountHttp(req,res){
@@ -188,11 +269,17 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler}={}){
    if(typeof body!=="string"||body.length>900000)fail();
    const data=JSON.parse(body);
    if(response.status===200){
-    if(!data||data.schema!=="nico-verified-dual-count-v1"||
-       !["hub_owner","partner_owner"].includes(data.role)||
-       !moneyFree(data)||
-       (data.role==="partner_owner"&&!partnerPublicScopeSafe(data))||
-       (data.role==="hub_owner"&&!exact(data,HUB_ENVELOPE)))fail();
+    if(!data||!["hub_owner","partner_owner"].includes(data.role)||
+       !moneyFree(data))fail();
+    if(data.role==="hub_owner"){
+     if(data.schema!=="nico-verified-dual-count-v1"||
+        !exact(data,HUB_ENVELOPE))fail();
+    }else if(publishedOnly===true){
+     if(!publishedPartnerTabScopeSafe(data))fail();
+    }else if(data.schema==="nico-published-partner-count-tab-v1"){
+     if(!publishedPartnerTabScopeSafe(data))fail();
+    }else if(data.schema!=="nico-verified-dual-count-v1"||
+             !partnerPublicScopeSafe(data))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||
             Object.keys(data).length!==1||
             !["request_blocked","service_disabled"].includes(data.error))fail();

@@ -4413,6 +4413,23 @@ body.product-reordering .product-list {
 #dashboard .dashboard-select input[type="month"] {width:100%;max-width:320px;padding:10px;}
 </style>
 
+<style id="nicoUnifiedCompanyCodeLoginStyle">
+/* Company-code identity stays out of all finance screens. Email UI unchanged. */
+#authScreen .nico-main-code-panel[hidden]{display:none!important}
+#authScreen .nico-main-code-form[hidden]{display:none!important}
+#authScreen[data-nico-code-login="true"] .nico-main-email-field,
+#authScreen[data-nico-code-login="true"] #nameGroup,
+#authScreen[data-nico-code-login="true"] #authButton,
+#authScreen[data-nico-code-login="true"] .auth-card > .switch-text,
+#authScreen[data-nico-code-login="true"] #authRecoveryControls{display:none!important}
+#nicoMainCompanyCodeToggle{width:100%;min-height:44px;margin-top:12px}
+#nicoMainCompanyCodePanel{margin-top:14px;text-align:left}
+#nicoMainCompanyCodePanel .form-group{margin-top:12px}
+#nicoMainCompanyCodePanel input{width:100%;box-sizing:border-box;min-height:46px}
+#nicoMainCompanyCodeSubmit{width:100%;min-height:48px}
+#nicoMainCodeBack{min-height:44px;width:100%;margin-top:8px}
+#nicoMainCompanyCodeStatus{font-size:13px;line-height:1.6;min-height:20px}
+</style>
 <style id="nicoPartnerSameAppStyle">
 /* Keep existing login and invite routes. Hide duplicate local-only scoreboards
    and direct management shortcuts; the existing safe hamburger remains. */
@@ -4707,7 +4724,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 
       </div>
 
-      <div class="form-group">
+      <div class="form-group nico-main-email-field">
 
         <label for="email">
           メールアドレス
@@ -4721,7 +4738,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 
       </div>
 
-      <div class="form-group">
+      <div class="form-group nico-main-email-field">
 
         <label for="password">
           パスワード
@@ -4754,6 +4771,25 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
         </button>
 
       </div>
+
+      <!-- One entry screen, existing isolated partner-code backend and count-only destination. -->
+      <button id="nicoMainCompanyCodeToggle" type="button" class="link-button" aria-expanded="false" aria-controls="nicoMainCompanyCodePanel">協力店は会社コードでログイン</button>
+      <section id="nicoMainCompanyCodePanel" class="nico-main-code-panel" hidden aria-label="協力店の会社コードログイン">
+        <p style="font-size:13px;line-height:1.6;">自社は従来のメールログイン、協力店は会社コードとパスワードを入力します。協力店に売上・単価は公開されません。</p>
+        <form id="nicoMainCompanyCodeForm" class="nico-main-code-form" autocomplete="on">
+          <div class="form-group">
+            <label for="nicoMainCompanyCode">会社コード</label>
+            <input id="nicoMainCompanyCode" name="nicoCompanyCode" type="text" inputmode="text" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="29" placeholder="NICO-XXXXXXXXXXXXXXXXXXXXXXXX" required>
+          </div>
+          <div class="form-group">
+            <label for="nicoMainCompanyPassword">協力店パスワード</label>
+            <input id="nicoMainCompanyPassword" name="nicoCompanyPassword" type="password" autocomplete="current-password" maxlength="128" required>
+          </div>
+          <button id="nicoMainCompanyCodeSubmit" type="submit" class="primary-button">会社コードでログイン</button>
+        </form>
+        <button id="nicoMainCodeBack" type="button" class="link-button">メールログインに戻る</button>
+        <p id="nicoMainCompanyCodeStatus" role="status" aria-live="polite"></p>
+      </section>
 
       <!-- Shown only when a partner opens the Firebase authentication email link. -->
       <section id="partnerEmailLinkVerifyPanel" hidden style="margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:12px;">
@@ -5092,7 +5128,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
     <div class="p-inline-card">
       <h3>📦 商材追加・管理</h3>
       <p class="p-inline-muted">自社と共有の商材に加えて協力店専用の商材を追加できます。協力店専用の件数は全社ランキングに公開しません。</p>
-      <div class="p-inline-grid">
+      <div class="p-inline-grid" id="pInlineLegacyCustomProductEditor">
         <label class="p-inline-field">追加する商材名<input id="pInlineCustomName" maxlength="80" placeholder="商材名"></label>
       </div>
       <button id="pInlineAddPrivateProduct" class="team-action-button" type="button">商材を追加</button>
@@ -5319,6 +5355,10 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
       </p>
       <p id="partnerProductsStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--sub);"></p>
       <div id="partnerProductsPanelRoot"></div>
+      <details id="ownerPartnerTabPublicationPanel" class="p-inline-card" hidden>
+        <summary>📋 協力店へのタブ公開設定（全社一括）</summary>
+        <div id="ownerPartnerTabPublicationRoot"></div>
+      </details>
     </section>
   </div>
 
@@ -7388,6 +7428,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
 
 
 <script type="module">
+import {buildPartnerUnifiedCountTeamView} from "./ranking/partner-unified-count-team-view.mjs";
 
 if (
   "serviceWorker" in navigator
@@ -7565,11 +7606,26 @@ const db =
   getFirestore(app);
 
 const partnerCountFunctions = getFunctions(app,"asia-northeast1");
+// Never send the existing Owner/employee Firebase ID token on a company-code
+// password check. A SECOND Firebase app has no signed-in Auth instance; it
+// leaves the original app's email session intact on invalid credentials.
+const partnerAnonymousCodeApp = initializeApp(firebaseConfig,"nico-partner-code-login-isolated");
+const partnerAnonymousCodeFunctions = getFunctions(partnerAnonymousCodeApp,"asia-northeast1");
+const partnerAnonymousWorkspacePreflight = httpsCallable(partnerAnonymousCodeFunctions,
+  "getPartnerWorkspace",{timeout:15000});
 const readPartnerQuickDay = httpsCallable(partnerCountFunctions,"getPartnerQuickCounts");
 const approvePartnerQuickDay = httpsCallable(partnerCountFunctions,"approvePartnerQuickCounts");
 const readPartnerWorkDay = httpsCallable(partnerCountFunctions,"getPartnerWorkspace");
 // STAGING ONLY. This does not authorize a new Production API or deploy.
 const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;
+ // Release gate: do not contact a disabled/unpublished joint HTTP Function.
+ // Switch this only in a separately reviewed release AFTER actual Auth,
+ // finance-denial, isolated restore and count-parity E2E prove it is safe.
+ const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;
+ // Two independent OFF defaults: browser navigation and verified server
+ // refusal of unpublished data. UI masking alone is NEVER a release proof.
+ const NICO_PARTNER_TAB_UI_ENABLED = false;
+ const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -10041,6 +10097,36 @@ quickPartnerButton.onclick=()=>{
 // The menu is a convenience only: the callable independently enforces Owner.
 let partnerProductsMountedPanel=null;
 let partnerProductsOpenGeneration=0;
+let ownerPartnerTabPublicationUI=null;
+async function refreshOwnerPartnerTabPublicationUI(stillOwner){
+ // #802's callable is STAGING only. Never initialize or read before
+ // *both* Owner-UI and server-side unpublished-data deny are reviewed.
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true||
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true)return false;
+ const pane=document.getElementById("ownerPartnerTabPublicationPanel");
+ const root=document.getElementById("ownerPartnerTabPublicationRoot");
+ if(!pane||!root||!stillOwner()||!canLoadPartnerRanking())return false;
+ try{
+  if(!ownerPartnerTabPublicationUI){
+   const {mountOwnerPartnerTabSettingsPanel}=await import(
+    "./ranking/owner-partner-tab-settings-panel.mjs");
+   if(!stillOwner())return false;
+   ownerPartnerTabPublicationUI=mountOwnerPartnerTabSettingsPanel({
+    enabled:true,serverGuardVerified:true,root,auth,
+    functions:partnerCountFunctions,httpsCallable,
+    canOwner:()=>canLoadPartnerRanking()
+   });
+  }
+  if(!stillOwner())return false;
+  pane.hidden=false;
+  const verified=await ownerPartnerTabPublicationUI.refresh();
+  if(!stillOwner())return false;
+  return verified;
+ }catch{
+  if(stillOwner())pane.hidden=true;
+  return false;
+ }
+}
 quickPartnerProductsButton.onclick=async()=>{
   if(!canLoadPartnerRanking())return;
   const ownerUid=currentUser.uid;
@@ -10054,6 +10140,7 @@ quickPartnerProductsButton.onclick=async()=>{
     currentUser?.uid===ownerUid && canLoadPartnerRanking() &&
     partnerProductsWorkspace.style.display!=="none";
   try{
+    void refreshOwnerPartnerTabPublicationUI(stillOpen);
     if(!partnerProductsMountedPanel){
       const {mountOwnerProductVisibilityDashboard}=await import(
         "./ranking/owner-product-visibility-dashboard-mount.mjs"
@@ -11058,6 +11145,9 @@ function firebaseErrorMessage(error) {
     "auth/user-not-found":
       "ユーザーが見つかりません。",
 
+    "auth/user-disabled":
+      "このログインアカウントは停止されています。自動で権限を戻すことはできません。管理者に確認し、有効なアカウントでログインしてください。",
+
     "auth/wrong-password":
       "パスワードが正しくありません。",
 
@@ -11426,6 +11516,149 @@ async function register() {
 }
 
 
+/* One login entry; the company-code session is kept in this tab only.
+   No Finance auth, Firestore original read, email account creation or writes. */
+function nicoShowMainCompanyCodeLogin(open){
+ const panel=document.getElementById("nicoMainCompanyCodePanel");
+ const toggle=document.getElementById("nicoMainCompanyCodeToggle");
+ if(!panel||!toggle)return;
+ authScreen.dataset.nicoCodeLogin=open?"true":"false";
+ panel.hidden=!open;
+ toggle.setAttribute("aria-expanded",open?"true":"false");
+ toggle.textContent=open?"協力店（会社コード）でログイン中":"協力店は会社コードでログイン";
+ const status=document.getElementById("nicoMainCompanyCodeStatus");
+ if(status)status.textContent="";
+ if(!open){
+  const password=document.getElementById("nicoMainCompanyPassword");
+  if(password)password.value="";
+ }
+}
+
+// Company-code and email login use the SAME existing count-only dashboard.
+// The isolated Firebase app has no Auth identity and cannot inherit Owner money.
+const partnerMainCodeCountGet=httpsCallable(partnerAnonymousCodeFunctions,
+ "getPartnerWorkspace",{timeout:18000});
+const partnerMainCodeCountSave=httpsCallable(partnerAnonymousCodeFunctions,
+ "submitPartnerWorkspaceCounts",{timeout:22000});
+const partnerMainCodeCountManage=httpsCallable(partnerAnonymousCodeFunctions,
+ "managePartnerWorkspace",{timeout:18000});
+const partnerMainCodeLogout=httpsCallable(partnerAnonymousCodeFunctions,
+ "logoutPartnerCompanyCode",{timeout:15000});
+let partnerMainCodeToken="",partnerMainCodeEpoch=0;
+try{
+ const stored=sessionStorage.getItem("nicoPartnerCodeSession")||"";
+ if(/^[A-Za-z0-9_-]{43}$/.test(stored))partnerMainCodeToken=stored;
+ else if(stored)sessionStorage.removeItem("nicoPartnerCodeSession");
+}catch{/* Private browsing may disable session restoration. */}
+const partnerMainCodeActive=()=>!!partnerMainCodeToken&&!auth.currentUser;
+function partnerMainCodeForget(){
+ ++partnerMainCodeEpoch;
+ partnerMainCodeToken="";
+ try{sessionStorage.removeItem("nicoPartnerCodeSession")}catch{}
+}
+function partnerInlineIdentity(){
+ if(partnerMainCodeToken)return partnerMainCodeActive()?
+  "code-session-epoch:"+partnerMainCodeEpoch:"";
+ const user=auth.currentUser;
+ return user?.emailVerified&&partnerMainValidId(user.uid)?
+  "email:"+user.uid+":workspace:"+partnerInlineWorkspaceCompany:"";
+}
+function partnerMainCountCall(codeCallable,emailCallable,data){
+ if(partnerMainCodeToken){
+  if(!partnerMainCodeActive()||data?.workspaceCompanyId)throw Error("code_auth_mixed");
+  return codeCallable({...data,codeSessionToken:partnerMainCodeToken});
+ }
+ if(!auth.currentUser?.emailVerified)throw Error("email_partner_auth_required");
+ return emailCallable(data);
+}
+const partnerMainCountRead=data=>partnerMainCountCall(
+ partnerMainCodeCountGet,readPartnerWorkDay,data);
+const partnerMainCountSubmit=data=>partnerMainCountCall(
+ partnerMainCodeCountSave,partnerInlineSave,data);
+const partnerMainCountManage=data=>partnerMainCountCall(
+ partnerMainCodeCountManage,partnerInlineManage,data);
+
+async function nicoEnterCompanyCodeFromMain(result){
+ const token=result?.sessionToken;
+ if(typeof token!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token))
+  throw Error("invalid_company_code_session");
+ // A valid company-code PASSWORD is not sufficient to abandon a live Owner
+ // login. Verify the count-only workspace is ACTUALLY usable first; a disabled
+ // workspace/function or broken membership must leave old email Auth intact.
+ const day=partnerMainDate();
+ const checked=(await partnerAnonymousWorkspacePreflight({
+  date:day,codeSessionToken:token
+ })).data;
+ if(checked?.date!==day||!["owner","leader","member"].includes(checked?.role)||
+    !Array.isArray(checked?.categories)||!checked.categories.length)
+  throw Error("company_code_workspace_not_ready");
+ // Check sessionStorage BEFORE any sign-out. Safari/private storage failures
+ // must keep the current Owner/employee login instead of losing both modes.
+ try{
+  sessionStorage.setItem("nicoPartnerCodeSessionProbe","ok");
+  sessionStorage.removeItem("nicoPartnerCodeSessionProbe");
+ }catch{throw Error("company_code_storage_unavailable");}
+ // Never mix an existing email Firebase identity with a count-only code.
+ if(typeof auth.authStateReady==="function")await auth.authStateReady();
+ if(auth.currentUser)await signOut(auth);
+ if(auth.currentUser)throw Error("old_email_session_still_active");
+ // Never reuse an Owner's old page DOM, financial subscriptions, JS
+ // closures or rendered totals when switching to a count-only code login.
+ // A same-origin hard reload preserves ONLY the opaque sessionStorage token.
+ // The NEW index.html verifies code scope again before showing count input.
+ sessionStorage.setItem("nicoPartnerCodeSession",token);
+ if(auth.currentUser){
+  sessionStorage.removeItem("nicoPartnerCodeSession");
+  throw Error("old_email_session_still_active");
+ }
+ try{
+  location.replace(new URL("/",location.origin).href);
+ }catch{
+  sessionStorage.removeItem("nicoPartnerCodeSession");
+  throw Error("company_code_navigation_failed");
+ }
+}
+const nicoMainCodeToggle=document.getElementById("nicoMainCompanyCodeToggle");
+const nicoMainCodePanel=document.getElementById("nicoMainCompanyCodePanel");
+const nicoMainCodeForm=document.getElementById("nicoMainCompanyCodeForm");
+const nicoMainCodeBack=document.getElementById("nicoMainCodeBack");
+let nicoMainCodeLoginBusy=false;
+nicoMainCodeToggle.onclick=()=>nicoShowMainCompanyCodeLogin(true);
+nicoMainCodeBack.onclick=()=>nicoShowMainCompanyCodeLogin(false);
+nicoMainCodeForm.onsubmit=async event=>{
+ event.preventDefault();
+ if(nicoMainCodeLoginBusy||nicoMainCodePanel.hidden)return;
+ const code=document.getElementById("nicoMainCompanyCode").value.trim().toUpperCase();
+ const field=document.getElementById("nicoMainCompanyPassword");
+ const password=field.value;
+ const status=document.getElementById("nicoMainCompanyCodeStatus");
+ if(!/^NICO-[A-F0-9]{24}$/.test(code)||!password||password.length>128){
+  status.textContent="会社コードとパスワードを確認してください。";
+  field.value="";
+  return;
+ }
+ nicoMainCodeLoginBusy=true;
+ const submit=document.getElementById("nicoMainCompanyCodeSubmit");
+ submit.disabled=true;
+ status.textContent="協力店のログイン権限を確認しています…";
+ try{
+  // Validate credentials through an Auth-isolated Firebase app. Invalid code,
+  // unavailable Functions or network failure MUST NOT log out the existing
+  // Owner/employee. Only after a valid server session is returned will the
+  // existing handoff sign out the email app before storing the code session.
+  const loginCode=httpsCallable(partnerAnonymousCodeFunctions,"loginPartnerCompanyCode",{timeout:15000});
+  const result=(await loginCode({companyCode:code,password})).data;
+  field.value="";
+  await nicoEnterCompanyCodeFromMain(result);
+ }catch{
+  // Deliberately do not log credentials, token, Firestore IDs or raw errors.
+  field.value="";
+  status.textContent="ログインできませんでした。会社コード・パスワード・協力店認証サービスの公開状態を確認してください。";
+ }finally{
+  nicoMainCodeLoginBusy=false;submit.disabled=false;
+ }
+};
+
 /* =====================================================
    ログイン
 ===================================================== */
@@ -11540,7 +11773,16 @@ passwordInput.addEventListener(
 
 logoutButton.onclick =
   async () => {
-
+    if(partnerMainCodeActive()){
+      const token=partnerMainCodeToken;
+      partnerMainCodeForget();resetPartnerInline();
+      currentUser=null;currentUserData=null;currentCompanyData=null;
+      appScreen.style.display="none";authScreen.style.display="block";
+      loginStatus.textContent="未ログイン";
+      try{await partnerMainCodeLogout({codeSessionToken:token});}
+      catch{/* Revoked or unreachable: local code session is already closed. */}
+      return;
+    }
     try {
 
       await stopRealtimeListeners();
@@ -11599,6 +11841,9 @@ async function enterApplication(
   user
 ) {
 
+  // Auth-state callbacks and slow workspace discovery can finish after
+  // logout/account switch. A stale user may never reopen the dashboard.
+  if (!user?.uid || auth.currentUser?.uid !== user.uid) return;
   resetPartnerInline();
   currentUser =
     user;
@@ -11641,6 +11886,9 @@ async function enterApplication(
       );
 
 
+    // The server may answer after the user signed out or signed into a
+    // different account. Old async results cannot reopen the app.
+    if (auth.currentUser?.uid !== user.uid) return;
     if (!ready) {
 
       return;
@@ -11677,11 +11925,14 @@ async function enterApplication(
 
     await loadNotificationSettings();
 
-
+    // No stale financial Firestore subscriptions after an account switch.
+    if (auth.currentUser?.uid !== user.uid) return;
     startRealtimeListeners();
 
   } catch (error) {
 
+    // An old failed request may never hide a newly authenticated screen.
+    if (auth.currentUser?.uid !== user.uid) return;
     console.error(
       "ログイン後初期化エラー:",
       error
@@ -12891,6 +13142,69 @@ copyInviteButton.onclick =
 // Never read products/records/revenueGoals in this branch. Server checks scope.
 const pInline=id=>document.getElementById(id);
 let partnerInlineData=null,partnerInlineWorkspaceCompany="",partnerInlineNonce=0;
+// Incremented whenever a count-only identity/workspace is reset.
+let partnerInlineSessionEpoch=0;
+let partnerPublishedTabGeneration=0,partnerPublishedTabIds=null;
+let partnerOptionalTabGeneration=0,partnerOptionalVerifiedGoal=null;
+const partnerOptionalPublicationProtectionActive=()=>
+ NICO_PARTNER_TAB_UI_ENABLED===true||
+ NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true;
+function partnerPublishedTabAllowed(name){
+ // A verified company-code Owner can manage count-only staff and its legacy
+ // private catalog through managePartnerWorkspace. Only email invitations
+ // require a verified email identity; do not remove existing staff workflows.
+ if(partnerMainCodeActive()&&name==="invite")return false;
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true)return true; // existing released UI untouched
+ if(["record","invite","teams","members","catalog","account"].includes(name))return true;
+ return partnerPublishedTabIds?.has(name)===true;
+}
+async function refreshPartnerPublishedTabNavigation(){
+ // Never contact a new callable unless the server gate AND UI are reviewed.
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true||
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true)return false;
+ const user=auth.currentUser,company=partnerInlineWorkspaceCompany;
+ const generation=++partnerPublishedTabGeneration;
+ let policy=null;
+ try{
+  if(!user||user.emailVerified!==true||!company||!partnerInlineData)
+   throw Error("PARTNER_PUBLICATION_IDENTITY_UNVERIFIED");
+  const result=await httpsCallable(partnerCountFunctions,"getPartnerPublishedTabs")({
+   workspaceCompanyId:company
+  });
+  if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
+     generation!==partnerPublishedTabGeneration)return false;
+  policy=result?.data;
+ }catch{policy=null;} // missing/invalid or revoked => NO optional tabs
+ if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
+    generation!==partnerPublishedTabGeneration)return false;
+ try{
+  const {applyPartnerTabPublicationToNavigation}=await import(
+   "./ranking/partner-tab-navigation-gate.mjs");
+  if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
+     generation!==partnerPublishedTabGeneration)return false;
+  const view=applyPartnerTabPublicationToNavigation({
+   navigation:pInline("partnerSameAppNavigation"),
+   management:pInline("partnerManagementTabs"),
+   details:pInline("partnerSameAppDashboardDetails"),
+   policy,selectedPanel:partnerSameAppSelectedPanel
+  });
+  partnerPublishedTabIds=new Set(view.visibleTabs);
+  if(!view.selectedPanelAllowed)partnerSameAppSelectedPanel="record";
+  return true;
+ }catch{
+  // No optional tab can be opened if the verified policy fails parsing.
+  partnerPublishedTabIds=new Set();
+  for(const panel of ["individual","product","team","detail","report",
+    "daily","history","goal","analysis","chart","products"]){
+   for(const b of document.querySelectorAll(
+    '#partnerInlineWorkspace [data-partner-panel="'+panel+'"]'))
+    b.hidden=true;
+  }
+  pInline("partnerSameAppDashboardDetails").hidden=true;
+  partnerSameAppSelectedPanel="record";
+  return false;
+ }
+}
 let partnerAuditNonce=0;
 let partnerInlineBusy=false,ownerPartnerTeamsNonce=0;
 let partnerInlineEditingStaffId="";
@@ -12940,12 +13254,26 @@ function partnerMainPendingInvite(){
  return null;
 }
 function resetPartnerInline(){
+ ++partnerInlineSessionEpoch;
  ++partnerInlineNonce;++ownerPartnerTeamsNonce;++partnerAuditNonce;
  // Clear company-specific count snapshots and invalidate in-flight ranking reads
  // before another user or company can sign in on the same browser session.
  ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
  partnerInlineData=null;partnerInlineWorkspaceCompany="";partnerInlineBusy=false;
+ ++partnerPublishedTabGeneration;++partnerOptionalTabGeneration;
+ partnerPublishedTabIds=null;partnerOptionalVerifiedGoal=null;
  partnerInlineEditingStaffId="";
+ // Clear previous partner/company count DOM before any new identity is shown.
+ // These are count-only dynamic roots; original Owner sales controls remain intact.
+ pInline("partnerSameAppDashboardDetails").hidden=true;
+ for(const id of ["pInlineCountFields","pInlineRanking","pInlineTeams",
+   "pInlinePeople","pInlineHistory","partnerSharedDetailTree",
+   "pPartnerProductSummary","pPartnerDaily","pInlinePrivateProductList"]){
+  const el=pInline(id);if(el?.replaceChildren)el.replaceChildren();
+ }
+ pInline("pPartnerReportText").value="";
+ pInline("pPartnerGoalResult").textContent="";
+ pInline("pInlineSave").disabled=true;
  const saveStatus=pInline("pInlineSaveStatus");
  if(saveStatus)saveStatus.textContent="";
  appScreen.removeAttribute("data-partner-count-only");
@@ -13015,6 +13343,14 @@ function mountPartnerCanonicalNavigation(){
   cards.push(card);
  }
  target.replaceChildren(...cards);
+ // Deny all optional tabs during policy lookup. Until the settings API
+ // and every protected count endpoint are live, this remains disabled.
+ if(NICO_PARTNER_TAB_UI_ENABLED===true){
+  partnerPublishedTabIds=null;
+  for(const button of cards){
+   if(button.dataset.partnerPanel!=="record")button.hidden=true;
+  }
+ }
  const details=pInline("partnerSameAppDashboardDetails");
  if(details.parentNode!==target)target.append(details);
  // Input must always be visible, like the original HQ record form, without
@@ -13193,6 +13529,13 @@ function renderPartnerCountOnlyExtras(){
   privateTotals.set(id,(privateTotals.get(id)||0)+n);
  for(const [id,n] of [...privateTotals].sort((a,b)=>b[1]-a[1]))
   if(n)partnerMainAppendRow(products,(privateProductById.get(id)||"過去の専用商材")+"（社内のみ）",n+"件");
+ if(partnerOptionalPublicationProtectionActive()){
+  // Do not pre-render optional report/goal data from the mandatory editable
+  // count-entry payload before Owner publication and tab API verification.
+  pInline("pPartnerReportText").value="";
+  pInline("pPartnerGoalResult").textContent="Owner公開設定の確認が必要です。";
+  return;
+ }
  const lines=[snap.companyName+"｜"+snap.date+" 営業実績報告",
   "総件数："+count+"件","報告した担当者："+new Set(items.map(x=>x.staffId)).size+"人",""];
  for(const [key,n] of byProduct)if(n)lines.push(key+"："+n+"件");
@@ -13211,7 +13554,13 @@ function renderPartnerGoalEstimate(){
     !Number.isSafeInteger(days)||days<1||days>366){
   out.textContent="目標件数と残り稼働日数を確認してください。";return;
  }
- const actual=snap.records.reduce((n,r)=>n+r.totalCount,0);
+ const actual=partnerOptionalPublicationProtectionActive()?
+  (partnerOptionalVerifiedGoal?.uid===auth.currentUser?.uid&&
+   partnerOptionalVerifiedGoal?.company===partnerInlineWorkspaceCompany&&
+   partnerOptionalVerifiedGoal?.date===snap.date?
+    partnerOptionalVerifiedGoal.total:null):
+  snap.records.reduce((n,r)=>n+r.totalCount,0);
+ if(actual===null){out.textContent="目標日割りは未公開、または本人確認前です。";return;}
  const remaining=Math.max(0,goal-actual);
  out.textContent="選択日の件数："+actual+"件｜残り "+remaining+"件｜1日あたり "+Math.ceil(remaining/days)+"件";
 }
@@ -13286,7 +13635,7 @@ function mountPartnerSafeManagementMenu(){
    const snap=partnerInlineData;
    close();
    if(!snap)return;
-   if(action==="invite"&&!["leader","owner"].includes(snap.role)){
+   if(action==="invite"&&(partnerMainCodeActive()||!["leader","owner"].includes(snap.role))){
     partnerInlineStatus("招待リンクの発行は協力店リーダーが行えます。",true);return;
    }
    if(action==="account"){
@@ -13298,7 +13647,7 @@ function mountPartnerSafeManagementMenu(){
     partnerSameAppSelectPanel("account");
    }else{
     partnerSameAppSelectPanel(action);
-    if(action==="invite"&&["leader","owner"].includes(snap.role))
+    if(action==="invite"&&["leader","owner"].includes(snap.role)&&!partnerMainCodeActive())
      pInline("pInlineInviteEmail").focus();
     if(action==="catalog"&&["leader","owner"].includes(snap.role))
      pInline("pInlineCustomName").focus();
@@ -13373,6 +13722,13 @@ function setOwnerCombinedCountCardVisibility(name){
 installOwnerCombinedCountCards();
 
 let sharedDailyRankingGeneration=0;
+const sharedDailyRankingViewNonce=new Map();
+// A newer request for the SAME panel supersedes only that panel. A saved
+// correction or login switch invalidates ALL panels by advancing the epoch.
+function sharedDailyRankingIsCurrent(where,epoch,nonce){
+ return epoch===sharedDailyRankingGeneration&&
+  sharedDailyRankingViewNonce.get(where)===nonce;
+}
 const sharedDailyRankCache=new Map();
 function verifiedDirectDayCounts(date){
  if(!canLoadPartnerRanking()||!recordsReady||
@@ -13461,15 +13817,22 @@ function appendSharedRankingRows(container,heading,entries,complete){
 // Common count-only presentation for both partner and HQ partner-company
 // breakdown. No currency, price, margin, commission, or finance read.
 const PARTNER_TEAM_CB_TIERS=["0","20000","40000","60000","80000"];
-function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true}={}){
+function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{verified=true,currentMemberCount=null}={}){
  if(!Number.isSafeInteger(total)||total<0||!counts||typeof counts!=="object"||
     !Array.isArray(members))throw Error("count_team_invalid");
  const card=document.createElement("details");card.className="partner-count-team-card";
  const summary=document.createElement("summary");
- const heading=document.createElement("span");heading.textContent=title;
- const totalEl=document.createElement("span");totalEl.className="partner-count-team-total";
- totalEl.textContent="合計 "+total+"件";
- summary.append(heading,totalEl);card.append(summary);
+ const header=document.createElement("div");header.className="team-detail-header";
+ const teamName=document.createElement("div");
+ const heading=document.createElement("div");heading.className="team-detail-title";
+ heading.textContent=title;teamName.append(heading);
+ const meta=document.createElement("div");meta.className="team-detail-meta";
+ meta.textContent=Number.isSafeInteger(currentMemberCount)?"現在の所属 "+currentMemberCount+"人":"班・メンバー・商材別の件数";teamName.append(meta);
+ const totalEl=document.createElement("div");
+ totalEl.className="partner-count-team-total team-detail-total";
+ const strong=document.createElement("strong");strong.textContent=total+"件";
+ totalEl.append(strong);header.append(teamName,totalEl);
+ summary.append(header);card.append(summary);
  const body=document.createElement("div");body.className="partner-count-team-body";
  const section=(name)=>{
   const box=document.createElement("section");
@@ -13498,7 +13861,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
  if(!visible)partnerMainAppendRow(products,"商材別件数","0件（報告済み）");
  if(total>visible)partnerMainAppendRow(products,"その他（直営）",total-visible+"件");
  const people=section("班員別詳細");
- const peopleGrid=document.createElement("div");peopleGrid.className="partner-count-team-people-grid";
+ const peopleGrid=document.createElement("div");peopleGrid.className="partner-count-team-people-grid team-member-grid";
  const personal=document.createElement("div");personal.className="partner-count-team-person-detail";
  personal.hidden=true;
  people.append(peopleGrid,personal);
@@ -13523,7 +13886,7 @@ function renderPartnerCountTeamCard(title,total,counts,cbCounts,members,keys,{ve
    throw Error("count_team_member_invalid");
   memberTotal+=member.totalCount;
   const button=document.createElement("button");button.type="button";
-  button.className="partner-count-team-person-button";
+  button.className="partner-count-team-person-button team-member-card";
   button.setAttribute("aria-pressed","false");
   button.setAttribute("aria-label",member.name+" の商材別件数を表示");
   const nameEl=document.createElement("span");nameEl.className="partner-count-team-person-name";
@@ -13633,6 +13996,84 @@ function renderSharedCountTeamDetails(parent,report){
  for(const name of report.missingCompanies||[])
   partnerMainAppendRow(parent,"🤝 "+name,"未報告・0件とは扱いません");
 }
+// New canonical SAME-APP ranking path: existing direct + partner ledgers in
+// one server-verified count-only GET, no Owner SKU ON/OFF configuration.
+// When the release flags are OFF, the old callable/UI remains in place.
+async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,status,content,uid,epoch,seq}){
+ // Crucial: the front-end must default to the current proven count-only
+ // callable without initiating a cross-origin request that will 503/404.
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)
+  throw Error("SAME_APP_JOINT_NOT_RELEASED");
+ // Partner rank/detail data uses ONLY one server-authorized tab resource.
+ // Never fetch the legacy full partner ranking payload once released.
+ if(partner){
+  const tab=detail?"detail":partnerSameAppSelectedPanel;
+  if(!["individual","product","team","detail"].includes(tab))
+   throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
+  const {createPublishedPartnerCountBridge,createPublishedPartnerCodeCountBridge,
+   renderPublishedPartnerCountTab}=
+   await import("./ranking/published-partner-tab-client.mjs");
+  // Both login methods use the SAME canonical joint-count endpoint and the
+  // SAME financial allowlist. Opaque company-code credentials must NEVER be
+  // inserted into Firebase Auth or sent to a separate ranking service.
+  const codeIdentity=partnerMainCodeActive();
+  const identity=partnerInlineIdentity();
+  const fetcher=(...args)=>fetch(...args);
+  const bridge=codeIdentity?createPublishedPartnerCodeCountBridge({
+   featureEnabled:true,
+   serverGuardVerified:NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED===true,
+   getCodeSessionToken:()=>partnerMainCodeActive()?partnerMainCodeToken:"",
+   fetcher
+  }):createPublishedPartnerCountBridge({
+   featureEnabled:true,auth,fetcher,
+   getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
+  });
+  let published;
+  try{published=await bridge.load({tab,day:date});}
+  catch{throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");}
+  if(!sharedDailyRankingIsCurrent(where,epoch,seq)||
+     partnerInlineIdentity()!==identity||
+     (!codeIdentity&&auth.currentUser?.uid!==uid)||
+     date!==pInline("pInlineDate").value||
+     tab!==(detail?"detail":partnerSameAppSelectedPanel))return true;
+  renderPublishedPartnerCountTab({
+   document,root:content,status,payload:published
+  });
+  return true;
+ }
+ const [bridgeModule,projectionModule,panelModule]=await Promise.all([
+  import("./ranking/verified-joint-month-http-bridge.mjs"),
+  import("./ranking/same-app-joint-count-projection.mjs"),
+  import("./ranking/same-app-joint-count-panel.mjs")
+ ]);
+ const bridge=bridgeModule.createVerifiedJointMonthHttpBridge({
+  featureEnabled:true,auth,fetcher:(...args)=>fetch(...args),
+  endpoint:"https://asia-northeast1-sales-management-cc116.cloudfunctions.net/getVerifiedJointCountRanking",
+  expectedRole:partner?"partner_owner":"hub_owner",
+  getWorkspaceCompanyId:()=>partner?partnerInlineWorkspaceCompany:""
+ });
+ let response;
+ try{
+  response=await bridge.load({
+   period:{kind:"day",day:date,asOf:getTodayString()},filters:{}
+  });
+ }catch{
+  // Once enabled, every failure (including 503, bad 200, 401/403 or
+  // network errors) is a hard stop. Never switch to a different ranking.
+  throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");
+ }
+ const named=(!partner&&["Individual","Product","Team"].includes(where))?where:null;
+ const field=partner?"pInlineDate":named?"ownerSharedDate"+named:"ownerPartnerDashboardDate";
+ if(!sharedDailyRankingIsCurrent(where,epoch,seq)||auth.currentUser?.uid!==uid||
+    date!==pInline(field).value)return true;
+ const view=projectionModule.buildSameAppJointCountProjection(response,{partner});
+ panelModule.renderSameAppJointCountPanel({
+  document,root:content,status,view,partner,detail,
+  selection:partner?partnerSameAppSelectedPanel:named||""
+ });
+ return true;
+}
+
 async function loadSharedDailyStandings(where,force=false){
  const partner=where==="partner"||where==="partnerDetail";
  const detail=where==="partnerDetail"||where==="ownerDetail";
@@ -13646,12 +14087,40 @@ async function loadSharedDailyStandings(where,force=false){
  const date=pInline(dateField).value;
  const status=pInline(statusField);
  const content=pInline(contentField);
- const uid=auth.currentUser?.uid,seq=++sharedDailyRankingGeneration;
+ const uid=auth.currentUser?.uid,epoch=sharedDailyRankingGeneration;
+ const seq=(sharedDailyRankingViewNonce.get(where)||0)+1;
+ sharedDailyRankingViewNonce.set(where,seq);
  content.replaceChildren();
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>getTodayString()){
   status.textContent="確認する日付を選択してください。";return;
  }
+ // The old sharedRankings:true argument has NO matching server contract:
+ // getPartnerWorkspace accepts sharedCountRankings and returns partner-only
+ // aggregates, never a verified direct+partner total. Do not call it or
+ // misrepresent a partner-only rank as the unified company-wide standing.
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true){
+  status.textContent=partner?
+   "合同ランキングは公開前です。上のランキングには、この協力店の保存済み件数を表示しています。":
+   "直営＋協力店の合同ランキングは公開前です。既存の自社ランキングをご利用ください。";
+  return;
+ }
  status.textContent="会社・班・個人・商材の件数を照合しています…";
+ try{
+  if(await tryLoadVerifiedSameAppJointCount({
+   where,date,partner,detail,status,content,uid,epoch,seq
+  }))return;
+ }catch(error){
+  if(!sharedDailyRankingIsCurrent(where,epoch,seq)||auth.currentUser?.uid!==uid)return;
+  if(error?.message!=="SAME_APP_JOINT_NOT_RELEASED"){
+   content.replaceChildren();
+   status.textContent="合同ランキングの認証または件数を照合できません。公開状態・所属・通信を確認してください。";
+   console.error("same_app_joint_count_unverified",error?.code||"blocked");
+   return;
+  }
+  // Explicit reviewed client flag OFF: ONLY the old verified callable runs.
+  // A server failure when the client flag is ON NEVER reaches this fallback.
+  console.info("same_app_joint_count_not_released");
+ }
  try{
   const payload={date,sharedRankings:true};
   if(partner&&partnerInlineWorkspaceCompany)
@@ -13660,7 +14129,7 @@ async function loadSharedDailyStandings(where,force=false){
   const cached=sharedDailyRankCache.get(cacheKey);
   const useCached=!force&&cached&&Date.now()-cached.checkedAt<30000;
   const response=useCached?cached.value:(await readPartnerWorkDay(payload)).data;
-  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid||
+  if(!sharedDailyRankingIsCurrent(where,epoch,seq)||auth.currentUser?.uid!==uid||
      date!==pInline(dateField).value)return;
   if(response?.scope!=="shared_counts_only"||
      response.role!==(partner?"partner":"hub")||response.date!==date||
@@ -13736,7 +14205,7 @@ async function loadSharedDailyStandings(where,force=false){
   appendSharedRankingRows(content,"📦 商材別件数",
    [...productTotals].map(([name,count])=>({name,count})),complete);
  }catch(error){
-  if(seq!==sharedDailyRankingGeneration||auth.currentUser?.uid!==uid)return;
+  if(!sharedDailyRankingIsCurrent(where,epoch,seq)||auth.currentUser?.uid!==uid)return;
   content.replaceChildren();
   status.textContent="ランキングを正しく照合できません。データ・権限を確認して更新してください。";
   console.error("shared_daily_ranking_unavailable",error?.code||"unverified");
@@ -13752,11 +14221,15 @@ function renderPartnerRankingOnlyPanel(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
  const rankings=pInline("pInlineRanking");rankings.replaceChildren();
+ // When the verified published joint endpoint is selected, NEVER display
+ // old partner-only scores next to the new shared standings. This is a
+ // presentation-only guard; existing count save/history remains unchanged.
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true)return;
  // Rank by the immutable staff ID / saved team snapshot, never by a current
  // name/team assignment. Retain departed staff and inactive historical teams.
  const staffById=new Map((snap.staff||[]).map(x=>[x.id,x]));
  const teams=new Map((snap.teams||[]).map(x=>[x.id,x]));
- const rows=[];
+ const rows=[],notReportedTeams=[];
  const records=Array.isArray(snap.records)?snap.records:[];
  for(const entry of records){
   if(!Number.isSafeInteger(entry.totalCount)||entry.totalCount<0){
@@ -13764,19 +14237,28 @@ function renderPartnerRankingOnlyPanel(){
    return;
   }
  }
+ if(records.length===0){
+  partnerMainAppendRow(rankings,"未報告","登録済み実績なし・順位は付けません");
+  return;
+ }
  if(partnerSameAppSelectedPanel==="product"){
   for(const key of (snap.enabledCategories??snap.categories)){
    const n=records.reduce((sum,r)=>sum+(r.counts?.[key]||0),0);
    rows.push({name:key,n});
   }
  }else if(partnerSameAppSelectedPanel==="team"){
-  const totals=new Map();
-  for(const r of records)if(teams.has(r.teamIdSnapshot))
+  const totals=new Map(),reportedTeams=new Set();
+  for(const r of records)if(teams.has(r.teamIdSnapshot)){
+   // A persisted zero count IS a submitted report, unlike a team with no
+   // historical entry. Both must never be shown as the same rank.
+   reportedTeams.add(r.teamIdSnapshot);
    totals.set(r.teamIdSnapshot,(totals.get(r.teamIdSnapshot)||0)+r.totalCount);
-  for(const [id,t] of teams)rows.push({
-   name:snap.companyName+"・"+t.name+(t.active?"":"（過去の班）"),
-   n:totals.get(id)||0
-  });
+  }
+  for(const [id,t] of teams){
+   const name=snap.companyName+"・"+t.name+(t.active?"":"（過去の班）");
+   if(!reportedTeams.has(id)){notReportedTeams.push(name);continue;}
+   rows.push({name,n:totals.get(id)});
+  }
  }else{
   // Multiple records for one staff ID must become ONE person, not multiple
   // ranks. Never combine different staff who happen to share a name.
@@ -13800,7 +14282,10 @@ function renderPartnerRankingOnlyPanel(){
   appendVerifiedCountRankRow(rankings,{name:row.name,count:row.n,rank});
   previous=row.n;
  }
- if(!rows.length)partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
+ for(const name of notReportedTeams)
+  partnerMainAppendRow(rankings,name,"未報告（順位なし）");
+ if(!rows.length&&!notReportedTeams.length)
+  partnerMainAppendRow(rankings,"まだ実績がありません","選択日の実績を確認してください");
 }
 
 let partnerSameAppSelectedPanel="record";
@@ -13822,6 +14307,10 @@ function partnerSameAppPositionPanel(name){
  (row[row.length-1]||button).after(detail);
 }
 function partnerSameAppSelectPanel(name){
+ if(!partnerPublishedTabAllowed(name)){
+  partnerInlineStatus("このタブはOwnerから公開されていません。",true);
+  return;
+ }
  if(name==="record"){
   // The form is permanently mounted below the daily summary; this card is a
   // shortcut, not a toggle. Ranking/detail panels remain independently open.
@@ -13854,7 +14343,9 @@ function partnerSameAppSelectPanel(name){
  if(safeAccount)safeAccount.hidden=name!=="account";
  pInline("partnerRankingHeading").textContent=
   ({individual:"🏆 個人ランキング",product:"📦 商材別ランキング",
-   team:"👥 班ランキング"}[name]||"ランキング");
+   team:"👥 班ランキング"}[name]||"ランキング")+
+  (["individual","product","team"].includes(name)&&
+   NICO_SAME_APP_JOINT_HTTP_ENABLED!==true?"（協力店内・件数のみ）":"");
  for(const nav of ["partnerSameAppNavigation","partnerManagementTabs"]){
   pInline(nav).querySelectorAll("[data-partner-panel]").forEach(button=>{
    const selected=button.dataset.partnerPanel===name;
@@ -13863,20 +14354,43 @@ function partnerSameAppSelectPanel(name){
   });
  }
  partnerSameAppPositionPanel(name);
+ if(partnerInlineData&&partnerOptionalPublicationProtectionActive()&&
+    ["report","daily","history","goal"].includes(name))
+  void loadPartnerPublishedOptionalPanel(name);
  // Never reset unsubmitted two-column inputs by changing the dashboard tab.
  if(partnerInlineData&&["individual","product","team"].includes(name)){
   renderPartnerRankingOnlyPanel();
-  void loadSharedDailyStandings("partner");
+  if(partnerMainCodeActive()&&NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)
+   pInline("partnerSharedRankingsStatus").textContent=
+    "合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。";
+  else void loadSharedDailyStandings("partner");
  }
- // Partner's own saved team/people are already rendered from getPartnerWorkspace.
- // Do not load unrelated companies for this detail tab or expose finance data.
- if(partnerInlineData&&name==="detail")pInline("pInlineTeamDetails").hidden=false;
- if(partnerInlineData&&name==="history")
+ // Before cutover, the original own-team detail remains unchanged. Once the
+ // verified joint endpoint is released, open its Owner-published count-only
+ // resource on first tap; do not require a second Refresh tap or duplicate
+ // the old own-team detail against the same published figures.
+ if(partnerInlineData&&name==="detail"){
+  const oldDetail=pInline("pInlineTeamDetails");
+  if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true){
+   const oldCard=oldDetail.closest(".p-inline-card");
+   if(oldCard)oldCard.hidden=true;
+   const published=pInline("partnerSharedDetailTree").closest(".p-inline-card");
+   if(published){
+    const heading=published.querySelector("h3");
+    if(heading)heading.textContent="公開済み協力店の班詳細（件数のみ）";
+   }
+   oldDetail.hidden=true;
+   void loadSharedDailyStandings("partnerDetail",true);
+  }else oldDetail.hidden=false;
+ }
+ if(partnerInlineData&&name==="history"&&
+    !partnerOptionalPublicationProtectionActive())
   void loadPartnerRevisionHistory();
 }
 // Mirror the original dashboard toggle: a second tap closes the same detail.
 // Hide without removing its DOM, preserving unsaved two-column entries.
 function partnerSameAppTogglePanel(name){
+ if(!partnerPublishedTabAllowed(name))return;
  if(name==="record"){partnerSameAppSelectPanel("record");return;}
  const detail=pInline("partnerSameAppDashboardDetails");
  if(partnerSameAppSelectedPanel===name&&!detail.hidden){
@@ -13926,11 +14440,54 @@ function partnerInlineFillSelect(id,items,label,preferred){
  if(items.some(x=>x.id===pick))select.value=pick;
  return select.value;
 }
+/**
+ * Partner count-entry picker mirrors the internal company -> team -> person
+ * hierarchy, but uses ONLY the already verified count-only workspace snapshot.
+ * Keep actual staff IDs as option values. Identical names remain distinct and
+ * saved teamIdSnapshot is NEVER rewritten when a person changes team.
+ */
+function partnerInlineFillGroupedStaff(staff,teams,companyName){
+ const select=pInline("pInlineStaff"),before=select.value;
+ const teamById=new Map(teams.map(t=>[t.id,t]));
+ const groups=new Map();
+ select.replaceChildren();
+ for(const person of staff){
+  const team=teamById.get(person.teamId);
+  const groupKey=team?.id||"__unverified_team__";
+  const groupName=companyName+" → "+(team?.name||"所属班未確認");
+  let group=groups.get(groupKey);
+  if(!group){
+   group=document.createElement("optgroup");
+   group.label=groupName;
+   groups.set(groupKey,group);
+   select.append(group);
+  }
+  const option=document.createElement("option");
+  option.value=person.id;
+  option.textContent=person.name;
+  group.append(option);
+ }
+ if(staff.some(person=>person.id===before))select.value=before;
+ return select.value;
+}
+// Only a new server-issued, verified Owner catalog may retire the old private
+// product editor. Until then the existing user-facing entry paths MUST remain
+// available to avoid stopping reporting or destroying historical input support.
+function partnerUsesVerifiedOwnerCatalog(snap){
+ return snap?.sharedCatalogMode==="owner-products-count-only-v1"&&
+  snap?.sharedCatalogVerified===true;
+}
 function renderPartnerPrivateProductCatalog(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
- const editable=["owner","leader"].includes(snap.role);
+ // Once the server provides the shared product publication allowlist,
+ // partner-custom catalog edits are disabled in the unified count UI.
+ // Existing old private entries and products remain untouched and readable.
+ const sharedMode=partnerUsesVerifiedOwnerCatalog(snap);
+ const editable=["owner","leader"].includes(snap.role)&&!sharedMode;
  const add=pInline("pInlineAddPrivateProduct");
+ add.hidden=sharedMode;
+ pInline("pInlineLegacyCustomProductEditor").hidden=sharedMode;
  add.disabled=!editable||partnerInlineBusy;
  const list=pInline("pInlinePrivateProductList");list.replaceChildren();
  const products=Array.isArray(snap.privateProducts)?snap.privateProducts:[];
@@ -13944,7 +14501,7 @@ function renderPartnerPrivateProductCatalog(){
    toggle.className="team-action-button";
    toggle.textContent=product.active?"商材を非表示にする":"再表示する";
    toggle.onclick=()=>partnerInlineRun(async()=>{
-    await partnerInlineManage(partnerInlinePayload({
+    await partnerMainCountManage(partnerInlinePayload({
      action:"setPrivateProduct",productId:product.id,name:product.name,active:!product.active
     }));
     return "商材の表示を更新しました。過去の実績は保持されます。";
@@ -14015,7 +14572,9 @@ function renderPartnerEntryTotals(){
   if(input.dataset.privateCountId)privateTotal+=Number(input.value);
   else shared+=Number(input.value);
  }
- target.textContent="共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
+ target.textContent=partnerUsesVerifiedOwnerCatalog(partnerInlineData)?
+  "共通商材 "+shared+"件｜旧専用商材は過去分を保持":
+  "共有商材 "+shared+"件｜協力店専用 "+privateTotal+"件";
  if(partnerInlineHasUnsavedCounts())
   pInline("pInlineSaveStatus").textContent="未保存の件数があります。「一括登録」を押すまで反映されません。";
 }
@@ -14065,8 +14624,21 @@ function partnerInlineRenderCounts(){
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
  }
+ const unifiedProductList=partnerUsesVerifiedOwnerCatalog(snap);
  for(const product of snap.privateProducts||[]){
   const prior=entry?.privateCounts?.[product.id]??0;
+  if(unifiedProductList){
+   // Never offer newly editable company-private categories once all partners
+   // share the Owner's ON list. Old per-person private entries are shown
+   // as immutable history; submitPartnerWorkspaceCounts preserves originals.
+   if(prior>0){
+    const historical=document.createElement("div");
+    historical.className="p-inline-muted";
+    historical.textContent=product.name+"（旧専用商材の保存済み件数 "+prior+"件・変更不可）";
+    grid.append(historical);
+   }
+   continue;
+  }
   if(!product.active&&prior===0)continue;
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
@@ -14134,8 +14706,7 @@ function partnerInlineRender(){
   }
   list.append(row);
  }
- partnerInlineFillSelect("pInlineStaff",staff,
-  p=>p.name+"（"+(teamById.get(p.teamId)?.name||"未設定")+"）");
+ partnerInlineFillGroupedStaff(staff,allTeams,snap.companyName);
  partnerInlineRenderCounts();
  renderPartnerCountOnlyExtras();
  // Aggregate day data for the detail and daily views. Rankings reuse
@@ -14154,70 +14725,195 @@ function partnerInlineRender(){
  renderPartnerRankingOnlyPanel();
  const details=pInline("pInlineTeamDetails");details.replaceChildren();
  details.className="p-inline-list partner-count-team-grid";
- // Mirror the self dashboard's company heading and team-card grouping.
- const companySection=document.createElement("section");
- companySection.className="p-inline-company-teams partner-count-team-grid";
- const companyHeading=document.createElement("h4");
- companyHeading.textContent="🤝 "+snap.companyName+"｜班別件数";
- companySection.append(companyHeading);details.append(companySection);
- for(const team of allTeams){
-  // Always attribute past entries to the immutable saved team ID, never the
-  // member's current team. Deactivated members' saved counts are retained.
-  const reported=snap.records.filter(e=>e.teamIdSnapshot===team.id);
-  const productTotals=Object.fromEntries(visibleKeys.map(k=>[k,0]));
-  const cb=Object.fromEntries(PARTNER_TEAM_CB_TIERS.map(k=>[k,0]));
-  cb.unclassified=0;
-  const memberRows=[];
-  let total=0;
-  const reportedIds=new Set();
-  for(const entry of reported){
-   reportedIds.add(entry.staffId);total+=entry.totalCount;
-   for(const key of visibleKeys)productTotals[key]+=entry.counts?.[key]||0;
-   const current=entry.cbCounts?.NURO;
-   const assigned=PARTNER_TEAM_CB_TIERS.reduce((sum,k)=>sum+(current?.[k]||0),0);
-   for(const tier of PARTNER_TEAM_CB_TIERS)cb[tier]+=current?.[tier]||0;
-   cb.unclassified+=current?.unclassified??((entry.counts?.NURO||0)-assigned);
-   const person=allStaff.find(p=>p.id===entry.staffId);
-   memberRows.push({name:person?.name||"担当者未確認",
-    totalCount:entry.totalCount,counts:entry.counts,cbCounts:entry.cbCounts,reported:true});
+ // The same index.html and existing versioned count save remain unchanged.
+ // New count-only detail rendering requires the backend's explicit ON allowlist.
+ if(Array.isArray(snap.categories)){
+  const view=buildPartnerUnifiedCountTeamView(snap);
+  const companySection=document.createElement("section");
+  companySection.className="p-inline-company-teams partner-count-team-grid";
+  const companyHeading=document.createElement("h4");
+  companyHeading.textContent="🤝 "+view.companyName+"｜班・メンバー別登録 "+view.companyTotalCount+"件";
+  companySection.append(companyHeading);details.append(companySection);
+  for(const team of [...view.teamDetails,...view.historicalUnassigned]){
+   // Preserve saved teamIdSnapshot and staff ID: never reassign old work.
+   const memberRows=team.members.map(person=>({
+    name:person.name,reported:person.reported,
+    totalCount:person.reported?person.count:0,
+    counts:person.counts||{}
+   }));
+   const status=team.unverified?"（当時の班未確認）":
+     !team.active?"（過去の班）":
+     team.reportStatus==="not_reported"?"｜未報告":"";
+   companySection.append(renderPartnerCountTeamCard(
+    team.name+status,team.totalCount,team.counts,null,memberRows,
+    view.activeInputCategories,
+    {verified:true,currentMemberCount:team.currentMemberCount}
+   ));
   }
-  for(const person of allStaff){
-   if(person.active===true&&person.teamId===team.id&&!reportedIds.has(person.id))
-    memberRows.push({name:person.name,totalCount:0,counts:{},cbCounts:null,reported:false});
+  if(!view.teamDetails.length&&!view.historicalUnassigned.length)
+   partnerMainAppendRow(companySection,"班がまだありません","班の作成後に件数を登録できます");
+  partnerCompactWireTeamSelection(companySection);
+ }else{
+  // Retain exact historical legacy view until server category publication.
+  const details=pInline("pInlineTeamDetails");details.replaceChildren();
+  details.className="p-inline-list partner-count-team-grid";
+  // Mirror the self dashboard's company heading and team-card grouping.
+  const companySection=document.createElement("section");
+  companySection.className="p-inline-company-teams partner-count-team-grid";
+  const companyHeading=document.createElement("h4");
+  companyHeading.textContent="🤝 "+snap.companyName+"｜班別件数";
+  companySection.append(companyHeading);details.append(companySection);
+  for(const team of allTeams){
+   // Always attribute past entries to the immutable saved team ID, never the
+   // member's current team. Deactivated members' saved counts are retained.
+   const reported=snap.records.filter(e=>e.teamIdSnapshot===team.id);
+   const productTotals=Object.fromEntries(visibleKeys.map(k=>[k,0]));
+   const cb=Object.fromEntries(PARTNER_TEAM_CB_TIERS.map(k=>[k,0]));
+   cb.unclassified=0;
+   const memberRows=[];
+   let total=0;
+   const reportedIds=new Set();
+   for(const entry of reported){
+    reportedIds.add(entry.staffId);total+=entry.totalCount;
+    for(const key of visibleKeys)productTotals[key]+=entry.counts?.[key]||0;
+    const current=entry.cbCounts?.NURO;
+    const assigned=PARTNER_TEAM_CB_TIERS.reduce((sum,k)=>sum+(current?.[k]||0),0);
+    for(const tier of PARTNER_TEAM_CB_TIERS)cb[tier]+=current?.[tier]||0;
+    cb.unclassified+=current?.unclassified??((entry.counts?.NURO||0)-assigned);
+    const person=allStaff.find(p=>p.id===entry.staffId);
+    memberRows.push({name:person?.name||"担当者未確認",
+     totalCount:entry.totalCount,counts:entry.counts,cbCounts:entry.cbCounts,reported:true});
+   }
+   for(const person of allStaff){
+    if(person.active===true&&person.teamId===team.id&&!reportedIds.has(person.id))
+     memberRows.push({name:person.name,totalCount:0,counts:{},cbCounts:null,reported:false});
+   }
+   const hasReports=reported.length>0;
+   const card=renderPartnerCountTeamCard(
+    team.name+(team.active?"":"（過去の班）")+(hasReports?"":"｜未報告"),
+    total,productTotals,{NURO:cb},memberRows,visibleKeys,{verified:true});
+   companySection.append(card);
   }
-  const hasReports=reported.length>0;
-  const card=renderPartnerCountTeamCard(
-   team.name+(team.active?"":"（過去の班）")+(hasReports?"":"｜未報告"),
-   total,productTotals,{NURO:cb},memberRows,visibleKeys,{verified:true});
-  companySection.append(card);
+  const unknown=snap.records.filter(e=>!allTeams.some(t=>t.id===e.teamIdSnapshot));
+  if(unknown.length){
+   const total=unknown.reduce((n,e)=>n+e.totalCount,0);
+   partnerMainAppendRow(details,"過去の班が未確認",total+"件（"+unknown.length+"人の報告）");
+  }
+  if(!allTeams.length)partnerMainAppendRow(details,"班がまだありません","班を追加してください");
+  partnerCompactWireTeamSelection(companySection);
+ 
  }
- const unknown=snap.records.filter(e=>!allTeams.some(t=>t.id===e.teamIdSnapshot));
- if(unknown.length){
-  const total=unknown.reduce((n,e)=>n+e.totalCount,0);
-  partnerMainAppendRow(details,"過去の班が未確認",total+"件（"+unknown.length+"人の報告）");
- }
- if(!allTeams.length)partnerMainAppendRow(details,"班がまだありません","班を追加してください");
- partnerCompactWireTeamSelection(companySection);
  const daily=pInline("pInlineDailySummary");daily.replaceChildren();
- partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
-  snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
- for(const [cat,n] of byProduct)if(n)partnerMainAppendRow(daily,cat,n+"件");
+ if(!partnerOptionalPublicationProtectionActive()){
+  partnerMainAppendRow(daily,snap.date+"｜"+snap.companyName,
+   snap.records.reduce((n,e)=>n+e.totalCount,0)+"件");
+  for(const [cat,n] of byProduct)if(n)partnerMainAppendRow(daily,cat,n+"件");
+ }
  const history=pInline("pInlineHistory");history.replaceChildren();
- for(const entry of snap.records){
+ for(const entry of partnerOptionalPublicationProtectionActive()?[]:snap.records){
   const person=allStaff.find(p=>p.id===entry.staffId);
   partnerMainAppendRow(history,(person?.name||"登録者")+"｜第"+entry.version+"版",
    snap.date+"｜"+entry.totalCount+"件");
  }
- if(!snap.records.length)partnerMainAppendRow(history,
-  "この日の登録はありません","未報告は0件とは扱いません");
+ if(!partnerOptionalPublicationProtectionActive()&&!snap.records.length)
+  partnerMainAppendRow(history,"この日の登録はありません",
+   "未報告は0件とは扱いません");
+}
+
+
+async function loadPartnerPublishedOptionalPanel(tab){
+ const uid=auth.currentUser?.uid,day=pInline("pInlineDate").value;
+ const company=partnerInlineWorkspaceCompany,seq=++partnerOptionalTabGeneration;
+ const snap=partnerInlineData;
+ const stillCurrent=()=>uid===auth.currentUser?.uid&&
+  company===partnerInlineWorkspaceCompany&&
+  day===pInline("pInlineDate").value&&
+  seq===partnerOptionalTabGeneration&&
+  tab===partnerSameAppSelectedPanel&&
+  !pInline("partnerSameAppDashboardDetails").hidden;
+ const report=pInline("pPartnerReportText"),daily=pInline("pInlineDailySummary");
+ const history=pInline("pInlineHistory"),goal=pInline("pPartnerGoalResult");
+ if(tab==="report")report.value="";
+ if(tab==="daily")daily.replaceChildren();
+ if(tab==="history")history.replaceChildren();
+ if(tab==="goal"){partnerOptionalVerifiedGoal=null;goal.textContent="公開設定を確認中…";}
+ if(NICO_PARTNER_TAB_UI_ENABLED!==true||
+    NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true||
+    !partnerPublishedTabIds?.has(tab)||!snap||!uid){
+  if(tab==="goal")goal.textContent="このタブはまだ公開されていません。";
+  return false;
+ }
+ try{
+  const {createPartnerPublishedOptionalTabClient}=await import(
+   "./ranking/published-partner-optional-client.mjs");
+  if(!stillCurrent())return false;
+  const loader=createPartnerPublishedOptionalTabClient({
+   enabled:true,serverGuardVerified:true,auth,functions:partnerCountFunctions,
+   httpsCallable,getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
+  });
+  const verified=await loader.load({tab,date:day});
+  if(!stillCurrent()||verified.companyName!==snap.companyName)return false;
+  if(tab==="report")report.value=verified.lines.join("\n");
+  if(tab==="daily"){
+   partnerMainAppendRow(daily,day+"｜"+verified.companyName,
+    verified.reportStatus+"｜"+verified.totalCount+"件");
+   for(const product of verified.products)
+    if(product.count)partnerMainAppendRow(daily,product.name,product.count+"件");
+  }
+  if(tab==="goal"){
+   partnerOptionalVerifiedGoal={uid,company,date:day,total:verified.actualCount};
+   renderPartnerGoalEstimate();
+  }
+  if(tab==="history"){
+   const allowed=new Map((snap.staff||[]).map(p=>[p.id,p]));
+   const rows=document.createDocumentFragment();
+   for(const event of verified.audits){
+    if(!allowed.has(event.staffId))throw Error("HISTORY_STAFF_SCOPE_UNVERIFIED");
+    const row=document.createElement("details");row.className="p-inline-row";
+    const title=document.createElement("summary");
+    title.textContent=event.staffName+"｜第"+event.version+"版｜"+
+     event.previousTotalCount+"件 → "+event.totalCount+"件";
+    row.append(title);
+    for(const category of snap.categories){
+     const before=event.previousCounts[category],after=event.counts[category];
+     if(before!==after)
+      partnerMainAppendRow(row,category,before+"件 → "+after+"件");
+    }
+    const saved=snap.records?.find(x=>x.staffId===event.staffId);
+    if(allowed.get(event.staffId).active&&saved){
+     const edit=document.createElement("button");edit.type="button";
+     edit.className="team-action-button";
+     edit.textContent="✏️ 最新の実績を修正";
+     edit.onclick=()=>void partnerInlineOpenHistoryCorrection(event.staffId,day);
+     row.append(edit);
+    }
+    rows.append(row);
+   }
+   history.replaceChildren(rows);
+   if(!verified.audits.length)partnerMainAppendRow(history,
+    "この日の登録履歴はありません","未報告は0件とは扱いません");
+  }
+  return true;
+ }catch{
+  if(!stillCurrent())return false;
+  if(tab==="report")report.value="";
+  if(tab==="daily"){daily.replaceChildren();
+   partnerMainAppendRow(daily,"日別情報を確認できません","公開設定・所属を確認してください");}
+  if(tab==="history"){history.replaceChildren();
+   partnerMainAppendRow(history,"登録履歴を確認できません",
+    "公開設定・所属を確認してください");}
+  if(tab==="goal"){partnerOptionalVerifiedGoal=null;
+   goal.textContent="目標日割りを確認できません。";}
+  return false;
+ }
 }
 
 // Open a saved person's latest counts directly from the history, like the
 // original sales history editor. Historical audit entries remain append-only:
 // never re-submit an older revision as if it were the current version.
 async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
- if(partnerInlineBusy||!partnerInlineData||!auth.currentUser?.uid)return;
- const uid=auth.currentUser.uid,workspace=partnerInlineWorkspaceCompany;
+ if(partnerInlineBusy||!partnerInlineData||!partnerInlineIdentity())return;
+ const identity=partnerInlineIdentity(),workspace=partnerInlineWorkspaceCompany;
  if(partnerInlineData.date!==expectedDate||
     pInline("pInlineDate").value!==expectedDate){
   partnerInlineStatus("履歴の日付が変更されました。登録履歴を開き直してください。",true);
@@ -14232,8 +14928,8 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
   // other leaders' later changes. submit() still enforces expectedVersion.
   const payload={date:expectedDate};
   if(workspace)payload.workspaceCompanyId=workspace;
-  const fresh=(await readPartnerWorkDay(payload)).data;
-  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany||
+  const fresh=(await partnerMainCountRead(payload)).data;
+  if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany||
      expectedDate!==pInline("pInlineDate").value)return;
   if(!fresh||fresh.date!==expectedDate||
      fresh.companyName!==partnerInlineData.companyName||
@@ -14262,7 +14958,7 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
   partnerInlineStatus("履歴の実績を編集できます。保存前の内容は変更されていません。");
   pInline("partnerPanelRecord").scrollIntoView({behavior:"smooth",block:"start"});
  }catch(error){
-  if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)return;
+  if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany)return;
   partnerInlineStatus("実績の編集画面を開けません。最新の所属・履歴を更新してください。入力内容は変更していません。",true);
  }finally{
   // Do not re-render after setting the edit guidance: that would erase the
@@ -14272,8 +14968,13 @@ async function partnerInlineOpenHistoryCorrection(staffId,expectedDate){
 }
 
 async function loadPartnerRevisionHistory(){
- const snap=partnerInlineData,uid=auth.currentUser?.uid;
- if(!snap||!uid)return;
+ // The old includeAuditHistory flag does NOT implement a server-side
+ // history authorization. Never use it once publication controls are active.
+ if(partnerOptionalPublicationProtectionActive()){
+  void loadPartnerPublishedOptionalPanel("history");return;
+ }
+ const snap=partnerInlineData,identity=partnerInlineIdentity();
+ if(!snap||!identity)return;
  const date=pInline("pInlineDate").value;
  const workspace=partnerInlineWorkspaceCompany;
  const seq=++partnerAuditNonce,area=pInline("pInlineHistory");
@@ -14282,8 +14983,8 @@ async function loadPartnerRevisionHistory(){
  try{
   const payload={date,includeAuditHistory:true};
   if(workspace)payload.workspaceCompanyId=workspace;
-  const reply=(await readPartnerWorkDay(payload)).data;
-  if(seq!==partnerAuditNonce||uid!==auth.currentUser?.uid||
+  const reply=(await partnerMainCountRead(payload)).data;
+  if(seq!==partnerAuditNonce||identity!==partnerInlineIdentity()||
      date!==pInline("pInlineDate").value||
      workspace!==partnerInlineWorkspaceCompany)return;
   if(reply?.date!==date||reply?.companyName!==snap.companyName||
@@ -14350,20 +15051,21 @@ async function loadPartnerRevisionHistory(){
   if(!reply.audits.length)partnerMainAppendRow(area,
     "この日の訂正履歴はありません","登録のない日は未報告として扱います。");
  }catch(error){
-  if(seq!==partnerAuditNonce||uid!==auth.currentUser?.uid)return;
+  if(seq!==partnerAuditNonce||identity!==partnerInlineIdentity())return;
   area.replaceChildren();
   partnerMainAppendRow(area,"履歴を検証できません","日付・権限・通信を確認して更新してください。");
  }
 }
 async function partnerInlineFetch(){
- if(!auth.currentUser?.emailVerified)return;
- const seq=++partnerInlineNonce,uid=auth.currentUser.uid;
+ const identity=partnerInlineIdentity();
+ if(!identity)return false;
+ const seq=++partnerInlineNonce;
  partnerInlineStatus("件数を読み込み中...");
  try{
   const payload={date:pInline("pInlineDate").value};
   if(partnerInlineWorkspaceCompany)payload.workspaceCompanyId=partnerInlineWorkspaceCompany;
-  const snap=(await readPartnerWorkDay(payload)).data;
-  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return;
+  const snap=(await partnerMainCountRead(payload)).data;
+  if(seq!==partnerInlineNonce||partnerInlineIdentity()!==identity)return;
   if(!snap||!["owner","leader","member"].includes(snap.role)||
      !Array.isArray(snap.teams)||!Array.isArray(snap.staff)||
      !Array.isArray(snap.categories)||!Array.isArray(snap.records)||
@@ -14374,19 +15076,48 @@ async function partnerInlineFetch(){
       new Set(snap.enabledCategories).size!==snap.enabledCategories.length||
       snap.enabledCategories.some(key=>!snap.categories.includes(key))))
    throw Error("partner_publication_schema");
+  partnerOptionalVerifiedGoal=null;
+  ++partnerOptionalTabGeneration;
   partnerInlineData=snap;partnerInlineRender();
+  // The existing Refresh button is the recovery path after a temporary
+  // code-session API outage. Only this fresh server-verified GET may restore
+  // login/connection status and re-enable a valid count form.
+  if(partnerMainCodeActive()){
+   loginStatus.textContent="ログイン済み・協力店";
+   databaseStatus.textContent="件数API接続済み";
+  }
+  void refreshPartnerPublishedTabNavigation();
   partnerInlineStatus("最新の件数を表示しています。");
   // Date changes and saved corrections must refresh the shared read-only
   // scoreboard currently on screen; never reuse the previous day's figures.
-  if(["individual","product","team"].includes(partnerSameAppSelectedPanel))
+  if(partnerMainCodeActive()&&
+     ["individual","product","team"].includes(partnerSameAppSelectedPanel))
+   pInline("partnerSharedRankingsStatus").textContent=
+    "合同ランキングは未公開です。現在の順位はこの協力店内の保存済み件数のみです。";
+  if(["individual","product","team"].includes(partnerSameAppSelectedPanel)&&
+     (!partnerMainCodeActive()||NICO_SAME_APP_JOINT_HTTP_ENABLED===true))
    void loadSharedDailyStandings("partner",true);
-  else if(partnerSameAppSelectedPanel==="detail")
+  else if(partnerSameAppSelectedPanel==="detail"&&
+     (!partnerMainCodeActive()||NICO_SAME_APP_JOINT_HTTP_ENABLED===true))
    void loadSharedDailyStandings("partnerDetail",true);
+  else if(partnerOptionalPublicationProtectionActive()&&
+     ["report","daily","history","goal"].includes(partnerSameAppSelectedPanel))
+   void loadPartnerPublishedOptionalPanel(partnerSameAppSelectedPanel);
   else if(partnerSameAppSelectedPanel==="history")
    void loadPartnerRevisionHistory();
   return true;
  }catch(e){
-  if(seq!==partnerInlineNonce||auth.currentUser?.uid!==uid)return false;
+  if(seq!==partnerInlineNonce||partnerInlineIdentity()!==identity)return false;
+  if(partnerMainCodeActive()&&
+     ["functions/unauthenticated","functions/permission-denied"].includes(e?.code)){
+   partnerMainCodeForget();
+   resetPartnerInline();
+   appScreen.style.display="none";
+   authScreen.style.display="block";
+   loginStatus.textContent="会社コードの有効期限・権限を確認してください";
+   databaseStatus.textContent="件数API認証失効";
+   return false;
+  }
   partnerInlineData=null;pInline("pInlineSave").disabled=true;
   pInline("pInlineRanking").replaceChildren();
   pInline("pInlineTeams").replaceChildren();pInline("pInlinePeople").replaceChildren();
@@ -14402,6 +15133,52 @@ pInline("pInlineReturnToOwnCompany").onclick=()=>{
  // The normal internal app STILL checks fresh server-side finance permissions.
  location.replace(new URL("/",location.origin).href);
 };
+async function openSameAppCompanyCodeWorkspace(){
+ const identity=partnerInlineIdentity();
+ if(!identity||!partnerMainCodeActive())return false;
+ // Stop every old finance listener. Code principal NEVER starts the internal app.
+ await stopRealtimeListeners();
+ if(identity!==partnerInlineIdentity())return false;
+ resetPartnerInline();
+ currentUser=null;currentUserData=null;currentCompanyData=null;
+ partnerInlineWorkspaceCompany="";
+ verificationScreen.style.display="none";
+ companySetupScreen.style.display="none";
+ authScreen.style.display="none";
+ appScreen.dataset.partnerCountOnly="true";
+ appScreen.style.display="block";
+ pInline("partnerInlineWorkspace").hidden=false;
+ pInline("pInlineReturnToOwnCompany").hidden=true;
+ userName.textContent="協力店";
+ userEmail.textContent="";
+ userRole.textContent="協力店・件数管理";
+ loginStatus.textContent="会社コードの件数認証を確認中";
+ databaseStatus.textContent="件数API確認中";
+ pInline("pInlineDate").value=partnerMainDate();
+ pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
+ partnerInlineEditingStaffId="";
+ if(!mountPartnerCanonicalNavigation()){
+  loginStatus.textContent="共通画面を確認できません";return false;
+ }
+ mountPartnerSafeManagementMenu();
+ partnerSameAppSelectPanel("record");
+ const ready=await partnerInlineFetch();
+ if(identity!==partnerInlineIdentity())return false;
+ if(ready!==true){
+  loginStatus.textContent="会社コードの件数権限を確認できません";
+  databaseStatus.textContent="件数API認証未確認";
+  pInline("pInlineSave").disabled=true;
+  return false;
+ }
+ userName.textContent=partnerInlineData.companyName;
+ userRole.textContent=partnerInlineData.role==="owner"?"協力店管理者・件数のみ":
+  "協力店・件数のみ";
+ loginStatus.textContent="ログイン済み・協力店";
+ databaseStatus.textContent="件数API接続済み";
+ return true;
+}
+// Existing Firebase email partner behavior remains untouched.
+
 async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  if(!user?.emailVerified||!partnerMainValidId(user.uid))return;
  // Do not load legacy sales products, records, prices, or Firestore listeners.
@@ -14425,8 +15202,8 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  userName.textContent=user.displayName||"協力店スタッフ";
  userEmail.textContent=user.email||"";
  userRole.textContent="協力店・件数管理";
- loginStatus.textContent="ログイン済み・協力店";
- databaseStatus.textContent="件数API";
+ loginStatus.textContent="協力店の件数認証を確認中";
+ databaseStatus.textContent="件数API確認中";
  pInline("pInlineDate").value=partnerMainDate();
  pInline("pInlineRecordDate").value=pInline("pInlineDate").value;
  partnerInlineEditingStaffId="";
@@ -14436,6 +15213,15 @@ async function openSameAppPartnerWorkspace(user,workspaceCompanyId=""){
  const loaded=await partnerInlineFetch();
  if(auth.currentUser?.uid!==user.uid||
     partnerInlineWorkspaceCompany!==workspaceRequested)return;
+ // An Auth session alone is NOT proof that a partner may submit counts.
+ // Show "logged in" only after the count-only callable verifies scope.
+ if(loaded===true){
+  loginStatus.textContent="ログイン済み・協力店";
+  databaseStatus.textContent="件数API接続済み";
+ }else{
+  loginStatus.textContent="協力店の件数利用を確認できません";
+  databaseStatus.textContent="件数API認証未確認";
+ }
  if(!workspaceRequested)return;
  if(loaded===true){
   clearOwnCompanyPreference(user.uid);
@@ -14459,10 +15245,20 @@ function partnerSavedCountReadbackState(verified,expected){
  if(record.version!==expected.expectedVersion+1)return "unknown";
  const countOk=expected.categories.every(key=>
    Number.isSafeInteger(record.counts?.[key])&&record.counts[key]===expected.counts[key]);
- const privateOk=Object.keys(expected.privateCounts).every(id=>
-   (record.privateCounts?.[id]??0)===expected.privateCounts[id]);
+ // The existing server retains retired private products during ON-only
+ // corrections. A successful standard-SKU readback must not conceal a lost
+ // private count, added phantom ID, or corrupted private total.
+ const privateExpected={...expected.previousPrivateCounts,...expected.privateCounts};
+ const privateSaved=record.privateCounts;
+ const privateOk=privateSaved!==null&&typeof privateSaved==="object"&&
+   !Array.isArray(privateSaved)&&
+   Object.keys(privateSaved).length===Object.keys(privateExpected).length&&
+   Object.entries(privateExpected).every(([id,n])=>
+     Number.isSafeInteger(privateSaved[id])&&privateSaved[id]===n);
+ const privateTotal=Object.values(privateExpected).reduce((sum,n)=>sum+n,0);
  const total=Object.values(expected.counts).reduce((sum,n)=>sum+n,0);
- return record.totalCount===total&&record.workLocation===expected.workLocation&&
+ return record.totalCount===total&&record.privateTotalCount===privateTotal&&
+   record.workLocation===expected.workLocation&&
    (expected.expectedVersion!==0||record.teamIdSnapshot===expected.workTeamId)&&
    countOk&&privateOk?"saved":"unknown";
 }
@@ -14496,7 +15292,11 @@ function partnerCountSaveFailureMessage(error){
 async function partnerInlineRun(work){
  const refresh=arguments[1]?.refresh!==false;
  if(partnerInlineBusy||!partnerInlineData)return;
- const uid=auth.currentUser?.uid;
+ const identity=partnerInlineIdentity();
+ if(!identity)return;
+ const sessionEpoch=partnerInlineSessionEpoch;
+ const sameSession=()=>identity===partnerInlineIdentity()&&
+  sessionEpoch===partnerInlineSessionEpoch;
  let completed=false,resultMessage="";
  partnerInlineBusy=true;
  if(arguments[1]?.kind==="save"){
@@ -14515,16 +15315,21 @@ async function partnerInlineRun(work){
  pInline("pInlineSave").disabled=true;
  try{
   const message=await work();
-  if(uid!==auth.currentUser?.uid)return;
+  if(!sameSession())return;
   // Only a confirmed write refreshes the count fields; do not erase inputs
   // when a save or invitation fails and the user needs to retry.
   if(refresh){
    ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
-   if(!await partnerInlineFetch())throw Error("refresh_after_write");
+   if(!await partnerInlineFetch()){
+    if(!sameSession())return;
+    throw Error("refresh_after_write");
+   }
+   if(!sameSession())return;
   }
   completed=true;resultMessage=message||"更新しました。";
   if(partnerInlineData)partnerInlineStatus(resultMessage);
  }catch(error){
+  if(!sameSession())return;
   const conflict=error?.code==="functions/aborted"||error?.message==="aborted";
   const message=conflict?
    "別の担当者が先に件数を更新した可能性があります。上書きせず、入力内容を控えて「更新」で最新件数を確認してください。":
@@ -14540,9 +15345,12 @@ async function partnerInlineRun(work){
    feedback.dataset.result="error";
   }
  }finally{
+  // Never re-enable a newly signed-in person's input controls or mark their
+  // in-flight save idle when an old company's request resolves later.
+  if(!sameSession())return;
   locks.forEach((node,i)=>{node.disabled=prior[i];});
   partnerInlineBusy=false;
-  if(partnerInlineData&&uid===auth.currentUser?.uid){
+  if(partnerInlineData){
    if(completed){
     // Creating an invitation is not a count write: do not reset unfinished input.
     if(refresh)partnerInlineRenderCounts();
@@ -14562,6 +15370,10 @@ async function partnerInlineRun(work){
  }
 }
 function partnerInlinePayload(data){
+ if(partnerMainCodeToken){
+  if(!partnerMainCodeActive())throw Error("code_auth_mixed");
+  return {...data,codeSessionToken:partnerMainCodeToken};
+ }
  return {...data,...(partnerInlineWorkspaceCompany?{workspaceCompanyId:partnerInlineWorkspaceCompany}:{})};
 }
 function partnerInlineChangeDate(which){
@@ -14620,14 +15432,14 @@ pInline("pInlineAddTeam").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const name=pInline("pInlineTeamName").value.trim();
  if(!name)throw Error("name");
- await partnerInlineManage(partnerInlinePayload({action:"addTeam",name}));
+ await partnerMainCountManage(partnerInlinePayload({action:"addTeam",name}));
  pInline("pInlineTeamName").value="";return "班を作成しました。";
 });
 pInline("pInlineMove").onclick=()=>partnerInlineRun(async()=>{
  if(!["owner","leader"].includes(partnerInlineData.role))throw Error("role");
  const staffId=pInline("pInlineMoveStaff").value,teamId=pInline("pInlineManageTeam").value;
  if(!partnerMainValidId(staffId)||!partnerMainValidId(teamId))throw Error("input");
- await partnerInlineManage(partnerInlinePayload({action:"moveStaff",staffId,teamId}));
+ await partnerMainCountManage(partnerInlinePayload({action:"moveStaff",staffId,teamId}));
  return "班を変更しました。過去の実績の班は保持されます。";
 });
 // Only archive email-less managed staff. Never delete a registered
@@ -14646,7 +15458,7 @@ async function partnerInlineRemoveManagedStaff(staffId,name){
     !window.confirm("入力途中の件数が残っています。未保存の入力を破棄して班員を削除しますか？"))
   return;
  await partnerInlineRun(async()=>{
-  const result=(await partnerInlineManage(partnerInlinePayload({
+  const result=(await partnerMainCountManage(partnerInlinePayload({
    action:"removeManaged",staffId
   }))).data;
   if(result?.archived!==true||result.staffId!==staffId)
@@ -14660,7 +15472,7 @@ pInline("pInlineAddManaged").onclick=()=>partnerInlineRun(async()=>{
  const name=pInline("pInlineManagedName").value.trim();
  const teamId=pInline("pInlineManageTeam").value;
  if(!name||!partnerMainValidId(teamId))throw Error("input");
- await partnerInlineManage(partnerInlinePayload({action:"addManaged",name,teamId}));
+ await partnerMainCountManage(partnerInlinePayload({action:"addManaged",name,teamId}));
  pInline("pInlineManagedName").value="";return "メールなしのメンバーを追加しました。";
 });
 // Invite credentials stay in memory only; never persist links or tokens in Firestore/UI logs.
@@ -14690,7 +15502,7 @@ async function partnerLeaderSendInviteEmail(invite){
  if(!Number.isFinite(latest.expiresAt)||Date.now()>=latest.expiresAt){
   // Never resend an expired token. Reissue with the same role/team/email after
   // server-side company and leader checks; the previous invitation is not changed.
-  const response=(await partnerInlineManage(partnerInlinePayload({
+  const response=(await partnerMainCountManage(partnerInlinePayload({
    action:"createInvite",email:latest.email,teamId:latest.teamId,role:latest.role
   }))).data;
   if(!/^[A-Za-z0-9_-]{43}$/.test(response?.token||"")||
@@ -14757,7 +15569,7 @@ pInline("pInlineCreateInvite").onclick=()=>partnerInlineRun(async()=>{
  partnerLeaderInviteFormFeedback("招待リンクを作成しています…");
  let response;
  try{
-  response=(await partnerInlineManage(partnerInlinePayload({
+  response=(await partnerMainCountManage(partnerInlinePayload({
    action:"createInvite",email,teamId,role
   }))).data;
  }catch(error){
@@ -14813,8 +15625,11 @@ pInline("pInlineResendInvite").onclick=async()=>{
 };
 pInline("pInlineAddPrivateProduct").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,name=pInline("pInlineCustomName").value.trim();
+ // The existing private-product management API is not part of the shared
+ // published catalog. Do not call it from the unified Owner-managed UI.
+ if(partnerUsesVerifiedOwnerCatalog(snap))throw Error("shared_catalog_owner_only");
  if(!["owner","leader"].includes(snap.role)||!name||name.length>80)throw Error("product");
- await partnerInlineManage(partnerInlinePayload({action:"addPrivateProduct",name}));
+ await partnerMainCountManage(partnerInlinePayload({action:"addPrivateProduct",name}));
  pInline("pInlineCustomName").value="";
  return "商材を追加しました。実績入力に反映します。";
 });
@@ -14829,14 +15644,19 @@ function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLoca
  // A first-ever zero-count report is still a legitimate new record.
  const previous=snap?.records?.find(row=>row.staffId===staffId);
  if(!previous||String(previous.workLocation||"")!==workLocation)return false;
- return snap.categories.every(key=>previous.counts?.[key]===counts[key])&&
+ // OFF categories are immutable history, not a user's current editable
+ // fields. The server preserves their old numbers during an ON-only save.
+ const enabled=snap.enabledCategories??snap.categories;
+ if(!Array.isArray(enabled)||enabled.some(k=>!snap.categories.includes(k)))
+  return false;
+ return enabled.every(key=>previous.counts?.[key]===counts[key])&&
   Object.entries(privateCounts).every(([id,count])=>
    (previous.privateCounts?.[id]??0)===count);
 }
 pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const snap=partnerInlineData,staffId=pInline("pInlineStaff").value;
- const date=snap?.date,workspace=partnerInlineWorkspaceCompany,uid=auth.currentUser?.uid;
- if(!snap||!uid||date!==pInline("pInlineDate").value||
+ const date=snap?.date,workspace=partnerInlineWorkspaceCompany,identity=partnerInlineIdentity();
+ if(!snap||!identity||date!==pInline("pInlineDate").value||
     date!==pInline("pInlineRecordDate").value)throw Error("date_changed");
  if(!snap.staff.some(p=>p.id===staffId&&p.active))throw Error("staff");
  const workLocation=pInline("pInlineWorkLocation").value.trim();
@@ -14856,6 +15676,11 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   counts[key]=n;
  }
  const before=snap.records.find(x=>x.staffId===staffId);
+ // The server retains OFF historical counts in its own trusted transaction,
+ // but deliberately REDACTS OFF categories to zero in getPartnerWorkspace.
+ // Compare only the authenticated count-only GET projection, not inaccessible
+ // original values; the server's immutable OFF guard is independently tested.
+ // A nonzero OFF value in the response fails the exact count read-back.
  const workTeamId=pInline("pInlineWorkingTeam").value;
  if(!before&&(!partnerMainValidId(workTeamId)||
     !snap.teams.some(t=>t.id===workTeamId&&t.active===true)||
@@ -14882,24 +15707,25 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const wireCounts=Object.fromEntries(Object.entries(counts));
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
  const expected={date,staffId,counts,workLocation,workTeamId,
-  privateCounts,expectedVersion:before?.version??0,
+  privateCounts,previousPrivateCounts:before?.privateCounts??{},
+  expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
  try{
-  result=(await partnerInlineSave(partnerInlinePayload({
+  result=(await partnerMainCountSubmit(partnerInlinePayload({
    date,staffId,counts:wireCounts,workLocation,
    ...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,
    expectedVersion:expected.expectedVersion
   }))).data;
  }catch(error){saveError=error;}
- if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+ if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
  // Even on an uncertain callable response, reconcile by GET only.
  // No automatic second save; protects audit versions and double counting.
  let verified=null;
- try{verified=(await readPartnerWorkDay(partnerInlinePayload({date}))).data;}
+ try{verified=(await partnerMainCountRead(partnerInlinePayload({date}))).data;}
  catch(error){if(!saveError)throw Error("save_verify");}
- if(uid!==auth.currentUser?.uid||workspace!==partnerInlineWorkspaceCompany)
+ if(identity!==partnerInlineIdentity()||workspace!==partnerInlineWorkspaceCompany)
   throw Error("save_verify");
  const readback=partnerSavedCountReadbackState(verified,expected);
  // Positive feedback ONLY when the saved version matches the server GET.
@@ -15468,6 +16294,11 @@ onAuthStateChanged(
     }
 
     if (user) {
+      if(partnerMainCodeToken){
+        partnerMainCodeForget();
+        resetPartnerInline();
+        appScreen.style.display="none";
+      }
 
       currentUser =
         user;
@@ -15513,6 +16344,9 @@ onAuthStateChanged(
             typeof error?.code==="string"?error.code:"unavailable");
         }
       }
+      // Discovery may reject after the user already logged out or switched
+      // accounts. Never start a stale workspace or finance-capable bootstrap.
+      if(auth.currentUser?.uid!==user.uid)return;
       if(partnerWorkspaceId){
         if(!partnerMainValidId(partnerWorkspaceId)){
           showLegacyFinanceEntryBlocked("blocked");
@@ -15526,6 +16360,23 @@ onAuthStateChanged(
       );
 
     } else {
+      // A verified code principal uses the exact same DOM count workspace.
+      // No Firestore money user/profile/member lookup is executed in this path.
+      if(partnerMainCodeActive()){
+        if(nicoMainCodeLoginBusy)return;
+        if(await openSameAppCompanyCodeWorkspace())return;
+        // An unavailable count API is NOT proof of a revoked code session.
+        // Keep the opaque bearer for an explicit Refresh retry, but never
+        // restore cached count cards or enable Submit before a verified GET.
+        // An invalid/revoked bearer is removed inside partnerInlineFetch().
+        if(partnerMainCodeActive()){
+          pInline("pInlineSave").disabled=true;
+          loginStatus.textContent="件数サービスの応答待ちです。ログイン情報は保持しています。更新で再確認してください。";
+          databaseStatus.textContent="件数API未確認・再確認待ち";
+          return;
+        }
+        partnerMainCodeForget();
+      }
 
       if(currentUser?.uid)clearOwnCompanyPreference(currentUser.uid);
       resetPartnerInline();

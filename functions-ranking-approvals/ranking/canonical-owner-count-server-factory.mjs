@@ -19,26 +19,40 @@ import {createCanonicalCountTransactionReader}
 import {createAtomicOwnerPublicationReader,createZeroSetupCountPublicationReader}
  from "./owner-product-visibility-in-atomic-tx.mjs";
 import {createFreshCombinedRankingContext} from "./trusted-combined-ranking-context.mjs";
+import {createPartnerPublishedTabPolicyReader}
+ from "./published-partner-tab-server.mjs";
 import {createRequire} from "node:module";
 const {makeWorkspaceIdentity}=createRequire(import.meta.url)(
  "../functions-partner-workspace/workspace-identity.cjs"
 );
 
 export function createCanonicalOwnerCountSnapshot({
- db,FieldValue,clock,verifyCountViewer,zeroSetupLink=false
+ db,FieldValue,clock,verifyCountViewer,zeroSetupLink=false,
+ enforcePartnerTabPublication=false
 }={}){
  if(!db||!FieldValue||
     typeof db.collection!=="function"||
     typeof db.runTransaction!=="function"||
     typeof FieldValue.serverTimestamp!=="function")
   throw Error("CANONICAL_OWNER_COUNT_DEPENDENCY_MISSING");
+ // Once the partner tab publication fence is enabled, auto SKU name matching
+ // must ALSO obey the Owner's existing product ON/OFF selection. Both policy
+ // and counts are read in the very same read-only transaction.
+ const enforceOwnerSelection=zeroSetupLink===true&&
+  enforcePartnerTabPublication===true;
  return createStagedAtomicOwnerCountLoader({
   db,
   loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink}),
-  loadPublicationInTransaction:zeroSetupLink===true?
+  loadPublicationInTransaction:zeroSetupLink===true&&!enforceOwnerSelection?
    createZeroSetupCountPublicationReader({db,verifyCountViewer}):
    createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}),
-  zeroSetupLink
+  // Auto name mapping stays enabled for counts, but there is no unfiltered
+  // zero-settings publication shortcut for a partner-facing release.
+  zeroSetupLink:zeroSetupLink&&!enforceOwnerSelection,
+  enforcePartnerTabPublication,
+  ...(enforcePartnerTabPublication===true?{
+   loadPartnerTabPolicyInTransaction:createPartnerPublishedTabPolicyReader({db})
+  }:{})
  });
 }
 
@@ -47,7 +61,8 @@ export function createCanonicalOwnerCountSnapshot({
  * as a route until the live finance, backing store and rollback proofs pass.
  */
 export function createCanonicalOwnerCountHandler({
- enabled=false,auth,db,FieldValue,clock=()=>new Date(),zeroSetupLink=false
+ enabled=false,auth,db,FieldValue,clock=()=>new Date(),zeroSetupLink=false,
+ enforcePartnerTabPublication=false
 }={}){
  if(enabled!==true)return createStagedOwnerVisibleCountHandler({
   enabled:false
@@ -57,7 +72,7 @@ export function createCanonicalOwnerCountHandler({
   throw Error("CANONICAL_OWNER_COUNT_AUTH_MISSING");
  // Validate every dependency before constructing any request authorizer.
  createCanonicalOwnerCountSnapshot({
-  db,FieldValue,clock,zeroSetupLink,
+  db,FieldValue,clock,zeroSetupLink,enforcePartnerTabPublication,
   // Construction-only dependency check, before Firebase Auth is initialized.
   // This callback can NEVER authorize a request. The real in-transaction
   // workspace identity gate is installed below for every actual invocation.
@@ -76,6 +91,7 @@ export function createCanonicalOwnerCountHandler({
   })({});
  const loadAtomicVerifiedCountSnapshot=({token,workspaceCompanyId,...args})=>
   createCanonicalOwnerCountSnapshot({db,FieldValue,clock,zeroSetupLink,
+   enforcePartnerTabPublication,
    verifyCountViewer:async({tx,context})=>{
     // Re-authorize the exact selected membership/session IN the same
     // transaction as counts and publication; never trust an earlier flag.
@@ -88,6 +104,6 @@ export function createCanonicalOwnerCountHandler({
   })(args);
  return createStagedOwnerVisibleCountHandler({
   enabled:true,auth,db,FieldValue,loadAtomicVerifiedCountSnapshot,loadVerifiedCountContext,
-  zeroSetupLink
+  zeroSetupLink,enforcePartnerTabPublication
  });
 }

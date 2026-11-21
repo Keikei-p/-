@@ -14,25 +14,35 @@ test("a date change during a save verifies the original day without updating the
  let verifiedDate,releases=0;
  const context=vm.createContext({
   $:id=>controls[id],KEYS,values:()=>counts,privateValues:()=>({}),
-  auth:{currentUser:{}},activeCodeSession:"",nonce:1,loading:false,
-  data:{date,records:[]},countDayCache:{clear(){}},
+  auth:{currentUser:{uid:"email-test"}},activeCodeSession:"",
+  workspaceCompanyId:"",pendingPartnerSaveReceipts:new Map(),
+  nonce:1,loading:false,
+  data:{date,companyName:"協力店A",records:[]},countDayCache:{clear(){}},
   save:async input=>{
    assert.equal(input.date,date);
    controls.date.value="2026-11-09";
    context.nonce++; // The new date now owns a pending refresh.
-   return {data:{version:1}};
+   return {data:{saved:true,date,staffId:"staff",version:1}};
   },
   get:async input=>{
    verifiedDate=input.date;
-   return {data:{date,records:[{staffId:"staff",version:1,counts}]}};
+   return {data:{date,companyName:"協力店A",records:[{
+    staffId:"staff",version:1,counts,privateCounts:{}}]}};
   },
   refresh:()=>{releases++},notice:()=>assert.fail("stale success"),fail:e=>{throw e}
  });
- vm.runInContext(page.slice(page.indexOf("async function action(task)"),page.indexOf('$("addPrivateProduct").onclick'))+
+ // Run the actual identity+receipt guard used by the production page, not a
+ // stub that could hide cross-company verification failures.
+ const helperStart=page.indexOf("function currentCountIdentity(){");
+ const helperEnd=page.indexOf("// The server-verified count contract",helperStart);
+ assert(helperStart>0&&helperEnd>helperStart,"count-only save receipt guard missing");
+ vm.runInContext(page.slice(helperStart,helperEnd)+
+  page.slice(page.indexOf("async function action(task)"),page.indexOf('$("addPrivateProduct").onclick'))+
   page.slice(page.indexOf('$("save").onclick='),page.indexOf("const setLoginMode=")),context);
  await controls.save.onclick();
  assert.equal(verifiedDate,date);
  assert.equal(releases,0);
+ assert.equal(context.pendingPartnerSaveReceipts.size,0,"original day receipt verified without duplicate");
  assert.equal(context.loading,true);
 });
 

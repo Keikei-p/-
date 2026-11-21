@@ -1201,3 +1201,39 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 本人の署名・実アカウントでのボタン押下確認は代理しない。公開後のユーザー再確認が必要。
 
 - 2026-11-18: PR #795 の商材使用停止権限Rulesだけについて、GitHub連携で `sales-production-reviewed` を追加。保護チェック評価用であり、本番公開・署名を意味しない。追加後のコミットで必須CIを再検証する。
+
+---
+
+## PR814_COUNT_ONLY_INTEGRATION_TECHNICAL_REVIEW_20261119 — 統合画面・協力店件数の公開前技術レビュー（未公開・未署名）
+
+### 対象と検証済みの事実
+
+- 対象PR: https://github.com/Keikei-p/-/pull/814 。作業開始時HEAD: `883aa1779a17aebe63f16e7dbd23cc70b7e47345` 、基準main: `ff3c024a18c48a0f0b95fa672b860c8dfe98805e`。
+- 対象の本番プロジェクト: `sales-management-cc116` 、正式URL: https://nico-factory.web.app/ 。この技術レビューでは本番に書込・デプロイを行わない。
+- 確認した差分: 77ファイル。 `index.html` を含むため `sales-safety-guard.yml` の保護対象に該当する。 `firestore.rules`、`functions/index.js`、既存 `functions-partner-workspace/service.cjs` と認証境界の変更は含まない。
+- 2026-11-19のHEAD検証: [統合NO-DEPLOY CI](https://github.com/Keikei-p/-/actions/runs/44540758552)成功、[Sales App Validation](https://github.com/Keikei-p/-/actions/runs/44540758418)成功、[金額遮断・件数保存Emulator](https://github.com/Keikei-p/-/actions/runs/44540758647)成功、[商材ON/OFFと過去件数](https://github.com/Keikei-p/-/actions/runs/44540758321)成功、[読み取り専用の公開準備](https://github.com/Keikei-p/-/actions/runs/44540758585)成功。
+- 確認済みの合成試験: 自社・協力店画面UI契約、未報告/報告済0件の区別、件数保存→訂正→会社/班/個人/商材ランキングの再計算、重複送信防止、ロール切替時のキャッシュ隔離、非金額情報へのアクセスのみを許可するEmulator検証。
+- 最新CIのうち旧個別PR専用の固定SHA・ファイルスコープ検査は35件失敗を含む。これを全件合格や実アカウント検証成功と読み替えない。
+- GitHubの有効な `main` Ruleset `25567655` で実際に必須のステータスチェックは `validate` と `protected-change-guard` の2件。後者は本記録の更新前、保護対象 `index.html` 変更に対する個別レビュー記録と `sales-production-reviewed` ラベル不足で停止した。
+
+### 保護方針・明確に未完了の確認
+
+- `sales-production-reviewed` はコードの限定技術レビューを示すGitHubラベルであり、実アカウント権限・本番売上遮断・Firestoreバックアップの復旧証明、管理者自筆署名、デプロイの承認を代行しない。現在のラベル有無とCI成否はGitHubで都度照合する。
+- **本番オーナー／協力店のメール・会社コード・二重所属アカウントによる件数保存と拒否動作: 未検証。**
+- **本番の実トークンを使う金額・単価・CB・原票のGET/LISTサーバー拒否: 未検証。**
+- **本番バックアップを隔離環境に復元した件数・商材・所属・個人・履歴の完全照合: 未検証。**
+- **本番料金上限とFirebase無料運用の確認: 未検証。**
+- **iPhone/Android/PCの同一画面・既存データ不変・公開後確認: 未検証。**
+- `NICO_PARTNER_SAME_SCREEN_TABS_ENABLED` 等の公開ゲートは既定OFF。Backend Functions/Rules/Hostingを許可なく一括公開しない。協力店へ金額情報を直接取得できる旧経路が残る場合は本番切替停止。
+- 既存の件数、獲得日、商材、会社/班/個人、原票、売上、単価、CB、訂正履歴は上書き・移行・初期化しない。
+- ロールバックは差分・適用対象を固定し、実データの巻き戻しを実施せずにコード/設定の対象限定復帰で行う。破壊的な本番DB操作は別途明示承認が必要。
+
+### レビュー状態
+
+- 技術レビュー記録: 2026-11-19、上記に記載したGitHub/CIおよび現行ルールの読み取り専用照合。
+- `sales-production-reviewed` ラベル: PR #814 に技術レビュー後 GitHub連携から付与済み。GitHub PR APIで付与状態を確認。ラベル付与前に作られたGitHub ActionsのPRイベントを再試行しても、当時のラベル情報は更新されないため、**この付与事実の追記コミットで新規PRイベントの保護CIを再検証する**。
+- このラベルによる状態遷移は**本番リリースGO・管理者本人署名・実アカウント金額遮断実証を意味しない**。
+- 個人による管理者署名: **未取得**（代理で署名しない）。
+- 実アカウント/実機に基づく本番公開許可: **未取得**。
+- 本PRのマージ: **未実施**。本番Hosting/Functions/Rulesのデプロイ: **未実施**。
+- この記録の更新は、欠けている本番検証や署名の完了を意味しない。

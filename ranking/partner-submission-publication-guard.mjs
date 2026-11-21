@@ -82,6 +82,14 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
      partnerAllowed.has(hubProductId)&&catalog.get(hubProductId).active!==false)
    allowed.add(KEYS[i]);
  }
+ // Existing reviewed bindings are validated independently above. Permit
+ // only additional uniquely matched count-only ON categories authorized by
+ // the SAME Owner publication and public catalog (no business data reads).
+ let published;
+ try{published=allowedPartnerCategories({
+  hubId,cid:partnerId,ownerUid,visibility,mapping,products
+ });}catch{deny();}
+ for(const key of published)allowed.add(key);
  return {allowed,version:visibility.version};
 }
 export function createPartnerSubmissionPublicationGuard({db}={}){

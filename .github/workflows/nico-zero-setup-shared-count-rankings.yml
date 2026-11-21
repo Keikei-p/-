@@ -62,7 +62,18 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
           grep -Fq 'process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
-          grep -Fq 'zeroSetupLink:false' functions-ranking-approvals/index.js
+          # The integrated route is OFF unless all three server-owned gates are enabled.
+          # Auto-SKU matching does not grant an unrestricted publication shortcut:
+          # the atomic Owner ON/OFF selection and published partner tab must both pass.
+          grep -Fq 'process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'publishedOnly:true' functions-ranking-approvals/index.js
+          grep -Fq 'enforcePartnerTabPublication:true' functions-ranking-approvals/index.js
+          grep -Fq 'const enforceOwnerSelection=zeroSetupLink===true&&' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'enforcePartnerTabPublication===true;' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer})' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'buildOwnerVisibleCountRanking({input:rankingInput,publication})' ranking/owner-visible-count-server-handler.mjs
           if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
             echo 'STOP_RANKING_MUST_OBEY_OWNER_ON_OFF'; exit 1
           fi

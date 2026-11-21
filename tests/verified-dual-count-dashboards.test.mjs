@@ -286,11 +286,15 @@ test("partner has distinct joint company/team leaderboards with rank, name and c
   {rank:2,name:"自社",count:1}
  ]);
  assert.deepEqual(ranking.teams,[
-  {rank:1,name:"営業班",company:"協力店A",count:3},
-  {rank:2,name:"営業班",company:"自社",count:1}
+  {rank:1,name:"営業班",company:"協力店A",count:3,own:true},
+  {rank:2,name:"営業班",company:"自社",count:1,own:false}
  ]);
  assert.deepEqual(Object.keys(ranking.teams[0]).sort(),
-  ["rank","name","company","count"].sort());
+  ["rank","name","company","count","own"].sort());
+ assert(Array.isArray(partner.own.teamDetails),"own company gets count-only team details");
+ assert(partner.own.teamDetails.every(row=>!Object.hasOwn(row,"unitPrice")&&
+  !Object.hasOwn(row,"revenue")&&!Object.hasOwn(row,"cashback")));
+ assert(!("teamDetails" in ranking),"foreign team-person details must never be public");
  assert(!("companyBreakdown" in partner));
  assert(!("teamBreakdown" in partner));
  assert(!JSON.stringify(ranking).match(/revenue|unitPrice|cashback|totalRevenue|uid|teamId|companyId/));

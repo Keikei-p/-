@@ -105,7 +105,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  };
  async function manage(request){
   const {uid}=await actor(request),d=request?.data||{},op=d.action;
-  if(!["addTeam","addManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
+  if(!["addTeam","addManaged","removeManaged","createInvite","moveStaff","addPrivateProduct","setPrivateProduct",
    "hubAddTeam","hubCreateInvite"].includes(op))fail("invalid-argument");
   const s=await scope(uid,null,d.workspaceCompanyId);
   if(op==="hubAddTeam"||op==="hubCreateInvite"){
@@ -224,6 +224,27 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       teamId,companyId:s.cid,active:true,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
    });
    return {staffId:ref.id,created:true};
+  }
+  if(op==="removeManaged"){
+   // UI has long offered a staff archive. Implement it as a non-destructive
+   // soft archive, never a Firestore delete or count/ledger adjustment.
+   if(s.kind!=="partner"||!["owner","leader"].includes(s.role)||
+      !ID.test(d.staffId||""))fail("invalid-argument");
+   await db.runTransaction(async tx=>{
+    const fresh=await scope(uid,tx,d.workspaceCompanyId);
+    if(fresh.kind!=="partner"||fresh.cid!==s.cid||
+       !["owner","leader"].includes(fresh.role))fail();
+    const ref=staffRef(fresh.cid,d.staffId);
+    const snapshot=await tx.get(ref),person=snapshot.data()||{};
+    // Registered users are never archived by this action. Historical entries,
+    // immutable team snapshots and the append-only correction ledger remain.
+    if(!snapshot.exists||person.active!==true||person.companyId!==fresh.cid||
+       person.kind!=="managed"||person.uid!=null||person.role!=="member"||
+       !validName(person.name)||!ID.test(person.teamId||""))fail("failed-precondition");
+    tx.update(ref,{active:false,archivedAt:FieldValue.serverTimestamp(),
+      archivedByUid:uid});
+   });
+   return {archived:true,staffId:d.staffId};
   }
   if(op==="moveStaff"){
    if(!["owner","leader"].includes(s.role)||!ID.test(d.staffId||"")||!ID.test(d.teamId||""))fail("invalid-argument");

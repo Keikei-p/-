@@ -1,0 +1,197 @@
+name: NICO live backup and finance Rules metadata GET ONLY (NO DEPLOY)
+on:
+  push:
+    branches: [fix/partner-eight-tab-release-preflight-20261118]
+    paths:
+      - '.github/workflows/nico-live-backup-and-rules-metadata-get-only.yml'
+      - 'security/secondary-finance-read-fence.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-metadata-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin current main and immutable production originals before any API GET
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'Keikei-p/-'
+          test "$GITHUB_REF" = 'refs/heads/fix/partner-eight-tab-release-preflight-20261118'
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')" = 'b2c59c0412335e678c4317fbedd7c4d9b87330fe'
+          test "$FIREBASE_PROJECT_ID" = 'sales-management-cc116'
+          test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
+          test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
+          test "$(node -p "JSON.parse(require('node:fs').readFileSync('.firebaserc','utf8')).projects.default")" = 'sales-management-cc116'
+          node --check tools/production/audit-managed-backup-restore-preflight-readonly.mjs
+          node --check tools/production/inspect-live-firestore-rules-release.mjs
+          node --check tools/production/audit-secondary-contexts-readonly.mjs
+          node --check tools/production/audit-login-readiness-live-readonly.mjs
+          node --check tools/production/inspect-partner-full-history-readonly.mjs
+          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+          node security/secondary-finance-read-fence.mjs --check
+      - name: Run existing metadata parser regression tests with zero credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/managed-backup-restore-preflight-readonly.test.mjs tests/inspect-live-firestore-rules-release.test.mjs
+      - name: Install only official Admin SDK dependencies, with no lifecycle scripts
+        shell: bash
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Compare current live financial Rules and READY backup metadata (GET ONLY)
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo 'BLOCK_READ_IDENTITY_NOT_AVAILABLE'; exit 1; }
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-live-meta-get.private.json"
+          chmod 600 "$RUNNER_TEMP/nico-live-meta-get.private.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/nico-live-meta-get.private.json"
+          trap 'rm -f "$RUNNER_TEMP/nico-live-meta-get.private.json"' EXIT
+          node --input-type=module <<'NODE'
+          import {createRequire} from "node:module";
+          import {readFileSync} from "node:fs";
+          import {inspectManagedRestorePreflight,DATABASES_URL,BACKUPS_URL} from "./tools/production/audit-managed-backup-restore-preflight-readonly.mjs";
+          import {inspectLiveFirestoreRules} from "./tools/production/inspect-live-firestore-rules-release.mjs";
+          import {inventory,publicInventorySummary} from "./tools/production/audit-secondary-contexts-readonly.mjs";
+          import {auditLoginReadiness} from "./tools/production/audit-login-readiness-live-readonly.mjs";
+          import {inspectPartnerFullHistory} from "./tools/production/inspect-partner-full-history-readonly.mjs";
+          const require=createRequire(new URL("./functions/package.json",import.meta.url));
+          const {applicationDefault,initializeApp}=require("firebase-admin/app");
+          const {getFirestore,FieldPath}=require("firebase-admin/firestore");
+          const {getAuth}=require("firebase-admin/auth");
+          const provider=applicationDefault();
+          const HOST="https://firebaserules.googleapis.com/v1/projects/sales-management-cc116/";
+          const allowed=url=>url===DATABASES_URL||url===BACKUPS_URL||
+            url===HOST+"releases/cloud.firestore"||
+            url===HOST+"releases/cloud.firestore/(default)"||
+            /^https:\/\/firebaserules\.googleapis\.com\/v1\/projects\/sales-management-cc116\/rulesets\/[A-Za-z0-9_-]{1,180}$/.test(url);
+          const read=async url=>{
+            if(!allowed(url))throw Error("BLOCK_NON_METADATA_ENDPOINT");
+            const token=(await provider.getAccessToken())?.access_token;
+            if(typeof token!=="string"||token.length<20)throw Error("BLOCK_OAUTH");
+            return fetch(url,{method:"GET",cache:"no-store",redirect:"error",
+              headers:{Authorization:"Bearer "+token}});
+          };
+          try{
+            const [backup,rules]=await Promise.all([
+              inspectManagedRestorePreflight({read}),
+              inspectLiveFirestoreRules(read,readFileSync("./firestore.rules","utf8"))
+            ]);
+            console.log("NICO_LIVE_BACKUP_METADATA "+JSON.stringify(backup));
+            console.log("NICO_LIVE_FINANCE_RULES_METADATA "+JSON.stringify(rules));
+            // Read ONLY bounded user/secondary membership metadata. Report no
+            // account IDs, addresses, names or even per-category counts.
+            const app=initializeApp({credential:provider,projectId:"sales-management-cc116"},
+              "nico-live-meta-audit");
+            const db=getFirestore(app),auth=getAuth(app);
+            const secondary=await inventory({db,credential:provider,authService:auth,
+              request:read,includeBackup:false});
+            const safe=publicInventorySummary(secondary);
+            console.log("NICO_LIVE_SECONDARY_FINANCE_RISK "+JSON.stringify({
+              reviewedMainRulesActive:rules.deployedSourceExactlyMatchesReviewedMain,
+              secondaryContextsPresent:safe.secondaryContextsPresent,
+              oldInternalFinancePathPresent:safe.oldInternalFinancePathPresent,
+              ownerContextConflictPresent:safe.ownerContextConflictPresent,
+              unrecognizedContextPresent:safe.unrecognizedContextPresent,
+              historicalTransferPresent:safe.historicalTransferPresent,
+              realPartnerFinanceDenyVerified:false,
+              productionWrites:0
+            }));
+            const login=await auditLoginReadiness({db,auth});
+            const categoryNames=Object.keys(login.categoryCounts);
+            const starts=(prefix)=>categoryNames.some(k=>k.startsWith(prefix));
+            console.log("NICO_LIVE_LOGIN_READINESS_METADATA "+JSON.stringify({
+              boundedUserMetadataScanCompleted:login.boundedScanComplete,
+              ownerAndInternalLoginMetadataPresent:starts("INTERNAL_ROUTE_METADATA_READY"),
+              partnerEmailCountOnlyRouteCandidatePresent:starts("PARTNER_EMAIL_COUNT_ONLY_ROUTE_CANDIDATE"),
+              sharedCodePrincipalsNotPasswordAccounts:starts("SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT"),
+              loginMetadataBlockerPresent:categoryNames.some(k=>
+                !["INTERNAL_ROUTE_METADATA_READY","PARTNER_EMAIL_COUNT_ONLY_ROUTE_CANDIDATE",
+                  "SHARED_CODE_NOT_FIREBASE_EMAIL_ACCOUNT"].includes(k)),
+              actualSignInTested:false,financialOriginalsRead:false,
+              productionWrites:0,authChanges:0
+            }));
+            // Exhaustive within strict safety limits: prior reports and saved
+            // rows are NEVER amended, and only count/catalog projections load.
+            // Not a migration: ambiguous source mappings stay held.
+            try{
+              const history=await inspectPartnerFullHistory({
+                db,documentId:FieldPath.documentId(),
+                limits:{pageSize:50,companies:50,relations:100,
+                  products:250,entriesPerCompany:500,
+                  privateProductsPerCompany:100,reports:1000,
+                  totalDocuments:3000,totalQueries:100}
+              });
+              const reasons=new Set(history.blockingReasons);
+              const heldRows=history.companies.flatMap(c=>c.products)
+                .filter(row=>row.state!=="mapped");
+              console.log("NICO_LIVE_UNMAPPED_PRODUCT_REASONS "+JSON.stringify({
+                ownerPublicationMissingOrInvalid:reasons.has("PUBLICATION_UNVERIFIED"),
+                reviewedMappingMissing:reasons.has("MAPPING_MISSING"),
+                reviewedMappingInvalid:reasons.has("MAPPING_UNVERIFIED"),
+                uniqueSameNameCandidateHeld:heldRows.some(row=>
+                  row.exactNameCandidates.length===1&&row.originalCount>0),
+                ambiguousSameNameCandidateHeld:heldRows.some(row=>
+                  row.exactNameCandidates.length>1&&row.originalCount>0),
+                noSameNameCandidateHeld:heldRows.some(row=>
+                  row.exactNameCandidates.length===0&&row.originalCount>0),
+                ownerOffProductHeld:heldRows.some(row=>row.state==="held_off"),
+                legacyLightAirReviewHeld:heldRows.some(row=>
+                  row.state==="held_legacy_combined"),
+                ownerMappingOrPermissionsNotChanged:true,
+                rawProductNamesExported:false,productionWrites:0
+              }));
+              console.log("NICO_LIVE_PARTNER_HISTORY_RECONCILIATION "+JSON.stringify({
+                completeSnapshot:history.completeSnapshot===true,
+                sourceConservationVerified:history.sourceConservationVerified===true,
+                allSavedDayTotalsReconciled:history.combinedCountReconciled===true,
+                savedReportMismatchPresent:history.summaryMismatchDayCount>0,
+                duplicateQuickAndStaffDayPresent:history.overlapDayCount>0,
+                productSourceOverlapPresent:history.productSourceOverlapDayCount>0,
+                unmatchedOrUnpublishedProductsHeld:history.heldTotalCount>0||
+                  history.companies.some(c=>c.sourceTotals.some(t=>t.heldCount>0)),
+                unapprovedRelationHeld:reasons.has("RELATION_UNAPPROVED"),
+                originalRowsChanged:false,manualMappingApplied:false,
+                financialMasterFieldsRead:history.financialMasterFieldsRead,
+                sourceDocumentsExported:history.sourceDocumentsExported,
+                productionWrites:0
+              }));
+            }catch(e){
+              // Do not leak arbitrary exception text or source data.
+              console.log("NICO_LIVE_PARTNER_HISTORY_RECONCILIATION "+JSON.stringify({
+                completeSnapshot:false,sourceConservationVerified:false,
+                allSavedDayTotalsReconciled:false,
+                failClosed:true,productionWrites:0,
+                financialMasterFieldsRead:0,sourceDocumentsExported:0
+              }));
+            }
+            console.log("REAL_PARTNER_TOKEN_FINANCE_GET_LIST_PROVEN=false");
+            console.log("REAL_BACKUP_PAYLOAD_ISOLATED_RESTORE_PROVEN=false");
+            console.log("PRODUCTION_DOCUMENT_READS=0 PRODUCTION_WRITES=0 DEPLOYS=0");
+            if(rules.deployedSourceUnexpected)throw Error("BLOCK_UNEXPECTED_LIVE_RULES");
+            if(!backup.backupRestoreMetadataPreflightPassed)
+              console.log("BLOCK_RECENT_READY_BACKUP_RESTORE_METADATA_NOT_READY");
+          }catch(e){
+            console.error(/^BLOCK_[A-Z_]+$/.test(e?.message||"")?e.message:
+              "STOP_LIVE_READONLY_METADATA_AUDIT_FAILED");
+            process.exitCode=1;
+          }
+          NODE
+      - name: Confirm no deployment or production mutation
+        if: always()
+        run: echo NO_FIRESTORE_DOCUMENT_READ_OR_WRITE_NO_RESTORE_NO_DEPLOY
