@@ -167,8 +167,8 @@ test('Firebase Auth disabled and Firestore profile inactive are separate boolean
    'no internal numeric counters may appear in published audit');
  }
  const source=readFileSync(new URL('../tools/production/audit-secondary-contexts-readonly.mjs',import.meta.url),'utf8');
- assert.match(source,/if\\(x\\.active===true&&auth\\?\\.disabled===true\\)values\\.activeFirebaseAuthDisabled\\+\\+/);
- assert.doesNotMatch(source,/\\b(?:updateUser|deleteUser|createUser|setCustomUserClaims)\\s*\\(/);
+ assert.match(source,/if\(x\.active===true&&auth\?\.disabled===true\)values\.activeFirebaseAuthDisabled\+\+/);
+ assert.doesNotMatch(source,/\b(?:updateUser|deleteUser|createUser|setCustomUserClaims)\s*\(/);
 });
 
 test('non-owner verified partner secondary has a read-only eligible transition plan',()=>{
