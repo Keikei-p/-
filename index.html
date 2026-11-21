@@ -16352,6 +16352,16 @@ onAuthStateChanged(
       if(partnerMainCodeActive()){
         if(nicoMainCodeLoginBusy)return;
         if(await openSameAppCompanyCodeWorkspace())return;
+        // An unavailable count API is NOT proof of a revoked code session.
+        // Keep the opaque bearer for an explicit Refresh retry, but never
+        // restore cached count cards or enable Submit before a verified GET.
+        // An invalid/revoked bearer is removed inside partnerInlineFetch().
+        if(partnerMainCodeActive()){
+          pInline("pInlineSave").disabled=true;
+          loginStatus.textContent="件数サービスの応答待ちです。ログイン情報は保持しています。更新で再確認してください。";
+          databaseStatus.textContent="件数API未確認・再確認待ち";
+          return;
+        }
         partnerMainCodeForget();
       }
 
