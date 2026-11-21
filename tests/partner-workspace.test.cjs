@@ -1893,3 +1893,54 @@ test("end-to-end saved count correction immediately reflows company/team/person/
   companyId:"hub",name:"NURO光",active:true,unitPrice:77777});
  assert.equal(db.store.get("records/old").totalRevenue,808080);
 });
+
+
+test("managed staff archive is reversible-in-data, blocks new counts, and preserves historical ledgers and finance",async()=>{
+ const {db,api,req,zero}=setup();
+ const date="2026-10-31";
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"履歴保存班"}))).teamId;
+ const staffId=(await api.manage(req("p",{action:"addManaged",name:"既存担当",teamId}))).staffId;
+ await api.submit(req("p",{date,staffId,expectedVersion:0,counts:{...zero(),NURO:3}}));
+ const staffPath="companies/partner/partnerWorkStaff/"+staffId;
+ const original=clone([...db.store]);
+ const result=await api.manage(req("p",{action:"removeManaged",staffId}));
+ assert.deepEqual(result,{archived:true,staffId});
+ const archived=db.store.get(staffPath);
+ assert.equal(archived.active,false);
+ assert.equal(archived.archivedByUid,"p");
+ assert(archived.archivedAt,"archival time is recorded");
+ assert.equal(db.store.size,original.length,"no new or deleted documents");
+ for(const [path,data] of original)if(path!==staffPath)
+  assert.deepEqual(db.store.get(path),data,"historical source changed: "+path);
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId})),
+  {code:"failed-precondition"});
+ await assert.rejects(api.submit(req("p",{date,staffId,expectedVersion:1,
+  counts:{...zero(),NURO:4}})),{code:"permission-denied"});
+ assert.equal(db.store.get("companies/partner/partnerWorkEntries/"+date+"__"+staffId).totalCount,3);
+ assert.equal(db.store.get("companies/hub/partnerWorkCountDays/"+date+"/reports/partner").totalCount,3);
+});
+
+test("managed staff archive refuses other roles, registered people and revoked manager without writes",async()=>{
+ const {db,api,req}=setup();
+ const teamId=(await api.manage(req("p",{action:"addTeam",name:"権限検証班"}))).teamId;
+ const staffId=(await api.manage(req("p",{action:"addManaged",name:"検証担当",teamId}))).staffId;
+ const staffPath="companies/partner/partnerWorkStaff/"+staffId;
+ const registered="companies/partner/partnerWorkStaff/registered-member";
+ db.seed(registered,{active:true,companyId:"partner",kind:"registered",
+  uid:"registered-member",role:"member",name:"登録済み",teamId});
+ const original=clone([...db.store]);
+ await assert.rejects(api.manage(req("h",{action:"removeManaged",staffId})));
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"registered-member"})),
+  {code:"failed-precondition"});
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId:"missing"})),
+  {code:"failed-precondition"});
+ assert.deepEqual([...db.store],original,"rejected archives cannot mutate counts or memberships");
+ const tx=db.runTransaction.bind(db);
+ db.runTransaction=fn=>{
+  db.store.get("companies/partner/members/p").active=false;
+  return tx(fn);
+ };
+ await assert.rejects(api.manage(req("p",{action:"removeManaged",staffId})),
+  {code:"permission-denied"});
+ assert.equal(db.store.get(staffPath).active,true,"revoked manager cannot archive staff");
+});
