@@ -46,8 +46,10 @@ function harness({previous=base(),entered="2",returned,authMode="code",enabled=[
   return {...row,counts:visible,
    totalCount:Object.values(visible).reduce((n,v)=>n+v,0)};
  };
+ const savedPrivate=previous?.privateCounts??{};
  const serverOriginal={...base(Number(entered),previous?.counts?.["SB光・AIR"]??0),
-  version:previous?.version+1||1};
+  version:previous?.version+1||1,privateCounts:{...savedPrivate},
+  privateTotalCount:Object.values(savedPrivate).reduce((n,v)=>n+v,0)};
  const server=returned??{date,companyName:"協力店A",
   records:[redact(serverOriginal)]};
  const snap={date,companyName:"協力店A",role:"owner",categories,
@@ -123,6 +125,48 @@ test("a partner cannot infer a historical OFF value from the authenticated GET",
  assert.equal(x.snap.records[0].counts["SB光・AIR"],0);
  assert.equal(x.source.counts["SB光・AIR"],9);
  assert.deepEqual(x.calls,[]);
+});
+test("retired private product history is retained during ON-only correction",async()=>{
+ for(const mode of ["code","email"]){
+  const previous=base();
+  previous.privateCounts={oldPrivate:7};
+  previous.privateTotalCount=7;
+  const x=harness({previous,authMode:mode});
+  assert.match(await x.run(),/実績を修正できました/);
+  assert.deepEqual(x.calls.map(c=>c.kind),["POST","GET"]);
+  assert.deepEqual(x.calls[0].body.privateCounts,{},
+   "the retired category must not be re-entered by the browser");
+  assert.equal(x.source.privateCounts.oldPrivate,7);
+  assert.equal(x.snap.records[0].privateCounts.oldPrivate,7);
+ });
+});
+test("readback refuses silently lost retired private counts, without a second POST",async()=>{
+ const previous=base();
+ previous.privateCounts={oldPrivate:7};
+ previous.privateTotalCount=7;
+ const bad={date:"2026-11-21",companyName:"協力店A",records:[{
+  ...base(2,0),version:2,privateCounts:{},privateTotalCount:0
+ }]};
+ const x=harness({previous,returned:bad});
+ await assert.rejects(x.run(),/save_verify/);
+ assert.deepEqual(x.calls.map(c=>c.kind),["POST","GET"]);
+ assert.equal(x.source.privateCounts.oldPrivate,7);
+});
+test("readback refuses incorrect private total and phantom private IDs",async()=>{
+ const previous=base();
+ previous.privateCounts={oldPrivate:7};
+ previous.privateTotalCount=7;
+ for(const badPrivate of [
+  {privateCounts:{oldPrivate:7},privateTotalCount:0},
+  {privateCounts:{oldPrivate:7,phantom:1},privateTotalCount:8}
+ ]){
+  const bad={date:"2026-11-21",companyName:"協力店A",records:[{
+   ...base(2,0),version:2,...badPrivate
+  }]};
+  const x=harness({previous,returned:bad});
+  await assert.rejects(x.run(),/save_verify/);
+  assert.deepEqual(x.calls.map(c=>c.kind),["POST","GET"]);
+ }
 });
 test("legacy all-products-ON mode still edits the original full ledger",async()=>{
  const x=harness({previous:base(1,0),enabled:categories});
