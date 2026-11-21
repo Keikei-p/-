@@ -138,7 +138,7 @@ test("retired private product history is retained during ON-only correction",asy
    "the retired category must not be re-entered by the browser");
   assert.equal(x.source.privateCounts.oldPrivate,7);
   assert.equal(x.snap.records[0].privateCounts.oldPrivate,7);
- });
+ }
 });
 test("readback refuses silently lost retired private counts, without a second POST",async()=>{
  const previous=base();
