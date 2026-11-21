@@ -142,7 +142,13 @@ test("audit-size: published partner view uses same 230 count source, with no oth
  assert.equal(view.productRows.reduce((n,p)=>n+p.count,0),235);
  assert.equal(view.financeIncluded,false);
  assert(!("summary" in raw),"full owner totals never reach partner");
- assert(view.teamDetails.every(t=>t.name.startsWith("協力店2・")));
+ const ownTeams=view.teamDetails.filter(t=>t.name.startsWith("協力店2・"));
+ const otherTeams=view.teamDetails.filter(t=>!t.name.startsWith("協力店2・"));
+ assert.equal(ownTeams.length,1);
+ assert.equal(ownTeams[0].count,36);
+ assert.equal(otherTeams.length,3,"other company/team count cards remain visible");
+ assert(otherTeams.every(t=>t.members.length===0&&t.products.length===0),
+  "other companies' team members and product breakdown must stay private");
  assert(!/(?:unitPrice|revenue|cashback)/i.test(JSON.stringify(view)));
 });
 
