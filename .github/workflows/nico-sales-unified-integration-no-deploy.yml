@@ -96,6 +96,8 @@ jobs:
           # Reproduce latest READ-ONLY production totals (synthetic SKU split): 3 partners, 87 reports, 230 cases, 34 legacy combined, 4 zero reports.
           # Verify unchanged source ledgers, exact count conservation, partner finance exclusion and Owner ON-only publication boundary.
           node --test tests/partner-production-sized-joint-count-parity.test.mjs
+          # Existing OFF product history remains in original ledger and is verified after one ON-only correction; no production write.
+          node --test tests/partner-same-app-off-history-save.test.mjs
           # Owner-reviewed SKU IDs must win over zero-setup aliases; no original count write.
           node --test tests/owner-reviewed-zero-setup-linker.test.mjs
           # The completed internal dashboard must remain byte-identical.
