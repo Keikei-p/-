@@ -227,7 +227,7 @@ test('public actions summary excludes single-user inventory details and never au
 
 test('only exact main or reviewed Draft Rules blobs are recognized; neither proves live finance safety',()=>{
  const source=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
- const blob=createHash('sha1').update('blob '+Buffer.byteLength(source,'utf8')+'\\0').update(source,'utf8').digest('hex');
+ const blob=createHash('sha1').update('blob '+Buffer.byteLength(source,'utf8')+'\0').update(source,'utf8').digest('hex');
  const originalMain='6d3f165791188394d473417414e34208cd56bae6';
  const reviewedDraft='9eca5c49957d370bbf092b9783dfa0e97f1a735a';
  assert([originalMain,reviewedDraft].includes(blob),
@@ -241,7 +241,7 @@ test('only exact main or reviewed Draft Rules blobs are recognized; neither prov
  assert.equal(observed.actualAuthenticatedBoundaryVerified,false);
  const altered=source.replace('rules_version','rules_version ');
  assert.notEqual(altered,source);
- const changedBlob=createHash('sha1').update('blob '+Buffer.byteLength(altered,'utf8')+'\\0').update(altered,'utf8').digest('hex');
+ const changedBlob=createHash('sha1').update('blob '+Buffer.byteLength(altered,'utf8')+'\0').update(altered,'utf8').digest('hex');
  assert(![originalMain,reviewedDraft].includes(changedBlob));
  const modified=classifyLiveRules(altered);
  assert.equal(modified.exactOriginalMainRules,false);
