@@ -93,6 +93,9 @@ jobs:
           # quick/staff overlaps, source conservation, pagination bounds and
           # no financial fields. Synthetic/in-memory ONLY, never production GET.
           node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+          # Reproduce latest READ-ONLY production totals (synthetic SKU split): 3 partners, 87 reports, 230 cases, 34 legacy combined, 4 zero reports.
+          # Verify unchanged source ledgers, exact count conservation, partner finance exclusion and Owner ON-only publication boundary.
+          node --test tests/partner-production-sized-joint-count-parity.test.mjs
           # The completed internal dashboard must remain byte-identical.
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
