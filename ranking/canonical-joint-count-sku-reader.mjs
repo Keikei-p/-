@@ -106,8 +106,9 @@ export function composeCanonicalMonthlyRankingInput({
     context.approvedCompanyIds.length>30||
     !context.approvedCompanyIds.includes(context.hubCompanyId)||
     !array(partnerSources)||!hubSource||
-    (zeroSetupLink!==true&&(
-     !skuMap||skuMap.active!==true||
+    (zeroSetupLink!==true&&!skuMap)||
+    (skuMap!=null&&(
+     skuMap.active!==true||
      skuMap.hubCompanyId!==context.hubCompanyId||
      skuMap.ownerUid!==hubOwnerUid||
      skuMap.reviewedByUid!==hubOwnerUid||
@@ -139,33 +140,41 @@ export function composeCanonicalMonthlyRankingInput({
   }
   sourceProducts.set(s.companyId,set);
  }
- const seen=new Set();
- const groups=zeroSetupLink===true?
-  linkAllRegisteredCountsWithoutSetup({hubCompanyId:hub,
-   hubSource,partnerSources:sources.slice(1)}):hubSource.products.map(p=>({
-  companyId:hub,productId:p.sourceId,
-  groupId:p.sourceId,groupName:p.name
- }));
- for(const b of zeroSetupLink===true?[]:skuMap.bindings){
+ // A pre-existing Owner-reviewed exact binding is stronger evidence than
+ // a name/alias match. Validate the complete saved mapping BEFORE applying
+ // anything; zero-setup mode must work when no document exists.
+ const reviewedBindings=skuMap?.bindings??[],seen=new Set();
+ for(const b of reviewedBindings){
   if(!b||Object.keys(b).sort().join("|")!==
       ["companyId","productId","hubProductId"].sort().join("|")||
      !valid(b.companyId)||!valid(b.productId)||!valid(b.hubProductId)||
      !partners.includes(b.companyId)||
      !sourceProducts.get(b.companyId)?.has(b.productId)||
      !hubProducts.has(b.hubProductId))STOP();
-  const key=b.companyId+":"+b.productId;
+  const key=JSON.stringify([b.companyId,b.productId]);
   if(seen.has(key))STOP();
   seen.add(key);
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
-  // Legacy combined SB光・AIR may ONLY map to a distinct legacy-combined
-  // hub SKU. Never silently split or claim it is 光 or Air.
+  // Historic combined light/AIR must never be guessed into separate SKUs.
   if(LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC"))&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
+ }
+ const groups=zeroSetupLink===true?
+  linkAllRegisteredCountsWithoutSetup({
+   hubCompanyId:hub,hubSource,partnerSources:sources.slice(1),
+   reviewedBindings
+  }):hubSource.products.map(p=>({
+   companyId:hub,productId:p.sourceId,
+   groupId:p.sourceId,groupName:p.name
+  }));
+ // Original Owner-reviewed-only mode keeps its existing behavior. Zero-setup
+ // already included reviewed ID precedence above: never double-add a source.
+ if(zeroSetupLink!==true)for(const b of reviewedBindings){
   groups.push({
    companyId:b.companyId,productId:b.productId,
-   groupId:b.hubProductId,groupName:target.name
+   groupId:b.hubProductId,groupName:hubProducts.get(b.hubProductId).name
   });
  }
  const result={
@@ -181,8 +190,9 @@ export function composeCanonicalMonthlyRankingInput({
 }
 /**
  * Canonical transaction callback for the existing atomic loader.
- * Requires approved mapping doc. A missing mapping NEVER silently joins
- * SKUs by name; owner's browser-local groups are NOT an authorization.
+ * Strict original mode requires an approved mapping doc. Zero-setup mode
+ * additionally accepts an absent map, but reuses any existing, verified
+ * Owner-reviewed exact IDs before safe aliases; no browser authority.
  */
 function trustedJapanAsOf(month,clock){
  const now=clock();
@@ -225,20 +235,20 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),z
   const mappingRef=hubRef.collection("rankingSkuMappings").doc("shared");
   const partners=context.approvedCompanyIds.filter(x=>x!==hubId);
   const snapshots=await Promise.all([
-    tx.get(hubRef),...(zeroSetupLink===true?[]:[tx.get(mappingRef)]),
+    tx.get(hubRef),tx.get(mappingRef),
     loadHub({tx,hubCompanyId:hubId,month,context}),
     ...partners.map(partnerCompanyId=>loadPartner({
      tx,hubCompanyId:hubId,partnerCompanyId,month,context
     }))
    ]);
-  const [hubCompanySnap,...rest]=snapshots;
-  const mappingSnap=zeroSetupLink===true?null:rest.shift();
-  const [hubSource,...partnerSources]=rest;
+  const [hubCompanySnap,mappingSnap,hubSource,...partnerSources]=snapshots;
   const hubCompany=doc(hubCompanySnap);
   if(!valid(hubCompany.ownerUid)||hubCompany.active===false||
      zeroSetupLink!==true&&!mappingSnap?.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
-  if(mappingSnap)sameTime(mappingSnap,hubSource.readTime);
+  // Absent optional mapping is allowed only for zero-setup; any existing
+  // reviewed map must be from the same count snapshot.
+  if(mappingSnap?.exists)sameTime(mappingSnap,hubSource.readTime);
   // Recover legacy company-only daily reports from the SAME verified
   // transaction, without assigning their counts to a guessed staff/team.
   // The legacy reader rejects overlap with staff-summary or staff entries.
@@ -250,7 +260,7 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),z
   ));
   const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
-   skuMap:zeroSetupLink===true?null:doc(mappingSnap),
+   skuMap:mappingSnap.exists?doc(mappingSnap):null,
    zeroSetupLink,hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
