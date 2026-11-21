@@ -15245,10 +15245,20 @@ function partnerSavedCountReadbackState(verified,expected){
  if(record.version!==expected.expectedVersion+1)return "unknown";
  const countOk=expected.categories.every(key=>
    Number.isSafeInteger(record.counts?.[key])&&record.counts[key]===expected.counts[key]);
- const privateOk=Object.keys(expected.privateCounts).every(id=>
-   (record.privateCounts?.[id]??0)===expected.privateCounts[id]);
+ // The existing server retains retired private products during ON-only
+ // corrections. A successful standard-SKU readback must not conceal a lost
+ // private count, added phantom ID, or corrupted private total.
+ const privateExpected={...expected.previousPrivateCounts,...expected.privateCounts};
+ const privateSaved=record.privateCounts;
+ const privateOk=privateSaved!==null&&typeof privateSaved==="object"&&
+   !Array.isArray(privateSaved)&&
+   Object.keys(privateSaved).length===Object.keys(privateExpected).length&&
+   Object.entries(privateExpected).every(([id,n])=>
+     Number.isSafeInteger(privateSaved[id])&&privateSaved[id]===n);
+ const privateTotal=Object.values(privateExpected).reduce((sum,n)=>sum+n,0);
  const total=Object.values(expected.counts).reduce((sum,n)=>sum+n,0);
- return record.totalCount===total&&record.workLocation===expected.workLocation&&
+ return record.totalCount===total&&record.privateTotalCount===privateTotal&&
+   record.workLocation===expected.workLocation&&
    (expected.expectedVersion!==0||record.teamIdSnapshot===expected.workTeamId)&&
    countOk&&privateOk?"saved":"unknown";
 }
@@ -15697,7 +15707,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const wireCounts=Object.fromEntries(Object.entries(counts));
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
  const expected={date,staffId,counts,workLocation,workTeamId,
-  privateCounts,expectedVersion:before?.version??0,
+  privateCounts,previousPrivateCounts:before?.privateCounts??{},
+  expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
  let result=null,saveError=null;
  try{
