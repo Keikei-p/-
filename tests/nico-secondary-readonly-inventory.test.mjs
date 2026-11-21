@@ -123,7 +123,9 @@ test('disabled primary audit separates user, old membership and company, no iden
  const userOnly=publicInventorySummary({
   totalContexts:1,activePrimaryInactiveState:1,activePrimaryUserDisabled:1
  });
- assert.equal(userOnly.activePrimaryAuthUserDisabledPresent,true);
+ // A disabled Firestore profile does not prove Firebase Auth was disabled.
+ assert.equal(userOnly.activePrimaryAuthUserDisabledPresent,false);
+ assert.equal(userOnly.activePrimaryProfileInactivePresent,true);
  assert.equal(userOnly.activePrimaryOldMemberDisabledPresent,false);
  assert.equal(userOnly.activePrimaryOldCompanyDisabledPresent,false);
  const memberOnly=publicInventorySummary({
@@ -145,6 +147,28 @@ test('disabled primary audit separates user, old membership and company, no iden
    '"activePrimaryCompanyDisabled":'])
    assert(!emitted.includes(secret));
  }
+});
+
+test('Firebase Auth disabled and Firestore profile inactive are separate booleans',()=>{
+ const authOnly=publicInventorySummary({totalContexts:1,activeFirebaseAuthDisabled:1});
+ assert.equal(authOnly.activePrimaryAuthUserDisabledPresent,true);
+ assert.equal(authOnly.activePrimaryProfileInactivePresent,false);
+ const firestoreOnly=publicInventorySummary({totalContexts:1,activePrimaryUserDisabled:1});
+ assert.equal(firestoreOnly.activePrimaryAuthUserDisabledPresent,false);
+ assert.equal(firestoreOnly.activePrimaryProfileInactivePresent,true);
+ const both=publicInventorySummary({totalContexts:1,
+  activeFirebaseAuthDisabled:1,activePrimaryUserDisabled:1});
+ assert.equal(both.activePrimaryAuthUserDisabledPresent,true);
+ assert.equal(both.activePrimaryProfileInactivePresent,true);
+ for(const report of [authOnly,firestoreOnly,both]){
+  assert.equal(report.safeToDeploy,false);
+  assert.equal(report.realPartnerFinanceDenyVerified,false);
+  assert(!JSON.stringify(report).includes('activeFirebaseAuthDisabled'),
+   'no internal numeric counters may appear in published audit');
+ }
+ const source=readFileSync(new URL('../tools/production/audit-secondary-contexts-readonly.mjs',import.meta.url),'utf8');
+ assert.match(source,/if\\(x\\.active===true&&auth\\?\\.disabled===true\\)values\\.activeFirebaseAuthDisabled\\+\\+/);
+ assert.doesNotMatch(source,/\\b(?:updateUser|deleteUser|createUser|setCustomUserClaims)\\s*\\(/);
 });
 
 test('non-owner verified partner secondary has a read-only eligible transition plan',()=>{
