@@ -363,3 +363,20 @@ test("separate partner companies can correctly reuse the same hub ranking SKU",a
  assert.equal(selects(root)[0].value,"nuro");
  panel.destroy();
 });
+
+
+test("Owner count-only picker never offers unrelated NURO旧合算 or 未分類 products for 光/AIR",async()=>{
+ const c=catalog();
+ c.products.push({id:"notLightAir",name:"NURO旧合算",active:true,enabled:true},
+  {id:"unknown",name:"U-NEXT（未分類）",active:true,enabled:true},
+  {id:"solar",name:"太陽光/AIR（旧合算）",active:true,enabled:true});
+ const root=new Node("main"),auth={currentUser:user};
+ const p=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>c,
+  saveMapping:async()=>assert.fail("Owner has not confirmed any mapping")
+ });
+ assert.equal(await p.refresh(),true);
+ assert.deepEqual(selects(root)[4].children.map(x=>x.value),["","combined"]);
+ p.destroy();
+});
