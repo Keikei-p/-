@@ -30,7 +30,7 @@ const name=x=>typeof x==="string"&&x.trim().length>0&&
  x.length<=80&&!CASH.test(x);
 const keys=(x,expected)=>obj(x)&&
  Object.keys(x).sort().join("|")===expected.slice().sort().join("|");
-const combined=x=>/(?:SB光・AIR|旧合算|未分類|(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(x);
+const combined=x=>typeof x==="string"&&/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(x.normalize("NFKC"));
 const el=(doc,tag,text)=>{
  const n=doc.createElement(tag);
  if(text!==undefined)n.textContent=text;
