@@ -261,7 +261,7 @@ test("legacy partner login can continue into the SINGLE original app without res
 });
 
 test("same-app release preserves published each-open password policy and untouched login handler",()=>{
- const from=index.indexOf("const auth =\\n  getAuth(app);");
+ const from=index.indexOf("const auth =\n  getAuth(app);");
  const end=index.indexOf('auth.languageCode =',from);
  assert(from>0&&end>from);
  const boot=index.slice(from,end);
@@ -273,16 +273,16 @@ test("same-app release preserves published each-open password policy and untouch
  for(const item of required)assert(boot.includes(item),"existing production auth guard lost: "+item);
  assert(boot.indexOf(required[0])<boot.indexOf(required[1]));
  assert(boot.indexOf(required[1])<boot.indexOf(required[2]));
- const imports=index.slice(index.indexOf("import {\\n  getAuth,"),index.indexOf('} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";'));
- assert.match(imports,/\\bsetPersistence,/);
- assert.match(imports,/\\binMemoryPersistence,/);
+ const imports=index.slice(index.indexOf("import {\n  getAuth,"),index.indexOf('} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";'));
+ assert.match(imports,/\bsetPersistence,/);
+ assert.match(imports,/\binMemoryPersistence,/);
  assert(!index.includes("browserLocalPersistence"));
  assert(!index.includes("browserSessionPersistence"));
  const existing=index.slice(index.indexOf("async function login()"),index.indexOf("authButton.onclick"));
  let hash=2166136261;
  for(let i=0;i<existing.length;i++)hash=Math.imul(hash^existing.charCodeAt(i),16777619)>>>0;
  assert.equal(hash.toString(16).padStart(8,"0"),"9d04c3ad","existing email/password login must not drift");
- assert.match(existing,/signInWithEmailAndPassword\\(\\s*auth,\\s*email,\\s*password\\s*\\)/);
+ assert.match(existing,/signInWithEmailAndPassword\(\s*auth,\s*email,\s*password\s*\)/);
 });
 
 test("company-code handoff is consumed once; later reload cannot bypass password",()=>{
@@ -313,7 +313,7 @@ test("company-code handoff is consumed once; later reload cannot bypass password
 
 test("backgrounding either authenticated app hides dashboard immediately and revokes code mode",async()=>{
  const start=index.indexOf('document.addEventListener("visibilitychange",');
- const end=index.indexOf("\\n});",start);
+ const end=index.indexOf("\n});",start);
  assert(start>0&&end>start,"same-app lost background logout guard");
  assert.equal(index.indexOf('document.addEventListener("visibilitychange",',start+1),-1);
  const script=index.slice(start,end+4);
