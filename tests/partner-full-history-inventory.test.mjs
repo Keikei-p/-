@@ -207,3 +207,20 @@ test("incomplete proof, duplicate originals, corrupt totals and unsafe count IDs
   x=>{x.companies[0].entries[0].id="forged";}
  ]){const input=historicalFixture();change(input);assert.throws(()=>inventoryPartnerFullHistory(input),/^Error: PARTNER_FULL_HISTORY_/);}
 });
+
+
+test("pseudonymous full-history audit holds false combined labels without rewriting source totals",()=>{
+ for(const label of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const input=historicalFixture(),before=structuredClone(input.companies);
+  input.hubs[0].ownerProducts[1].name=label;
+  const result=inventoryPartnerFullHistory(input);
+  assert.equal(result.originalTotalCount,14);
+  assert.equal(result.mappedTotalCount,8);
+  assert.equal(result.heldTotalCount,6);
+  assert(result.companies[0].products.some(p=>
+   p.sourceKind==="ledger_legacy"&&p.legacyCombined&&
+   p.state==="held_legacy_combined"&&p.heldCount===2));
+  assert.deepEqual(input.companies,before);
+  assert.equal(result.productionDocumentWrites,0);
+ }
+});
