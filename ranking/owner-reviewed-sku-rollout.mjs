@@ -7,6 +7,9 @@
  */
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const LEGACY=new Set(Array.from({length:9},(_,i)=>"partnerSku0"+(i+1)));
+// Identical combined-category safeguard to the canonical Owner mapping writer:
+// saved 光/AIR history may never become a standalone 光 or AIR product.
+const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const fail=()=>{throw Error("OWNER_SKU_ROLLOUT_UNVERIFIED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","constructor","prototype"].includes(x);
@@ -49,6 +52,11 @@ function checked(mapping,catalog,source,targetIds){
      !(LEGACY.has(b.productId)||/^partnerPrivate:[A-Za-z0-9_-]{1,128}$/.test(b.productId)))fail();
   const sk=pair(b.companyId,b.productId),tk=pair(b.companyId,b.hubProductId);
   if(sources.has(sk)||targets.has(tk))fail();
+  if(b.productId==="partnerSku05"){
+   const combinedTarget=products.get(b.hubProductId);
+   if(!combinedTarget||
+      !LEGACY_COMBINED_LIGHT_AIR.test(combinedTarget.name.normalize("NFKC")))fail();
+  }
   sources.add(sk);targets.add(tk);
   if(!bindings.has(b.companyId))bindings.set(b.companyId,new Map());
   bindings.get(b.companyId).set(b.productId,b.hubProductId);
