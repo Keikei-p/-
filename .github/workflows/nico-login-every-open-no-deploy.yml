@@ -55,6 +55,8 @@ jobs:
           const fs=require('node:fs'),crypto=require('node:crypto');
           const live=fs.readFileSync(process.env.LIVE,'utf8');
           const candidate=fs.readFileSync('index.html','utf8');
+          const {execFileSync}=require('node:child_process');
+          const base=execFileSync('git',['show','6c35ea3910e68ee2cffc60e10e555130f3a9b419:index.html'],{maxBuffer:5_000_000}).toString('utf8');
           const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
           const part=s=>{
             const a=s.indexOf('<main id="authScreen">');
@@ -67,6 +69,8 @@ jobs:
           console.log('LIVE_HTTP_GET_OK=true');
           console.log('LIVE_LOGIN_MARKUP_EQUALS_CANDIDATE='+String(part(live)===part(candidate)));
           console.log('LIVE_FULL_INDEX_EQUALS_CANDIDATE='+String(live===candidate));
+          console.log('LIVE_FULL_INDEX_EQUALS_REVIEWED_BASE='+String(live===base));
+          console.log('REVIEWED_BASE_BYTES='+Buffer.byteLength(base));
           // Audit whether the CURRENT published version can accept ONLY the
           // reviewed auth edits. Do not print or replace original live source.
           const liveAnchors=[
