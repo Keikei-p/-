@@ -37,14 +37,18 @@ function mapping(doc,hub,uid){
     doc.active!==true||
     !Number.isSafeInteger(doc.version)||doc.version<1||
     !Array.isArray(doc.bindings)||doc.bindings.length>1000)stop();
- const seen=new Set();
+ // A persisted duplicate target is as unsafe as a duplicate source:
+ // it can count one hub product twice even if all future writes are guarded.
+ // Tuple keys avoid ambiguous separators in legitimate colon-bearing IDs.
+ const seen=new Set(),targets=new Set();
  for(const b of doc.bindings){
   if(!shape(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||b.companyId===hub||
      !isOwnerReviewPartnerSku(b.productId)||!id(b.hubProductId))stop();
-  const k=b.companyId+":"+b.productId;
-  if(seen.has(k))stop();
-  seen.add(k);
+  const k=JSON.stringify([b.companyId,b.productId]);
+  const target=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(k)||targets.has(target))stop();
+  seen.add(k);targets.add(target);
  }
  return {version:doc.version,bindings:doc.bindings.map(b=>({...b}))};
 }
