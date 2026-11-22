@@ -176,3 +176,59 @@ test("an Owner OFF combined Hikari/AIR target cannot be re-enabled via old mappi
  assert.equal(unmapped.partnerSku05,"partnerUnmatched:partnerSku05");
  assert.deepEqual(f,before);
 });
+
+function legacyPrivateFixture(){
+ const f=fixture();
+ f.partnerSource.products.push({
+  companyId:"partner",sourceId:"partnerPrivate:oldCustom",
+  name:"旧協力店限定商材",active:false,sortOrder:0
+ });
+ f.partnerSource.records[0].totalCount+=4;
+ f.partnerSource.lines.push({
+  companyId:"partner",sourceId:"oldPrivateLine1",recordId:"entry1",
+  uid:"worker",date:"2026-11-21",teamId:"t1",
+  productId:"partnerPrivate:oldCustom",count:4
+ });
+ return f;
+}
+test("historic private SKU with different name uses ONLY existing Owner reviewed exact ID",()=>{
+ const f=legacyPrivateFixture(),before=structuredClone(f);
+ const old=compose(f);
+ const unreviewed=groupsOf(old)["partnerPrivate:oldCustom"];
+ assert.match(unreviewed,/^partnerPrivateUnmatched:[a-f0-9]{32}$/);
+ assert.equal(unreviewed==="special",false);
+ const approved=compose(f,reviewed([
+  {companyId:"partner",productId:"partnerPrivate:oldCustom",hubProductId:"special"}
+ ]));
+ assert.equal(groupsOf(approved)["partnerPrivate:oldCustom"],"special");
+ const dash=buildVerifiedCountDashboard({...approved,context,
+  period:{kind:"month",day:"2026-11-01",asOf:"2026-11-21"}});
+ assert.equal(dash.summary.partner,18);
+ assert.equal(dash.summary.total,18);
+ assert.equal(sum(dash.productRanking),18,"no legacy private count is doubled or discarded");
+ assert.equal(dash.productRanking.find(x=>x.id==="special").count,4);
+ assert.deepEqual(f,before,"never modify original archived private source");
+ assert.doesNotMatch(JSON.stringify(dash),/unitPrice|revenue|cashback|writerEmail/i);
+});
+test("a retired private SKU cannot map into an Owner OFF hub product",()=>{
+ const f=legacyPrivateFixture();
+ f.hubSource.products.find(p=>p.sourceId==="special").active=false;
+ const before=structuredClone(f);
+ const b={companyId:"partner",productId:"partnerPrivate:oldCustom",hubProductId:"special"};
+ assert.throws(()=>compose(f,reviewed([b])),/UNVERIFIED/);
+ assert.equal(groupsOf(compose(f))["partnerPrivate:oldCustom"].startsWith("partnerPrivateUnmatched:"),true);
+ assert.deepEqual(f,before);
+});
+test("private ID mapping rejects missing, duplicated, cross-company and double target claims",()=>{
+ const f=legacyPrivateFixture(),mapping={companyId:"partner",
+  productId:"partnerPrivate:oldCustom",hubProductId:"special"};
+ const bad=[
+  {companyId:"partner",productId:"partnerPrivate:missing",hubProductId:"special"},
+  {companyId:"partnerB",productId:"partnerPrivate:oldCustom",hubProductId:"special"},
+  {companyId:"partner",productId:"partnerPrivate:__proto__",hubProductId:"special"},
+  {companyId:"partner",productId:"partnerPrivate:oldCustom",hubProductId:"missing"}
+ ];
+ for(const item of bad)assert.throws(()=>compose(f,reviewed([item])),/UNVERIFIED/);
+ assert.throws(()=>compose(f,reviewed([mapping,mapping])),/UNVERIFIED/);
+ assert.throws(()=>compose(f,reviewed([mapping,binding("partnerSku02","special")])),/UNVERIFIED/);
+});
