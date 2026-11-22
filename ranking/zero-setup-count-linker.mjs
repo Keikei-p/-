@@ -75,7 +75,10 @@ export function linkAllRegisteredCountsWithoutSetup({
  // and any attempt to split the old combined light/AIR category.
  const partnerIds=new Set(partnerSources.map(p=>p?.companyId));
  if(partnerIds.size!==partnerSources.length)stop();
- const reviewedByCompany=new Map(),reservedByCompany=new Map();
+ // A stored Owner mapping stays auditable when that Owner turns a product
+ // OFF. Hold only that source unmatched; other ON rankings must keep working.
+ const reviewedByCompany=new Map(),reservedByCompany=new Map(),
+  boundIdsByCompany=new Map(),offBoundIdsByCompany=new Map();
  for(const b of reviewedBindings){
   if(!b||Object.keys(b).sort().join("|")!=="companyId|hubProductId|productId"||
      !valid(b.companyId)||!partnerIds.has(b.companyId)||
@@ -83,17 +86,23 @@ export function linkAllRegisteredCountsWithoutSetup({
      !valid(b.hubProductId)||
      !own.has(b.hubProductId))stop();
   const target=own.get(b.hubProductId);
-  // An old Owner-reviewed binding cannot reactivate a currently OFF hub SKU.
-  // Fail closed before any count projection; preserve the original saved ledger.
-  if(target.active!==true)stop();
   if(b.productId==="partnerSku05"&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))stop();
-  const seen=reviewedByCompany.get(b.companyId)||new Map();
+  const seen=boundIdsByCompany.get(b.companyId)||new Set();
   const reserved=reservedByCompany.get(b.companyId)||new Set();
   if(seen.has(b.productId)||reserved.has(b.hubProductId))stop();
-  seen.set(b.productId,target);reserved.add(b.hubProductId);
-  reviewedByCompany.set(b.companyId,seen);
+  seen.add(b.productId);reserved.add(b.hubProductId);
+  boundIdsByCompany.set(b.companyId,seen);
   reservedByCompany.set(b.companyId,reserved);
+  if(target.active!==true){
+   // Never auto-redirect an OFF reviewed source to a different ON SKU.
+   const held=offBoundIdsByCompany.get(b.companyId)||new Set();
+   held.add(b.productId);offBoundIdsByCompany.set(b.companyId,held);
+   continue;
+  }
+  const accepted=reviewedByCompany.get(b.companyId)||new Map();
+  accepted.set(b.productId,target);
+  reviewedByCompany.set(b.companyId,accepted);
  }
  const seenCompanies=new Set();
  for(const partner of partnerSources){
@@ -107,6 +116,8 @@ export function linkAllRegisteredCountsWithoutSetup({
      partner.products.length>contract.size+100)stop();
   seenCompanies.add(partner.companyId);
   const reviewed=reviewedByCompany.get(partner.companyId)||new Map();
+  const offBound=offBoundIdsByCompany.get(partner.companyId)||new Set();
+  const originallyBound=boundIdsByCompany.get(partner.companyId)||new Set();
   const seenProducts=new Set(),mappedHub=new Set(
    reservedByCompany.get(partner.companyId)||[]);
   for(const p of partner.products){
@@ -133,7 +144,7 @@ export function linkAllRegisteredCountsWithoutSetup({
    // Reviewed owner IDs always win, even when an unrelated category also
    // has a matching alias. That automatic candidate must remain separate.
    const reviewedTarget=reviewed.get(p.sourceId)||null;
-   let target=reviewedTarget||(
+   let target=offBound.has(p.sourceId)?null:reviewedTarget||(
     possible.size===1?[...possible.values()][0]:null);
    // Old SB光・AIR does not identify a separately sold Hikari or Air SKU.
    if(p.sourceId==="partnerSku05"&&target&&
@@ -154,7 +165,7 @@ export function linkAllRegisteredCountsWithoutSetup({
    });
   }
   if([...contract.keys()].some(id=>!seenProducts.has(id))||
-     [...reviewed.keys()].some(id=>!seenProducts.has(id)))stop();
+     [...originallyBound].some(id=>!seenProducts.has(id)))stop();
  }
  // All registered partner categories remain present in the result even
  // when there is no safe cross-company matching hub product.
