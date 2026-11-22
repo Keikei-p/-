@@ -326,3 +326,40 @@ test("batch failure stops at first error and reloads server-confirmed partial st
  assert.match(displayed(root),/途中で停止しました。保存確認済み1件/);
  panel.destroy();
 });
+
+test("Owner preview refuses a duplicated persisted target without modifying any saved counts",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ let writes=0;
+ const map=status(3,[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku06",hubProductId:"nuro"}
+ ]);
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>map,readProducts:async()=>catalog(),
+  saveMapping:async()=>{writes++;return {};}
+ });
+ assert.equal(await panel.refresh(),false);
+ assert.equal(selects(root).length,0);
+ assert.match(displayed(root),/読み込めません/);
+ assert.equal(writes,0);
+ assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+  mapping:map,catalog:catalog(),partnerCompanyId:"partner"
+ }),/UNVERIFIED/);
+ panel.destroy();
+});
+test("separate partner companies can correctly reuse the same hub ranking SKU",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const mapping=status(2,[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"otherPartner",productId:"partnerSku01",hubProductId:"nuro"}
+ ]);
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>mapping,readProducts:async()=>catalog(),
+  saveMapping:async()=>assert.fail("read-only preview must not save")
+ });
+ assert.equal(await panel.refresh(),true);
+ assert.equal(selects(root)[0].value,"nuro");
+ panel.destroy();
+});
