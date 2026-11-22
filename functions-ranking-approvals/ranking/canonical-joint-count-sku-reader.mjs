@@ -22,7 +22,7 @@ import {mergeVerifiedTwoMonthInputs}
  from "./verified-two-month-count-input.mjs";
 import {linkAllRegisteredCountsWithoutSetup}
  from "./zero-setup-count-linker.mjs";
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
