@@ -200,3 +200,32 @@ test("Owner can explicitly review exact 光/AIR variants, never independent 光 
   assert.equal(f.writes,0);
  }
 });
+
+test("stored duplicate hub targets fail closed before owner reads or edits, without ledger writes",async()=>{
+ const f=fake(),path="companies/hub/rankingSkuMappings/shared";
+ const original={hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
+  active:true,version:7,bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}
+  ]};
+ f.state.set(path,structuredClone(original));
+ await assert.rejects(f.store.status(owner,"partner"),/OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+ await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerSku03",hubProductId:"air",expectedVersion:7}),
+  /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+ assert.equal(f.writes,0);
+ assert.deepEqual(f.state.get(path),original);
+});
+test("stored target identity uses unambiguous company and hub ID tuple",async()=>{
+ const f=fake();
+ f.state.set("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
+  active:true,version:2,bindings:[
+   {companyId:"partner:a",productId:"partnerSku01",hubProductId:"b"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"a:b"}
+  ]
+ });
+ const result=await f.store.status(owner);
+ assert.equal(result.bindings.length,2);
+ assert.equal(f.writes,0);
+});
