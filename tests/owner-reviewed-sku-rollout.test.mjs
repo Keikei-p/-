@@ -179,3 +179,26 @@ test("changing company during rollout cancels all subsequent writes",async()=>{
  assert.equal(h.writes,1,
   "in-flight save may commit, but no following partner writes occur");
 });
+
+test("historical combined 光/AIR cannot fan out into an individual 光 or AIR SKU",()=>{
+ const c=catalog();
+ c.products.push({id:"airOnly",name:"SoftBank Air",active:true,enabled:true});
+ c.products.push({id:"lightOnly",name:"SoftBank光",active:true,enabled:true});
+ for(const targetId of ["airOnly","lightOnly","water","missingId"]){
+  assert.throws(()=>planOwnerReviewedSkuRollout({
+   mapping:map(3,[
+    bind("partnerA","partnerSku01","nuro"),
+    bind("partnerA","partnerSku05",targetId)
+   ]),
+   catalog:c,sourceCompanyId:"partnerA",
+   targetCompanyIds:["partnerB","partnerC"]
+  }),/OWNER_SKU_ROLLOUT_UNVERIFIED/);
+ }
+ // The original combined SKU remains legitimate when its target is combined.
+ const okay=planOwnerReviewedSkuRollout({
+  mapping:map(3,source),catalog:c,sourceCompanyId:"partnerA",
+  targetCompanyIds:["partnerB","partnerC"]
+ });
+ assert.equal(okay.totalApply,4);
+ assert.equal(okay.plans[0].apply.find(p=>p.partnerProductId==="partnerSku05").hubProductId,"combined");
+});
