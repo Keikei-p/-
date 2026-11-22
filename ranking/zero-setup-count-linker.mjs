@@ -69,6 +69,8 @@ export function linkAllRegisteredCountsWithoutSetup({
   });
  }
  // Only canonical server reads may supply these Owner-reviewed ID bindings.
+ // Historic partnerPrivate:<id> is valid ONLY when that private product is
+ // present in the same snapshot; never invent IDs or mutate saved entries.
  // Reject stale partner IDs, missing products, duplicate source/target bindings
  // and any attempt to split the old combined light/AIR category.
  const partnerIds=new Set(partnerSources.map(p=>p?.companyId));
@@ -77,7 +79,8 @@ export function linkAllRegisteredCountsWithoutSetup({
  for(const b of reviewedBindings){
   if(!b||Object.keys(b).sort().join("|")!=="companyId|hubProductId|productId"||
      !valid(b.companyId)||!partnerIds.has(b.companyId)||
-     !contract.has(b.productId)||!valid(b.hubProductId)||
+     !(contract.has(b.productId)||PRIVATE.test(b.productId))||
+     !valid(b.hubProductId)||
      !own.has(b.hubProductId))stop();
   const target=own.get(b.hubProductId);
   // An old Owner-reviewed binding cannot reactivate a currently OFF hub SKU.
