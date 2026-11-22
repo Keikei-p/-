@@ -58,7 +58,8 @@ function checked(mapping,catalog,source,targetIds){
 export function planOwnerReviewedSkuRollout({
  mapping,catalog,sourceCompanyId,targetCompanyIds
 }={}){
- const targets=[...(targetCompanyIds??[])];
+ if(!Array.isArray(targetCompanyIds))fail();
+ const targets=[...targetCompanyIds];
  const {bindings,products,hub}=checked(mapping,catalog,sourceCompanyId,targets);
  if(targets.some(x=>x===hub))fail();
  const source=bindings.get(sourceCompanyId)||new Map();
