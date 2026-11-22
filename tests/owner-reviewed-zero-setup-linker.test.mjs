@@ -157,23 +157,32 @@ test("an Owner OFF target never receives counts through a stale reviewed binding
  const target=f.hubSource.products.find(p=>p.sourceId==="special");
  target.active=false;
  const before=structuredClone(f);
- // Existing approved mapping must not resurrect a disabled hub product.
- assert.throws(()=>compose(f,reviewed([binding("partnerSku02","special")])),/UNVERIFIED/);
- assert.deepEqual(f,before,"no saved count or visibility write");
- // The zero-setup path has no authority to guess another SKU for the 7 old counts.
- const unreviewed=compose(f);
- const group=groupsOf(unreviewed);
+ // An OFF reviewed binding is held unmatched; it cannot stop other ON ranks.
+ const withStaleBinding=compose(f,reviewed([binding("partnerSku02","special")]));
+ const group=groupsOf(withStaleBinding);
  assert.equal(group.partnerSku02,"partnerUnmatched:partnerSku02");
- assert.notEqual(group.partnerSku02,"special");
- assert.deepEqual(f,before);
+ assert.equal(group.partnerSku01,"nuro");
+ assert.equal(group.partnerSku05,"combined");
+ const dash=buildVerifiedCountDashboard({...withStaleBinding,context,
+  period:{kind:"month",day:"2026-11-01",asOf:"2026-11-21"}});
+ assert.equal(dash.summary.partner,14,"hold 7 OFF counts without changing source totals");
+ assert.equal(sum(dash.productRanking),14);
+ assert.equal(dash.productRanking.find(x=>x.id==="nuro").count,3);
+ assert.equal(dash.productRanking.find(x=>x.id==="combined").count,4);
+ assert.deepEqual(f,before,"no saved count or visibility write");
 });
 test("an Owner OFF combined Hikari/AIR target cannot be re-enabled via old mapping",()=>{
  const f=fixture();
  f.hubSource.products.find(p=>p.sourceId==="combined").active=false;
  const before=structuredClone(f);
- assert.throws(()=>compose(f,reviewed([binding("partnerSku05","combined")])),/UNVERIFIED/);
- const unmapped=groupsOf(compose(f));
+ const result=compose(f,reviewed([binding("partnerSku05","combined")]));
+ const unmapped=groupsOf(result);
  assert.equal(unmapped.partnerSku05,"partnerUnmatched:partnerSku05");
+ assert.equal(unmapped.partnerSku01,"nuro","remaining ON categories must still rank");
+ const dash=buildVerifiedCountDashboard({...result,context,
+  period:{kind:"month",day:"2026-11-01",asOf:"2026-11-21"}});
+ assert.equal(dash.summary.partner,14);
+ assert.equal(sum(dash.productRanking),14);
  assert.deepEqual(f,before);
 });
 
@@ -215,8 +224,9 @@ test("a retired private SKU cannot map into an Owner OFF hub product",()=>{
  f.hubSource.products.find(p=>p.sourceId==="special").active=false;
  const before=structuredClone(f);
  const b={companyId:"partner",productId:"partnerPrivate:oldCustom",hubProductId:"special"};
- assert.throws(()=>compose(f,reviewed([b])),/UNVERIFIED/);
- assert.equal(groupsOf(compose(f))["partnerPrivate:oldCustom"].startsWith("partnerPrivateUnmatched:"),true);
+ const input=compose(f,reviewed([b]));
+ assert.equal(groupsOf(input)["partnerPrivate:oldCustom"].startsWith("partnerPrivateUnmatched:"),true);
+ assert.equal(groupsOf(input).partnerSku01,"nuro");
  assert.deepEqual(f,before);
 });
 test("private ID mapping rejects missing, duplicated, cross-company and double target claims",()=>{
@@ -231,4 +241,32 @@ test("private ID mapping rejects missing, duplicated, cross-company and double t
  for(const item of bad)assert.throws(()=>compose(f,reviewed([item])),/UNVERIFIED/);
  assert.throws(()=>compose(f,reviewed([mapping,mapping])),/UNVERIFIED/);
  assert.throws(()=>compose(f,reviewed([mapping,binding("partnerSku02","special")])),/UNVERIFIED/);
+});
+
+test("stale OFF map cannot auto-reassign a source to another same-name ON SKU",()=>{
+ const f=fixture();
+ f.hubSource.products.find(p=>p.sourceId==="special").active=false;
+ f.hubSource.products.push({companyId:"hub",sourceId:"replacement",
+  name:"法人専用プラン",active:true,sortOrder:9});
+ const before=structuredClone(f);
+ const input=compose(f,reviewed([binding("partnerSku02","special")]));
+ const map=groupsOf(input);
+ assert.equal(map.partnerSku02,"partnerUnmatched:partnerSku02",
+  "no silent reroute to another product after Owner OFF");
+ assert.equal(map.partnerSku01,"nuro");
+ assert.deepEqual(f,before);
+});
+test("classic reviewed mode omits OFF mapping but keeps other approved ON mappings",()=>{
+ const f=fixture();
+ f.hubSource.products.find(p=>p.sourceId==="special").active=false;
+ const before=structuredClone(f);
+ const input=composeCanonicalMonthlyRankingInput({
+  context,hubSource:f.hubSource,partnerSources:[f.partnerSource],
+  skuMap:reviewed([binding("partnerSku02","special"),binding("partnerSku01","nuro")]),
+  hubOwnerUid:"owner",month,serverAsOf:"2026-11-21",zeroSetupLink:false
+ });
+ const map=groupsOf(input);
+ assert.equal(map.partnerSku02,undefined);
+ assert.equal(map.partnerSku01,"nuro");
+ assert.deepEqual(f,before);
 });
