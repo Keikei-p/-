@@ -207,3 +207,15 @@ test("historical combined 光/AIR cannot fan out into an individual 光 or AIR S
  assert.equal(okay.totalApply,4);
  assert.equal(okay.plans[0].apply.find(p=>p.partnerProductId==="partnerSku05").hubProductId,"combined");
 });
+
+
+test("rollout rejects unrelated generic 旧合算 and 未分類 names as combined product targets",()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const c=catalog();
+  c.products.find(p=>p.id==="combined").name=name;
+  assert.throws(()=>planOwnerReviewedSkuRollout({
+   mapping:map(3,source),catalog:c,
+   sourceCompanyId:"partnerA",targetCompanyIds:["partnerB","partnerC"]
+  }),/OWNER_SKU_ROLLOUT_UNVERIFIED/);
+ }
+});
