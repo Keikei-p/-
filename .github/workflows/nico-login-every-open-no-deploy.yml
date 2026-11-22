@@ -1,0 +1,92 @@
+name: NICO existing login fresh-open security (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/nico-login-every-open-existing-ui.test.cjs'
+      - '.github/workflows/nico-login-every-open-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/nico-login-every-open-existing-ui.test.cjs'
+      - '.github/workflows/nico-login-every-open-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verify-original-login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Test every-open login and freeze original visuals and password method
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node --test tests/nico-login-every-open-existing-ui.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-passkey-stability.test.cjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const src=fs.readFileSync('index.html','utf8');
+          const scripts=[...src.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/gi)];
+          if(!scripts.length)throw Error('MISSING_EXISTING_LOGIN_MODULE');
+          scripts.forEach((m,i)=>fs.writeFileSync('/tmp/nico-original-login-'+i+'.mjs',m[1]));
+          NODE
+          for file in /tmp/nico-original-login-*.mjs; do node --check "$file"; done
+          echo EXISTING_LOGIN_NO_SESSION_RESTORE_TESTS_PASS_NO_DEPLOY
+      - name: Read currently published original login without authentication (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 2 --max-time 35 \
+            "https://nico-factory.web.app/?existing_login_readonly=$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/nico-live-login.html"
+          LIVE="$RUNNER_TEMP/nico-live-login.html" node <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          const live=fs.readFileSync(process.env.LIVE,'utf8');
+          const candidate=fs.readFileSync('index.html','utf8');
+          const {execFileSync}=require('node:child_process');
+          const base=execFileSync('git',['show','6c35ea3910e68ee2cffc60e10e555130f3a9b419:index.html'],{maxBuffer:5_000_000}).toString('utf8');
+          const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
+          const part=s=>{
+            const a=s.indexOf('<main id="authScreen">');
+            const b=s.indexOf('</main>',a+1);
+            if(a<0||b<a)throw Error('UNEXPECTED_ORIGINAL_LOGIN_MARKUP');
+            return s.slice(a,b+7);
+          };
+          if(live.length<100000||!live.includes('営業実績管理'))
+            throw Error('UNKNOWN_PUBLISHED_NICO_LOGIN');
+          console.log('LIVE_HTTP_GET_OK=true');
+          console.log('LIVE_LOGIN_MARKUP_EQUALS_CANDIDATE='+String(part(live)===part(candidate)));
+          console.log('LIVE_FULL_INDEX_EQUALS_CANDIDATE='+String(live===candidate));
+          console.log('LIVE_FULL_INDEX_EQUALS_REVIEWED_BASE='+String(live===base));
+          console.log('REVIEWED_BASE_BYTES='+Buffer.byteLength(base));
+          // Audit whether the CURRENT published version can accept ONLY the
+          // reviewed auth edits. Do not print or replace original live source.
+          const liveAnchors=[
+            '  getAuth,\n  createUserWithEmailAndPassword,',
+            'const auth =\n  getAuth(app);\n\nauth.languageCode =',
+            '\n\n/* =====================================================\n   ユーザー情報読み込み\n===================================================== */\n\nasync function checkLegacyEntryAgainstServer(user) {'
+          ];
+          const exactOnce=(source,needle)=>source.split(needle).length===2;
+          const canSurgicallyPatch=liveAnchors.every(a=>exactOnce(live,a)) &&
+            live.includes('onAuthStateChanged(\n  auth,') &&
+            live.includes('signInWithEmailAndPassword(');
+          console.log('LIVE_AUTH_ONLY_SURGICAL_ANCHORS='+String(canSurgicallyPatch));
+          console.log('FULL_INDEX_REDEPLOY_ALLOWED=false');
+          console.log('LIVE_BYTES='+Buffer.byteLength(live));
+          console.log('CANDIDATE_BYTES='+Buffer.byteLength(candidate));
+          console.log('LIVE_LOGIN_SHA256='+sha(part(live)));
+          console.log('CANDIDATE_LOGIN_SHA256='+sha(part(candidate)));
+          console.log('LIVE_WRITES=0 FIRESTORE_WRITES=0 DEPLOY=NONE');
+          NODE
