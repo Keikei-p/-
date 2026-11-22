@@ -7436,6 +7436,8 @@ import {
 
 import {
   getAuth,
+  setPersistence,
+  inMemoryPersistence,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
@@ -7557,6 +7559,13 @@ const app =
 
 const auth =
   getAuth(app);
+
+// Require the ORIGINAL email/password login each time the application opens.
+// First clear any previously persisted Firebase Auth user, then keep new
+// successful logins in memory only. Never import a cached user into the UI.
+await auth.authStateReady();
+if (auth.currentUser) await signOut(auth);
+await setPersistence(auth, inMemoryPersistence);
 
 auth.languageCode =
   "ja";
@@ -15576,6 +15585,19 @@ onAuthStateChanged(
   }
 );
 
+
+// A suspended iPhone/PWA can resume without reloading its JavaScript context.
+// Close only an ALREADY ENTERED dashboard when it goes to the background;
+// leave invitation, first-time email verification and the login form intact.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "hidden" || !auth.currentUser ||
+      appScreen.style.display !== "block") return;
+  // Hide financial/count contents immediately, before asynchronous sign-out.
+  appScreen.style.display = "none";
+  authScreen.style.display = "block";
+  void stopRealtimeListeners();
+  void signOut(auth).catch(() => location.reload());
+});
 
 /* =====================================================
    ユーザー情報読み込み
