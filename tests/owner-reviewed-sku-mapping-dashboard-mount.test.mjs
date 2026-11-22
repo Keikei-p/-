@@ -107,3 +107,14 @@ test("index Owner SKU mapping remains OFF and does not alter the existing self d
  assert.match(html,/function renderDashboard\(/);
  assert.match(html,/function canCurrentUserViewRevenue\(/);
 });
+
+test("initial Firebase callback with same Owner keeps the visible mapping and performs no extra GET",async()=>{
+ const h=harness(),mount=mountOwnerReviewedSkuMappingDashboard(h.args);
+ assert.equal(await mount.refresh(),true);
+ const count=h.calls.length;
+ h.emit(owner);
+ assert(h.root.children.length>0);
+ assert.equal(mount.getVersion(),0);
+ assert.equal(h.calls.length,count);
+ mount.destroy();
+});
