@@ -130,3 +130,24 @@ test("an unexpected financial field in store status is not returned",async()=>{
   hubCompanyId:"hub",version:1,bindings:[],revenue:20000}});
  await assert.rejects(x.api.get(request()),e=>e.code==="permission-denied");
 });
+
+test("Owner GET refuses old duplicate mapped hub targets before response exposure",async()=>{
+ const view={schema:"nico-owner-reviewed-sku-map-v1",hubCompanyId:"hub",
+  version:8,bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku06",hubProductId:"nuro"}
+  ]};
+ const x=setup({view});
+ await assert.rejects(x.api.get(request()),e=>e.code==="permission-denied");
+ assert.equal(x.reads,1);assert.equal(x.writes,0);
+});
+test("Owner GET keeps distinct partner companies independent when targets match",async()=>{
+ const view={schema:"nico-owner-reviewed-sku-map-v1",hubCompanyId:"hub",
+  version:8,bindings:[
+   {companyId:"partnerA",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partnerB",productId:"partnerSku01",hubProductId:"nuro"}
+  ]};
+ const x=setup({view});
+ assert.deepEqual((await x.api.get(request())).bindings,view.bindings);
+ assert.equal(x.writes,0);
+});
