@@ -155,3 +155,27 @@ test("revoked identity stops further rollout, keeping confirmed steps auditable"
  assert.equal(reply.verified,0,"never claim readback proof after account change");
  assert.equal(h.writes,1,"one server-confirmed write may have happened before sign-out");
 });
+
+test("rollout rejects string-shaped target roster before any action",()=>{
+ assert.throws(()=>planOwnerReviewedSkuRollout({
+  mapping:map(3,source),catalog:catalog(),sourceCompanyId:"partnerA",
+  targetCompanyIds:"partnerB"
+ }),/OWNER_SKU_ROLLOUT_UNVERIFIED/);
+});
+test("changing company during rollout cancels all subsequent writes",async()=>{
+ const h=harness(),p=h.plan();
+ let cancelled=false;
+ const result=await applyOwnerReviewedSkuRollout({
+  confirmed:true,plan:p,auth:h.auth,
+  readMappings:h.readMappings,readProducts:h.readProducts,
+  saveMapping:async data=>{
+   const saved=await h.saveMapping(data);
+   cancelled=true;
+   return saved;
+  },canContinue:()=>!cancelled
+ });
+ assert.equal(result.status,"partial_or_blocked");
+ assert.equal(result.verified,0);
+ assert.equal(h.writes,1,
+  "in-flight save may commit, but no following partner writes occur");
+});
