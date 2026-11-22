@@ -245,3 +245,18 @@ test("zero-setup mode rejects a mismatched role before any mapping or source rea
  assert.throws(()=>compose({zeroSetupLink:true,skuMap:null,context:invalid}),
   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
 });
+
+
+test("canonical ranking rejects unrelated generic 旧合算 / 未分類 labels for old 光/AIR source",()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const {hubSource,partnerSources}=sources();
+  hubSource.products[1].name=name;
+  partnerSources[0].products[0].sourceId="partnerSku05";
+  partnerSources[0].products[0].name="SB光・AIR";
+  partnerSources[0].lines[0].productId="partnerSku05";
+  const bad={...map,bindings:[{companyId:"partner",
+   productId:"partnerSku05",hubProductId:"air"}]};
+  assert.throws(()=>compose({hubSource,partnerSources,skuMap:bad}),
+   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+ }
+});
