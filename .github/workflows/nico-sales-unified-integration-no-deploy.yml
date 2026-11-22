@@ -63,7 +63,8 @@ jobs:
           for(const flag of [
             "const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;",
             "const NICO_PARTNER_TAB_UI_ENABLED = false;",
-            "const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;"
+            "const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;",
+            "const NICO_OWNER_SKU_MAPPING_UI_ENABLED = false;"
           ])assert(ui.includes(flag),"Unexpected live switch: "+flag);
           const ranking=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
           for(const flag of ["NICO_JOINT_COUNT_RANKING_ENABLED","NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED",
@@ -106,7 +107,7 @@ jobs:
           node --test tests/partner-owner-on-exact-auto-input.test.mjs
           # Owner-reviewed SKU IDs must win over zero-setup aliases; no original count write.
           node --test tests/owner-reviewed-zero-setup-linker.test.mjs
-          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs tests/owner-reviewed-sku-mapping-dashboard-mount.test.mjs
+          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs tests/owner-reviewed-sku-mapping-dashboard-mount.test.mjs tests/owner-reviewed-sku-rollout.test.mjs tests/owner-reviewed-sku-rollout-panel.test.mjs
           # The completed internal dashboard must remain byte-identical.
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
