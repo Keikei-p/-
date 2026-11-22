@@ -15,6 +15,18 @@ const privateId=value=>typeof value==="string"&&
  isId(value.match(/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/)?.[1]);
 const partnerSku=value=>typeof value==="string"&&
  (/^partnerSku0[1-9]$/.test(value)||privateId(value));
+// Validate the GET response independently of the Firestore writer, so
+// a stored duplicate never appears as a trustworthy count mapping.
+const uniqueMapping=rows=>{
+ const sources=new Set(),targets=new Set();
+ for(const row of rows){
+  const source=JSON.stringify([row.companyId,row.productId]);
+  const target=JSON.stringify([row.companyId,row.hubProductId]);
+  if(sources.has(source)||targets.has(target))return false;
+  sources.add(source);targets.add(target);
+ }
+ return true;
+};
 function createOwnerSkuMappingCallables({
  db,FieldValue,getAuth,HttpsError,enabled=()=>false,
  modules=()=>Promise.all([
@@ -75,6 +87,7 @@ function createOwnerSkuMappingCallables({
        exact(x,["companyId","productId","hubProductId"])&&
        isId(x.companyId)&&partnerSku(x.productId)&&
        isId(x.hubProductId))||
+      !uniqueMapping(result.bindings)||
       (includeProducts&&(!Array.isArray(result.partnerProducts)||
        result.partnerProducts.length>100||!result.partnerProducts.every(x=>
         exact(x,["id","name","active"])&&privateId(x.id)&&
