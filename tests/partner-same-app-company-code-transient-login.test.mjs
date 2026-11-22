@@ -37,7 +37,9 @@ function fixture({mode="transient",busy=false,code=true}={}){
   partnerRankingRequestGeneration:0,
   partnerRankingDailyCache:new Map([["old-company","data"]]),
   partnerRankingState:null,partnerRankingActiveKey:"old",
-  document:{getElementById:()=>null},
+  document:{getElementById:()=>null,addEventListener:(name,handler)=>{
+   assert.equal(name,"visibilitychange");assert.equal(typeof handler,"function");
+  }},
   directPartnerLastInvitation:null,
   applyThemeSettings:()=>{},
   defaultThemeSettings:{},
