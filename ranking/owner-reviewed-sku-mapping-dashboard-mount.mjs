@@ -38,9 +38,10 @@ export function mountOwnerReviewedSkuMappingDashboard({
   const off=onAuthStateChanged(auth,user=>{
    if(destroyed)return;
    reset();
+   // Invalidate only. The existing Owner workspace explicitly requests
+   // refresh on open, avoiding two racing requests from Firebase's immediate
+   // auth callback and the Owner's click. Never auto-write or auto-fetch.
    if(!user||user.emailVerified!==true||auth.currentUser!==user)return;
-   // Read-only load only; the panel writes only after the Owner clicks.
-   void panel.refresh();
   });
   if(typeof off!=="function")stop();
   unsubscribe=off;
