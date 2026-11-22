@@ -151,3 +151,28 @@ test("canonical loader fetches existing reviewed map with the same read-only tra
  assert.match(code,/skuMap:mappingSnap\.exists\?doc\(mappingSnap\):null/);
  assert.doesNotMatch(code,/zeroSetupLink===true\?null:doc\(mappingSnap\)/);
 });
+
+test("an Owner OFF target never receives counts through a stale reviewed binding",()=>{
+ const f=fixture();
+ const target=f.hubSource.products.find(p=>p.sourceId==="special");
+ target.active=false;
+ const before=structuredClone(f);
+ // Existing approved mapping must not resurrect a disabled hub product.
+ assert.throws(()=>compose(f,reviewed([binding("partnerSku02","special")])),/UNVERIFIED/);
+ assert.deepEqual(f,before,"no saved count or visibility write");
+ // The zero-setup path has no authority to guess another SKU for the 7 old counts.
+ const unreviewed=compose(f);
+ const group=groupsOf(unreviewed);
+ assert.equal(group.partnerSku02,"partnerUnmatched:partnerSku02");
+ assert.notEqual(group.partnerSku02,"special");
+ assert.deepEqual(f,before);
+});
+test("an Owner OFF combined Hikari/AIR target cannot be re-enabled via old mapping",()=>{
+ const f=fixture();
+ f.hubSource.products.find(p=>p.sourceId==="combined").active=false;
+ const before=structuredClone(f);
+ assert.throws(()=>compose(f,reviewed([binding("partnerSku05","combined")])),/UNVERIFIED/);
+ const unmapped=groupsOf(compose(f));
+ assert.equal(unmapped.partnerSku05,"partnerUnmatched:partnerSku05");
+ assert.deepEqual(f,before);
+});
