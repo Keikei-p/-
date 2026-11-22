@@ -91,3 +91,19 @@ test("logout clears old company mapping; no stale Owner mapping after auth loss"
  assert.equal(h.calls.filter(x=>x.name==="setOwnerReviewedSkuMapping").length,0);
  mount.destroy();
 });
+
+test("index Owner SKU mapping remains OFF and does not alter the existing self dashboard",async()=>{
+ const {readFileSync}=await import("node:fs");
+ const {fileURLToPath}=await import("node:url");
+ const {dirname,join}=await import("node:path");
+ const root=join(dirname(fileURLToPath(import.meta.url)),"..");
+ const html=readFileSync(join(root,"index.html"),"utf8");
+ assert.match(html,/const NICO_OWNER_SKU_MAPPING_UI_ENABLED = false;/);
+ assert.match(html,/id="ownerPartnerSkuMappingPanel"[^>]*hidden/);
+ assert.match(html,/id="ownerPartnerSkuCompanySelect"/);
+ assert.match(html,/mountOwnerReviewedSkuMappingDashboard/);
+ assert.match(html,/refreshOwnerPartnerSkuMappingUI\(stillOpen\)/);
+ assert.match(html,/const partnerInlineSave = httpsCallable\(partnerCountFunctions,"submitPartnerWorkspaceCounts"\);/);
+ assert.match(html,/function renderDashboard\(/);
+ assert.match(html,/function canCurrentUserViewRevenue\(/);
+});
