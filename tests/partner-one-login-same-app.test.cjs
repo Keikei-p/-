@@ -259,3 +259,99 @@ test("legacy partner login can continue into the SINGLE original app without res
  assert.match(source,/location\.assign\(destination\.href\)/);
  assert.doesNotMatch(source,/sessionStorage\.removeItem\(|signOut\(auth\)/);
 });
+
+test("same-app release preserves published each-open password policy and untouched login handler",()=>{
+ const from=index.indexOf("const auth =\\n  getAuth(app);");
+ const end=index.indexOf('auth.languageCode =',from);
+ assert(from>0&&end>from);
+ const boot=index.slice(from,end);
+ const required=[
+  "await auth.authStateReady();",
+  "if (auth.currentUser) await signOut(auth);",
+  "await setPersistence(auth, inMemoryPersistence);"
+ ];
+ for(const item of required)assert(boot.includes(item),"existing production auth guard lost: "+item);
+ assert(boot.indexOf(required[0])<boot.indexOf(required[1]));
+ assert(boot.indexOf(required[1])<boot.indexOf(required[2]));
+ const imports=index.slice(index.indexOf("import {\\n  getAuth,"),index.indexOf('} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";'));
+ assert.match(imports,/\\bsetPersistence,/);
+ assert.match(imports,/\\binMemoryPersistence,/);
+ assert(!index.includes("browserLocalPersistence"));
+ assert(!index.includes("browserSessionPersistence"));
+ const existing=index.slice(index.indexOf("async function login()"),index.indexOf("authButton.onclick"));
+ let hash=2166136261;
+ for(let i=0;i<existing.length;i++)hash=Math.imul(hash^existing.charCodeAt(i),16777619)>>>0;
+ assert.equal(hash.toString(16).padStart(8,"0"),"9d04c3ad","existing email/password login must not drift");
+ assert.match(existing,/signInWithEmailAndPassword\\(\\s*auth,\\s*email,\\s*password\\s*\\)/);
+});
+
+test("company-code handoff is consumed once; later reload cannot bypass password",()=>{
+ const start=index.indexOf('let partnerMainCodeToken="",partnerMainCodeEpoch=0;');
+ const end=index.indexOf("function partnerInlineIdentity()",start);
+ assert(start>0&&end>start);
+ const code=index.slice(start,end);
+ assert(code.indexOf('sessionStorage.removeItem("nicoPartnerCodeSession")')<
+   code.indexOf('partnerMainCodeToken=stored'),"handoff must be consumed before entering dashboard");
+ const storage=new Map([["nicoPartnerCodeSession","t".repeat(43)]]);
+ const sessionStorage={
+  getItem:key=>storage.get(key)||null,
+  removeItem:key=>storage.delete(key)
+ };
+ const run=()=>{
+  const ctx=vm.createContext({sessionStorage,auth:{currentUser:null}});
+  return vm.runInContext(code+";({active:partnerMainCodeActive(),token:partnerMainCodeToken})",ctx);
+ };
+ const first=run();
+ assert.equal(first.active,true,"one-time login navigation remains supported");
+ assert.equal(first.token,"t".repeat(43));
+ assert.equal(storage.has("nicoPartnerCodeSession"),false,"no long-lived code token in storage");
+ assert.equal(run().active,false,"reopen requires code/password again");
+ storage.set("nicoPartnerCodeSession","invalid");
+ assert.equal(run().active,false,"corrupt cached code never opens dashboard");
+ assert.equal(storage.size,0,"unusable handoff must also be removed");
+});
+
+test("backgrounding either authenticated app hides dashboard immediately and revokes code mode",async()=>{
+ const start=index.indexOf('document.addEventListener("visibilitychange",');
+ const end=index.indexOf("\\n});",start);
+ assert(start>0&&end>start,"same-app lost background logout guard");
+ assert.equal(index.indexOf('document.addEventListener("visibilitychange",',start+1),-1);
+ const script=index.slice(start,end+4);
+ const run=(mode="email",visible="block",state="hidden")=>{
+  let eventFn,stop=0,forget=0,reset=0,signout=0,serverLogout=0,token="k".repeat(43);
+  const auth={currentUser:mode==="email"?{uid:"synthetic"}:null};
+  const appScreen={style:{display:visible}},authScreen={style:{display:"none"}};
+  const ctx=vm.createContext({
+   auth,appScreen,authScreen,loginStatus:{textContent:""},
+   currentUser:null,currentUserData:null,currentCompanyData:null,
+   document:{visibilityState:state,addEventListener:(event,fn)=>{
+    assert.equal(event,"visibilitychange");eventFn=fn;
+   }},
+   stopRealtimeListeners:()=>{stop++;},
+   signOut:async()=>{signout++;auth.currentUser=null;},
+   location:{reload:()=>{throw Error("UNEXPECTED_RELOAD");}},
+   partnerMainCodeActive:()=>mode==="code"&&!!token,
+   partnerMainCodeToken:token,
+   partnerMainCodeForget:()=>{forget++;token="";},
+   resetPartnerInline:()=>{reset++;},
+   partnerMainCodeLogout:async({codeSessionToken})=>{
+    assert.equal(codeSessionToken,"k".repeat(43));serverLogout++;
+   }
+  });
+  vm.runInContext(script,ctx);
+  eventFn();
+  return {get(){return {stop,forget,reset,signout,serverLogout,visible:appScreen.style.display,login:authScreen.style.display}}};
+ };
+ for(const mode of ["email","code"]){
+  const r=run(mode);const result=r.get();
+  assert.equal(result.visible,"none");
+  assert.equal(result.login,"block");
+  assert.equal(result.stop,1);
+  if(mode==="code"){assert.equal(result.forget,1);assert.equal(result.reset,1);assert.equal(result.serverLogout,1);}
+  else assert.equal(result.signout,1);
+ }
+ for(const mode of ["email","code"]){
+  assert.equal(run(mode,"none").get().stop,0,"hidden login form unaffected");
+  assert.equal(run(mode,"block","visible").get().stop,0,"foreground untouched");
+ }
+});
