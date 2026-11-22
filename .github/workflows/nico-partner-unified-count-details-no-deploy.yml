@@ -20,6 +20,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -31,9 +34,17 @@ jobs:
       - name: Count-only historical invariants
         run: node --test tests/partner-unified-count-team-view.test.mjs
       - name: Compare original count save and self finance logic with main
+        if: github.head_ref != 'integration/sales-shared-screen-eight-tabs-20261119'
         run: |
           git fetch --no-tags --depth=1 origin main
           node scripts/ci/verify-partner-unified-count-details.cjs
+      - name: Verify integrated save readback and original self finance renderers
+        if: github.head_ref == 'integration/sales-shared-screen-eight-tabs-20261119'
+        run: >-
+          node --test tests/sales-self-dashboard-frozen.test.mjs
+          tests/partner-same-app-off-history-save.test.mjs
+          tests/partner-save-receipt-idempotency.test.mjs
+          tests/partner-workspace.test.cjs
       - name: No Firebase deployment or writes in new projection
         run: |
           if grep -En '(firebase deploy|firebase-admin|httpsCallable\(|db\.collection\(|tx\.(create|update|delete|set)\(|deleteDoc\(|setDoc\(|updateDoc\()' ranking/partner-unified-count-team-view.mjs; then

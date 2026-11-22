@@ -98,6 +98,10 @@ function fixture(){
   role:"hub_owner",approvedCompanyIds};
  const joined=composeCanonicalMonthlyRankingInput({
   context,hubSource:ownSource,partnerSources:input.map(x=>x.result),
+  skuMap:{hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
+   active:true,version:1,bindings:scenario.map(({cid})=>({
+    companyId:cid,productId:"partnerSku01",hubProductId:"nuro"
+   }))},
   zeroSetupLink:true,hubOwnerUid:"owner",month,serverAsOf:asOf
  });
  const period={kind:"month",day:month+"-01",asOf};

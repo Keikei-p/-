@@ -208,6 +208,7 @@ test("verified active partner roster preserves no-report staff and historic coun
 
 test("zero-setup same month reconciles both companies and all counts without mappings or ON switches",()=>{
  const source=sources();
+ source.hubSource.products.find(p=>p.sourceId==="nuro").name="NURO";
  source.partnerSources[0].products=PARTNER_RANK_SKUS.map((p,i)=>({
   companyId:"partner",sourceId:p.id,name:p.name,active:true,sortOrder:i
  }));
@@ -216,12 +217,12 @@ test("zero-setup same month reconciles both companies and all counts without map
  const group=input.productGroups.find(x=>x.companyId==="partner"&&
   x.productId==="partnerSku01");
  assert.deepEqual(group,{companyId:"partner",productId:"partnerSku01",
-  groupId:"nuro",groupName:"NURO光"});
+  groupId:"nuro",groupName:"NURO"});
  const result=buildVerifiedCountDashboard({...input,context});
  assert.equal(result.summary.own,3);
  assert.equal(result.summary.partner,5);
  assert.equal(result.summary.total,8);
- assert.equal(result.productRanking.find(x=>x.name==="NURO光").count,7);
+ assert.equal(result.productRanking.find(x=>x.name==="NURO").count,7);
  assert.equal(result.productRanking.find(x=>x.name==="SoftBank Air").count,1);
  assert.equal(result.memberRanking.find(x=>x.id==="partner:p1").count,5);
  assert.equal(result.memberRanking.find(x=>x.id==="hub:owner").count,3);

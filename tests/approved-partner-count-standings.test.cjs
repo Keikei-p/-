@@ -4,14 +4,14 @@ const {buildApprovedPartnerCountStandings,KEYS}=
  require("../functions-partner-workspace/shared-count-standings.cjs");
 const {allowedPartnerCategories}=require("../functions-partner-workspace/approved-published-categories.cjs");
 const zero=()=>Object.fromEntries(KEYS.map(k=>[k,0]));
-function company(cid,name,counts,{date="2026-10-31",person="a",staffName="担当者",team="team",allowed=["NURO"]}={}){
+function company(cid,name,counts,{date="2026-10-31",person="a",staffName="担当者",team="team",allowed=["NURO"],privateCount=0}={}){
  const total=Object.values(counts).reduce((x,y)=>x+y,0);
  return {cid,name,approved:true,allowedCategories:allowed,
   teams:[{id:team,name:"1班"}],
   entries:[{id:date+"__"+person,data:{companyId:cid,hubCompanyId:"hub",date,
    staffId:person,teamIdSnapshot:team,staffNameSnapshot:staffName,
    version:1,counts,totalCount:total,
-   privateCounts:{privateSku:999},privateTotalCount:999,
+   privateCounts:privateCount?{privateSku:privateCount}:{},privateTotalCount:privateCount,
    cbCounts:{NURO:{"80000":2}},revenue:990000,updatedByUid:"internal-admin"}}],
   reports:[{date,data:{source:"staff-entries-v1",hubCompanyId:"hub",
    partnerCompanyId:cid,date,counts,totalCount:total,revenue:7654321}}]};
@@ -20,7 +20,7 @@ const build=sources=>buildApprovedPartnerCountStandings({
  hubId:"hub",start:"2026-10-31",end:"2026-10-31",sources
 });
 test("two approved companies, individual/team, product totals, once only",()=>{
- const a=company("a","会社A",{...zero(),NURO:2,SBMNP:7});
+ const a=company("a","会社A",{...zero(),NURO:2,SBMNP:7},{privateCount:999});
  const b=company("b","会社B",{...zero(),NURO:2,SBMNP:8});
  const before=JSON.stringify([a,b]);
  const out=build([a,b]);
@@ -30,7 +30,7 @@ test("two approved companies, individual/team, product totals, once only",()=>{
  assert.deepEqual(out.products.map(x=>x.name),["NURO"]);
  assert.equal(out.totalCount,4);
  assert.equal(out.reportCount,2);
- assert.equal(out.peopleComplete,true);
+ assert.equal(out.peopleComplete,false,"unlinked private history cannot be marked complete");
  assert.equal(out.includesDirect,false);
  assert.equal(out.fullyJoint,false);
  assert.doesNotMatch(JSON.stringify(out),/cbCounts|80000|990000|7654321|privateSku|updatedByUid|revenue|SBMNP/);

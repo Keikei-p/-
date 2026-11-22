@@ -15,6 +15,8 @@ const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュ
 const deny=()=>{throw Error("PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","constructor","prototype"].includes(x);
+const privateSku=x=>typeof x==="string"&&
+ id(x.match(/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/)?.[1]);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const snap=x=>x?.exists===true&&typeof x.data==="function"?x.data():null;
 const unique=x=>Array.isArray(x)&&x.length<=1000&&x.every(id)&&
@@ -59,7 +61,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
  for(const b of mapping.bindings){
   if(!exact(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||b.companyId===hubId||
-     !/^partnerSku0[1-9]$/.test(b.productId)||!id(b.hubProductId)||
+     (!/^partnerSku0[1-9]$/.test(b.productId)&&!privateSku(b.productId))||!id(b.hubProductId)||
      !catalog.has(b.hubProductId))deny();
   const key=JSON.stringify([b.companyId,b.productId]);
   if(seen.has(key))deny();

@@ -18,7 +18,7 @@ const context={serverVerified:true,userActive:true,memberActive:true,
  role:"hub_owner",approvedCompanyIds:["hub","partner"]};
 function fixture(){
  const products=[
-  {companyId:"hub",sourceId:"nuro",name:"NURO光",active:true,sortOrder:0},
+  {companyId:"hub",sourceId:"nuro",name:"NURO",active:true,sortOrder:0},
   {companyId:"hub",sourceId:"special",name:"法人専用プラン",active:true,sortOrder:0},
   {companyId:"hub",sourceId:"combined",name:"SB光・AIR",active:true,sortOrder:0},
   {companyId:"hub",sourceId:"air",name:"SoftBank Air",active:true,sortOrder:0}

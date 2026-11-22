@@ -18,7 +18,7 @@ const {createPartnerSubmissionPublicationGuard:cjsGuard}=
 const zero=()=>Object.fromEntries(KEYS.map(x=>[x,0]));
 const product=(id,name,active=true)=>({id,companyId:"hub",name,active});
 const standard=[
- product("nuro","NURO光"),
+ product("nuro","NURO"),
  product("sbmnp","SBMNP"),
  product("combined","SB光・AIR（旧合算・未分類）"),
  product("air","SoftBank Air")
@@ -76,7 +76,7 @@ test("Owner ON labels automatically enable existing exact partner categories wit
  assert.deepEqual(x.writes,[]);
 });
 test("duplicate active hub labels are ambiguous, so the category stays OFF",async()=>{
- const x=fixture({products:[...standard,product("duplicate","ＮＵＲＯ光")]});
+ const x=fixture({products:[...standard,product("duplicate","NURO")]});
  const allowed=x.allowed();
  assert(!allowed.includes("NURO"));
  assert(allowed.includes("SBMNP"));
@@ -86,6 +86,23 @@ test("duplicate active hub labels are ambiguous, so the category stays OFF",asyn
    nextCounts:{...zero(),NURO:1}
   }),/PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
  assert.deepEqual(x.writes,[]);
+});
+test("a similar Owner ON product is not an exact candidate",()=>{
+ for(const label of ["NURO光","nuro","ＮＵＲＯ","NU RO"]){
+  const x=fixture({products:[product("nuro",label)],enabledHubProductIds:["nuro"]});
+  assert.deepEqual(x.allowed(),[]);
+  assert.deepEqual(esmAllowed(x.params),[]);
+ }
+});
+test("reviewed private SKU keeps its target reserved while other exact input stays enabled",async()=>{
+ const x=fixture({bindings:[bound("partnerPrivate:archived","nuro")]});
+ assert.deepEqual(x.allowed(),["SBMNP","SB光・AIR"]);
+ assert.deepEqual(esmAllowed(x.params),x.allowed());
+ for(const guard of [cjsGuard,esmGuard]){
+  const result=await guard({db:x.db})({tx:x.tx,scope:x.scope,
+   previousCounts:zero(),nextCounts:{...zero(),SBMNP:1}});
+  assert.deepEqual(result.enabledCategories,x.allowed());
+ }
 });
 test("reviewed Owner ID takes precedence; alias cannot steal another category's hub SKU",async()=>{
  const x=fixture({bindings:[bound("partnerSku02","nuro")]});
@@ -126,7 +143,7 @@ test("legacy light/AIR cannot be split or guessed into a separately priced produ
   }),/PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
 });
 test("inactive/amount-coded alias never unlocks a count input",()=>{
- const x=fixture({products:[product("nuro","NURO光",false),
+ const x=fixture({products:[product("nuro","NURO",false),
   product("amount","SBMNP 単価50000円")],
   enabledHubProductIds:["nuro","amount"]});
  assert.deepEqual(x.allowed(),[]);

@@ -26,23 +26,10 @@ const valid=x=>typeof x==="string"&&ID.test(x)&&
 const label=x=>typeof x==="string"&&x.trim()&&x.length<=80&&
  !BAD.test(x.normalize("NFKC"));
 const norm=x=>x.normalize("NFKC").trim().toLowerCase().replace(/[\s　]+/g,"");
-const ALIASES=Object.freeze({
- partnerSku01:["NURO","NURO光"],
- partnerSku02:["SBMNP","SoftBank MNP","ソフトバンクMNP"],
- partnerSku03:["YMMNP","Y!mobile MNP","ワイモバイルMNP"],
- partnerSku04:["YM純新規","ワイモバイル純新規"],
- partnerSku05:["SB光・AIR","SB光・AIR（旧合算・未分類）",
-  "光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"],
- partnerSku06:["ウォーター"],
- partnerSku07:["つばさ・HTB"],
- partnerSku08:["太陽光・蓄電池AP"],
- partnerSku09:["U-NEXT"]
-});
+const COMBINED_ALIASES=new Set(["SB光・AIR","SB光・AIR（旧合算・未分類）",
+ "光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"].map(norm));
 const contract=new Map(PARTNER_RANK_SKUS.map(p=>[p.id,p.name]));
-const aliases=new Map(Object.entries(ALIASES).map(([id,names])=>[
- id,new Set(names.map(norm))
-]));
-if(contract.size!==9||[...contract.keys()].some(id=>!aliases.has(id)))stop();
+if(contract.size!==9||!COMBINED_ALIASES.has(norm(contract.get("partnerSku05")??"")))stop();
 
 export function linkAllRegisteredCountsWithoutSetup({
  hubCompanyId,hubSource,partnerSources,reviewedBindings=[]
@@ -54,15 +41,16 @@ export function linkAllRegisteredCountsWithoutSetup({
     !Array.isArray(hubSource.products)||hubSource.products.length>1000||
     !Array.isArray(partnerSources)||partnerSources.length>30||
     !Array.isArray(reviewedBindings)||reviewedBindings.length>1000)stop();
- const own=new Map(),byName=new Map();
+ const own=new Map(),combinedMatches=[],byExactName=new Map();
  const result=[];
  for(const p of hubSource.products){
   if(!p||p.companyId!==hubCompanyId||!valid(p.sourceId)||
      !label(p.name)||own.has(p.sourceId)||typeof p.active!=="boolean")stop();
   own.set(p.sourceId,p);
-  const key=norm(p.name);
-  const matches=byName.get(key)||[];
-  matches.push(p);byName.set(key,matches);
+  if(COMBINED_ALIASES.has(norm(p.name)))combinedMatches.push(p);
+  const exactName=p.name.trim();
+  const exactMatches=byExactName.get(exactName)||[];
+  exactMatches.push(p);byExactName.set(exactName,exactMatches);
   result.push({
    companyId:hubCompanyId,productId:p.sourceId,
    groupId:p.sourceId,groupName:p.name
@@ -120,7 +108,17 @@ export function linkAllRegisteredCountsWithoutSetup({
   const originallyBound=boundIdsByCompany.get(partner.companyId)||new Set();
   const seenProducts=new Set(),mappedHub=new Set(
    reservedByCompany.get(partner.companyId)||[]);
+  const privateNameCounts=new Map();
   for(const p of partner.products){
+   if(!p||!PRIVATE.test(p.sourceId)||!label(p.name))continue;
+   const name=p.name.trim();
+   privateNameCounts.set(name,(privateNameCounts.get(name)||0)+1);
+  }
+  // Built-in categories retain their established source IDs and take priority
+  // over an unreviewed private candidate for the same target.
+  const ordered=[...partner.products.filter(p=>contract.has(p?.sourceId)),
+   ...partner.products.filter(p=>!contract.has(p?.sourceId))];
+  for(const p of ordered){
    if(!p||p.companyId!==partner.companyId||
       !valid(p.sourceId)||!label(p.name)||
       typeof p.active!=="boolean"||seenProducts.has(p.sourceId))stop();
@@ -128,24 +126,17 @@ export function linkAllRegisteredCountsWithoutSetup({
    const isPrivate=PRIVATE.test(p.sourceId);
    if(!isOriginal&&!isPrivate)stop();
    // Historic private products can now be inactive without losing counts.
-   if(isOriginal&&(p.active!==true||
-      norm(p.name)!==norm(contract.get(p.sourceId))))stop();
+   if(isOriginal&&(p.active!==true||p.name!==contract.get(p.sourceId)))stop();
    seenProducts.add(p.sourceId);
-   // Standard categories keep reviewed exact aliases; previously private
-   // products may match ONLY a uniquely named active hub product.
-   const possible=new Map();
-   if(isOriginal){
-    for(const alias of aliases.get(p.sourceId)){
-     for(const candidate of byName.get(alias)||[])
-      if(candidate.active===true)possible.set(candidate.sourceId,candidate);
-    }
-   }else for(const candidate of byName.get(norm(p.name))||[])
-    if(candidate.active===true)possible.set(candidate.sourceId,candidate);
+   // The fixed light/AIR combined label is the only alias exception.
+   const name=p.name.trim();
+   const possible=p.sourceId==="partnerSku05"?combinedMatches:byExactName.get(name)||[];
+   const exactTarget=possible.length===1&&possible[0].active===true&&
+    (!isPrivate||privateNameCounts.get(name)===1)?possible[0]:null;
    // Reviewed owner IDs always win, even when an unrelated category also
    // has a matching alias. That automatic candidate must remain separate.
    const reviewedTarget=reviewed.get(p.sourceId)||null;
-   let target=offBound.has(p.sourceId)?null:reviewedTarget||(
-    possible.size===1?[...possible.values()][0]:null);
+   let target=offBound.has(p.sourceId)?null:reviewedTarget||exactTarget;
    // Old SB光・AIR does not identify a separately sold Hikari or Air SKU.
    if(p.sourceId==="partnerSku05"&&target&&
       !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))target=null;

@@ -125,15 +125,20 @@ export function projectPublishedPartnerCountTab({
  else if(requestedTab==="individual")rows=publicRows.members;
  else rows=response.own.teamDetails;
  if(!Array.isArray(rows)||rows.length>10000)denied();
+ const companies=requestedTab==="team"?publicRows.companies:undefined;
+ if(requestedTab==="team"&&(!Array.isArray(companies)||companies.length>30||
+    companies.some(row=>!plain(row)||Object.keys(row).sort().join("|")!=="count|name|rank"||
+     !Number.isSafeInteger(row.rank)||row.rank<1||typeof row.name!=="string"||
+     !safeCount(row.count))))denied();
  // Shallow-copy + deep serialization of the already verified count-only
  // builder, so a later mutation of canonical input cannot leak into output.
  const output=JSON.parse(JSON.stringify({
   schema:OUTPUT,role:"partner_owner",tab:requestedTab,
   period:response.period,range:response.range,unit:"件",
-  readTime:response.readTime,rows
+  readTime:response.readTime,rows,...(companies===undefined?{}:{companies})
  }));
  if(Object.keys(output).sort().join("|")!==
-    "period|range|readTime|role|rows|schema|tab|unit"||
+    (companies===undefined?"":"companies|")+"period|range|readTime|role|rows|schema|tab|unit"||
     output.rows.some(row=>!plain(row)||!safeCount(row.count)))denied();
  try{auditNoFinancialKeys(output);}catch{denied();}
  inspectMoneyText(output);

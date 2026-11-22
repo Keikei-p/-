@@ -33,7 +33,10 @@ export function createOwnerSkuMappingFirebaseBridge({
   return result.data;
  }
  return Object.freeze({
-  readMappings:({token}={})=>invoke(get,{},token),
+  readMappings:({token,partnerCompanyId}={})=>{
+   if(partnerCompanyId!==undefined&&!id(partnerCompanyId))fail();
+   return invoke(get,partnerCompanyId?{partnerCompanyId}:{},token);
+  },
   readProducts:({token}={})=>invoke(products,{},token),
   saveMapping:({token,partnerCompanyId,partnerProductId,
    hubProductId,expectedVersion}={})=>{

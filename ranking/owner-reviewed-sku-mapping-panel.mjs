@@ -10,6 +10,7 @@
 const IDS=/^[A-Za-z0-9_:-]{1,200}$/;
 const CASH=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円))/i;
 const LEGACY="partnerSku05";
+const PRIVATE=/^partnerPrivate:[A-Za-z0-9_-]{1,128}$/;
 const CATEGORIES=Object.freeze([
  ["partnerSku01","NURO"],
  ["partnerSku02","SBMNP"],
@@ -36,7 +37,10 @@ const el=(doc,tag,text)=>{
  return n;
 };
 function validate(mapping,catalog,partner){
- if(!keys(mapping,["schema","hubCompanyId","version","bindings"])||
+ const mappingFields=["schema","hubCompanyId","version","bindings"];
+ const withPrivate=obj(mapping)&&Object.hasOwn(mapping,"partnerProducts");
+ if(withPrivate)mappingFields.push("partnerProducts");
+ if(!keys(mapping,mappingFields)||
     mapping.schema!=="nico-owner-reviewed-sku-map-v1"||
     !id(mapping.hubCompanyId)||
     !Number.isSafeInteger(mapping.version)||mapping.version<0||
@@ -48,6 +52,16 @@ function validate(mapping,catalog,partner){
     catalog.hubCompanyId!==mapping.hubCompanyId||
     !Array.isArray(catalog.products)||catalog.products.length>1000)fail();
  const seen=new Set(),match=new Map(),products=new Map();
+ const privateProducts=new Map();
+ if(withPrivate){
+  if(!Array.isArray(mapping.partnerProducts)||mapping.partnerProducts.length>1000)fail();
+  for(const p of mapping.partnerProducts){
+   if(!keys(p,["id","name","active"])||typeof p.id!=="string"||
+      !PRIVATE.test(p.id)||privateProducts.has(p.id)||!name(p.name)||
+      typeof p.active!=="boolean")fail();
+   privateProducts.set(p.id,p);
+  }
+ }
  for(const p of catalog.products){
   if(!keys(p,["id","name","active","enabled"])||
      !id(p.id)||products.has(p.id)||!name(p.name)||
@@ -57,31 +71,21 @@ function validate(mapping,catalog,partner){
  for(const b of mapping.bindings){
   if(!keys(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||!id(b.hubProductId)||
-     !CATEGORIES.some(c=>c[0]===b.productId))fail();
+     typeof b.productId!=="string"||
+     (!CATEGORIES.some(c=>c[0]===b.productId)&&!PRIVATE.test(b.productId)))fail();
   const k=b.companyId+":"+b.productId;
   if(seen.has(k))fail();
   seen.add(k);
   if(b.companyId!==partner)continue;
+  if(withPrivate&&PRIVATE.test(b.productId)&&!privateProducts.has(b.productId))fail();
   if(!products.has(b.hubProductId))fail();
   if(b.productId===LEGACY&&!combined(products.get(b.hubProductId).name))fail();
   match.set(b.productId,b.hubProductId);
  }
- return {version:mapping.version,products:[...products.values()],match};
+ return {version:mapping.version,products:[...products.values()],match,privateProducts};
 }
-// An exact, narrow preview only. No fuzzy/substring matches or automatic writes.
-// Historical 光/AIR remains one combined SKU and never splits into 光 + AIR.
-const skuKey=value=>value.normalize("NFKC").toLowerCase()
- .replace(/[\s　・･\/／_\-‐－（()）]/g,"");
-const exactNames=Object.freeze({
- partnerSku01:["NURO","NURO光"],
- partnerSku02:["SBMNP","SoftBankMNP","ソフトバンクMNP"],
- partnerSku03:["YMMNP","ワイモバイルMNP"],
- partnerSku04:["YM純新規","ワイモバイル純新規"],
- partnerSku06:["ウォーター"],
- partnerSku07:["つばさ・HTB"],
- partnerSku08:["太陽光・蓄電池AP"],
- partnerSku09:["U-NEXT"]
-});
+// Owner preview only proposes an unambiguous exact name. The original
+// combined 光/AIR category retains its historic saved and display names.
 export function suggestUnambiguousOwnerSkuMappings({mapping,catalog,partnerCompanyId}={}){
  if(!id(partnerCompanyId))fail();
  const view=validate(mapping,catalog,partnerCompanyId);
@@ -95,18 +99,15 @@ export function suggestUnambiguousOwnerSkuMappings({mapping,catalog,partnerCompa
  }
  const occupied=new Set(view.match.values());
  const result=[];
- for(const [category,label] of CATEGORIES){
-  if(view.match.has(category))continue;
-  const aliases=new Set((exactNames[category]||[]).map(skuKey));
-  const candidates=view.products.filter(p=>published.has(p.id)&&!occupied.has(p.id)&&(
-   category===LEGACY?
-    combined(p.name)&&/(?:SB光・AIR|旧合算|未分類)/.test(p.name):
-    aliases.has(skuKey(p.name))
-  ));
-  if(candidates.length===1)result.push({
-   partnerProductId:category,partnerLabel:label,
-   hubProductId:candidates[0].id,hubProductLabel:candidates[0].name
-  });
+ const categories=[...CATEGORIES,...[...view.privateProducts.values()].map(p=>[p.id,p.name])];
+ for(const [productId,partnerLabel] of categories){
+  if(view.match.has(productId))continue;
+  const candidates=view.products.filter(p=>p.name===partnerLabel||
+   (productId===LEGACY&&p.name==="SB光・AIR"));
+  const [target]=candidates;
+  if(candidates.length===1&&published.has(target.id)&&!occupied.has(target.id))
+   result.push({partnerProductId:productId,partnerLabel,
+    hubProductId:target.id,hubProductLabel:target.name});
  }
  const freq=new Map();
  for(const proposal of result)freq.set(proposal.hubProductId,
@@ -128,6 +129,7 @@ export function createOwnerReviewedSkuMappingPanel({
     !id(partnerCompanyId)||typeof readMappings!=="function"||
     typeof readProducts!=="function"||typeof saveMapping!=="function")fail();
  let closed=false,sequence=0,saving=false,lastVersion=null;
+ const loadMappings=token=>readMappings({token,partnerCompanyId});
  const clear=()=>root.replaceChildren();
  const status=message=>{
   clear();const x=el(document,"p",message);
@@ -147,7 +149,7 @@ export function createOwnerReviewedSkuMappingPanel({
    if(closed||current!==sequence||auth.currentUser!==user)return false;
    if(typeof token!=="string"||token.length<20)fail();
    const [mapping,products]=await Promise.all([
-    readMappings({token}),readProducts({token})
+    loadMappings(token),readProducts({token})
    ]);
    if(closed||current!==sequence||auth.currentUser!==user)return false;
    const view=validate(mapping,products,partnerCompanyId);
@@ -155,24 +157,26 @@ export function createOwnerReviewedSkuMappingPanel({
    section.className="nico-sku-map-panel";
    section.appendChild(el(document,"h2","協力店の商材対応"));
    section.appendChild(el(document,"p",
-    "対応先を選ぶと、ON商材だけが合同件数ランキングに反映されます。元の件数・履歴は変更しません。"));
+    "対応先を確認します。連携先が未確定の過去件数は照合保留として保持します。"));
    const scope=el(document,"p","対象会社ID: "+partnerCompanyId);
    section.appendChild(scope);
    const selects=[];
-   for(const [category,name] of CATEGORIES){
+   const categories=[...CATEGORIES,...[...view.privateProducts.values()]
+    .map(p=>[p.id,p.name+(p.active?"":"（過去の商材）")])];
+   for(const [category,name] of categories){
     const row=el(document,"label");
     row.className="nico-sku-map-row";
     row.appendChild(el(document,"span",name));
     const select=el(document,"select");
     select.setAttribute?.("aria-label",name+" の自社商材");
     select.disabled=saving;
-    const empty=el(document,"option","未対応（集計しない）");
+    const empty=el(document,"option",PRIVATE.test(category)?"未対応（照合保留）":"未対応（集計しない）");
     empty.value="";
     select.appendChild(empty);
     const currentId=view.match.get(category)||"";
     const candidates=view.products.filter(p=>
      (p.active||p.id===currentId)&&
-     (category!==LEGACY||combined(p.name)));
+     (!(category===LEGACY||combined(view.privateProducts.get(category)?.name??""))||combined(p.name)));
     for(const p of candidates){
      const opt=el(document,"option",p.name+(p.active?"":"（取扱終了）"));
      opt.value=p.id;
@@ -250,7 +254,7 @@ export function createOwnerReviewedSkuMappingPanel({
        // Authoritative revocation, version, Owner and publication checks
        // are repeated by the existing server callables for each change.
        const [latestMap,latestProducts]=await Promise.all([
-        readMappings({token}),readProducts({token})
+        loadMappings(token),readProducts({token})
        ]);
        const latest=validate(latestMap,latestProducts,partnerCompanyId);
        if(latest.version!==expectedVersion)fail();
@@ -268,7 +272,7 @@ export function createOwnerReviewedSkuMappingPanel({
           result.partnerCompanyId!==partnerCompanyId||
           result.partnerProductId!==proposed.partnerProductId||
           result.hubProductId!==proposed.hubProductId)fail();
-       const checked=await readMappings({token});
+       const checked=await loadMappings(token);
        const confirmed=validate(checked,latestProducts,partnerCompanyId);
        if(confirmed.version!==result.version||
           confirmed.match.get(proposed.partnerProductId)!==

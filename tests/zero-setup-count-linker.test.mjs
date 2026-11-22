@@ -6,10 +6,10 @@ import {PARTNER_RANK_SKUS}
  from "../ranking/partner-workspace-count-source.mjs";
 const TIME="2026-11-17T09:00:00.000Z";
 const hubProducts=[
- {companyId:"hub",sourceId:"nuro",name:"NURO光",active:true,sortOrder:0},
+ {companyId:"hub",sourceId:"nuro",name:"NURO",active:true,sortOrder:0},
  {companyId:"hub",sourceId:"air",name:"SoftBank Air",active:true,sortOrder:1},
  {companyId:"hub",sourceId:"combined",name:"SB光・AIR（旧合算・未分類）",active:true,sortOrder:2},
- {companyId:"hub",sourceId:"mnp",name:"SoftBank MNP",active:true,sortOrder:3}
+ {companyId:"hub",sourceId:"mnp",name:"SBMNP",active:true,sortOrder:3}
 ];
 function fixture(){
  const hubSource={companyId:"hub",kind:"own",consentVerified:true,
@@ -48,6 +48,14 @@ test("ambiguous same-named hub products do not guess a master product",()=>{
  assert(result.filter(x=>x.productId==="partnerSku01"&&x.companyId!=="hub")
   .every(x=>x.groupId==="partnerUnmatched:partnerSku01"),
   "two legitimate hub products are never merged by a guess");
+});
+test("unreviewed labels cannot be linked by alias, case, width or whitespace",()=>{
+ for(const label of ["NURO光","nuro","ＮＵＲＯ","NU RO"]){
+  const f=fixture();
+  f.hubSource.products[0].name=label;
+  assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku01")
+   .every(x=>x.groupId==="partnerUnmatched:partnerSku01"));
+ }
 });
 test("all reviewed historical 光/AIR combined aliases join only an exact unique hub combined SKU",()=>{
  for(const name of ["光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
@@ -198,7 +206,7 @@ test("same actual 3-company ledger produces matching joint company, team, person
  for(const view of views){
   const products=view.role==="hub_owner"?view.productRanking:
    view.publicRanking.products;
-  const nuro=products.find(x=>x.name==="NURO光");
+  const nuro=products.find(x=>x.name==="NURO");
   assert(nuro,"all three companies share the existing product label");
   assert.equal(nuro.count,12);
   assert.equal(nuro.rank,1);

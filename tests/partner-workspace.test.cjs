@@ -1496,6 +1496,15 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  const date="2026-10-31";
  const save=(counts,version)=>api.submit(req("p",{date,staffId:staff,counts,expectedVersion:version}));
  await save({...zero(),NURO:2,"SB光・AIR":3},0);
+ const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ db.seed("companies/partner/partnerPrivateProducts/historic",{
+  companyId:"partner",origin:"partner_custom",visibility:"private",name:"旧商材",active:true});
+ Object.assign(db.store.get(entryPath),{privateCounts:{historic:7},privateTotalCount:7});
+ const withHistory=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:1,
+  counts:{...zero(),NURO:2,"SB光・AIR":3},privateCounts:{historic:8}})),
+ {code:"failed-precondition"});
+ assert.deepEqual([...db.store],withHistory);
  const beforeUnsupported=clone([...db.store]);
  await assert.rejects(api.submit(req("p",{
   date,staffId:staff,expectedVersion:1,counts:{...zero(),NURO:2,"SB光・AIR":3},
@@ -1515,9 +1524,9 @@ test("transactional partner save honors owner ON/OFF and preserves historical OF
  // The browser sends zero for OFF. The same trusted transaction restores
  // the original stored OFF value while saving the new ON figure.
  await save({...zero(),NURO:4,"SB光・AIR":0},1);
- const entryPath="companies/partner/partnerWorkEntries/"+date+"__"+staff;
  const summaryPath="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
  assert.deepEqual(db.store.get(entryPath).counts,{...zero(),NURO:4,"SB光・AIR":3});
+ assert.deepEqual(db.store.get(entryPath).privateCounts,{historic:7});
  assert.deepEqual(db.store.get(summaryPath).counts,{...zero(),NURO:4,"SB光・AIR":3});
  assert.equal(db.store.get(summaryPath).totalCount,7);
  const before=clone([...db.store]);

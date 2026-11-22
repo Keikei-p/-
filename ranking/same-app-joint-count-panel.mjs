@@ -4,7 +4,7 @@
  * third-party HTML, or synthetic ranks. Existing iOS/Android form remains.
  */
 export function renderSameAppJointCountPanel({
- document,root,status,view,partner=false,detail=false,selection=""
+ document,root,status,view,partner=false,detail=false,selection="",appendRankRow
 }={}){
  if(!document?.createElement||!root?.replaceChildren||
     !status||!view||view.financeIncluded!==false||
@@ -18,10 +18,21 @@ export function renderSameAppJointCountPanel({
  };
  root.replaceChildren();
  if(detail){
+  const companyCards=new Map();
   for(const team of view.teamDetails){
+   let parent=root;
+   if(team.companyName){
+    const key=team.companyId??team.companyName;
+    if(!companyCards.has(key)){
+     const group=element("details","owner-partner-company-card");
+     group.append(element("summary",null,team.companyName));
+     companyCards.set(key,group);root.append(group);
+    }
+    parent=companyCards.get(key);
+   }
    const card=element("details","partner-count-team-card");
    const summary=element("summary","team-detail-header");
-   summary.append(element("strong","team-detail-title",team.name),
+   summary.append(element("strong","team-detail-title",team.teamName??team.name),
     element("span","team-detail-total",team.reported?
      team.count+"件":"未報告"));
    card.append(summary);
@@ -40,7 +51,7 @@ export function renderSameAppJointCountPanel({
    }
    if(partner&&team.members.length===0&&team.products.length===0)
     body.append(element("p","p-inline-muted","他社の担当者詳細は公開しません"));
-   card.append(body);root.append(card);
+   card.append(body);parent.append(card);
   }
   if(!view.teamDetails.length)
    root.append(element("p","p-inline-muted","班別実績は未報告または未照合です"));
@@ -55,6 +66,9 @@ export function renderSameAppJointCountPanel({
        !Number.isSafeInteger(item.count)||item.count<0||
        (item.rank!==null&&(!Number.isSafeInteger(item.rank)||item.rank<1)))
      throw Error("SAME_APP_JOINT_RANK_ROW_UNVERIFIED");
+    if(appendRankRow){
+     appendRankRow(grid,item);continue;
+    }
     const row=element("div","ranking-row");
     const left=element("div","ranking-left");
     left.append(element("span","ranking-number",item.rank===null?

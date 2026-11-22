@@ -516,14 +516,15 @@ export function buildVerifiedCountDashboard({
    members,products};
  });
  const ownCompanyRow=companyRows.find(x=>x.id===ownCompany);
- if(!ownCompanyRow||add(
+ const ownCount=ownCompanyRow?.count??0;
+ const ownUnidentifiedCount=ownCompanyRow?.unidentifiedCount??0;
+ if(Boolean(ownCompanyRow)!==inScope(ownCompany)||add(
   ownTeamDetails.reduce((sum,team)=>add(sum,team.count),0),
-  ownCompanyRow.unidentifiedCount)!==ownCompanyRow.count)stop();
+  ownUnidentifiedCount)!==ownCount)stop();
  const data={schema:common.schema,period:common.period,range,unit:"件",
   readTime:common.readTime,role:"partner_owner",
   own:{company:parsed.names.get(ownCompany),
-   count:companyRows.find(x=>x.id===ownCompany)?.count??0,
-   unidentifiedCount:companyRows.find(x=>x.id===ownCompany)?.unidentifiedCount??0,
+   count:ownCount,unidentifiedCount:ownUnidentifiedCount,
    people:ownPeople,products:ownProducts,teamDetails:ownTeamDetails},
   publicRanking:{members:publicMembers,products:publicProducts,
    companies:publicCompanies,teams:publicTeams}};

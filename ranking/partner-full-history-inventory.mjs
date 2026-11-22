@@ -23,8 +23,9 @@ const add=(a,b)=>safeCount(safeCount(a)+safeCount(b));
 const sum=rows=>rows.reduce((n,x)=>add(n,x),0);
 const named=x=>typeof x==="string"&&x.trim().length>0&&x.trim().length<=80&&
  !MONEY.test(x.normalize("NFKC"));
-const nameKey=x=>named(x)?x.trim().normalize("NFKC"):null;
-const combined=x=>typeof x==="string"&&/SB光・AIR|旧合算|未分類/.test(x);
+const nameKey=x=>named(x)?x.trim():null;
+const combined=x=>typeof x==="string"&&
+ /(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i.test(x.normalize("NFKC"));
 function day(x){
  if(typeof x!=="string"||!/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(x))stop("INVALID_DATE");
  const d=new Date(x+"T00:00:00Z");
@@ -202,24 +203,27 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
    const sourceName=legacy?pid:privateKind?privates.get(pid)?.name:pub.products.get(pid)?.name;
    const legacyCombined=legacy&&legacyIndex===4;
    const productRef=alias("P-",company.id,privateKind?"private":published?"published":"legacy",sourceId);
-   let target=published?pid:pub.bindings.get(sourceId)??null;
+   const privateBindingId=privateKind?"partnerPrivate:"+sourceId:null;
+   let target=published?pid:pub.bindings.get(privateBindingId??sourceId)??null;
    let reason=forcedReason;
    if(!reason&&!approved)reason="held_relation";
    if(!reason&&privateKind&&!privates.has(pid))reason="held_unknown_private_product";
-   // A private document with a reserved legacy identifier cannot be paired
-   // through the untyped legacy map; leave it for explicit Owner review.
-   if(!reason&&privateKind&&/^partnerSku0[1-9]$/.test(pid))reason="held_ambiguous_source_id";
+   // Never infer that an untyped old binding applies to a private catalog.
+   if(!reason&&privateKind&&!target&&pub.bindings.has(sourceId))reason="held_ambiguous_source_id";
    if(!reason&&!pub.ready)reason="held_publication";
    if(!reason&&!published&&!pub.mappingReady)reason="held_mapping";
    if(!reason&&!target)reason="held_unmapped";
    const targetProduct=target?pub.products.get(target):null;
    if(!reason&&!targetProduct)reason="held_unknown_target";
-   if(!reason&&legacyCombined&&!combined(targetProduct.name))reason="held_legacy_combined";
+   if(!reason&&(legacyCombined||(privateKind&&combined(sourceName)))&&
+      !combined(targetProduct.name))reason="held_legacy_combined";
    if(!reason&&!pub.allowed(target))reason="held_off";
    const state=reason??"mapped",mapped=state==="mapped"?count:0;
    const exact=nameKey(sourceName);
-   const candidates=hub.ownerProducts.filter(p=>p.active!==false&&exact!==null&&nameKey(p.name)===exact&&
-    (!legacyCombined||combined(p.name))).map(p=>alias("H-",hub.id,p.id));
+   const nameMatches=hub.ownerProducts.filter(p=>exact!==null&&nameKey(p.name)===exact&&
+    (!legacyCombined||combined(p.name)));
+   const candidates=nameMatches.length===1&&nameMatches[0].active!==false?
+    [alias("H-",hub.id,nameMatches[0].id)]:[];
    const exactIdKnown=published&&pub.products.has(pid);
    const rowKey=JSON.stringify([date.slice(0,7),kind,productRef,state,target]);
    if(!monthRows.has(rowKey))monthRows.set(rowKey,{
@@ -260,7 +264,7 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
      const sku="partnerSku"+String(LEGACY_PARTNER_CATEGORIES.indexOf(name)+1).padStart(2,"0");
      registerTarget(pub.bindings.get(sku),"legacy");
     }
-    for(const [pid,n] of d.private)if(n>0)registerTarget(pub.bindings.get(pid),"private");
+    for(const [pid,n] of d.private)if(n>0)registerTarget(pub.bindings.get("partnerPrivate:"+pid),"private");
    }
    for(const [pid,n] of d.published)if(n>0)registerTarget(pid,"published");
    const targetOverlaps=[...occupiedTargets].filter(([,sources])=>sources.size>1);

@@ -7,22 +7,16 @@ const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","�
 // Fallback only for exact, long-established count category names. The Owner
 // must still have published the unique ACTIVE hub product in the public count
 // catalog; browser aliases, financial masters, fuzzy or partial names are banned.
-const ALIASES=Object.freeze([
- ["NURO","NURO光"],
- ["SBMNP","SoftBank MNP","ソフトバンクMNP"],
- ["YMMNP","Y!mobile MNP","ワイモバイルMNP"],
- ["YM純新規","ワイモバイル純新規"],
- ["SB光・AIR","SB光・AIR（旧合算・未分類）","光/AIR",
-  "光・Air","SB光/AIR","ソフトバンク光/Air"],
- ["ウォーター"],["つばさ・HTB"],["太陽光・蓄電池AP"],["U-NEXT"]
-]);
 const normalizeLabel=x=>x.normalize("NFKC").trim().toLowerCase().replace(/[\s　]+/g,"");
-if(ALIASES.length!==KEYS.length)throw Error("PARTNER_PUBLICATION_ALIAS_SCHEMA");
+const COMBINED_ALIASES=new Set(["SB光・AIR","SB光・AIR（旧合算・未分類）",
+ "光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"].map(normalizeLabel));
 
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const stop=()=>{throw Error("PARTNER_PUBLICATION_UNVERIFIED")};
 const id=x=>typeof x==="string"&&ID.test(x)&&!["__proto__","constructor","prototype"].includes(x);
+const privateSku=x=>typeof x==="string"&&
+ id(x.match(/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/)?.[1]);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const unique=x=>Array.isArray(x)&&x.length<=1000&&x.every(id)&&new Set(x).size===x.length;
 function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,products}={}){
@@ -58,7 +52,7 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   if(!obj(b)||Object.keys(b).sort().join("|")!==
    ["companyId","productId","hubProductId"].sort().join("|")||
    !id(b.companyId)||b.companyId===hubId||
-   !/^partnerSku0[1-9]$/.test(b.productId)||
+   (!/^partnerSku0[1-9]$/.test(b.productId)&&!privateSku(b.productId))||
    !id(b.hubProductId)||!catalog.has(b.hubProductId))stop();
   const k=JSON.stringify([b.companyId,b.productId]);
   if(seen.has(k))stop();
@@ -78,30 +72,29 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   seenHubSku.add(b.hubProductId);
   if(b.productId==="partnerSku05"&&
    !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))stop();
-  binding.set(b.productId,b.hubProductId);
+  // Reviewed private bindings reserve their target for historical counts.
+  // The fixed legacy input form only accepts its own nine categories.
+  if(!privateSku(b.productId))binding.set(b.productId,b.hubProductId);
  }
  // Exact Owner-reviewed IDs remain first priority. For genuinely unmapped
- // categories ONLY, join a unique count-only hub label using pre-reviewed
- // aliases. An ambiguous/duplicate or inactive label grants NO new input.
- const byName=new Map();
+ // categories ONLY, join a unique exact hub label. The old combined light/AIR
+ // aliases stay one category. A duplicate or inactive target grants no input.
+ const byName=new Map(),combinedMatches=[];
  for(const product of catalog.values()){
-  if(product.active!==true||typeof product.name!=="string"||
+  if(typeof product.name!=="string"||
      !product.name.trim()||product.name.length>80||
      MONEY.test(product.name.normalize("NFKC")))continue;
-  const name=normalizeLabel(product.name),rows=byName.get(name)||[];
+  const name=product.name.trim(),rows=byName.get(name)||[];
   rows.push(product);byName.set(name,rows);
+  if(COMBINED_ALIASES.has(normalizeLabel(product.name)))combinedMatches.push(product);
  }
  const proposed=new Map(),claims=new Map();
  for(let i=0;i<KEYS.length;i++){
   const sku="partnerSku"+String(i+1).padStart(2,"0");
   if(binding.has(sku))continue;
-  const possible=new Map();
-  for(const alias of ALIASES[i]){
-   for(const row of byName.get(normalizeLabel(alias))||[])
-    possible.set(row.id,row);
-  }
-  if(possible.size!==1)continue;
-  const target=[...possible.values()][0];
+  const possible=sku==="partnerSku05"?combinedMatches:byName.get(KEYS[i])||[];
+  if(possible.length!==1||possible[0].active!==true)continue;
+  const target=possible[0];
   if(seenHubSku.has(target.id))continue;
   // Old light/AIR combined never becomes separate 光 or separate AIR.
   if(sku==="partnerSku05"&&

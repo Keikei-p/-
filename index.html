@@ -13695,6 +13695,26 @@ function sharedVerifiedProductCategory(label){
 }
 // Shared count-only scoreboard: hub and partner call the SAME audited
 // endpoint. Fetch only when the ranking is opened / refresh is requested.
+function installSharedCountFilters(where,anchor,{allowDirect=true}={}){
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)return;
+ const heading=anchor.parentElement?.querySelector("h3");
+ if(heading)heading.textContent=heading.textContent.replace("（選択日）","");
+ const filters=document.createElement("div");filters.className="p-inline-grid";
+ for(const [key,label,entries] of [
+   ["Period","集計期間",[["day","日"],["week","週"],["month","月"]]],
+   ["Scope","集計対象",[["joint","合同"],...(allowDirect?[["direct","自社のみ"]]:[]),["partner","協力店のみ"]]]]){
+  const field=document.createElement("label");field.className="p-inline-field";
+  field.textContent=label;
+  const select=document.createElement("select");select.id="sharedCount"+key+where;
+  for(const [value,name] of entries){
+   const option=document.createElement("option");option.value=value;option.textContent=name;
+   select.append(option);
+  }
+  select.addEventListener("change",()=>void loadSharedDailyStandings(where));
+  field.append(select);filters.append(field);
+ }
+ anchor.before(filters);
+}
 function installOwnerCombinedCountCards(){
  for(const [name,panelId,title] of [
    ["Individual","individualRankingContent","🏆 合同個人・件数ランキング"],
@@ -13718,6 +13738,15 @@ function installOwnerCombinedCountCards(){
   const body=document.createElement("div");body.id="ownerSharedContent"+name;
   body.className="p-inline-list";
   card.append(heading,dateLabel,button,status,body);parent.append(card);
+  installSharedCountFilters(name,button);
+  if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true){
+   dateInput.addEventListener("change",()=>void loadSharedDailyStandings(name));
+   pInline(name.toLowerCase()+"RankingToggle")?.addEventListener("click",()=>{
+    queueMicrotask(()=>{
+     if(!parent.hidden&&canLoadPartnerRanking())void loadSharedDailyStandings(name);
+    });
+   });
+  }
  }
 }
 function canReadSharedCountOnlyRanks(){
@@ -13728,7 +13757,8 @@ function canReadSharedCountOnlyRanks(){
 }
 function setOwnerCombinedCountCardVisibility(name){
  const card=document.getElementById("ownerSharedCard"+name);
- if(card)card.hidden=!canReadSharedCountOnlyRanks();
+ if(card)card.hidden=NICO_SAME_APP_JOINT_HTTP_ENABLED===true?
+  !canLoadPartnerRanking():!canReadSharedCountOnlyRanks();
 }
 installOwnerCombinedCountCards();
 
@@ -14010,7 +14040,7 @@ function renderSharedCountTeamDetails(parent,report){
 // New canonical SAME-APP ranking path: existing direct + partner ledgers in
 // one server-verified count-only GET, no Owner SKU ON/OFF configuration.
 // When the release flags are OFF, the old callable/UI remains in place.
-async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,status,content,uid,epoch,seq}){
+async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,status,content,uid,epoch,seq,kind,scope}){
  // Crucial: the front-end must default to the current proven count-only
  // callable without initiating a cross-origin request that will 503/404.
  if(NICO_SAME_APP_JOINT_HTTP_ENABLED!==true)
@@ -14040,7 +14070,7 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
    getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
   });
   let published;
-  try{published=await bridge.load({tab,day:date});}
+  try{published=await bridge.load({tab,day:date,kind,asOf:getTodayString(),scope});}
   catch{throw Error("SAME_APP_JOINT_AUTH_OR_DATA_UNVERIFIED");}
   if(!sharedDailyRankingIsCurrent(where,epoch,seq)||
      partnerInlineIdentity()!==identity||
@@ -14048,7 +14078,8 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
      date!==pInline("pInlineDate").value||
      tab!==(detail?"detail":partnerSameAppSelectedPanel))return true;
   renderPublishedPartnerCountTab({
-   document,root:content,status,payload:published
+   document,root:content,status,payload:published,appendRankRow:appendVerifiedCountRankRow,
+   companyName:partnerInlineData?.companyName
   });
   return true;
  }
@@ -14066,7 +14097,7 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
  let response;
  try{
   response=await bridge.load({
-   period:{kind:"day",day:date,asOf:getTodayString()},filters:{}
+   period:{kind,day:date,asOf:getTodayString()},filters:{scope}
   });
  }catch{
   // Once enabled, every failure (including 503, bad 200, 401/403 or
@@ -14080,7 +14111,8 @@ async function tryLoadVerifiedSameAppJointCount({where,date,partner,detail,statu
  const view=projectionModule.buildSameAppJointCountProjection(response,{partner});
  panelModule.renderSameAppJointCountPanel({
   document,root:content,status,view,partner,detail,
-  selection:partner?partnerSameAppSelectedPanel:named||""
+  selection:partner?partnerSameAppSelectedPanel:named||"",
+  appendRankRow:appendVerifiedCountRankRow
  });
  return true;
 }
@@ -14117,8 +14149,10 @@ async function loadSharedDailyStandings(where,force=false){
  }
  status.textContent="会社・班・個人・商材の件数を照合しています…";
  try{
+  const kind=pInline("sharedCountPeriod"+where)?.value||"day";
+  const scope=pInline("sharedCountScope"+where)?.value||"joint";
   if(await tryLoadVerifiedSameAppJointCount({
-   where,date,partner,detail,status,content,uid,epoch,seq
+   where,date,partner,detail,status,content,uid,epoch,seq,kind,scope
   }))return;
  }catch(error){
   if(!sharedDailyRankingIsCurrent(where,epoch,seq)||auth.currentUser?.uid!==uid)return;
@@ -14226,6 +14260,10 @@ pInline("partnerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("pa
 pInline("ownerSharedRankingsRefresh").onclick=()=>loadSharedDailyStandings("owner",true);
 pInline("partnerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("partnerDetail",true);
 pInline("ownerSharedDetailRefresh").onclick=()=>loadSharedDailyStandings("ownerDetail",true);
+installSharedCountFilters("partner",pInline("partnerSharedRankingsRefresh"));
+installSharedCountFilters("partnerDetail",pInline("partnerSharedDetailRefresh"),{allowDirect:false});
+installSharedCountFilters("owner",pInline("ownerSharedRankingsRefresh"));
+installSharedCountFilters("ownerDetail",pInline("ownerSharedDetailRefresh"));
 
 // Partner sees original dashboard-style menu, not the finance DOM.
 function renderPartnerRankingOnlyPanel(){
@@ -14235,7 +14273,10 @@ function renderPartnerRankingOnlyPanel(){
  // When the verified published joint endpoint is selected, NEVER display
  // old partner-only scores next to the new shared standings. This is a
  // presentation-only guard; existing count save/history remains unchanged.
- if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true)return;
+ if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true){
+  if(rankings.parentElement)rankings.parentElement.hidden=true;
+  return;
+ }
  // Rank by the immutable staff ID / saved team snapshot, never by a current
  // name/team assignment. Retain departed staff and inactive historical teams.
  const staffById=new Map((snap.staff||[]).map(x=>[x.id,x]));
@@ -15841,6 +15882,18 @@ function openOwnerPartnerCountEditor(parent,company){
      partnerRankingDailyCache.clear();
      partnerRankingState={key:"",rows:[],complete:false,checkedAt:0,reason:""};
      partnerRankingRequestGeneration++;
+     ++sharedDailyRankingGeneration;sharedDailyRankCache.clear();
+     if(NICO_SAME_APP_JOINT_HTTP_ENABLED===true){
+      for(const name of ["Individual","Product","Team"]){
+       const card=pInline("ownerSharedCard"+name);
+       if(card&&!card.hidden&&!card.parentElement.hidden)
+        void loadSharedDailyStandings(name,true);
+      }
+      if(pInline("ownerSharedDetailsSection").closest("details")?.open){
+       void loadSharedDailyStandings("owner",true);
+       void loadSharedDailyStandings("ownerDetail",true);
+      }
+     }
      ownerVerifiedTeamState.generation++;
      ownerVerifiedTeamState.key="";ownerVerifiedTeamState.loadedAt=0;
     }

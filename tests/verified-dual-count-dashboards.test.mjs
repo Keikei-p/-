@@ -59,6 +59,16 @@ function fixture(partnerCount=2){
  };
 }
 const build=d=>buildVerifiedCountDashboard(d);
+test("partner can view direct-only published rankings without receiving direct company details",()=>{
+ const input={...fixture(3),context:auth("partner_owner"),filters:{scope:"direct"}};
+ const result=build(input);
+ assert.equal(result.own.count,0);
+ assert.deepEqual(result.own.teamDetails,[]);
+ assert.deepEqual(result.own.people,[]);
+ assert.deepEqual(result.publicRanking.companies,[{name:"自社",count:1,rank:1}]);
+ assert.equal(result.publicRanking.products[0].count,1);
+ assert.deepEqual(buildVendorDashboard(input),result);
+});
 test("2→3 correction is replacement, not additive: hub/company/person/SKU agree",()=>{
  const two=fixture(2);
  two.period={kind:"month",day:"2026-11-08",asOf:"2026-11-08"};

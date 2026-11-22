@@ -326,7 +326,7 @@ test("Auth switch or invalid verified contract never reaches the ranking rendere
 test("no ON OFF mapping joins exact self SKU, preserves legacy combined, never changes source",()=>{
  const hubSource={companyId:"hub1",kind:"own",consentVerified:true,isComplete:true,
   readTime:"2026-11-18T09:00:00.000Z",
-  products:[{companyId:"hub1",sourceId:"nuro",name:"NURO光",active:true},
+  products:[{companyId:"hub1",sourceId:"nuro",name:"NURO",active:true},
    {companyId:"hub1",sourceId:"light",name:"ソフトバンク光",active:true}]};
  const partnerSource={companyId:"partner1",kind:"partner",consentVerified:true,
   isComplete:true,readTime:hubSource.readTime,

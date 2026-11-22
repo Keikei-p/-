@@ -161,7 +161,9 @@ function partnerTeamRankingSafe(ownData,rows){
 }
 const PARTNER_PUBLISHED_TAB_ENVELOPE=["schema","role","unit","period","range","readTime","tab","rows"];
 function publishedPartnerTabScopeSafe(data){
- if(!exact(data,PARTNER_PUBLISHED_TAB_ENVELOPE)||
+ const envelope=data?.tab==="team"?[...PARTNER_PUBLISHED_TAB_ENVELOPE,"companies"]:
+  PARTNER_PUBLISHED_TAB_ENVELOPE;
+ if(!exact(data,envelope)||
     data.schema!=="nico-published-partner-count-tab-v1"||
     data.role!=="partner_owner"||data.unit!=="件"||
     !Array.isArray(data.rows)||data.rows.length>10000)return false;
@@ -171,7 +173,9 @@ function publishedPartnerTabScopeSafe(data){
   case "individual":
    return rankRows(data.rows,["rank","company","name","count"]);
   case "team":
-   return data.rows.every(row=>exact(row,TEAM_PUBLIC_WITH_OWN)&&
+   return Array.isArray(data.companies)&&data.companies.length<=30&&
+    rankRows(data.companies,["rank","name","count"])&&
+    data.rows.every(row=>exact(row,TEAM_PUBLIC_WITH_OWN)&&
     Number.isSafeInteger(row.rank)&&row.rank>0&&validCount(row.count)&&
     textLabel(row.name)&&textLabel(row.company)&&typeof row.own==="boolean");
   case "detail":
@@ -274,10 +278,10 @@ function createJointCountHttpAdapter({enabled=()=>false,loadHandler,publishedOnl
     if(data.role==="hub_owner"){
      if(data.schema!=="nico-verified-dual-count-v1"||
         !exact(data,HUB_ENVELOPE))fail();
-    }else if(publishedOnly===true){
-     if(!publishedPartnerTabScopeSafe(data))fail();
-    }else if(data.schema==="nico-published-partner-count-tab-v1"){
-     if(!publishedPartnerTabScopeSafe(data))fail();
+    }else if(publishedOnly===true||data.schema==="nico-published-partner-count-tab-v1"){
+     const requestedTabs=path.searchParams.getAll("tab");
+     if(requestedTabs.length!==1||requestedTabs[0]!==data.tab||
+        !publishedPartnerTabScopeSafe(data))fail();
     }else if(data.schema!=="nico-verified-dual-count-v1"||
              !partnerPublicScopeSafe(data))fail();
    }else if(!data||typeof data!=="object"||Array.isArray(data)||

@@ -70,6 +70,18 @@ test("verified owner writes only ID pairing/version, no products or count origin
   hubProductId:"nuro"});
  assert.equal(x.writes,1);assert.equal(x.reads,0);
 });
+test("existing approval callable accepts the scoped catalog and reviewed private IDs",async()=>{
+ const view={schema:"nico-owner-reviewed-sku-map-v1",hubCompanyId:"hub",version:3,
+  bindings:[{companyId:"partner",productId:"partnerPrivate:old",hubProductId:"nuro"}],
+  partnerProducts:[{id:"partnerPrivate:old",name:"旧限定商材",active:false}]};
+ const x=setup({view});
+ assert.deepEqual(await x.api.get(request({partnerCompanyId:"partner"})),view);
+ const saved=await x.api.save(request({...valid,partnerProductId:"partnerPrivate:old"}));
+ assert.equal(saved.partnerProductId,"partnerPrivate:old");
+ await assert.rejects(x.api.save(request({...valid,partnerProductId:"partnerPrivate:__proto__"})),
+  e=>e.code==="invalid-argument");
+ assert.equal(x.writes,1);
+});
 test("revocation/UID/email mismatch and forged company identity never reach persistence",async()=>{
  for(const r of [
   request({}, {auth:null}),

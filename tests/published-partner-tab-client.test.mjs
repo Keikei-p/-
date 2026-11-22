@@ -9,7 +9,8 @@ const api="https://asia-northeast1-sales-management-cc116.cloudfunctions.net/get
 const base=(tab="product",rows=[{rank:1,name:"NURO",count:5}])=>({
  schema:"nico-published-partner-count-tab-v1",role:"partner_owner",
  unit:"件",period:"day",range:{start:day,end:day},
- readTime:"2026-11-18T09:00:00.000Z",tab,rows
+ readTime:"2026-11-18T09:00:00.000Z",tab,rows,
+ ...(tab==="team"?{companies:[{rank:1,name:"協力店",count:5}]}:{})
 });
 const f=({payload=base(),status=200,workspace="partner1",changeAt=""}={})=>{
  const user={uid:"partnerUid",emailVerified:true,getIdToken:async()=>("t".repeat(50))};
@@ -95,6 +96,25 @@ test("reported zero remains ranked, unreported team is never a fake positive cou
   products:[{name:"NURO",count:1}]}]);
  assert.throws(()=>verifyPublishedPartnerCountResponse(inconsistent,{tab:"detail",day}));
 });
+test("scoped week and month requests verify the full returned period and company rows",async()=>{
+ const week={tab:"team",day,kind:"week",asOf:"2026-11-22",scope:"partner"};
+ const payload={...base("team",[{rank:1,name:"1班",company:"協力店",own:true,count:3}]),
+  period:"week",range:{start:"2026-11-16",end:"2026-11-22"}};
+ const item=f({payload});
+ const ranked=await item.bridge.load(week);
+ assert.deepEqual(ranked.companies,[{rank:1,name:"協力店",count:5}]);
+ assert.equal(new URL(item.requests[0].url).searchParams.get("week"),day);
+ assert.equal(new URL(item.requests[0].url).searchParams.get("scope"),"partner");
+ const month={tab:"product",day,kind:"month",asOf:"2026-11-22",scope:"direct"};
+ const grouped={...base(),period:"month",range:{start:"2026-11-01",end:"2026-11-22"}};
+ const monthly=f({payload:grouped});
+ await monthly.bridge.load(month);
+ assert.equal(new URL(monthly.requests[0].url).searchParams.get("month"),"2026-11");
+ assert.equal(new URL(monthly.requests[0].url).searchParams.get("scope"),"direct");
+ await reject(()=>item.bridge.load({...week,asOf:"2026-11-20"}));
+ const invalid=structuredClone(payload);invalid.companies[0].unitPrice=100;
+ await reject(()=>f({payload:invalid}).bridge.load(week));
+});
 test("revoked Auth, network error or 403/503 cannot trigger legacy stale fallback",async()=>{
  for(const status of [401,403,404,503]){
   const item=f({status});
@@ -144,7 +164,7 @@ test("shared dashboard routes partner to published-only client, Owner retains or
  assert(snippet.indexOf('if(partner){')>snippet.indexOf("SAME_APP_JOINT_NOT_RELEASED"));
  assert(snippet.includes('import("./ranking/published-partner-tab-client.mjs")'));
  assert(snippet.includes('getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany'));
- assert(snippet.includes('await bridge.load({tab,day:date})'));
+ assert(snippet.includes('await bridge.load({tab,day:date,kind,asOf:getTodayString(),scope})'));
  assert(snippet.includes('return true;'));
  assert(snippet.includes('expectedRole:partner?"partner_owner":"hub_owner"'));
  assert(html.includes("const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;"));

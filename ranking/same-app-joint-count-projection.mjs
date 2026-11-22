@@ -78,7 +78,8 @@ function detail(team){
  const total=count(team.count);
  if(members.reduce((n,m)=>n+m.count,0)!==total||
     products.reduce((n,p)=>n+p.count,0)!==total)fail();
- return {name:label(team.companyName)+"・"+label(team.name),count:total,
+ const companyName=label(team.companyName),teamName=label(team.name);
+ return {name:companyName+"・"+teamName,companyName,companyId:team.companyId,teamName,count:total,
   reported:posted(t.reportStatus),members,products};
 }
 export function buildSameAppJointCountProjection(response,{partner=false}={}){

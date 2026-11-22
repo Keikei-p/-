@@ -8,6 +8,8 @@ on:
       - 'ranking/**'
       - 'functions-ranking-approvals/**'
       - 'functions-partner-tabs/**'
+      - 'functions-partner-workspace/**'
+      - 'firestore.rules'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/partner-code-count-readonly-safety.test.mjs'
       - 'tests/partner-code-auth-handoff.test.mjs'
@@ -50,7 +52,7 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = f9c8f8e64343e1060a9a20b7e9b110c2c9bd265c
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 442af45e493daf4162182e4ed76240bbcd4fccf2
           test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
           test "$(git hash-object functions-partner-workspace/workspace-identity.cjs)" = e06305c7dd151a3e5bab93a394396754fd25088e
           test "$(git hash-object firebase.json)" = d4d918a83f2675994d7aa211c42bb2c9e7242478
@@ -104,6 +106,7 @@ jobs:
           node --test tests/partner-owner-on-exact-auto-input.test.mjs
           # Owner-reviewed SKU IDs must win over zero-setup aliases; no original count write.
           node --test tests/owner-reviewed-zero-setup-linker.test.mjs
+          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs
           # The completed internal dashboard must remain byte-identical.
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
@@ -140,7 +143,7 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = f9c8f8e64343e1060a9a20b7e9b110c2c9bd265c
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 442af45e493daf4162182e4ed76240bbcd4fccf2
           node security/secondary-finance-read-fence.mjs --check
       - name: Install emulator without production credentials
         run: |

@@ -22,10 +22,15 @@ function fake(){
  ]);
  let writes=0,serial=0;
  const ref=path=>({path,doc(id){return ref(path+"/"+(id??("audit"+(++serial))))},
-  collection(name){return ref(path+"/"+name)}});
+  collection(name){return ref(path+"/"+name)},limit(n){return {path,max:n}}});
+ const snap=(path,value)=>({id:path.split("/").at(-1),
+  exists:value!==undefined,data(){return structuredClone(value)}});
  const tx={
-  async get(r){const value=state.get(r.path);
-   return {exists:value!==undefined,data(){return structuredClone(value)}}},
+  async get(r){
+   if(r.max)return {docs:[...state].filter(([path])=>path.startsWith(r.path+"/"))
+    .slice(0,r.max).map(([path,value])=>snap(path,value))};
+   return snap(r.path,state.get(r.path));
+  },
   create(r,value){if(state.has(r.path))throw Error("ALREADY_EXISTS");
    writes++;state.set(r.path,structuredClone(value))},
   update(r,value){if(!state.has(r.path))throw Error("NO_DOC");
@@ -63,6 +68,39 @@ test("owner writes exact approved NURO mapping, version + append-only audit, no 
   partnerProductId:"partnerSku02",hubProductId:"air",expectedVersion:0}),
   /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
  assert.equal(f.writes,2);
+});
+test("owner can list and review a retired private SKU in the selected company's catalog",async()=>{
+ const f=fake(),path="companies/partner/partnerPrivateProducts/retired";
+ const product={companyId:"partner",origin:"partner_custom",visibility:"private",
+  name:"受付終了プラン",active:false,unitPrice:10300};
+ f.state.set(path,product);
+ const initial=await f.store.status(owner,"partner");
+ assert.deepEqual(initial.partnerProducts,[{id:"partnerPrivate:retired",
+  name:"受付終了プラン",active:false}]);
+ assert.doesNotMatch(JSON.stringify(initial),/unitPrice|10300/);
+ const result=await f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerPrivate:retired",hubProductId:"nuro",expectedVersion:0});
+ assert.equal(result.saved,true);
+ const reviewed=await f.store.status(owner);
+ assert.deepEqual(reviewed.bindings,[{companyId:"partner",
+  productId:"partnerPrivate:retired",hubProductId:"nuro"}]);
+ assert.deepEqual(f.state.get(path),product);
+ assert.equal(f.writes,2);
+});
+test("unknown or foreign private IDs and a private combined label going to solo Air cannot be mapped",async()=>{
+ const f=fake();
+ const binding={principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerPrivate:legacy",hubProductId:"air",expectedVersion:0};
+ await assert.rejects(f.store.change(binding),/UNVERIFIED/);
+ const path="companies/partner/partnerPrivateProducts/legacy";
+ const row={companyId:"foreign",origin:"partner_custom",visibility:"private",
+  name:"SB光・AIR（旧合算）",active:false};
+ f.state.set(path,row);
+ await assert.rejects(f.store.status(owner,"partner"),/UNVERIFIED/);
+ await assert.rejects(f.store.change({...binding,hubProductId:"legacy"}),/UNVERIFIED/);
+ f.state.set(path,{...row,companyId:"partner"});
+ await assert.rejects(f.store.change(binding),/UNVERIFIED/);
+ assert.equal(f.writes,0);
 });
 test("old combined 光・AIR cannot map to independent Air, stays intact; explicit combined SKU allowed",async()=>{
  const f=fake();

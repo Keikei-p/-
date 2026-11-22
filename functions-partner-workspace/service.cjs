@@ -1134,6 +1134,11 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // edits without deleting OFF history or altering the old company sum.
    let effectiveCounts=counts,effectiveTotal=total;
    if(submissionPublicationEnabled()===true){
+    // Private counts belong to the retired input scheme. Owner approval may
+    // publish historic counts but cannot authorize writes through that scheme.
+    if(Object.entries(requestedPrivate??{}).some(([id,count])=>
+       !Object.hasOwn(previousPrivate,id)||previousPrivate[id]!==count))
+     fail("failed-precondition");
     try{
      const policy=await verifySubmissionPublication({tx,
       scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},

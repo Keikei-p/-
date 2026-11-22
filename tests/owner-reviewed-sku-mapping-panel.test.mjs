@@ -26,7 +26,7 @@ const catalog=()=>({
  schema:"nico-hub-product-visibility-v1",role:"hub_owner",
  version:3,hubCompanyId:"hub",partnerOverrides:{},
  products:[
-  {id:"nuro",name:"NURO光",active:true,enabled:true},
+  {id:"nuro",name:"NURO",active:true,enabled:true},
   {id:"air",name:"SoftBank Air",active:true,enabled:false},
   {id:"combined",name:"SB光・AIR（旧合算・未分類）",active:true,enabled:false}
  ]
@@ -256,7 +256,7 @@ test("Owner batch performs versioned sequential exact mappings only after click,
 test("ambiguous matching, already mapped SKU, and legacy split never get a batch proposal",()=>{
  const c=catalog();
  c.products[2].enabled=true;
- c.products.push({id:"nuro2",name:"nuro",active:true,enabled:true});
+ c.products.push({id:"nuro2",name:"NURO",active:false,enabled:false});
  let proposals=suggestUnambiguousOwnerSkuMappings({
   mapping:status(),catalog:c,partnerCompanyId:"partner"
  });
@@ -273,6 +273,32 @@ test("ambiguous matching, already mapped SKU, and legacy split never get a batch
  assert.equal(suggestUnambiguousOwnerSkuMappings({
   mapping:status(),catalog:c,partnerCompanyId:"partner"
  }).length,0,"company-specific OFF is respected");
+});
+
+test("only exact archived private SKU names can be proposed in the company-scoped Owner panel",async()=>{
+ const c=catalog();
+ c.products[0].name="NURO光";
+ c.products.push({id:"extra",name:"共通商材",active:true,enabled:true});
+ c.products.push({id:"ambiguous1",name:"重複商材",active:true,enabled:true});
+ c.products.push({id:"ambiguous2",name:"重複商材",active:false,enabled:false});
+ const mapping={...status(),partnerProducts:[
+  {id:"partnerPrivate:historic",name:"共通商材",active:false},
+  {id:"partnerPrivate:ambiguous",name:"重複商材",active:true}
+ ]};
+ assert.deepEqual(suggestUnambiguousOwnerSkuMappings({mapping,catalog:c,partnerCompanyId:"partner"}),[{
+  partnerProductId:"partnerPrivate:historic",partnerLabel:"共通商材",
+  hubProductId:"extra",hubProductLabel:"共通商材"
+ }]);
+ const root=new Node("main"),calls=[];
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,
+  auth:{currentUser:user},partnerCompanyId:"partner",
+  readMappings:async args=>{calls.push(args);return mapping;},
+  readProducts:async()=>c,saveMapping:async()=>assert.fail("preview wrote to server")});
+ assert.equal(await panel.refresh(),true);
+ assert.equal(calls[0].partnerCompanyId,"partner");
+ assert.match(displayed(root),/共通商材（過去の商材）/);
+ assert.match(displayed(root),/上記1件を確認して連携する/);
+ panel.destroy();
 });
 
 test("batch failure stops at first error and reloads server-confirmed partial state",async()=>{

@@ -64,7 +64,7 @@ test("exact names are candidates only; reviewed private ID mapping is separately
  assert.equal(p.exactNameCandidates.length,1);
  assert.equal(p.candidateOnly,true);
  assert.equal(p.mappedCount,0);
- input.hubs[0].mapping.bindings.push({companyId:"partner_private_id",productId:"private_sku_id",hubProductId:"custom_private_id"});
+ input.hubs[0].mapping.bindings.push({companyId:"partner_private_id",productId:"partnerPrivate:private_sku_id",hubProductId:"custom_private_id"});
  const matched=inventoryPartnerFullHistory(input);
  assert.equal(matched.originalTotalCount,14);
  assert.equal(matched.mappedTotalCount,14);
@@ -72,6 +72,20 @@ test("exact names are candidates only; reviewed private ID mapping is separately
  assert.deepEqual(matched.heldCountsByReason,{},
   "approved mapping never leaves unexplained held counts");
  assert.equal(matched.candidateMappingsApplied,0,"inventory still performs no mapping writes");
+});
+test("case changes, whitespace changes and ambiguous names never create review candidates",()=>{
+ const input=historicalFixture();
+ input.companies[0].privateProducts[0].name="service a";
+ input.hubs[0].ownerProducts[2].name="Service A";
+ const privateRow=()=>inventoryPartnerFullHistory(input).companies[0].products
+  .find(p=>p.sourceKind==="ledger_private");
+ assert.deepEqual(privateRow().exactNameCandidates,[]);
+ input.hubs[0].ownerProducts[2].name="servicea";
+ assert.deepEqual(privateRow().exactNameCandidates,[]);
+ input.hubs[0].ownerProducts[2].name="service a";
+ assert.equal(privateRow().exactNameCandidates.length,1);
+ input.hubs[0].ownerProducts.push({...product("ambiguous", "service a"),active:false});
+ assert.deepEqual(privateRow().exactNameCandidates,[]);
 });
 
 test("global and company OFF hold every historical source unchanged",()=>{

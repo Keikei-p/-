@@ -476,9 +476,21 @@ test("published-only HTTP rejects other tab keys, cross-scope details and moneta
   role:"partner_owner",unit:"件",period:"month",
   range:{start:"2026-11-01",end:"2026-11-18"},
   readTime:"2026-11-18T09:00:00.000Z",tab:"team",
-  rows:[{rank:1,name:"1班",company:"協力店A",count:3,own:true}]
+  rows:[{rank:1,name:"1班",company:"協力店A",count:3,own:true}],
+  companies:[{rank:1,name:"協力店A",count:3}]
  };
+ const teamAdapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>make(200,published)});
+ const teamResponse=response();
+ await teamAdapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=team"),teamResponse);
+ assert.equal(teamResponse.statusCode,200);
+ assert.deepEqual(JSON.parse(teamResponse.body),published);
+ const mismatchedTab=response();
+ await teamAdapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=product"),mismatchedTab);
+ assert.equal(mismatchedTab.statusCode,503);
  const mutations=[
+  p=>p.companies[0].revenue=20000,
+  p=>delete p.companies,
   p=>p.rows[0].uid="foreignUid",
   p=>p.rows[0].unitPrice=20000,
   p=>p.rows[0].name="1班 売上5万円",
@@ -491,7 +503,8 @@ test("published-only HTTP rejects other tab keys, cross-scope details and moneta
   const p=structuredClone(published);mutate(p);
   const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
    loadHandler:()=>make(200,p)});
-  const out=response();await adapter(req(),out);
+  const out=response();
+  await adapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=team"),out);
   assert.equal(out.statusCode,503,mutate.toString());
   assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
  }

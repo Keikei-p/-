@@ -101,6 +101,15 @@ test("not published tab must be refused even when counts were already calculated
   }));
  }
 });
+test("published team tab includes company standings without other tab payloads",async()=>{
+ const f=dbFixture(policy(["team"])),original=source();
+ const p=await createPartnerPublishedTabPolicyReader({db:f.db})({tx:f.tx,context:ctx()});
+ const published=projectPublishedPartnerCountTab({verifiedContext:ctx(),policy:p,
+  requestedTab:"team",response:original});
+ assert.deepEqual(published.rows,original.publicRanking.teams);
+ assert.deepEqual(published.companies,original.publicRanking.companies);
+ assert.doesNotMatch(JSON.stringify(published),/担当A|NURO|teamDetails/);
+});
 test("detail published returns own company drilldown only, not global person/product ranking",async()=>{
  const f=dbFixture(policy(["detail"]));
  const p=await createPartnerPublishedTabPolicyReader({db:f.db})({tx:f.tx,context:ctx()});
