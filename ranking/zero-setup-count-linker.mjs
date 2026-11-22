@@ -80,6 +80,9 @@ export function linkAllRegisteredCountsWithoutSetup({
      !contract.has(b.productId)||!valid(b.hubProductId)||
      !own.has(b.hubProductId))stop();
   const target=own.get(b.hubProductId);
+  // An old Owner-reviewed binding cannot reactivate a currently OFF hub SKU.
+  // Fail closed before any count projection; preserve the original saved ledger.
+  if(target.active!==true)stop();
   if(b.productId==="partnerSku05"&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))stop();
   const seen=reviewedByCompany.get(b.companyId)||new Map();
