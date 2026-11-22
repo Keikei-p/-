@@ -44,6 +44,8 @@ test("full history conserves fixed, private and exact published counts without c
  assert.equal(r.originalTotalCount,14);
  assert.equal(r.mappedTotalCount,10);
  assert.equal(r.heldTotalCount,4);
+ assert.deepEqual(r.heldCountsByReason,{held_unmapped:4},
+  "read-only root cause must preserve full held count without product identities");
  assert.equal(r.originalTotalCount,r.mappedTotalCount+r.heldTotalCount);
  assert.equal(r.originalEntryCount,1);
  assert.equal(r.companies[0].products.find(p=>p.sourceKind==="ledger_published").mappedCount,5);
@@ -67,6 +69,8 @@ test("exact names are candidates only; reviewed private ID mapping is separately
  assert.equal(matched.originalTotalCount,14);
  assert.equal(matched.mappedTotalCount,14);
  assert.equal(matched.heldTotalCount,0);
+ assert.deepEqual(matched.heldCountsByReason,{},
+  "approved mapping never leaves unexplained held counts");
  assert.equal(matched.candidateMappingsApplied,0,"inventory still performs no mapping writes");
 });
 
@@ -83,6 +87,8 @@ test("global and company OFF hold every historical source unchanged",()=>{
  assert.equal(allOff.originalTotalCount,14);
  assert.equal(allOff.mappedTotalCount,0);
  assert.equal(allOff.heldTotalCount,14);
+ assert.deepEqual(allOff.heldCountsByReason,{held_off:10,held_unmapped:4},
+  "OFF-held and unmapped-held must be independent, with exact conservation");
 });
 
 test("quick/staff overlap is held as separate sources; no chosen or summed grand count",()=>{
@@ -94,6 +100,7 @@ test("quick/staff overlap is held as separate sources; no chosen or summed grand
  assert.equal(r.sourceConservationVerified,true);
  assert.equal(r.combinedCountReconciled,false);
  assert.equal(r.originalTotalCount,null);assert.equal(r.mappedTotalCount,null);assert.equal(r.heldTotalCount,null);
+ assert.equal(r.heldCountsByReason,null,"overlap cannot be reported as an additive root cause");
  assert.deepEqual(r.nonOverlappingSourceCounts,{originalCount:0,mappedCount:0,heldCount:0});
  assert.equal(c.conflicts[0].combinedCount,null);
  assert.equal(c.conflicts[0].ledgerLegacyCount,5);
