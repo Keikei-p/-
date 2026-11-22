@@ -7477,6 +7477,8 @@ import {
 
 import {
   getAuth,
+  setPersistence,
+  inMemoryPersistence,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
@@ -7598,6 +7600,13 @@ const app =
 
 const auth =
   getAuth(app);
+
+// Require the ORIGINAL email/password login each time the application opens.
+// First clear any previously persisted Firebase Auth user, then keep new
+// successful logins in memory only. Never import a cached user into the UI.
+await auth.authStateReady();
+if (auth.currentUser) await signOut(auth);
+await setPersistence(auth, inMemoryPersistence);
 
 auth.languageCode =
   "ja";
@@ -11546,10 +11555,12 @@ const partnerMainCodeLogout=httpsCallable(partnerAnonymousCodeFunctions,
  "logoutPartnerCompanyCode",{timeout:15000});
 let partnerMainCodeToken="",partnerMainCodeEpoch=0;
 try{
+ // The code token crosses ONLY the initial security reload, never a later app open.
+ // Consume the handoff before routing, so refreshing/backgrounding requires a new password.
  const stored=sessionStorage.getItem("nicoPartnerCodeSession")||"";
+ sessionStorage.removeItem("nicoPartnerCodeSession");
  if(/^[A-Za-z0-9_-]{43}$/.test(stored))partnerMainCodeToken=stored;
- else if(stored)sessionStorage.removeItem("nicoPartnerCodeSession");
-}catch{/* Private browsing may disable session restoration. */}
+}catch{/* Storage denied: fail closed, without restoring any code identity. */}
 const partnerMainCodeActive=()=>!!partnerMainCodeToken&&!auth.currentUser;
 function partnerMainCodeForget(){
  ++partnerMainCodeEpoch;
@@ -16427,6 +16438,30 @@ onAuthStateChanged(
   }
 );
 
+
+// Preserve the already-published fresh-login policy when partners share this screen.
+// iOS/PWA backgrounding must immediately hide the opened dashboard, never financial data.
+// Leave the original login, email confirmation and invite screens untouched.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "hidden" ||
+      appScreen.style.display !== "block" ||
+      (!auth.currentUser && !partnerMainCodeActive())) return;
+  appScreen.style.display = "none";
+  authScreen.style.display = "block";
+  void stopRealtimeListeners();
+  if (partnerMainCodeActive()) {
+    const token=partnerMainCodeToken;
+    partnerMainCodeForget();
+    resetPartnerInline();
+    currentUser=null;
+    currentUserData=null;
+    currentCompanyData=null;
+    loginStatus.textContent="未ログイン";
+    void partnerMainCodeLogout({codeSessionToken:token}).catch(() => {});
+    return;
+  }
+  void signOut(auth).catch(() => location.reload());
+});
 
 /* =====================================================
    ユーザー情報読み込み
