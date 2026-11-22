@@ -184,7 +184,7 @@ test("unified code login never logs out an Owner just to check a password",async
 
 test("old account workspace discovery cannot reopen stale login after logout",async()=>{
  const a=html.indexOf("onAuthStateChanged(\n  auth,\n  async user => {");
- const b=html.indexOf("\n);\n\n\n/* =====================================================\n   ユーザー情報読み込み",a);
+ const b=html.indexOf("\n);\n\n\n// Preserve the already-published fresh-login policy",a);
  assert(a>0&&b>a,"main auth-state callback must exist");
  const source=html.slice(a,b+3);
  assert.match(source,/if\(auth\.currentUser\?\.uid!==user\.uid\)return;\s*if\(partnerWorkspaceId\)/);
@@ -468,7 +468,7 @@ test("stale save finalizer cannot unlock controls or clear a new account's pendi
 
 test("code-auth bootstrap after hard reload only opens count-only page and never finance listeners",()=>{
  const a=html.indexOf("onAuthStateChanged(\n  auth,\n  async user => {");
- const b=html.indexOf("\n);\n\n\n/* =====================================================\n   ユーザー情報読み込み",a);
+ const b=html.indexOf("\n);\n\n\n// Preserve the already-published fresh-login policy",a);
  assert(a>0&&b>a);
  const code=html.slice(a,b);
  assert.match(code,/if\(partnerMainCodeActive\(\)\)\{\s*if\(nicoMainCodeLoginBusy\)return;\s*if\(await openSameAppCompanyCodeWorkspace\(\)\)return;/);
