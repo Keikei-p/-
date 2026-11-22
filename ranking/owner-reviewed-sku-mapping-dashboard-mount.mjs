@@ -32,16 +32,16 @@ export function mountOwnerReviewedSkuMappingDashboard({
   readProducts:args=>bridge.readProducts(args),
   saveMapping:args=>bridge.saveMapping(args)
  });
- let destroyed=false,unsubscribe=()=>{};
+ let destroyed=false,unsubscribe=()=>{},identity=auth.currentUser;
  const reset=()=>{bridge.onAuthChange();panel.onAuthChange();};
  try{
   const off=onAuthStateChanged(auth,user=>{
    if(destroyed)return;
-   reset();
-   // Invalidate only. The existing Owner workspace explicitly requests
-   // refresh on open, avoiding two racing requests from Firebase's immediate
-   // auth callback and the Owner's click. Never auto-write or auto-fetch.
-   if(!user||user.emailVerified!==true||auth.currentUser!==user)return;
+   // Firebase immediately reports the already-current identity on subscribe.
+   // That is NOT a logout and must not clear a simultaneous Owner refresh.
+   if(user===identity&&user?.emailVerified===true)return;
+   identity=user;reset();
+   // The Owner workspace explicitly reloads when opened. Never auto-write.
   });
   if(typeof off!=="function")stop();
   unsubscribe=off;
