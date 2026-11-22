@@ -317,6 +317,18 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
  }
  const reconciled=companyResults.every(c=>c.combinedCountReconciled);
  if(totals.original!==add(totals.mapped,totals.held))stop("CONSERVATION");
+ // Diagnose why historic counts remain out of joint rankings without exposing
+ // company, staff, SKU, or product IDs. Overlap invalidates any grand total:
+ // never represent overlapping source counts as a summed held-reason metric.
+ const reasonTotals=new Map();
+ for(const row of allRows)if(row.heldCount>0){
+  if(!/^held_[a-z_]+$/.test(row.state))stop("HOLD_REASON");
+  reasonTotals.set(row.state,add(reasonTotals.get(row.state)??0,row.heldCount));
+ }
+ if(reconciled&&sum([...reasonTotals.values()])!==totals.held)
+  stop("HOLD_REASON_CONSERVATION");
+ const heldCountsByReason=reconciled?
+  Object.fromEntries([...reasonTotals].sort(([a],[b])=>a.localeCompare(b))):null;
  return Object.freeze({schema:"nico-partner-full-history-inventory-v1",mode:"READ_ONLY_NO_DEPLOY",
   snapshotReadTime:proof.readTime,completeSnapshot:true,sourceConservationVerified:true,
   combinedCountReconciled:reconciled,hubCompanyCount:hubs.length,partnerCompanyCount:companies.length,
@@ -327,6 +339,7 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
   overlapDayCount:allConflicts.length,summaryMismatchDayCount:sum(companyResults.map(c=>c.summaryMismatchDayCount)),
   originalTotalCount:reconciled?totals.original:null,mappedTotalCount:reconciled?totals.mapped:null,
   heldTotalCount:reconciled?totals.held:null,
+  heldCountsByReason,
   nonOverlappingSourceCounts:{originalCount:totals.original,mappedCount:totals.mapped,heldCount:totals.held},
   legacyCombinedSourceCountsByKind:["ledger_legacy","quick_legacy"].map(sourceKind=>({sourceKind,
    count:sum(allRows.filter(r=>r.sourceKind===sourceKind&&r.legacyCombined).map(r=>r.originalCount))})),
