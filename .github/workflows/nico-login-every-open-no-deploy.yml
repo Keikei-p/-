@@ -44,3 +44,32 @@ jobs:
           NODE
           for file in /tmp/nico-original-login-*.mjs; do node --check "$file"; done
           echo EXISTING_LOGIN_NO_SESSION_RESTORE_TESTS_PASS_NO_DEPLOY
+      - name: Read currently published original login without authentication (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 2 --max-time 35 \
+            "https://nico-factory.web.app/?existing_login_readonly=$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/nico-live-login.html"
+          LIVE="$RUNNER_TEMP/nico-live-login.html" node <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          const live=fs.readFileSync(process.env.LIVE,'utf8');
+          const candidate=fs.readFileSync('index.html','utf8');
+          const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
+          const part=s=>{
+            const a=s.indexOf('<main id="authScreen">');
+            const b=s.indexOf('</main>',a+1);
+            if(a<0||b<a)throw Error('UNEXPECTED_ORIGINAL_LOGIN_MARKUP');
+            return s.slice(a,b+7);
+          };
+          if(live.length<100000||!live.includes('営業実績管理'))
+            throw Error('UNKNOWN_PUBLISHED_NICO_LOGIN');
+          console.log('LIVE_HTTP_GET_OK=true');
+          console.log('LIVE_LOGIN_MARKUP_EQUALS_CANDIDATE='+String(part(live)===part(candidate)));
+          console.log('LIVE_FULL_INDEX_EQUALS_CANDIDATE='+String(live===candidate));
+          console.log('LIVE_BYTES='+Buffer.byteLength(live));
+          console.log('CANDIDATE_BYTES='+Buffer.byteLength(candidate));
+          console.log('LIVE_LOGIN_SHA256='+sha(part(live)));
+          console.log('CANDIDATE_LOGIN_SHA256='+sha(part(candidate)));
+          console.log('LIVE_WRITES=0 FIRESTORE_WRITES=0 DEPLOY=NONE');
+          NODE
