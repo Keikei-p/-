@@ -35,12 +35,17 @@ test("source Owner-reviewed legacy targets copy to two partners, private SKU sta
  assert(!JSON.stringify(plan).includes("oldid"));
 });
 test("existing mapping never overwritten; duplicate target remains conflict",()=>{
+ // Both existing combined targets are genuinely combined products. The
+ // historical partnerSku05 -> standalone product guard stays strict.
+ const c=catalog();
+ c.products.push({id:"combinedAlt",name:"SB光・AIR（旧合算・別管理）",
+  active:true,enabled:true});
  const plan=planOwnerReviewedSkuRollout({
   mapping:map(3,[...source,
    bind("partnerB","partnerSku01","nuro"),
-   bind("partnerB","partnerSku03","combined"),
-   bind("partnerC","partnerSku05","water")]),
-  catalog:catalog(),sourceCompanyId:"partnerA",
+   bind("partnerB","partnerPrivate:oldCombined","combined"),
+   bind("partnerC","partnerSku05","combinedAlt")]),
+  catalog:c,sourceCompanyId:"partnerA",
   targetCompanyIds:["partnerB","partnerC"]
  });
  assert.equal(plan.totalApply,1); // partnerC's NURO is missing
