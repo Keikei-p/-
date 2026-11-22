@@ -25,7 +25,7 @@ const named=x=>typeof x==="string"&&x.trim().length>0&&x.trim().length<=80&&
  !MONEY.test(x.normalize("NFKC"));
 const nameKey=x=>named(x)?x.trim():null;
 const combined=x=>typeof x==="string"&&
- /(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i.test(x.normalize("NFKC"));
+ /(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(]))/i.test(x.normalize("NFKC"));
 function day(x){
  if(typeof x!=="string"||!/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(x))stop("INVALID_DATE");
  const d=new Date(x+"T00:00:00Z");
