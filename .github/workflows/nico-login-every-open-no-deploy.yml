@@ -67,6 +67,19 @@ jobs:
           console.log('LIVE_HTTP_GET_OK=true');
           console.log('LIVE_LOGIN_MARKUP_EQUALS_CANDIDATE='+String(part(live)===part(candidate)));
           console.log('LIVE_FULL_INDEX_EQUALS_CANDIDATE='+String(live===candidate));
+          // Audit whether the CURRENT published version can accept ONLY the
+          // reviewed auth edits. Do not print or replace original live source.
+          const liveAnchors=[
+            '  getAuth,\n  createUserWithEmailAndPassword,',
+            'const auth =\n  getAuth(app);\n\nauth.languageCode =',
+            '\n\n/* =====================================================\n   ユーザー情報読み込み\n===================================================== */\n\nasync function checkLegacyEntryAgainstServer(user) {'
+          ];
+          const exactOnce=(source,needle)=>source.split(needle).length===2;
+          const canSurgicallyPatch=liveAnchors.every(a=>exactOnce(live,a)) &&
+            live.includes('onAuthStateChanged(\n  auth,') &&
+            live.includes('signInWithEmailAndPassword(');
+          console.log('LIVE_AUTH_ONLY_SURGICAL_ANCHORS='+String(canSurgicallyPatch));
+          console.log('FULL_INDEX_REDEPLOY_ALLOWED=false');
           console.log('LIVE_BYTES='+Buffer.byteLength(live));
           console.log('CANDIDATE_BYTES='+Buffer.byteLength(candidate));
           console.log('LIVE_LOGIN_SHA256='+sha(part(live)));
