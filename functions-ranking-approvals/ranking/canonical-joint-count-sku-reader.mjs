@@ -157,6 +157,9 @@ export function composeCanonicalMonthlyRankingInput({
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
+  // Both classic reviewed-only and zero-setup paths must reject OFF hub targets.
+  // A persisted mapping is not permission to publish a product after Owner OFF.
+  if(target.active!==true)STOP();
   // Historic combined light/AIR must never be guessed into separate SKUs.
   if(LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC"))&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
