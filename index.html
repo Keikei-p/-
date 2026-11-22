@@ -5363,6 +5363,10 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
         </label>
         <p id="ownerPartnerSkuMappingStatus" role="status" aria-live="polite"></p>
         <div id="ownerPartnerSkuMappingRoot"></div>
+        <button id="ownerPartnerSkuRolloutRefresh" type="button" class="team-action-button">
+          他の協力店への対応候補を再確認
+        </button>
+        <div id="ownerPartnerSkuRolloutRoot"></div>
       </details>
       <details id="ownerPartnerTabPublicationPanel" class="p-inline-card" hidden>
         <summary>📋 協力店へのタブ公開設定（全社一括）</summary>
@@ -10118,7 +10122,7 @@ quickPartnerButton.onclick=()=>{
 let partnerProductsMountedPanel=null;
 let partnerProductsOpenGeneration=0;
 let ownerPartnerTabPublicationUI=null;
-let ownerPartnerSkuMount=null,ownerPartnerSkuEpoch=0;
+let ownerPartnerSkuMount=null,ownerPartnerSkuRolloutMount=null,ownerPartnerSkuEpoch=0;
 async function refreshOwnerPartnerSkuMappingUI(stillOwner){
  // No company read, callable or mount while not approved for release.
  if(NICO_OWNER_SKU_MAPPING_UI_ENABLED!==true)return false;
@@ -10126,12 +10130,16 @@ async function refreshOwnerPartnerSkuMappingUI(stillOwner){
  const selector=document.getElementById("ownerPartnerSkuCompanySelect");
  const status=document.getElementById("ownerPartnerSkuMappingStatus");
  const root=document.getElementById("ownerPartnerSkuMappingRoot");
- if(!section||!selector||!status||!root||
+ const rolloutRoot=document.getElementById("ownerPartnerSkuRolloutRoot");
+ const rolloutRefresh=document.getElementById("ownerPartnerSkuRolloutRefresh");
+ if(!section||!selector||!status||!root||!rolloutRoot||!rolloutRefresh||
     !stillOwner()||!canLoadPartnerRanking())return false;
  const epoch=++ownerPartnerSkuEpoch;
  const alive=()=>epoch===ownerPartnerSkuEpoch&&stillOwner()&&canLoadPartnerRanking();
  ownerPartnerSkuMount?.destroy();ownerPartnerSkuMount=null;
+ ownerPartnerSkuRolloutMount?.destroy();ownerPartnerSkuRolloutMount=null;
  section.hidden=true;selector.replaceChildren();root.replaceChildren();
+ rolloutRoot.replaceChildren();rolloutRefresh.onclick=null;
  selector.onchange=null;
  try{
   // Reuse the server-verified Owner count-only company directory.
@@ -10161,7 +10169,8 @@ async function refreshOwnerPartnerSkuMappingUI(stillOwner){
   const selectCompany=async()=>{
    const selected=selector.value,revision=++ownerPartnerSkuEpoch;
    ownerPartnerSkuMount?.destroy();ownerPartnerSkuMount=null;
-   root.replaceChildren();
+   ownerPartnerSkuRolloutMount?.destroy();ownerPartnerSkuRolloutMount=null;
+   root.replaceChildren();rolloutRoot.replaceChildren();rolloutRefresh.onclick=null;
    const current=()=>revision===ownerPartnerSkuEpoch&&
      stillOwner()&&canLoadPartnerRanking()&&
      selector.value===selected&&active.has(selected);
@@ -10185,7 +10194,26 @@ async function refreshOwnerPartnerSkuMappingUI(stillOwner){
     }
     status.textContent=ok?"Owner確認用の対応表を取得しました。保存は明示操作のみです。":
       "対応表を取得できません。Owner権限・公開状態を確認してください。";
-    return ok;
+    if(!ok)return false;
+    // Reuse only Owner-reviewed mapping. No source ledgers or finance write.
+    const {mountOwnerSkuRolloutPanel}=await import(
+      "./ranking/owner-reviewed-sku-rollout-panel.mjs");
+    if(!current())return false;
+    const rollout=mountOwnerSkuRolloutPanel({
+     enabled:true,document,root:rolloutRoot,auth,
+     functions:partnerCountFunctions,httpsCallable,onAuthStateChanged,
+     sourceCompanyId:selected,targetCompanyIds:[...active].filter(id=>id!==selected),
+     confirmRollout:message=>current()&&window.confirm(message)
+    });
+    ownerPartnerSkuRolloutMount=rollout;
+    rolloutRefresh.onclick=()=>{if(current())void rollout.refresh();};
+    await rollout.refresh();
+    if(!current()){
+     rollout.destroy();
+     if(ownerPartnerSkuRolloutMount===rollout)ownerPartnerSkuRolloutMount=null;
+     return false;
+    }
+    return true;
    }catch{
     if(current())status.textContent="商材対応APIが未公開か取得できません。";
     return false;
