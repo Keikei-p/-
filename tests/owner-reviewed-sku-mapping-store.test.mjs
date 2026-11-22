@@ -229,3 +229,23 @@ test("stored target identity uses unambiguous company and hub ID tuple",async()=
  assert.equal(result.bindings.length,2);
  assert.equal(f.writes,0);
 });
+
+
+test("historic 光/AIR never maps to an unrelated product labeled only 旧合算 or 未分類",async()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const f=fake();
+  f.state.set("products/nuro",{...f.state.get("products/nuro"),name});
+  await assert.rejects(f.store.change({principal:owner,
+   partnerCompanyId:"partner",partnerProductId:"partnerSku05",
+   hubProductId:"nuro",expectedVersion:0}),/OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+  assert.equal(f.writes,0,name+" must never modify a saved mapping or count");
+ }
+ for(const name of ["SB光・AIR（旧合算）","光/AIR","ソフトバンク光/Air"]){
+  const f=fake();
+  f.state.set("products/legacy",{...f.state.get("products/legacy"),name});
+  const applied=await f.store.change({principal:owner,
+   partnerCompanyId:"partner",partnerProductId:"partnerSku05",
+   hubProductId:"legacy",expectedVersion:0});
+  assert.equal(applied.saved,true,name+" is a genuine combined product");
+ }
+});
