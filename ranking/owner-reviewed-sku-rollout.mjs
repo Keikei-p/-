@@ -108,13 +108,15 @@ export function planOwnerReviewedSkuRollout({
  * hub roster, never URL state. All writes are audited/versioned server calls.
  */
 export async function applyOwnerReviewedSkuRollout({
- confirmed=false,plan,auth,readMappings,readProducts,saveMapping
+ confirmed=false,plan,auth,readMappings,readProducts,saveMapping,
+ canContinue=()=>true
 }={}){
  if(confirmed!==true)return Object.freeze({status:"not_confirmed",verified:0});
  if(!object(plan)||plan.schema!=="nico-owner-reviewed-sku-rollout-plan-v1"||
     !Array.isArray(plan.plans)||!auth?.currentUser||
     typeof readMappings!=="function"||
-    typeof readProducts!=="function"||typeof saveMapping!=="function")fail();
+    typeof readProducts!=="function"||typeof saveMapping!=="function"||
+    typeof canContinue!=="function")fail();
  const identity=auth.currentUser;
  if(!id(identity.uid)||identity.emailVerified!==true||
     typeof identity.getIdToken!=="function")fail();
@@ -122,13 +124,13 @@ export async function applyOwnerReviewedSkuRollout({
  try{
   for(const target of plan.plans){
    for(const operation of target.apply){
-    if(auth.currentUser!==identity)fail();
+    if(auth.currentUser!==identity||!canContinue())fail();
     const token=await identity.getIdToken();
-    if(auth.currentUser!==identity||typeof token!=="string"||token.length<20)fail();
+    if(auth.currentUser!==identity||!canContinue()||typeof token!=="string"||token.length<20)fail();
     const [mapping,catalog]=await Promise.all([
      readMappings({token}),readProducts({token})
     ]);
-    if(auth.currentUser!==identity)fail();
+    if(auth.currentUser!==identity||!canContinue())fail();
     if(catalog.version!==plan.expectedCatalogVersion||
        mapping.version!==plan.expectedMappingVersion+verified)fail();
     const fresh=planOwnerReviewedSkuRollout({
@@ -145,14 +147,14 @@ export async function applyOwnerReviewedSkuRollout({
      hubProductId:operation.hubProductId,
      expectedVersion:mapping.version
     });
-    if(auth.currentUser!==identity||!exact(saved,
+    if(auth.currentUser!==identity||!canContinue()||!exact(saved,
        ["saved","version","partnerCompanyId","partnerProductId","hubProductId"])||
        saved.saved!==true||saved.version!==mapping.version+1||
        saved.partnerCompanyId!==target.partnerCompanyId||
        saved.partnerProductId!==operation.partnerProductId||
        saved.hubProductId!==operation.hubProductId)fail();
     const reloaded=await readMappings({token});
-    if(auth.currentUser!==identity||reloaded.version!==saved.version||
+    if(auth.currentUser!==identity||!canContinue()||reloaded.version!==saved.version||
        !reloaded.bindings?.some(x=>x.companyId===target.partnerCompanyId&&
          x.productId===operation.partnerProductId&&
          x.hubProductId===operation.hubProductId))fail();
