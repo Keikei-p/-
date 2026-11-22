@@ -157,9 +157,8 @@ export function composeCanonicalMonthlyRankingInput({
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
-  // Both classic reviewed-only and zero-setup paths must reject OFF hub targets.
-  // A persisted mapping is not permission to publish a product after Owner OFF.
-  if(target.active!==true)STOP();
+  // A stored OFF mapping must not blank out every other ON ranking.
+  // Zero-setup holds it unmatched; classic mode does not emit the OFF group.
   // Historic combined light/AIR must never be guessed into separate SKUs.
   if(LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC"))&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
@@ -175,6 +174,7 @@ export function composeCanonicalMonthlyRankingInput({
  // Original Owner-reviewed-only mode keeps its existing behavior. Zero-setup
  // already included reviewed ID precedence above: never double-add a source.
  if(zeroSetupLink!==true)for(const b of reviewedBindings){
+  if(hubProducts.get(b.hubProductId).active!==true)continue;
   groups.push({
    companyId:b.companyId,productId:b.productId,
    groupId:b.hubProductId,groupName:hubProducts.get(b.hubProductId).name
