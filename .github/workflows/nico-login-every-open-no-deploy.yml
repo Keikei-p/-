@@ -1,0 +1,46 @@
+name: NICO existing login fresh-open security (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/nico-login-every-open-existing-ui.test.cjs'
+      - '.github/workflows/nico-login-every-open-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/nico-login-every-open-existing-ui.test.cjs'
+      - '.github/workflows/nico-login-every-open-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  verify-original-login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Test every-open login and freeze original visuals and password method
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node --test tests/nico-login-every-open-existing-ui.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-passkey-stability.test.cjs
+          node <<'NODE'
+          const fs=require('node:fs');
+          const src=fs.readFileSync('index.html','utf8');
+          const scripts=[...src.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/gi)];
+          if(!scripts.length)throw Error('MISSING_EXISTING_LOGIN_MODULE');
+          scripts.forEach((m,i)=>fs.writeFileSync('/tmp/nico-original-login-'+i+'.mjs',m[1]));
+          NODE
+          for file in /tmp/nico-original-login-*.mjs; do node --check "$file"; done
+          echo EXISTING_LOGIN_NO_SESSION_RESTORE_TESTS_PASS_NO_DEPLOY
