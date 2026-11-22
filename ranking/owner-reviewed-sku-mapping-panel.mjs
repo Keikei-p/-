@@ -51,7 +51,7 @@ function validate(mapping,catalog,partner){
     catalog.role!=="hub_owner"||
     catalog.hubCompanyId!==mapping.hubCompanyId||
     !Array.isArray(catalog.products)||catalog.products.length>1000)fail();
- const seen=new Set(),match=new Map(),products=new Map();
+ const seen=new Set(),targets=new Set(),match=new Map(),products=new Map();
  const privateProducts=new Map();
  if(withPrivate){
   if(!Array.isArray(mapping.partnerProducts)||mapping.partnerProducts.length>1000)fail();
@@ -73,9 +73,11 @@ function validate(mapping,catalog,partner){
      !id(b.companyId)||!id(b.hubProductId)||
      typeof b.productId!=="string"||
      (!CATEGORIES.some(c=>c[0]===b.productId)&&!PRIVATE.test(b.productId)))fail();
-  const k=b.companyId+":"+b.productId;
-  if(seen.has(k))fail();
-  seen.add(k);
+  // Fail closed on a historical duplicate target before it can mislead Owner.
+  const k=JSON.stringify([b.companyId,b.productId]);
+  const target=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(k)||targets.has(target))fail();
+  seen.add(k);targets.add(target);
   if(b.companyId!==partner)continue;
   if(withPrivate&&PRIVATE.test(b.productId)&&!privateProducts.has(b.productId))fail();
   if(!products.has(b.hubProductId))fail();
