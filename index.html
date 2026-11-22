@@ -5355,6 +5355,15 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
       </p>
       <p id="partnerProductsStatus" role="status" aria-live="polite" style="font-size:13px;color:var(--sub);"></p>
       <div id="partnerProductsPanelRoot"></div>
+      <details id="ownerPartnerSkuMappingPanel" class="p-inline-card" hidden>
+        <summary>🔗 過去の協力店商材と自社商材の対応付け</summary>
+        <p>元の件数・売上原票を変更せず、Ownerが確認して設定します。</p>
+        <label for="ownerPartnerSkuCompanySelect">対象会社
+          <select id="ownerPartnerSkuCompanySelect"></select>
+        </label>
+        <p id="ownerPartnerSkuMappingStatus" role="status" aria-live="polite"></p>
+        <div id="ownerPartnerSkuMappingRoot"></div>
+      </details>
       <details id="ownerPartnerTabPublicationPanel" class="p-inline-card" hidden>
         <summary>📋 協力店へのタブ公開設定（全社一括）</summary>
         <div id="ownerPartnerTabPublicationRoot"></div>
@@ -7635,6 +7644,8 @@ const NICO_VERIFIED_PARTNER_TEAM_CARDS_ENABLED = false;
  // refusal of unpublished data. UI masking alone is NEVER a release proof.
  const NICO_PARTNER_TAB_UI_ENABLED = false;
  const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;
+ // Staged Owner SKU history mapping; never release without live security proof.
+ const NICO_OWNER_SKU_MAPPING_UI_ENABLED = false;
 
 const partnerInlineManage = httpsCallable(partnerCountFunctions,"managePartnerWorkspace");
 const partnerInlineSave = httpsCallable(partnerCountFunctions,"submitPartnerWorkspaceCounts");
@@ -10107,6 +10118,88 @@ quickPartnerButton.onclick=()=>{
 let partnerProductsMountedPanel=null;
 let partnerProductsOpenGeneration=0;
 let ownerPartnerTabPublicationUI=null;
+let ownerPartnerSkuMount=null,ownerPartnerSkuEpoch=0;
+async function refreshOwnerPartnerSkuMappingUI(stillOwner){
+ // No company read, callable or mount while not approved for release.
+ if(NICO_OWNER_SKU_MAPPING_UI_ENABLED!==true)return false;
+ const section=document.getElementById("ownerPartnerSkuMappingPanel");
+ const selector=document.getElementById("ownerPartnerSkuCompanySelect");
+ const status=document.getElementById("ownerPartnerSkuMappingStatus");
+ const root=document.getElementById("ownerPartnerSkuMappingRoot");
+ if(!section||!selector||!status||!root||
+    !stillOwner()||!canLoadPartnerRanking())return false;
+ const epoch=++ownerPartnerSkuEpoch;
+ const alive=()=>epoch===ownerPartnerSkuEpoch&&stillOwner()&&canLoadPartnerRanking();
+ ownerPartnerSkuMount?.destroy();ownerPartnerSkuMount=null;
+ section.hidden=true;selector.replaceChildren();root.replaceChildren();
+ selector.onchange=null;
+ try{
+  // Reuse the server-verified Owner count-only company directory.
+  const roster=(await readPartnerWorkDay({date:getTodayString()})).data;
+  if(!alive())return false;
+  if(roster?.role!=="hub"||!Array.isArray(roster.registeredCompanies)||
+     roster.registeredCompanies.length>100)throw Error("owner_roster_invalid");
+  const seen=new Set(),active=new Set();
+  for(const company of roster.registeredCompanies){
+   const id=company?.partnerCompanyId;
+   if(typeof id!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(id)||
+      seen.has(id)||typeof company.name!=="string"||
+      !company.name.trim()||company.name.length>80||
+      typeof company.active!=="boolean")throw Error("owner_company_invalid");
+   seen.add(id);
+   if(!company.active)continue;
+   active.add(id);
+   const option=document.createElement("option");
+   option.value=id;option.textContent=company.name;
+   selector.append(option);
+  }
+  section.hidden=false;
+  if(!active.size){
+   status.textContent="有効な協力店がありません。過去の件数は保持されています。";
+   return true;
+  }
+  const selectCompany=async()=>{
+   const selected=selector.value,revision=++ownerPartnerSkuEpoch;
+   ownerPartnerSkuMount?.destroy();ownerPartnerSkuMount=null;
+   root.replaceChildren();
+   const current=()=>revision===ownerPartnerSkuEpoch&&
+     stillOwner()&&canLoadPartnerRanking()&&
+     selector.value===selected&&active.has(selected);
+   if(!current())return false;
+   status.textContent="商材の対応表を読み込み中…";
+   try{
+    const {mountOwnerReviewedSkuMappingDashboard}=await import(
+      "./ranking/owner-reviewed-sku-mapping-dashboard-mount.mjs");
+    if(!current())return false;
+    const mount=mountOwnerReviewedSkuMappingDashboard({
+     featureEnabled:true,document,root,auth,
+     functions:partnerCountFunctions,httpsCallable,onAuthStateChanged,
+     partnerCompanyId:selected
+    });
+    ownerPartnerSkuMount=mount;
+    const ok=await mount.refresh();
+    if(!current()){
+     mount.destroy();
+     if(ownerPartnerSkuMount===mount)ownerPartnerSkuMount=null;
+     return false;
+    }
+    status.textContent=ok?"Owner確認用の対応表を取得しました。保存は明示操作のみです。":
+      "対応表を取得できません。Owner権限・公開状態を確認してください。";
+    return ok;
+   }catch{
+    if(current())status.textContent="商材対応APIが未公開か取得できません。";
+    return false;
+   }
+  };
+  selector.onchange=()=>{void selectCompany();};
+  return await selectCompany();
+ }catch{
+  if(alive()){
+   section.hidden=true;status.textContent="協力店一覧を確認できませんでした。";
+  }
+  return false;
+ }
+}
 async function refreshOwnerPartnerTabPublicationUI(stillOwner){
  // #802's callable is STAGING only. Never initialize or read before
  // *both* Owner-UI and server-side unpublished-data deny are reviewed.
@@ -10162,7 +10255,10 @@ quickPartnerProductsButton.onclick=async()=>{
     }
     if(!stillOpen())return;
     await partnerProductsMountedPanel.refresh();
-    if(stillOpen())partnerProductsStatus.textContent="";
+    if(stillOpen()){
+      partnerProductsStatus.textContent="";
+      void refreshOwnerPartnerSkuMappingUI(stillOpen);
+    }
   }catch(_error){
     if(stillOpen())partnerProductsStatus.textContent=
       "商材設定を読み込めませんでした。オーナー権限と通信状態を確認してください。";
