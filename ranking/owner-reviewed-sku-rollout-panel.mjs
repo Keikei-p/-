@@ -74,7 +74,8 @@ export function mountOwnerSkuRolloutPanel({
      busy=true;button.disabled=true;
      const result=await applyOwnerReviewedSkuRollout({
       confirmed:true,plan,auth,readMappings:bridge.readMappings,
-      readProducts:bridge.readProducts,saveMapping:bridge.saveMapping
+      readProducts:bridge.readProducts,saveMapping:bridge.saveMapping,
+      canContinue:()=>!closed&&visible(user,seq)
      });
      busy=false;
      if(!visible(user,seq))return;
