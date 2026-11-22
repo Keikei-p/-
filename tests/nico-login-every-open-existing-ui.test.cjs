@@ -140,3 +140,21 @@ test('both screens are kept stable and the original password button remains the 
   assert.match(background,/stopRealtimeListeners\(\)/);
   assert.match(html,/async function login\(\)/);
 });
+
+test('production release remains manual, exact main-and-live pinned, and index-only',()=>{
+  const release=fs.readFileSync(path.join(__dirname,'..','.github','workflows',
+    'nico-login-every-open-index-only-release.yml'),'utf8');
+  assert.match(release,/^on:\n  workflow_dispatch:/m);
+  assert.doesNotMatch(release,/\n  (?:push|pull_request|schedule):/);
+  assert.match(release,/CONFIRM_EXISTING_LOGIN_INDEX_ONLY/);
+  assert.match(release,/6c35ea3910e68ee2cffc60e10e555130f3a9b419:index\.html/);
+  assert.match(release,/c7ea13635ce6aac306529707863f5d2fd04e9126/);
+  assert.match(release,/54c0f91a2d0326e6742ebde30002641a0e6ff8e8/);
+  assert.match(release,/surgical-existing-index\.mjs --dry-run/);
+  assert.match(release,/surgical-existing-index\.mjs --release/);
+  assert.match(release,/ALREADY_LIVE == 'false'/);
+  assert.match(release,/https:\/\/nico-factory\.web\.app/);
+  assert.match(release,/FIREBASE_SERVICE_ACCOUNT_JSON/);
+  assert.match(release,/NO_FIRESTORE_RULES_FUNCTIONS_OR_AUTH_WRITES/);
+  assert.doesNotMatch(release,/firebase deploy|--only firestore|--only functions/);
+});
