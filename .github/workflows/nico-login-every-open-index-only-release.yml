@@ -1,0 +1,112 @@
+name: NICO existing login reauthentication index-only MANUAL release
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: 'Reviewed current main commit SHA (40 characters)'
+        required: true
+        type: string
+      confirmation:
+        description: 'Type CONFIRM_EXISTING_LOGIN_INDEX_ONLY'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: nico-surgical-index-release
+  cancel-in-progress: false
+jobs:
+  index-only:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      inputs.confirmation == 'CONFIRM_EXISTING_LOGIN_INDEX_ONLY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NICO_PARTNER_RELEASE_CONFIRMATION: CONFIRM_ADD_PARTNER_RANKING_INDEX_ONLY
+      FIREBASE_PROJECT_ID: sales-management-cc116
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Pin exact unchanged login UI, reviewed index and current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.expected_main_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_SHA" = "$INPUT_SHA"
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/git/ref/heads/main --jq .object.sha)"
+          test "$(git hash-object index.html)" = 54c0f91a2d0326e6742ebde30002641a0e6ff8e8
+          test "$(git show 6c35ea3910e68ee2cffc60e10e555130f3a9b419:index.html | git hash-object --stdin)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          node -e "const f=require('fs');if(JSON.parse(f.readFileSync('.firebaserc','utf8')).projects.default!=='sales-management-cc116')process.exit(1)"
+          node --test tests/nico-login-every-open-existing-ui.test.cjs tests/login-presentation-contract.test.cjs tests/login-fx-passkey-stability.test.cjs
+          node --test tests/surgical-existing-index.test.mjs
+          node --check tools/hosting/surgical-existing-index.mjs
+      - name: Verify published index exact baseline BEFORE loading Hosting credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 30 "https://nico-factory.web.app/?fresh_login_preflight=$GITHUB_SHA" > "$RUNNER_TEMP/live-index-before.html"
+          live_hash=$(git hash-object "$RUNNER_TEMP/live-index-before.html")
+          if [ "$live_hash" = 54c0f91a2d0326e6742ebde30002641a0e6ff8e8 ]; then
+            echo 'ALREADY_LIVE=true' >> "$GITHUB_ENV"
+            echo 'LOGIN_ALREADY_LIVE_NO_WRITE'
+          elif [ "$live_hash" = c7ea13635ce6aac306529707863f5d2fd04e9126 ]; then
+            echo 'ALREADY_LIVE=false' >> "$GITHUB_ENV"
+            echo 'EXACT_ORIGINAL_LOGIN_INDEX_BASELINE_PASS'
+          else
+            echo 'SAFE_STOP_UNREVIEWED_HOSTING_INDEX_DRIFT'
+            exit 1
+          fi
+      - name: Supply restricted Hosting service identity after public proof
+        if: env.ALREADY_LIVE == 'false'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/nico-index-only-credential.json"
+          chmod 600 "$RUNNER_TEMP/nico-index-only-credential.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/nico-index-only-credential.json" >> "$GITHUB_ENV"
+      - name: Install existing Hosting SDK, no deploy
+        if: env.ALREADY_LIVE == 'false'
+        run: npm install --prefix functions --ignore-scripts --package-lock=false --no-audit --no-fund
+      - name: Inspect complete live Hosting manifest without writes
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --dry-run
+      - name: Recheck public original bytes immediately before one-file release
+        if: env.ALREADY_LIVE == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 --max-time 30 "https://nico-factory.web.app/?fresh_login_final=$GITHUB_SHA" > "$RUNNER_TEMP/live-index-final.html"
+          test "$(git hash-object "$RUNNER_TEMP/live-index-final.html")" = c7ea13635ce6aac306529707863f5d2fd04e9126
+      - name: Publish ONLY index HTML via immutable full-file Hosting manifest
+        if: env.ALREADY_LIVE == 'false'
+        run: node tools/hosting/surgical-existing-index.mjs --release
+      - name: Public GET verification and untouched partner routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -fsSL --max-time 25 "https://nico-factory.web.app/?fresh_login_after=$GITHUB_SHA-$attempt" > "$RUNNER_TEMP/live-index-after.html"
+            if [ "$(git hash-object "$RUNNER_TEMP/live-index-after.html")" = 54c0f91a2d0326e6742ebde30002641a0e6ff8e8 ]; then
+              echo 'INDEX_ONLY_LIVE_EXACT_BYTES_PASS'
+              break
+            fi
+            if [ "$attempt" = 10 ]; then echo 'SAFE_STOP_POST_RELEASE_MISMATCH'; exit 1; fi
+            sleep 3
+          done
+          for route in /partner-workspace.html /partner-invite.html /partner-counts.html; do
+            test "$(curl -fsSL -o /dev/null -w '%{http_code}' --max-time 25 "https://nico-factory.web.app$route")" = 200
+          done
+          echo 'OTHER_HOSTING_ASSETS_PRESERVED_BY_MANIFEST'
+          echo 'NO_FIRESTORE_RULES_FUNCTIONS_OR_AUTH_WRITES'
+      - name: Clean up temporary credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/nico-index-only-credential.json"

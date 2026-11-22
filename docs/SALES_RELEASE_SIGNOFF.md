@@ -1201,3 +1201,28 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 本人の署名・実アカウントでのボタン押下確認は代理しない。公開後のユーザー再確認が必要。
 
 - 2026-11-18: PR #795 の商材使用停止権限Rulesだけについて、GitHub連携で `sales-production-reviewed` を追加。保護チェック評価用であり、本番公開・署名を意味しない。追加後のコミットで必須CIを再検証する。
+
+
+---
+
+## PR #825 | EXISTING_LOGIN_FRESH_OPEN_ONLY_20261122 — 技術審査記録
+
+### 管理者の指示と確定範囲
+- 2026-11-22の利用者の指示：「デザインとかはなんもかえんよ！ いまのログイン方式は一切変えず 毎回ログインする様にしてほしい！」。新ID方式の設計は撤回。**現行のメールアドレス＋パスワード・既存ログイン画面の完全維持**を確定とする。
+- 対象：PR #825 `fix/sales-existing-login-require-every-open-20261122`、Firebase `sales-management-cc116`、自社の既存 `index.html`。Firestore/認証アカウント/UID/パスワード/Rules/Functions/件数/商材/売上・単価・CB/原票/過去履歴に書込・仕様変更なし。
+- コード変更は `index.html` のAuth SDK import・起動時の旧保存セッション破棄＋`inMemoryPersistence`指定・ダッシュボード表示後のiOS/PWAバックグラウンド時ログアウトの3箇所のみ。追加するテストと読み取り専用CI以外のアプリ動作・CSS・HTMLは不変更。
+
+### 技術確認と公開上の注意
+- 元mainのログイン画面HTML FNV-1a 32-bit `6d07c2d1`、既存 `async function login()` の実装 `9d04c3ad` は候補版と同一。元メール＋パスワード送信・初回メール認証／招待手順を変更しない。
+- 専用NO DEPLOY CI `NICO existing login fresh-open security`：16/16テストPASS（GitHub Actions Run #44995292704 および追補 Run #44995449775）。旧ローカル認証のサインアウト、メモリ限定保持、バックグラウンド即時非表示／サインアウト、失敗時の安全停止を架空アカウントで検証。実iPhone本人操作は未実証。
+- 実本番匿名GETで既存ログインHTMLは候補とバイト一致。**公開中のindex全体も変更前mainコミット `6c35ea3910e68ee2cffc60e10e555130f3a9b419` の `index.html` とバイト完全一致**（902,980バイト、Git Blob `c7ea13635ce6aac306529707863f5d2fd04e9126`）。修正版候補だけが認証処理22行分増加（904,019バイト、Git Blob `54c0f91a2d0326e6742ebde30002641a0e6ff8e8`）。この完全一致は公開URLの匿名GETによる確認であり、既存Authアカウント本人の認証成功・iPhoneの動作を保証するものではない。
+- 旧「ログイン表示専用の全文字列固定CI」は認証部の意図した変更を不一致と判定する。今回の専用UIハッシュ不変検証がPASSしていても、他の未関係CIを全件合格と偽らない。
+- Firebase Hosting本番公開には、**現在公開中の正本HTMLに今回の認証処理のみに限定した差し込み**が可能であることをバイト列逆変換で証明し、現行Hosting manifestと他全ファイルが不変であること、旧版復帰手段・本人のスマホログイン確認を別途確認する。検証できない場合は公開中止。通常のHosting一括更新はしない。
+- 初回アクセス後にログインを要求するクライアント側の方針変更であり、他端末に残る既存トークンをサーバーで一括失効させる処理ではない。変更済み画面を起動した端末の旧保存セッションは初期化時に破棄する。
+
+
+- 限定リリース経路として `.github/workflows/nico-login-every-open-index-only-release.yml` を手動 `workflow_dispatch` 専用で作成。開始時の管理者入力、main SHA・本番HTML旧Git Blobの厳密比較、既存Hosting全ファイルmanifest不変のdry-runを通過してから、`/index.html` だけを入替える。旧本番バイトと違う場合・manifest未検証・認証情報不足では安全停止。自動push公開は禁止。これを作成したことは本番公開実行を意味しない。
+
+### 承認・署名の取り扱い
+- この文章は利用者のチャットでの明示的な実装指示に基づく技術レビュー記録であり、本人の自筆・電子署名を代理作成するものではない。**管理者本人の独立署名は未取得**。GitHub `sales-production-reviewed` は技術差分のレビューラベルであり、本人署名・実アカウント動作・実公開の証明ではない。
+- 記録時点の本番：既存版。Firebase Hosting/Functions/Rules/Auth/Firestoreへの書込・配備なし。PRのmain統合と本番公開は別工程。
