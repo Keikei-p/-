@@ -108,6 +108,8 @@ jobs:
           # Owner-reviewed SKU IDs must win over zero-setup aliases; no original count write.
           node --test tests/owner-reviewed-zero-setup-linker.test.mjs
           node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs tests/owner-reviewed-sku-mapping-dashboard-mount.test.mjs tests/owner-reviewed-sku-rollout.test.mjs tests/owner-reviewed-sku-rollout-panel.test.mjs
+          # End-to-end synthetic 234-count history conservation through explicit Owner SKU review + two-company rollout.
+          node --test tests/owner-sku-rollout-historical-count-conservation.test.mjs
           # The completed internal dashboard must remain byte-identical.
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
