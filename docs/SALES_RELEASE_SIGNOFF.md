@@ -1294,3 +1294,15 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - 利用者が本番ブラウザでOwnerとして本人ログイン。Ownerロール、ダッシュボードの売上数値表示、既存商材一覧と単価表示、商材公開設定のサーバー読取成功を確認。実金額・氏名・メール・トークンは検証ログへ出していない。商材ON/OFF、実績、招待、権限は変更していない。ログアウト後にログイン画面へ戻り、売上とOwner管理画面が不可視になることを確認。候補版を公開した証明ではなく、現行本番Ownerの基準確認である。
 - 商材公開一覧が取得済みなのに外側へ「取得に失敗しました」が残る初回競合を実画面で確認。開き直すと解消。Firebaseの初回Auth通知が画面からの取得を無効化し、別の取得だけが成功する順序を架空アカウントで再現（修正前false/true、修正後true/true）。`ranking/owner-product-visibility-dashboard-mount.mjs` だけで、初回の同一ユーザー通知と同時の画面読取を共用する。以後のAuth変更・ログアウト・破棄は引き続き読取と表示を失効させる。
 - 初回通知の前後両順序・読取1回・共有読取中ログアウト・遅延した初回null通知の表示消去を追加し、既存Owner公開設定の読取/保存/権限テストを含む22件PASS。自社UI不変とOwnerパッケージも含め29件PASS。自社UI/フォーム/計算/ログイン、Functions、Rules、公開フラグ、既存データは不変更。統合NO DEPLOY CIに追加し、実協力店の検証・隔離復元・IAM/費用上限が未確認のため本番反映は行わない。
+
+
+### 2026-11-24 バックアップAPI誤診断の訂正と500円上限（未復元・未公開）
+
+- 利用者が今回の追加費用上限を**500円**と指定。費用上限の指定は、実容量・円建て料金・復元/削除IAM・実協力店検証が確認済みになったことを意味しない。追加IAM、課金設定、クラウドDB作成/復元/削除、Hosting/Functions/Rules反映は行っていない。
+- 公式 [Backup v1 API](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.locations.backups) は `name/database/databaseUid/snapshotTime/expireTime/state` のみを定義し、`stats.documentCount/sizeBytes` を定義していない。前記の「公式statsは未提供・後から取得可能」という解釈を訂正する。APIが後日statsを返すのを待つ対策は無効である。
+- GET専用インベントリからstats判定と無益な個別GET再試行を削除。実復元や費用確認済みとは報告しない。復元ライブラリはBackup.statsを信用せず、対象バックアップ/元DB UID/時点に結び付く独立した容量・費用レビューを必須にした。上限500円、従来32MiB/10,000ドキュメントの保護、1時間以内のレビュー、元DB不変、所有を確認できた一時DBのみの削除を維持。**本番CLIには独立した容量/料金の証拠取得経路がまだ実装されておらず、rehearseは明示停止する。テストのレビュー値は全て架空であり、本番の見積りや復元成功ではない。**
+- 実コンソール閲覧で本番DBはStandard、Firestore Native、asia-northeast1、既存(default)のみ。READYバックアップ7件、最新2026-11-23 16:53:46 JST。復元前ダイアログは確認後キャンセル。容量や費用は表示されていない。
+- 公式Monitoringの `firestore.googleapis.com/storage/backups_storage_bytes` を未集計で閲覧し、対象 `(default)` / `asia-northeast1` / `sales-management-cc116` の値 **約62.12MiB** を確認（11/24 00:18 JST頃、表示の直近1時間）。[公式指標仕様](https://docs.cloud.google.com/monitoring/api/metrics_gcp_d_h#firestore)でこれは**DBごとの全バックアップ合計**。個別バックアップ容量と混同せず、32MiB以下や500円以内の実復元見積りを証明したとは扱わない。料金は[公式Firestore価格表](https://cloud.google.com/firestore/pricing)による容量・復元/読取・ネットワーク・一時保存を含むJPY確認が必要。
+- 復元ワークフローの古いRules固定値 `d9f4df...` は、監査対象として明示的にレビューした現行main `6d3f165...` とPR814金額遮断 `9eca5c4...` の2値限定へ更新。未知のRulesは引き続き停止。GET専用collector/localhost verifierの固定ハッシュ、最新main SHA、手動文字列、権限読取、secret非公開、原票不変と一時DBの由来/etag保護を解除しない。統合Emulatorで金額遮断を別途検証する。
+- ローカルのバックアップ・復元・読取・停止条件・原票保護49件はFirestore Emulator内で**49 PASS / 0 FAIL / 0 SKIP**。容量根拠なし/500円超/古いレビュー/対象変更で復元前停止、架空API statsによる通過禁止、原票不変、検証用DBの所有未確認時の削除禁止、型/ID/履歴保持を検証。これは実クラウド復元ではない。
+- 作業再開時 main `6be13e3fa9191117946d010f4d2c010c2d243591`、PR head `3c32278c7660bf5e725cd535fb98f996a9214789` を再取得し一致。Owner本人の基準ログイン/再ログイン確認は維持。協力店実アカウントと二重所属本人のGET/LIST拒否・保存は未確認。直近の本番全履歴監査は11/23 14:28Zの245件=連携6+保留239、旧光/AIR35、重複/日次不整合0であり、11/24の再監査済みとは記載しない。

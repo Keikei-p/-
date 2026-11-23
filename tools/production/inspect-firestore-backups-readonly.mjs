@@ -18,26 +18,18 @@ export function summarizeBackups(body){
   throw Error("STOP_BACKUP_LOCATIONS_UNREACHABLE");
  if(body.nextPageToken)throw Error("STOP_BACKUP_INVENTORY_INCOMPLETE");
  const now=Date.now(),hour=3600000;
- const isSafeInt=x=>typeof x==="string"&&/^\d+$/.test(x)&&
-  Number.isSafeInteger(Number(x))&&Number(x)>0;
- const hasStats=b=>b.stats!==undefined&&b.stats!==null;
- const validStats=b=>hasStats(b)&&isSafeInt(b.stats.documentCount)&&
-  isSafeInt(b.stats.sizeBytes);
  const recent=ready.filter(b=>{
   const snapshot=Date.parse(b.snapshotTime),expiry=Date.parse(b.expireTime);
   return Number.isFinite(snapshot)&&Number.isFinite(expiry)&&
    snapshot<=now&&now-snapshot<=48*hour&&expiry>now+24*hour;
  });
- const underBudget=b=>validStats(b)&&Number(b.stats.documentCount)<=10000&&
-  Number(b.stats.sizeBytes)<=32*1024*1024;
  return Object.freeze({managedBackupsFound:all.length,readyBackups:ready.length,
   latestReadySnapshot:ready.map(b=>b.snapshotTime).sort().at(-1)||null,
-  readyMissingStats:ready.filter(b=>!hasStats(b)).length,
-  readyMalformedStats:ready.filter(b=>hasStats(b)&&!validStats(b)).length,
-  readyWithValidStats:ready.filter(validStats).length,
   recentReadyWithin48hAndExpiryBuffer:recent.length,
-  recentReadyWithValidStats:recent.filter(validStats).length,
-  recentReadyWithinAuditBudget:recent.filter(underBudget).length,
+  // Backup v1 exposes identity/state/timestamps, not size or document count.
+  // https://firebase.google.com/docs/firestore/reference/rest/v1/projects.locations.backups
+  backupApiProvidesSizeAndDocumentCount:false,
+  restoreCapacityAndCostVerified:false,
   // The metadata summary does not check source UID, IAM or restore payload.
   actualRestoreVerified:false,allFirestoreDocumentsAudited:false});
 }
@@ -54,38 +46,9 @@ export async function inspect({request=fetch,getToken}={}){
  });
  if(!r.ok)throw Error("STOP_BACKUP_LIST_HTTP_"+r.status);
  const body=await r.json();
- // Fail closed on incomplete or partially unreachable backup inventories.
- summarizeBackups(body);
- const now=Date.now(),hour=3600000;
- const validName=name=>typeof name==="string"&&
-  /^projects\/sales-management-cc116\/locations\/[a-z0-9-]+\/backups\/[A-Za-z0-9_-]+$/.test(name);
- const candidates=body.backups.filter(b=>b.database===DATABASE&&b.state==="READY"&&
-  (b.stats===undefined||b.stats===null)&&validName(b.name)&&
-  typeof b.databaseUid==="string"&&b.databaseUid.length>0&&
-  Number.isFinite(Date.parse(b.snapshotTime))&&
-  Date.parse(b.snapshotTime)<=now&&now-Date.parse(b.snapshotTime)<=48*hour&&
-  Date.parse(b.expireTime)>now+24*hour)
-  .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime)).slice(0,2);
- let recovered=0,denied=0;
- for(const candidate of candidates){
-  // Metadata GET only; never access document content or restoration endpoints.
-  const detailResponse=await request("https://firestore.googleapis.com/v1/"+candidate.name,{
-   method:"GET",redirect:"error",headers:{Authorization:"Bearer "+token}
-  });
-  if(!detailResponse.ok){denied++;continue;}
-  const detail=await detailResponse.json();
-  if(detail?.name!==candidate.name||detail?.database!==candidate.database||
-    detail?.databaseUid!==candidate.databaseUid||
-    detail?.state!=="READY"||detail?.snapshotTime!==candidate.snapshotTime||
-    detail?.expireTime!==candidate.expireTime)
-   throw Error("STOP_BACKUP_DETAIL_MISMATCH");
-  if(detail.stats!==undefined&&detail.stats!==null){
-   candidate.stats=detail.stats;recovered++;
-  }
- }
- return Object.freeze({...summarizeBackups(body),
-  detailGetsAttempted:candidates.length,detailStatsRecovered:recovered,
-  detailGetsDenied:denied});
+ // A second Backup GET has the same schema; it cannot recover nonexistent
+ // stats. Capacity/cost needs separate evidence before any restore is allowed.
+ return summarizeBackups(body);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{

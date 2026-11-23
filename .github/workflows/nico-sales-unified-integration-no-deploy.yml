@@ -14,6 +14,10 @@ on:
       - 'tools/production/prepare-canonical-hub-owner-correction-package.mjs'
       - 'tests/canonical-hub-owner-package.test.mjs'
       - 'tests/owner-product-visibility-dashboard-mount.test.mjs'
+      - 'tools/production/inspect-firestore-backups-readonly.mjs'
+      - 'tools/production/rehearse-managed-backup.mjs'
+      - 'tests/firestore-managed-backup-inventory.test.mjs'
+      - 'tests/managed-backup-rehearsal.test.mjs'
       - 'tests/integrated-canonical-count-ledger-emulator.test.mjs'
       - 'firestore.rules'
       - 'tests/owner-product-visibility-rankings.test.mjs'
@@ -118,7 +122,7 @@ jobs:
           node --test tests/owner-sku-rollout-historical-count-conservation.test.mjs
           # The completed internal dashboard must remain byte-identical.
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
-          node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
+          node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs tests/firestore-managed-backup-inventory.test.mjs
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: Verify current pinned Owner package and reject source drift without changing historical release guards
         run: node --test tests/canonical-hub-owner-package.test.mjs tests/current-owner-correction-package.test.mjs
