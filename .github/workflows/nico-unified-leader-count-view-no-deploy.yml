@@ -1,0 +1,61 @@
+name: NICO unified internal/partner leader count view adapter (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ranking/unified-leader-count-view-model.mjs'
+      - 'tests/unified-leader-count-view-model.test.mjs'
+      - '.github/workflows/nico-unified-leader-count-view-no-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ranking/unified-leader-count-view-model.mjs'
+      - 'tests/unified-leader-count-view-model.test.mjs'
+      - '.github/workflows/nico-unified-leader-count-view-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  share-safely:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      REPORT_DELIVERY_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Keep all existing self, partner, finance, login and ranking code unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "$REPORT_DELIVERY_ENABLED" = false
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object index.html)" = c7ea13635ce6aac306529707863f5d2fd04e9126
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          git fetch --no-tags origin main
+          git diff --name-only origin/main...HEAD | LC_ALL=C sort > "$RUNNER_TEMP/actual.txt"
+          printf '%s\n' \
+            '.github/workflows/nico-unified-leader-count-view-no-deploy.yml' \
+            'ranking/unified-leader-count-view-model.mjs' \
+            'tests/unified-leader-count-view-model.test.mjs' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          if grep -Eq 'getFirestore\(|firebase deploy|updateDoc\(|setDoc\(|deleteDoc\(|getFunctions\(|httpsCallable\(' \
+             ranking/unified-leader-count-view-model.mjs; then
+            echo 'STOP_UNIFIED_VIEW_SOURCE_BOUNDARY'
+            exit 1
+          fi
+      - name: Test real schema contracts and existing partner finance isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ranking/unified-leader-count-view-model.mjs
+          node --test tests/unified-leader-count-view-model.test.mjs \
+            tests/partner-money-free-workspace.test.cjs \
+            tests/partner-publication-write-ranking-consistency.test.cjs
+          echo 'UNIFIED_LEADER_COUNT_VIEW_OFFLINE_PASS_NO_DEPLOY_NO_FINANCE'
