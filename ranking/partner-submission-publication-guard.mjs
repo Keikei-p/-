@@ -7,7 +7,9 @@
  * supplied previousCounts). OFF counts are immutable, not silently reset.
  */
 import {allowedPartnerCategories} from "./approved-published-categories.mjs";
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+// Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
+// never authorizes an unrelated partner count input or publish target.
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
