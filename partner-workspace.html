@@ -801,12 +801,44 @@ for(const k of KEYS){const box=document.createElement("div");box.className="item
 const lab=document.createElement("label");lab.textContent=k;const inp=document.createElement("input");
 inp.type="number";inp.min="0";inp.max="9999";inp.step="1";inp.inputMode="numeric";inp.value="0";inp.dataset.key=k;
 inp.addEventListener("input",updateTotal);box.append(lab,inp);grid.append(box)}
-function values(){const o={};for(const x of grid.querySelectorAll("input")){
+// Replace the old combined INPUT with separate fields only after the server
+// explicitly advertises the 2026-11-18 split contract. Existing combined
+// ranking category and all previous dates stay unchanged.
+const sbSplitBox=document.createElement("div");
+sbSplitBox.id="sbSeparateInputFields";sbSplitBox.className="partner-sb-separated";
+sbSplitBox.hidden=true;
+const sbInputs={};for(const [part,label] of [["SB光","SB光"],["SB AIR","SB AIR"]]){
+ const block=document.createElement("label");block.className="item";
+ block.textContent=label+"（新規件数）";
+ const input=document.createElement("input");input.type="number";input.min="0";
+ input.max="9999";input.step="1";input.inputMode="numeric";
+ input.value="0";input.dataset.sbPart=part;
+ input.addEventListener("input",updateTotal);block.append(input);
+ sbSplitBox.append(block);sbInputs[part]=input;
+}
+const sbLegacyNote=document.createElement("p");sbLegacyNote.className="muted";
+sbLegacyNote.setAttribute("role","status");sbSplitBox.append(sbLegacyNote);
+grid.append(sbSplitBox);
+let sbLegacyCount=0;
+const sbSeparateActive=()=>data?.sbSeparateInputEnabled===true&&
+ $("date").value>="2026-11-18"&&
+ (data.enabledCategories??KEYS).includes("SB光・AIR");
+const checkedSplitValue=input=>{
+ if(!/^(?:0|[1-9]\d{0,3})$/.test(input.value.trim()))throw Error("invalid separated SB count");
+ return Number(input.value);
+};
+function values(){const o={};for(const x of grid.querySelectorAll("input[data-key]")){
  // OFF values are redacted from the partner API. The server alone can
  // restore their immutable originals inside the authenticated write.
  if(x.disabled){o[x.dataset.key]=0;continue;}
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid count");
- o[x.dataset.key]=Number(x.value)}return o}
+ o[x.dataset.key]=Number(x.value)}
+ if(sbSeparateActive())o["SB光・AIR"]=checkedSplitValue(sbInputs["SB光"])+
+  checkedSplitValue(sbInputs["SB AIR"])+sbLegacyCount;
+ if(o["SB光・AIR"]>9999)throw Error("SB combined count exceeds 9999");
+ return o}
+const sbForSave=()=>sbSeparateActive()?{"SB光":checkedSplitValue(sbInputs["SB光"]),
+ "SB AIR":checkedSplitValue(sbInputs["SB AIR"]),"旧未分類":sbLegacyCount}:null;
 function privateValues(){const o=Object.create(null);for(const x of $("privateCountGrid").querySelectorAll("input")){
  if(!/^[A-Za-z0-9_-]{1,128}$/.test(x.dataset.privateId)||
    ["__proto__","constructor","prototype"].includes(x.dataset.privateId))
@@ -814,7 +846,12 @@ function privateValues(){const o=Object.create(null);for(const x of $("privateCo
  if(x.disabled)continue;
  if(!/^(?:0|[1-9]\d{0,3})$/.test(x.value.trim()))throw Error("invalid private count");
  o[x.dataset.privateId]=Number(x.value)}return o}
-function updateTotal(){let n=0;for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){if(x.disabled)continue;const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k} $("total").textContent=n+" 件"}
+function updateTotal(){let n=sbSeparateActive()?sbLegacyCount:0;
+ for(const x of document.querySelectorAll("#countGrid input,#privateCountGrid input")){
+  if(x.disabled||x.dataset.sbPart&&!sbSeparateActive())continue;
+  const k=Number(x.value);if(Number.isSafeInteger(k)&&k>=0&&k<=9999)n+=k;
+ }
+ $("total").textContent=n+" 件"}
 
 function periodDatesForCounts(selected,period,today){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(selected)||!/^\d{4}-\d{2}-\d{2}$/.test(today))
@@ -1775,11 +1812,22 @@ function renderSelected(){if(!data||data.role==="hub")return;const rec=data.reco
    inp.addEventListener("input",updateTotal);box.append(lab,inp);custom.append(box);
  }
  const published=data.enabledCategories??KEYS;
- for(const x of grid.querySelectorAll("input")){
+ const isSeparated=sbSeparateActive();
+ const storedSb=rec?.sbBreakdown;
+ sbLegacyCount=isSeparated?(storedSb?.["旧未分類"]??rec?.counts?.["SB光・AIR"]??0):0;
+ if(!Number.isSafeInteger(sbLegacyCount)||sbLegacyCount<0)throw Error("invalid historical SB count");
+ sbSplitBox.hidden=!isSeparated;
+ for(const part of ["SB光","SB AIR"]){
+  const input=sbInputs[part];input.disabled=!isSeparated;
+  input.value=String(isSeparated?(storedSb?.[part]??0):0);
+ }
+ sbLegacyNote.textContent=isSeparated?
+  "過去の合算実績 "+sbLegacyCount+"件は残したまま、今日以降の光・AIRを別々に入力できます。ランキングは合算されます。":"";
+ for(const x of grid.querySelectorAll("input[data-key]")){
   const allowed=published.includes(x.dataset.key);
   x.value=String(allowed?(rec?.counts?.[x.dataset.key]??0):0);
-  x.disabled=!allowed;
-  x.parentElement.hidden=!allowed;
+  x.disabled=!allowed||isSeparated&&x.dataset.key==="SB光・AIR";
+  x.parentElement.hidden=!allowed||isSeparated&&x.dataset.key==="SB光・AIR";
  }
  $("revision").textContent=rec?"第"+rec.version+"版・訂正可能":"未登録（0件報告も保存可能）";
  $("save").disabled=!$("staffSelect").value||published.length===0;updateTotal()}
@@ -1914,14 +1962,16 @@ $("save").onclick=()=>action(async()=>{
  const date=$("date").value,user=auth.currentUser,session=activeCodeSession;
  if(!data||data.date!==date)throw Error("save_not_verified");
  const staffId=$("staffSelect").value,record=data.records.find(r=>r.staffId===staffId),counts=values();
- const privateCounts=privateValues();
- const result=(await save({date,staffId,counts,privateCounts,
-  expectedVersion:record?.version??0})).data;
+ const privateCounts=privateValues(),sbBreakdown=sbForSave();
+ const payload={date,staffId,counts,privateCounts,expectedVersion:record?.version??0};
+ if(sbBreakdown)payload.sbBreakdown=sbBreakdown;
+ const result=(await save(payload)).data;
  // Verify after actual API write, never show confirmation based on optimistic state.
  if(auth.currentUser!==user||activeCodeSession!==session)return;
  const verified=(await get({date})).data;
  const check=verified?.records?.find(r=>r.staffId===staffId);
  if(verified?.date!==date||!check||check.version!==result.version||KEYS.some(k=>check.counts[k]!==counts[k])||
+    (sbBreakdown&&Object.keys(sbBreakdown).some(k=>check.sbBreakdown?.[k]!==sbBreakdown[k]))||
     Object.entries(privateCounts).some(([id,n])=>check.privateCounts?.[id]!==n))
   throw Error("save_not_verified");
  return "保存・再取得照合が成功しました。第"+result.version+"版";
