@@ -9,6 +9,11 @@ on:
       - 'functions-ranking-approvals/**'
       - 'functions-partner-tabs/**'
       - 'functions-partner-workspace/**'
+      - 'staging/partner-owner-correction-v3/**'
+      - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
+      - 'tools/production/prepare-canonical-hub-owner-correction-package.mjs'
+      - 'tests/canonical-hub-owner-package.test.mjs'
+      - 'tests/integrated-canonical-count-ledger-emulator.test.mjs'
       - 'firestore.rules'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/partner-code-count-readonly-safety.test.mjs'
@@ -114,6 +119,8 @@ jobs:
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
+      - name: Verify current pinned Owner package and reject source drift without changing historical release guards
+        run: node --test tests/canonical-hub-owner-package.test.mjs tests/current-owner-correction-package.test.mjs
       - name: No deployment
         run: echo 'PRODUCTION_DEPLOYED=false SOURCE_DATA_MODIFIED=false REAL_ACCOUNT_E2E_UNPROVEN=true'
 
@@ -156,7 +163,7 @@ jobs:
       - name: Synthetic second-role finance GET LIST rejection and count save compatibility
         run: |
           firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore \
-            'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs'
+            'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs tests/integrated-canonical-count-ledger-emulator.test.mjs'
           echo 'EMULATOR_ONLY_PASS_REAL_PARTNER_ACCESS_UNPROVEN'
       - name: No real deployment or restore
         if: always()

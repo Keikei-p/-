@@ -13422,6 +13422,51 @@ function resetPartnerInline(){
  authScreen.removeAttribute("data-partner-invite");
  pInline("partnerInviteAtMain").hidden=true;
 }
+function mountPartnerRecordLayout(){
+ const source=pInline("recordManagement"),panel=pInline("partnerPanelRecord");
+ const current=panel?.querySelector(":scope > .record-card");
+ if(!source||!current)return false;
+ if(current.dataset.sharedRecordLayout==="true")return true;
+ const sourceGrid=source.querySelector(":scope > .record-grid");
+ const [sourceDate,sourceStaff]=sourceGrid?.children||[];
+ const template=[sourceGrid,sourceDate,sourceStaff,
+  source.querySelector(":scope > .record-title"),source.querySelector(":scope > .section-title"),
+  source.querySelector(":scope > .record-total"),pInline("recordTotalCount")?.parentElement,
+  source.querySelector(".record-total-label")];
+ if(template.some(node=>node?.localName!=="div"))return false;
+ const [grid,dateGroup,staffGroup,title,section,total,countGroup,countLabel]=template.map(node=>{
+  // Copy the existing layout shell. Never copy children, field values,
+  // element IDs, data attributes, or the adjacent internal revenue column.
+  const shell=document.createElement("div");shell.className=node.className;
+  return shell;
+ });
+ const field=id=>[current.querySelector('label[for="'+id+'"]'),pInline(id)];
+ const date=field("pInlineRecordDate"),staff=field("pInlineStaff"),location=field("pInlineWorkLocation");
+ const team=pInline("pInlineWorkingTeam")?.parentElement;
+ const description=current.querySelector(":scope > .record-description");
+ const nodes=[description,pInline("pInlineCountFields"),pInline("pInlineEntryTotals"),
+  pInline("pInlineSave"),pInline("pInlineZero"),pInline("pInlineClear"),pInline("pInlineVersion"),
+  pInline("pInlineSaveStatus")];
+ if([...date,...staff,...location,team,...nodes].some(node=>!node||!current.contains(node)))return false;
+ const [,products,entryTotal,save,zero,clear,version,status]=nodes;
+ const buttons=[pInline("saveRecordButton"),pInline("noResultButton"),pInline("clearRecordButton")];
+ if(buttons.some(node=>node?.localName!=="button"))return false;
+ for(const [index,button] of [save,zero,clear].entries()){
+  button.className=buttons[index].className;
+  button.style.marginLeft=buttons[index].style.marginLeft;
+ }
+ title.textContent="📊 実績入力";section.textContent="商材別実績";
+ countLabel.textContent="合計件数";
+ team.style.marginTop="14px";location[0].style.marginTop="14px";
+ dateGroup.append(...date,team);staffGroup.append(...staff,...location);
+ grid.append(dateGroup,staffGroup);
+ countGroup.append(countLabel,entryTotal);total.append(countGroup);
+ const card=document.createElement("div");card.className=source.className;
+ card.dataset.sharedRecordLayout="true";
+ card.append(title,description,grid,section,products,total,save,zero,clear,version,status);
+ current.replaceWith(card);
+ return true;
+}
 // Clone the eleven button styles, icons and order from the internal
 // dashboard. Never clone internal event listeners or financial data.
 function mountPartnerCanonicalNavigation(){
@@ -13494,6 +13539,7 @@ function mountPartnerCanonicalNavigation(){
  const record=pInline("partnerPanelRecord");
  const summary=pInline("partnerInlineWorkspace").querySelector(".dashboard-summary");
  if(record&&summary){
+  mountPartnerRecordLayout();
   if(record.previousElementSibling!==summary)summary.after(record);
   record.hidden=false;
  }

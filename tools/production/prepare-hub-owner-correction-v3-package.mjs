@@ -42,7 +42,7 @@ export const CURRENT_CANDIDATE=Object.freeze({
   "index.html": "5edde6d5e5459ba283d12d157c021d4eee03d587",
   "partner-workspace.html": "431b200e02934315eda57b6998bdde801252f78f"
 });
-// Exact integrated source review; historical release/default pins remain unchanged.
+// Exact #814 source review plus partner-only shared form shells; historical pins stay unchanged.
 export const INTEGRATED_CANDIDATE=Object.freeze({
   "staging/partner-owner-correction-v3/entry.cjs": "309bd57fa808c59ab2cba4e9d7fd10b664f0b626",
   "staging/partner-owner-correction-v3/firebase.owner-correction.json": "2bb289edd33de3a17c2579c2ffbdf1eae0a75417",
@@ -52,10 +52,10 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
   "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
   "functions-partner-workspace/index.js": "42eea81ab01449bedbbedabdc1a8fb6bfba1e284",
-  "functions-partner-workspace/service.cjs": "ff2911be0bfa23d7c041e7451729d59862b2261f",
-  "firestore.rules": "d9f4df6a2ac0f8b5720534a2461ec66b94379190",
-  "index.html": "03e213565a2037c73913602701363476ae0db9fd",
-  "partner-workspace.html": "d8262633f35cf0f015de44c9a223c4289f8d2a6b",
+  "functions-partner-workspace/service.cjs": "442af45e493daf4162182e4ed76240bbcd4fccf2",
+  "firestore.rules": "9eca5c49957d370bbf092b9783dfa0e97f1a735a",
+  "index.html": "dd38963d6551e3a3dec66ebc4d0f6913ec0a1170",
+  "partner-workspace.html": "c4a51077dd05099e644b1bdc3dcdba05924a0d94",
   "functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
   "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e"
 });

@@ -7,7 +7,17 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {prepareCanonicalOwnerPackage,writeCanonicalOwnerPackage,OWNER_SOURCE,CODEBASE}
  from '../tools/production/prepare-canonical-hub-owner-correction-package.mjs';
+import {INTEGRATED_CANDIDATE,makeIntegratedCandidateOwnerPackage,makeOwnerPackage}
+ from '../tools/production/prepare-hub-owner-correction-v3-package.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
+
+test('current integrated source rejects any finance, auth, ledger or Hosting drift while historical release stays blocked',()=>{
+ const files=Object.fromEntries(Object.keys(INTEGRATED_CANDIDATE).map(p=>[p,readFileSync(join(root,p),'utf8')]));
+ assert.equal(makeIntegratedCandidateOwnerPackage(files).report.deployed,false);
+ assert.throws(()=>makeOwnerPackage(files),/SOURCE_CHANGED/);
+ for(const p of Object.keys(INTEGRATED_CANDIDATE))
+  assert.throws(()=>makeIntegratedCandidateOwnerPackage({...files,[p]:files[p]+'\n'}),/SOURCE_CHANGED/,p);
+});
 test('reuse the reviewed existing Owner implementation, two callable names and codebase without a second server implementation',()=>{
  const p=prepareCanonicalOwnerPackage(root);
  assert.equal(p.report.codebase,'hub-owner-correction-v3');
