@@ -13,6 +13,7 @@ on:
       - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
       - 'tools/production/prepare-canonical-hub-owner-correction-package.mjs'
       - 'tests/canonical-hub-owner-package.test.mjs'
+      - 'tests/owner-product-visibility-dashboard-mount.test.mjs'
       - 'tests/integrated-canonical-count-ledger-emulator.test.mjs'
       - 'firestore.rules'
       - 'tests/owner-product-visibility-rankings.test.mjs'
@@ -121,6 +122,8 @@ jobs:
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: Verify current pinned Owner package and reject source drift without changing historical release guards
         run: node --test tests/canonical-hub-owner-package.test.mjs tests/current-owner-correction-package.test.mjs
+      - name: Verify initial Owner Auth notification cannot leave a false publication read error
+        run: node --test tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs
       - name: No deployment
         run: echo 'PRODUCTION_DEPLOYED=false SOURCE_DATA_MODIFIED=false REAL_ACCOUNT_E2E_UNPROVEN=true'
 
