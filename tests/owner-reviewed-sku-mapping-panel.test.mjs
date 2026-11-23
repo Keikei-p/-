@@ -109,6 +109,57 @@ test("changing category calls exact scoped owner mapping API and reloads confirm
  assert.equal(panel.getVersion(),1);
  assert.equal(selects(root)[0].value,"nuro");
 });
+test("Owner panel rejects archived private combined 光/AIR mapped to Air or an unrelated legacy name",async()=>{
+ for(const wrongTarget of ["air","unrelated"]){
+  const root=new Node("main"),auth={currentUser:user};let writes=0;
+  const products=catalog();
+  products.products.push({id:"unrelated",name:"NURO旧合算",
+   active:true,enabled:true});
+  const map={...status(3,[{companyId:"partner",
+   productId:"partnerPrivate:historicMix",hubProductId:wrongTarget}]),
+   partnerProducts:[{id:"partnerPrivate:historicMix",
+    name:"光/AIR（旧合算）",active:false}]};
+  const panel=createOwnerReviewedSkuMappingPanel({
+   enabled:true,document,root,auth,partnerCompanyId:"partner",
+   readMappings:async()=>map,readProducts:async()=>products,
+   saveMapping:async()=>{writes++;throw Error("unexpected write");}
+  });
+  assert.equal(await panel.refresh(),false,
+   "wrong historic combined target must fail closed: "+wrongTarget);
+  assert.equal(selects(root).length,0);
+  assert.match(displayed(root),/読み込めません/);
+  assert.equal(writes,0);
+  assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+   mapping:map,catalog:products,partnerCompanyId:"partner"
+  }),/OWNER_PARTNER_SKU_PANEL_UNVERIFIED/);
+  panel.destroy();
+ }
+});
+
+test("Owner panel requires server private-source evidence for existing bindings, but accepts true combined target",async()=>{
+ const binding={companyId:"partner",
+  productId:"partnerPrivate:historicMix",hubProductId:"combined"};
+ const products=catalog(),withoutSource=status(2,[binding]);
+ const withSource={...withoutSource,partnerProducts:[{
+  id:binding.productId,name:"SB光・AIR（旧合算）",active:false
+ }]};
+ assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+  mapping:withoutSource,catalog:products,partnerCompanyId:"partner"
+ }),/OWNER_PARTNER_SKU_PANEL_UNVERIFIED/);
+ const root=new Node("main"),auth={currentUser:user};let writes=0;
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>withSource,readProducts:async()=>products,
+  saveMapping:async()=>{writes++;throw Error("unexpected write");}
+ });
+ assert.equal(await panel.refresh(),true);
+ const archived=selects(root).at(-1);
+ assert.equal(archived.value,"combined");
+ assert.deepEqual(archived.children.map(x=>x.value),["","combined"]);
+ assert.equal(writes,0,"the Owner's historical data must never be auto-written");
+ panel.destroy();
+});
+
 test("server rejects mapping write: no fake success or kept optimistic selection",async()=>{
  const root=new Node("main"),auth={currentUser:user};
  const panel=createOwnerReviewedSkuMappingPanel({
