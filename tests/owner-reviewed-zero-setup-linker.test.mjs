@@ -125,6 +125,40 @@ test("missing, disabled or non-Owner-reviewed maps never grant authority",()=>{
  for(const mapping of mappings)
   assert.throws(()=>compose(f,mapping),/UNVERIFIED/);
 });
+test("Functions zero-setup linker rejects misleading legacy combined target labels before publishing",()=>{
+ for(const wrongName of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const f=fixture(),snapshot=structuredClone(f);
+  f.hubSource.products.push({companyId:"hub",sourceId:"wrong",
+   name:wrongName,active:true,sortOrder:5});
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup({
+   hubCompanyId:"hub",hubSource:f.hubSource,
+   partnerSources:[f.partnerSource],
+   reviewedBindings:[binding("partnerSku05","wrong")]
+  }),/ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/,wrongName);
+  assert.deepEqual(f.partnerSource,snapshot.partnerSource);
+ }
+});
+
+test("Functions linker preserves archived private combined source and refuses Air split",()=>{
+ const f=fixture();
+ f.partnerSource.products.push({companyId:"partner",
+  sourceId:"partnerPrivate:oldLightAir",name:"SB光・AIR（旧合算）",active:false});
+ const source=structuredClone(f);
+ for(const badTarget of ["air","nuro"]){
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup({
+   hubCompanyId:"hub",hubSource:f.hubSource,partnerSources:[f.partnerSource],
+   reviewedBindings:[binding("partnerPrivate:oldLightAir",badTarget)]
+  }),/ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/);
+ }
+ const links=linkAllRegisteredCountsWithoutSetup({
+  hubCompanyId:"hub",hubSource:f.hubSource,partnerSources:[f.partnerSource],
+  reviewedBindings:[binding("partnerPrivate:oldLightAir","combined")]
+ });
+ assert.equal(links.find(x=>x.companyId==="partner"&&
+  x.productId==="partnerPrivate:oldLightAir").groupId,"combined");
+ assert.deepEqual(f,source,"original ledger input must remain unchanged");
+});
+
 test("a second partner cannot borrow another company's reviewed SKU mapping",()=>{
  const f=fixture(),other=structuredClone(f.partnerSource);
  other.companyId="partnerB";other.companyLabel="協力店B";
