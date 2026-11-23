@@ -90,6 +90,42 @@ test("standalone 光 and Air never impersonate an old combined optical/AIR SKU",
   .every(p=>p.groupId==="partnerUnmatched:partnerSku05"));
 });
 
+test("zero-setup direct linker rejects unrelated generic old-combined labels in reviewed ID mappings",()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const f=fixture(),before=structuredClone(f);
+  f.hubSource.products.push({companyId:"hub",sourceId:"unrelated",
+   name,active:true,sortOrder:9});
+  const saved=structuredClone(f);
+  f.reviewedBindings=[{companyId:"partner1",
+   productId:"partnerSku05",hubProductId:"unrelated"}];
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup(f),
+   /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/,name);
+  assert.deepEqual({...f,reviewedBindings:[]},{...saved,reviewedBindings:[]},
+   "rejected mapping never edits historical source counts");
+  assert.deepEqual(before.partnerSources,f.partnerSources);
+ }
+});
+
+test("archived private combined 光/AIR cannot be reviewed into a standalone or unrelated SKU",()=>{
+ const f=fixture();
+ f.partnerSources[0].products.push({companyId:"partner1",
+  sourceId:"partnerPrivate:historicMix",name:"光/AIR（旧合算）",active:false});
+ const before=structuredClone(f);
+ for(const hubProductId of ["air","nuro"]){
+  f.reviewedBindings=[{companyId:"partner1",
+   productId:"partnerPrivate:historicMix",hubProductId}];
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup(f),
+   /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/);
+ }
+ f.reviewedBindings=[{companyId:"partner1",
+  productId:"partnerPrivate:historicMix",hubProductId:"combined"}];
+ const actual=linkAllRegisteredCountsWithoutSetup(f);
+ assert(actual.some(x=>x.companyId==="partner1"&&
+  x.productId==="partnerPrivate:historicMix"&&x.groupId==="combined"));
+ assert.deepEqual(f.hubSource,before.hubSource);
+ assert.deepEqual(f.partnerSources,before.partnerSources);
+});
+
 test("legacy combined 光/AIR never silently splits into separate Hikari or Air",()=>{
  const f=fixture();
  f.hubSource.products=f.hubSource.products.filter(p=>p.sourceId!=="combined");
