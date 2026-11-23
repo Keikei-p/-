@@ -275,6 +275,36 @@ test("ambiguous matching, already mapped SKU, and legacy split never get a batch
  }).length,0,"company-specific OFF is respected");
 });
 
+test("Owner preview proposes unique combined 光/AIR aliases but never splits or guesses",()=>{
+ const c=catalog();
+ c.products[2].enabled=true;
+ c.products[2].name="光/AIR";
+ c.products.push(
+  {id:"light",name:"SB光",active:true,enabled:true},
+  {id:"solar",name:"太陽光/AIR（旧合算）",active:true,enabled:true},
+  {id:"other",name:"NURO旧合算",active:true,enabled:true});
+ const mapping=status();
+ const choose=()=>suggestUnambiguousOwnerSkuMappings({
+  mapping,catalog:c,partnerCompanyId:"partner"
+ }).filter(p=>p.partnerProductId==="partnerSku05");
+ assert.deepEqual(choose().map(p=>p.hubProductId),["combined"]);
+ for(const alias of ["SB光・AIR","SB光・AIR（旧合算）","ソフトバンク光/Air"]){
+  c.products[2].name=alias;
+  assert.deepEqual(choose().map(p=>p.hubProductId),["combined"],alias);
+ }
+ // Two eligible combined products must cause a hold, not a random choice.
+ c.products.push({id:"combinedTwo",name:"SB光・AIR",
+  active:true,enabled:true});
+ assert.deepEqual(choose(),[]);
+ c.products.pop();
+ c.products[2].enabled=false;
+ assert.deepEqual(choose(),[],"Owner OFF cannot be silently bypassed");
+ c.products[2].enabled=true;
+ c.products[2].name="SoftBank Air";
+ assert.deepEqual(choose(),[],"standalone Air is never combined");
+ assert.deepEqual(mapping,status(),"preview has no historical writes");
+});
+
 test("only exact archived private SKU names can be proposed in the company-scoped Owner panel",async()=>{
  const c=catalog();
  c.products[0].name="NURO光";
