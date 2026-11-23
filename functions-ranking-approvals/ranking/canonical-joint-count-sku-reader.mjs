@@ -143,7 +143,7 @@ export function composeCanonicalMonthlyRankingInput({
  // A pre-existing Owner-reviewed exact binding is stronger evidence than
  // a name/alias match. Validate the complete saved mapping BEFORE applying
  // anything; zero-setup mode must work when no document exists.
- const reviewedBindings=skuMap?.bindings??[],seen=new Set();
+ const reviewedBindings=skuMap?.bindings??[],seen=new Set(),targets=new Set();
  for(const b of reviewedBindings){
   if(!b||Object.keys(b).sort().join("|")!==
       ["companyId","productId","hubProductId"].sort().join("|")||
@@ -151,16 +151,19 @@ export function composeCanonicalMonthlyRankingInput({
      !partners.includes(b.companyId)||
      !sourceProducts.get(b.companyId)?.has(b.productId)||
      !hubProducts.has(b.hubProductId))STOP();
+  // Read-side defense rejects duplicate targets even in old mapping docs.
   const key=JSON.stringify([b.companyId,b.productId]);
-  if(seen.has(key))STOP();
-  seen.add(key);
+  const targetKey=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(key)||targets.has(targetKey))STOP();
+  seen.add(key);targets.add(targetKey);
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
   // A stored OFF mapping must not blank out every other ON ranking.
   // Zero-setup holds it unmatched; classic mode does not emit the OFF group.
   // Historic combined light/AIR must never be guessed into separate SKUs.
-  if(LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC"))&&
+  if((b.productId==="partnerSku05"||
+      LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC")))&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
  }
  const groups=zeroSetupLink===true?
