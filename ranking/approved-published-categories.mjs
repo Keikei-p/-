@@ -1,7 +1,9 @@
 // Shared ranks are released ONLY for exact Owner-reviewed SKU mappings and
 // server-stored per-partner visibility. This module never writes or returns
 // financial master fields, inactive products, raw IDs or cashback tier labels.
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+// Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
+// never authorizes an unrelated partner count input or publish target.
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Fallback only for exact, long-established count category names. The Owner
 // must still have published the unique ACTIVE hub product in the public count
