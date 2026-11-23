@@ -79,9 +79,17 @@ function validate(mapping,catalog,partner){
   if(seen.has(k)||targets.has(target))fail();
   seen.add(k);targets.add(target);
   if(b.companyId!==partner)continue;
-  if(withPrivate&&PRIVATE.test(b.productId)&&!privateProducts.has(b.productId))fail();
+  // A historical private category can be assessed only with the current
+  // server-verified partner catalog. Never trust a mapping without its source.
+  const isPrivate=PRIVATE.test(b.productId);
+  if(isPrivate&&(!withPrivate||!privateProducts.has(b.productId)))fail();
   if(!products.has(b.hubProductId))fail();
-  if(b.productId===LEGACY&&!combined(products.get(b.hubProductId).name))fail();
+  const sourceName=isPrivate?privateProducts.get(b.productId).name:null;
+  // Mirror the Owner writer and canonical count reader: old private 光/AIR
+  // combined counts must never be displayed as mapped into standalone Air,
+  // unrelated "旧合算" products, or a different financial category.
+  if((b.productId===LEGACY||combined(sourceName))&&
+     !combined(products.get(b.hubProductId).name))fail();
   match.set(b.productId,b.hubProductId);
  }
  return {version:mapping.version,products:[...products.values()],match,privateProducts};
