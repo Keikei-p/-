@@ -18,7 +18,7 @@ import {auditNoFinancialKeys} from "../security/public-projection.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const PRIVATE=/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/;
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
 const BAD=/(?:売上|単価|収益|原価|価格|キャッシュバック|報酬|利益|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const stop=()=>{throw Error("ZERO_SETUP_COUNT_SOURCE_UNVERIFIED");};
 const valid=x=>typeof x==="string"&&ID.test(x)&&
@@ -74,7 +74,17 @@ export function linkAllRegisteredCountsWithoutSetup({
      !valid(b.hubProductId)||
      !own.has(b.hubProductId))stop();
   const target=own.get(b.hubProductId);
-  if(b.productId==="partnerSku05"&&
+  const sourceCompany=partnerSources.find(p=>p?.companyId===b.companyId);
+  const origin=Array.isArray(sourceCompany?.products)?
+   sourceCompany.products.find(p=>p?.sourceId===b.productId):null;
+  if(!origin||typeof origin.name!=="string")stop();
+  // Both the immutable legacy source ID and an archived private combined
+  // label must remain combined. Never accept generic "旧合算"/"未分類"
+  // in an unrelated target such as NURO or solar.
+  const oldCombined=b.productId==="partnerSku05"||
+   (PRIVATE.test(b.productId)&&
+    LEGACY_COMBINED_LIGHT_AIR.test(origin.name.normalize("NFKC")));
+  if(oldCombined&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))stop();
   const seen=boundIdsByCompany.get(b.companyId)||new Set();
   const reserved=reservedByCompany.get(b.companyId)||new Set();
@@ -138,8 +148,10 @@ export function linkAllRegisteredCountsWithoutSetup({
    const reviewedTarget=reviewed.get(p.sourceId)||null;
    let target=offBound.has(p.sourceId)?null:reviewedTarget||exactTarget;
    // Old SB光・AIR does not identify a separately sold Hikari or Air SKU.
-   if(p.sourceId==="partnerSku05"&&target&&
-      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))target=null;
+   if((p.sourceId==="partnerSku05"||
+       (isPrivate&&LEGACY_COMBINED_LIGHT_AIR.test(name.normalize("NFKC"))))&&
+      target&&!LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))
+     target=null;
    // One hub SKU cannot be claimed by two categories in the SAME company.
    // Pre-reserving reviewed IDs prevents an alias from stealing an Owner map.
    if(!reviewedTarget&&target&&mappedHub.has(target.sourceId))target=null;
