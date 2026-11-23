@@ -260,3 +260,38 @@ test("canonical ranking rejects unrelated generic 旧合算 / 未分類 labels f
    /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
  }
 });
+
+
+test("canonical ranking rejects a duplicated target hub SKU even when partner source IDs differ",()=>{
+ const input=sources(),partner=input.partnerSources[0];
+ partner.products.push({companyId:"partner",sourceId:"partnerSku02",
+  name:"SBMNP",active:true,sortOrder:1});
+ const duplicate={...map,bindings:[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}
+ ]};
+ assert.throws(()=>compose({...input,skuMap:duplicate}),
+  /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+ // No history or original count was rewritten by failed composition.
+ assert.equal(partner.records[0].totalCount,5);
+ assert.equal(partner.lines[0].count,5);
+});
+test("canonical ranking treats saved partnerSku05 as combined even when its display label was changed",()=>{
+ const input=sources(),partner=input.partnerSources[0];
+ partner.products[0].sourceId="partnerSku05";
+ partner.products[0].name="名称変更後の旧カテゴリ";
+ partner.lines[0].productId="partnerSku05";
+ const legacyBinding=(hubProductId)=>({...map,bindings:[{
+  companyId:"partner",productId:"partnerSku05",hubProductId
+ }]});
+ assert.throws(()=>compose({...input,skuMap:legacyBinding("air")}),
+  /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+ // A real combined target remains usable without changing original counts.
+ input.hubSource.products.push({companyId:"hub",sourceId:"legacyCombined",
+  name:"SB光・AIR（旧合算）",active:true,sortOrder:3});
+ const result=compose({...input,skuMap:legacyBinding("legacyCombined")});
+ const mapped=result.productGroups.find(x=>x.companyId==="partner");
+ assert.equal(mapped.productId,"partnerSku05");
+ assert.equal(mapped.groupId,"legacyCombined");
+ assert.equal(partner.records[0].totalCount,5);
+});
