@@ -104,8 +104,11 @@ export function suggestUnambiguousOwnerSkuMappings({mapping,catalog,partnerCompa
  const categories=[...CATEGORIES,...[...view.privateProducts.values()].map(p=>[p.id,p.name])];
  for(const [productId,partnerLabel] of categories){
   if(view.match.has(productId))continue;
-  const candidates=view.products.filter(p=>p.name===partnerLabel||
-   (productId===LEGACY&&p.name==="SB光・AIR"));
+  // Historic 光/AIR has several legitimate combined labels. Suggest a
+  // mapping only if the Owner has a unique matching combined hub SKU;
+  // standalone 光/Air are never candidates and no save happens here.
+  const candidates=view.products.filter(p=>productId===LEGACY?
+   combined(p.name):p.name===partnerLabel);
   const [target]=candidates;
   if(candidates.length===1&&published.has(target.id)&&!occupied.has(target.id))
    result.push({partnerProductId:productId,partnerLabel,
