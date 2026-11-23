@@ -2,6 +2,7 @@
 // Isolated partner operations: no reads/writes to sales products, records or prices.
 const crypto=require("node:crypto");
 const {buildApprovedPartnerCountStandings}=require("./shared-count-standings.cjs");
+const {getCountRankingCategories}=require("./unified-count-ranking-policy.cjs");
 const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
 const {createPartnerSubmissionPublicationGuard}=require("./submission-publication-guard.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
@@ -14,7 +15,7 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
  x.trim().length<=80&&!money.test(x);
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
- submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
+ unifiedRankingEnabled=()=>false,submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
  ownerCorrectionWriteEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
@@ -467,12 +468,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {joined:true,...joined};
  }
 
- // Opt-in, strictly counted shared ranking from the existing SAME stored
- // partner daily entries. No new writes or index migrations. Strictly require
- // reviewed Owner SKU mapping + visibility BEFORE giving any partner a rank.
- // The separate direct-company ranking is intentionally NOT guessed here.
+ // Read the SAME saved partner counts with no ON/OFF configuration.
+ // New unified mode is independently opt-in, default OFF. Legacy reviewed SKU
+ // mode remains intact until the full production E2E and finance fence pass.
  async function loadSharedPartnerRankings(s,date,period){
-  if(sharedRankingEnabled()!==true)fail("unavailable");
+  const unified=unifiedRankingEnabled()===true;
+  if(!unified&&sharedRankingEnabled()!==true)fail("unavailable");
   if(!["day","week","month"].includes(period))fail("invalid-argument");
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
@@ -496,27 +497,34 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       cursor.setUTCDate(cursor.getUTCDate()+1))
    days.push(cursor.toISOString().slice(0,10));
   if(days.length<1||days.length>31)fail("resource-exhausted");
-  const [hub,relations,visibility,mapping,publicCatalog]=await Promise.all([
+  // Unified mode does NOT read prior ON/OFF, SKU mapping or publication
+  // documents. Neither mode reads finance-bearing products or sales records.
+  const [hub,relations,...legacyReview]=await Promise.all([
    db.collection("companies").doc(hubId).get(),
    db.collection("partnerRelations").where("hubCompanyId","==",hubId).limit(101).get(),
-   collection(hubId,"rankingProductVisibility").doc("shared").get(),
-   collection(hubId,"rankingSkuMappings").doc("shared").get(),
-   collection(hubId,"rankingCountPublicCatalog").doc("shared").get()
+   ...(unified?[]:[
+    collection(hubId,"rankingProductVisibility").doc("shared").get(),
+    collection(hubId,"rankingSkuMappings").doc("shared").get(),
+    collection(hubId,"rankingCountPublicCatalog").doc("shared").get()
+   ])
   ]);
+  const [visibility,mapping,publicCatalog]=legacyReview;
   const hubCompany=hub.data()||{},ownerUid=hubCompany.ownerUid;
   if(!hub.exists||!ID.test(ownerUid||"")||hubCompany.active===false||
      (hubCompany.companyKind!=null&&!["internal","direct"].includes(hubCompany.companyKind))||
-     relations.size>100||!visibility.exists||!mapping.exists||
-     !publicCatalog.exists)fail("failed-precondition");
-  const publicState=publicCatalog.data()||{};
-  if(publicState.schema!=="nico-reviewed-count-public-catalog-v1"||
-     publicState.hubCompanyId!==hubId||publicState.ownerUid!==ownerUid||
-     publicState.version!==visibility.data()?.version||
-     !Array.isArray(publicState.products)||publicState.products.length>1000)
+     relations.size>100||
+     (!unified&&(!visibility?.exists||!mapping?.exists||!publicCatalog?.exists)))
    fail("failed-precondition");
-  // This source is a separate Owner-approved whitelist; this service NEVER
-  // queries original money-bearing "products" or "records" collections.
-  const productRows=publicState.products;
+  let productRows=null;
+  if(!unified){
+   const publicState=publicCatalog.data()||{};
+   if(publicState.schema!=="nico-reviewed-count-public-catalog-v1"||
+      publicState.hubCompanyId!==hubId||publicState.ownerUid!==ownerUid||
+      publicState.version!==visibility.data()?.version||
+      !Array.isArray(publicState.products)||publicState.products.length>1000)
+    fail("failed-precondition");
+   productRows=publicState.products;
+  }
   const approved=[];
   for(const relDoc of relations.docs){
    const rel=relDoc.data()||{},cid=relDoc.id;
@@ -596,10 +604,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     ]);
     if(ts.size>150||es.size>1000)fail("resource-exhausted");
     const categories=(()=>{
-     try{return allowedPartnerCategories({
-      hubId,cid:row.cid,ownerUid,
-      visibility:visibility.data(),mapping:mapping.data(),products:productRows
-     })}catch{fail("failed-precondition")}
+     try{
+      if(unified)return getCountRankingCategories({
+       mode:"unified",hubId,partnerId:row.cid
+      });
+      return getCountRankingCategories({
+       mode:"legacy",hubId,partnerId:row.cid,
+       legacyCategories:allowedPartnerCategories({
+        hubId,cid:row.cid,ownerUid,
+        visibility:visibility.data(),mapping:mapping.data(),products:productRows
+       })
+      });
+     }catch{fail("failed-precondition")}
     })();
     const teams=ts.docs.map(doc=>{
      const x=doc.data()||{};
@@ -616,9 +632,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   let result;
   try{result=buildApprovedPartnerCountStandings({hubId,start,end,sources})}
   catch{fail("data-loss")}
+  // Only the authenticated, verified hub OWNER may inspect its actively
+  // registered partner roster names without bilateral approval. Other partner
+  // viewers stay masked unless existing public-name proof is satisfied.
+  // This never grants a finance read and cannot be requested via browser role.
+  const ownerManagedView=unified&&s.kind==="hub"&&s.role==="owner";
   const viewerNameProof=s.kind==="hub"||approved.some(row=>row.cid===s.cid&&row.publicNamesVerified);
-  const namedCompanies=new Set(approved.filter(row=>row.cid===s.cid||
-   viewerNameProof&&row.publicNamesVerified).map(row=>crypto.createHash("sha256")
+  const namedCompanies=new Set(approved.filter(row=>ownerManagedView||
+   row.cid===s.cid||viewerNameProof&&row.publicNamesVerified)
+   .map(row=>crypto.createHash("sha256")
     .update("company\n"+hubId+"\n"+row.cid).digest("hex")));
   result={...result,people:result.people.map(person=>namedCompanies.has(person.companyKey)?person:
    {...person,name:"担当者（名称非公開）"})};
