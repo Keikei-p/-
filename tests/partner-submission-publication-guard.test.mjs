@@ -109,6 +109,30 @@ test("retired product, legacy split, missing mapping and revoked relation fail c
   other.rows.delete(path);await denied(run());assert.equal(other.writes,0);
  }
 });
+test("both count-save guards refuse unrelated generic combined labels while allowing actual 光/AIR",async()=>{
+ for(const createGuard of [createPartnerSubmissionPublicationGuard,vendorGuard]){
+  for(const misleading of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+   const {db,scope}=fixture();
+   db.rows.get("companies/hub/rankingCountPublicCatalog/shared")
+    .products[1].name=misleading;
+   const guard=createGuard({db});
+   await denied(guard({tx:db.transaction(),scope,previousCounts:zero(),
+    nextCounts:counts({"SB光・AIR":1})}));
+   assert.equal(db.writes,0,"rejected preview must not save any count");
+  }
+  for(const legitimate of ["光/AIR","SB光・AIR","ソフトバンク光/Air"]){
+   const {db,scope}=fixture();
+   db.rows.get("companies/hub/rankingCountPublicCatalog/shared")
+    .products[1].name=legitimate;
+   const guard=createGuard({db});
+   const r=await guard({tx:db.transaction(),scope,
+    previousCounts:zero(),nextCounts:counts({"SB光・AIR":1})});
+   assert(r.enabledCategories.includes("SB光・AIR"));
+   assert.equal(db.writes,0);
+  }
+ }
+});
+
 test("duplicate mapping, wrong scope, malformed counts, and unreviewed map fail closed",async()=>{
  const {db,call,scope}=fixture();
  db.rows.get("companies/hub/rankingSkuMappings/shared").bindings.push(
