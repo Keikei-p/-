@@ -53,7 +53,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {counts:result,total:sum};
  };
  // Separate new individual counts from the immutable legacy category sums.
- // The isolated dependency is not wired to any production environment flag.
+ // Default OFF; the existing callable entry binds a separate explicit release gate.
  const individualOn=()=>submissionPublicationEnabled()===true&&individualCountInputEnabled()===true;
  const hasIndividualLedger=x=>Object.hasOwn(x,"ownerProductCounts")||
   Object.hasOwn(x,"ownerProductTotalCount");
@@ -528,7 +528,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // reviewed Owner SKU mapping + visibility BEFORE giving any partner a rank.
  // The separate direct-company ranking is intentionally NOT guessed here.
  async function loadSharedPartnerRankings(s,date,period){
-  if(sharedRankingEnabled()!==true)fail("unavailable");
+  // The legacy partner-only nine-category route cannot represent individual
+  // Owner product IDs. The canonical joint HTTP route is the sole rank source
+  // once individual input is enabled; never return a partial leaderboard.
+  if(sharedRankingEnabled()!==true||individualOn())fail("unavailable");
   if(!["day","week","month"].includes(period))fail("invalid-argument");
   const hubId=s.kind==="hub"?s.cid:s.hubId;
   if(!ID.test(hubId||""))fail();
@@ -640,6 +643,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       if(staff.exists)return {date:day,data:staff.data()};
       if(!legacy.exists)return {date:day,data:null};
       const raw=legacy.data()||{};
+      if(hasIndividualLedger(raw))fail("failed-precondition");
       if(raw.hubCompanyId!==hubId||raw.partnerCompanyId!==row.cid||
          raw.date!==day||!Number.isSafeInteger(raw.version)||
          raw.version<1||raw.version>999)fail("data-loss");
@@ -651,6 +655,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      }))
     ]);
     if(ts.size>150||es.size>1000)fail("resource-exhausted");
+    // Turning the input gate OFF after a save must not turn a partial legacy
+    // rank into a complete one, including companies with all products OFF.
+    if(es.docs.some(doc=>hasIndividualLedger(doc.data()||{}))||
+       rs.some(row=>row.data&&hasIndividualLedger(row.data)))fail("failed-precondition");
     const categories=(()=>{
      try{return allowedPartnerCategories({
       hubId,cid:row.cid,ownerUid,

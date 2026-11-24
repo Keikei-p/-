@@ -1954,7 +1954,7 @@ test("managed staff archive refuses other roles, registered people and revoked m
  assert.equal(db.store.get(staffPath).active,true,"revoked manager cannot archive staff");
 });
 
-test("unconnected individual product payload cannot silently succeed or change the existing ledger",async()=>{
+test("disabled individual product payload cannot silently succeed or change the existing ledger",async()=>{
  for(const publicationWriteOn of [false,true]){
   const {db,api,req,zero,dependencies}=setup(false,publicationWriteOn);
   const date="2026-10-31";
@@ -2081,4 +2081,26 @@ test("staged hub Owner corrects existing individual counts atomically and preser
  const after=await staged.view(req("p",{date}));
  assert.deepEqual(after.records[0].ownerProductCounts,{hikari:5});
  for(const path of ["products/money","records/old"])assert.deepEqual(db.store.get(path),before.find(([p])=>p===path)[1]);
+});
+
+test("legacy partner-only rankings cannot certify partial counts after individual input or rollback",async()=>{
+ const {db,api,req,zero,dependencies}=setup(true,true,true,true);
+ const date="2026-10-31";
+ const products=[{id:"hikari",companyId:"hub",name:"光",active:true}];
+ db.seed("companies/hub/rankingProductVisibility/shared",{hubCompanyId:"hub",ownerUid:"h",version:1,enabledHubProductIds:["hikari"],partnerOverrides:{}});
+ db.seed("companies/hub/rankingCountPublicCatalog/shared",{schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",ownerUid:"h",version:1,products});
+ db.seed("companies/hub/rankingSkuMappings/shared",{hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,bindings:[]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ const staged=makeWorkspace({...dependencies,individualCountInputEnabled:()=>true});
+ await staged.submit(req("p",{date,staffId:staff,expectedVersion:0,counts:zero(),ownerProductCounts:{hikari:3}}));
+ const before=clone([...db.store]);
+ for(const uid of ["p","h"]){
+  for(const rankingPeriod of ["day","week","month"]){
+   const request=req(uid,{date,sharedCountRankings:true,rankingPeriod});
+   await assert.rejects(staged.view(request),{code:"unavailable"});
+   await assert.rejects(api.view(request),{code:"failed-precondition"});
+  }
+ }
+ assert.deepEqual([...db.store],before);
 });

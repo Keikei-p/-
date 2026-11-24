@@ -73,3 +73,26 @@ test('packaged Owner entry retains existing two names, count-only gates OFF and 
  assert.equal(gates.individualCountInputEnabled(),true);assert.equal(gates.submissionPublicationEnabled(),false);
  assert.equal(p.report.deployed,false);assert.equal(p.report.financeBoundaryVerified,false);
 });
+test('existing workspace runtime binds the same individual input gate, without new endpoints or default activation',async()=>{
+ const vm=await import("node:vm"),env={},exports={},calls=[];
+ const entry=readFileSync(join(root,'functions-partner-workspace/index.js'),'utf8');
+ const fake={
+  "firebase-admin/app":{initializeApp:()=>{}},
+  "firebase-admin/auth":{getAuth:()=>{}},
+  "firebase-admin/firestore":{getFirestore:()=>({}),FieldValue:{},Timestamp:{}},
+  "firebase-functions/v2/https":{onCall:(options,handler)=>({options,handler}),HttpsError:Error},
+  "./service.cjs":{makeWorkspace:options=>{calls.push(options);return {view:()=>{},manage:()=>{},accept:()=>{},submit:()=>{}}}},
+  "./company-code-auth.cjs":{makeCompanyCodeAuth:()=>({issue:()=>{},activate:()=>{},login:()=>{},logout:()=>{}})}
+ };
+ vm.runInNewContext(entry,{exports,process:{env},require:name=>{assert(Object.hasOwn(fake,name),name);return fake[name]}});
+ assert.deepEqual(Object.keys(exports).sort(),["acceptPartnerWorkspaceInvite","activatePartnerCompanyCode","getPartnerWorkspace","issuePartnerCompanyCode","loginPartnerCompanyCode","logoutPartnerCompanyCode","managePartnerWorkspace","submitPartnerWorkspaceCounts"]);
+ const gates=calls[0];
+ assert.equal(gates.enabled(),false);
+ assert.equal(gates.submissionPublicationEnabled(),false);
+ assert.equal(gates.individualCountInputEnabled(),false);
+ env.NICO_PARTNER_INDIVIDUAL_COUNT_INPUT_ENABLED="enabled";
+ assert.equal(gates.individualCountInputEnabled(),true);assert.equal(gates.submissionPublicationEnabled(),false);
+ env.NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED="enabled";
+ assert.equal(gates.submissionPublicationEnabled(),true);
+ assert.equal(gates.enabled(),false);
+});
