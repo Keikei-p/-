@@ -10,18 +10,19 @@
  * This helper does not read/write Firestore or touch revenue, unit price or CB.
  */
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
-const MONEY=/(?:売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|cash\\s*back|revenue|unit\\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\\s*(?:万|千)?円)/i;
+const MONEY=/(?:売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円)/i;
 const MAX_PRODUCTS=200;
 const MAX_COUNT=9999;
 const MAX_TOTAL=2000000;
 const DENY="OWNER_APPROVED_INDIVIDUAL_COUNT_UNVERIFIED";
 const fail=()=>{throw Error(DENY);};
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
-const id=x=>typeof x==="string"&&ID.test(x)&&
- !["__proto__","prototype","constructor"].includes(x)&&
- !x.startsWith("legacyPartnerSku:")&&!x.startsWith("partnerPrivate:");
+const safeId=x=>typeof x==="string"&&ID.test(x)&&
+ !["__proto__","prototype","constructor"].includes(x);
+const id=x=>safeId(x)&&!x.startsWith("legacyPartnerSku:")&&
+ !x.startsWith("partnerPrivate:");
 const unique=(x)=>Array.isArray(x)&&x.length<=1000&&
- new Set(x).size===x.length&&x.every(id);
+ new Set(x).size===x.length&&x.every(safeId);
 const sameKeys=(o,required)=>obj(o)&&
  Object.keys(o).sort().join("|")===required.slice().sort().join("|");
 const countMap=(value)=>{
@@ -57,7 +58,7 @@ function verifiedCatalog({scope,visibility,publicCatalog}={}){
  const catalog=new Map();
  for(const row of p.products){
   if(!sameKeys(row,["id","companyId","name","active"])||
-     !id(row.id)||row.companyId!==scope.hubId||
+     !safeId(row.id)||row.companyId!==scope.hubId||
      typeof row.name!=="string"||!row.name.trim()||
      row.name.length>80||MONEY.test(row.name.normalize("NFKC"))||
      typeof row.active!=="boolean"||catalog.has(row.id))fail();
@@ -72,7 +73,7 @@ function verifiedCatalog({scope,visibility,publicCatalog}={}){
  const own=Object.hasOwn(visibility.partnerOverrides,scope.cid)?
    new Set(visibility.partnerOverrides[scope.cid]):global;
  const permitted=new Set();
- for(const key of global)if(own.has(key)&&catalog.get(key).active===true)
+ for(const key of global)if(id(key)&&own.has(key)&&catalog.get(key).active===true)
   permitted.add(key);
  return {catalog,permitted};
 }
