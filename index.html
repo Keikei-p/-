@@ -15127,7 +15127,7 @@ async function loadPartnerPublishedOptionalPanel(tab){
     title.textContent=event.staffName+"｜第"+event.version+"版｜"+
      event.previousTotalCount+"件 → "+event.totalCount+"件";
     row.append(title);
-    for(const category of snap.categories){
+    for(const category of (verified.categories??snap.categories)){
      const before=event.previousCounts[category],after=event.counts[category];
      if(before!==after)
       partnerMainAppendRow(row,category,before+"件 → "+after+"件");

@@ -4,11 +4,13 @@
  * transaction, AFTER current trusted membership and Owner policy checks.
  * Existing getPartnerWorkspace remains the count entry / correction API.
  */
+import individualContract from "./owner-approved-individual-count-input.cjs";
+const {reconcileOwnerApprovedIndividualCounts}=individualContract;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR",
  "ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const MONEY=/(?:売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:円|万円)|revenue|unit[\s_-]*price|cash[\s_-]*back|\bCB\s*[:=_-]?\s*[0-9０-９])/i;
-const SCHEMA="nico-published-partner-optional-v1";
+const SCHEMA="nico-published-partner-optional-v1",INDIVIDUAL_SCHEMA="nico-published-partner-optional-v2";
 const stop=()=>{throw Error("PARTNER_OPTIONAL_COUNT_ACCESS_UNVERIFIED");};
 const plain=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const validId=x=>typeof x==="string"&&ID.test(x)&&
@@ -24,6 +26,59 @@ function exactCounts(value){
  const total=KEYS.reduce((n,k)=>n+value[k],0);
  if(!sum(total))stop();
  return {counts:Object.fromEntries(KEYS.map(k=>[k,value[k]])),total};
+}
+const hasIndividual=row=>Object.hasOwn(row,"ownerProductCounts")||
+ Object.hasOwn(row,"ownerProductTotalCount")||Object.hasOwn(row,"previousOwnerProductCounts");
+function individualCounts(raw){
+ if(!plain(raw)||Object.keys(raw).length>200)stop();
+ let total=0;
+ for(const [id,n] of Object.entries(raw)){
+  if(!/^[A-Za-z0-9_:-]{1,200}$/.test(id)||
+     ["__proto__","constructor","prototype"].includes(id)||
+     id.startsWith("legacyPartnerSku:")||id.startsWith("partnerPrivate:")||
+     !count(n))stop();
+  total+=n;
+ }
+ if(!sum(total))stop();
+ return {counts:raw,total};
+}
+async function individualDisplayPolicy({tx,db,identity}){
+ if(!validId(identity.ownerUid))stop();
+ const hub=db.collection("companies").doc(identity.hub);
+ const [v,c]=await Promise.all([
+  tx.get(hub.collection("rankingProductVisibility").doc("shared")),
+  tx.get(hub.collection("rankingCountPublicCatalog").doc("shared"))
+ ]);
+ if(!v.exists||!c.exists)stop();
+ const {publishedProducts}=reconcileOwnerApprovedIndividualCounts({
+  scope:{verifiedByServer:true,kind:"partner",uid:identity.uid,cid:identity.partner,
+   hubId:identity.hub,ownerUid:identity.ownerUid},
+  visibility:v.data(),publicCatalog:c.data(),previous:{}
+ });
+ // Keep old fixed/combined categories intact. New IDs sharing a display
+ // label must never overwrite an old count or a different new product.
+ const used=new Set(KEYS),products=[];
+ for(const product of publishedProducts){
+  const label=product.name.trim();
+  if(!name(label)||["__proto__","constructor","prototype"].includes(label)||
+     /(?:commission|unit\s*price|cash\s*back|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z]))/i.test(label.normalize("NFKC")))stop();
+  let display=label;
+  for(let i=1;used.has(display);i++)display=label+"（個別"+i+"）";
+  used.add(display);products.push({id:product.id,label:display});
+ }
+ return products;
+}
+function displayCounts(raw,legacy,products,previous=false){
+ if(!hasIndividual(raw)){
+  return {...legacy,counts:{...legacy.counts,...Object.fromEntries(products.map(p=>[p.label,0]))}};
+ }
+ const current=individualCounts(raw.ownerProductCounts);
+ if(current.total!==raw.ownerProductTotalCount)stop();
+ const ledger=previous?individualCounts(raw.previousOwnerProductCounts):current;
+ const counts={...legacy.counts};let total=legacy.total;
+ for(const p of products){const n=ledger.counts[p.id]??0;counts[p.label]=n;total+=n;}
+ if(!sum(total))stop();
+ return {counts,total};
 }
 function docs(query,size){
  if(!query||!Array.isArray(query.docs)||query.docs.length>size)stop();
@@ -64,7 +119,14 @@ export async function readPublishedPartnerOptionalTab({
   const staff={id:entry.id,data};
   if(rowForStaff(staff,identity))eligible.set(entry.id,{id:entry.id,...data});
  }
- const products=Object.fromEntries(KEYS.map(k=>[k,0]));
+ const auditRows=tab==="history"?docs(await tx.get(company.collection("partnerWorkAudits")
+  .where("date","==",date).limit(501)),500):[];
+ const individualMode=[...entries,...auditRows].some(item=>{
+  const row=item.data?.();return plain(row)&&eligible.has(row.staffId)&&hasIndividual(row);
+ });
+ const individualProducts=individualMode?await individualDisplayPolicy({tx,db,identity}):[];
+ const categories=[...KEYS,...individualProducts.map(p=>p.label)];
+ const products=Object.fromEntries(categories.map(k=>[k,0]));
  const stored=new Map(),lineItems=[];
  for(const item of entries){
   const row=item.data?.();
@@ -74,10 +136,11 @@ export async function readPublishedPartnerOptionalTab({
      !Number.isSafeInteger(row.version)||row.version<1||row.version>999)stop();
   if(!eligible.has(row.staffId))continue; // never return another member's rows
   if(item.id!==date+"__"+row.staffId||stored.has(row.staffId))stop();
-  const {counts,total}=exactCounts(row.counts);
-  if(total!==row.totalCount)stop();
+  const legacy=exactCounts(row.counts);
+  if(legacy.total!==row.totalCount)stop();
+  const {counts,total}=displayCounts(row,legacy,individualProducts);
   stored.set(row.staffId,{...row,counts});
-  for(const k of KEYS){
+  for(const k of categories){
    products[k]+=counts[k];if(!sum(products[k]))stop();
   }
   lineItems.push({staffId:row.staffId,name:eligible.get(row.staffId).name,
@@ -87,12 +150,10 @@ export async function readPublishedPartnerOptionalTab({
  if(!sum(totalCount))stop();
  const reportStatus=lineItems.length===0?"未報告":
   totalCount===0?"確定0件":"報告済";
- const base={schema:SCHEMA,tab,date,companyName:identity.companyName,
-  reportStatus,totalCount,reportedStaffCount:lineItems.length};
+ const base={schema:individualMode?INDIVIDUAL_SCHEMA:SCHEMA,tab,date,companyName:identity.companyName,
+  reportStatus,totalCount,reportedStaffCount:lineItems.length,
+  ...(individualMode?{categories}:{})};
  if(tab==="history"){
-  const auditRef=company.collection("partnerWorkAudits")
-   .where("date","==",date).limit(501);
-  const auditRows=docs(await tx.get(auditRef),500);
   const history=[],seen=new Set();
   for(const item of auditRows){
    const row=item.data?.();
@@ -104,9 +165,10 @@ export async function readPublishedPartnerOptionalTab({
    if(item.id!==date+"__"+row.staffId+"__v"+row.version)stop();
    const key=row.staffId+"|"+row.version;
    if(seen.has(key))stop();seen.add(key);
-   const prev=exactCounts(row.previousCounts);
-   const next=exactCounts(row.counts);
-   if(next.total!==row.totalCount)stop();
+   const oldPrev=exactCounts(row.previousCounts),oldNext=exactCounts(row.counts);
+   if(oldNext.total!==row.totalCount)stop();
+   const prev=displayCounts(row,oldPrev,individualProducts,true);
+   const next=displayCounts(row,oldNext,individualProducts);
    // Never serialize privateCounts, workLocation, correctionReason,
    // actor emails, timestamps or financial classification originals.
    // The audit's original display name wins over a later staff rename.
@@ -120,15 +182,15 @@ export async function readPublishedPartnerOptionalTab({
   history.sort((a,b)=>a.staffId.localeCompare(b.staffId)||a.version-b.version);
   return {...base,audits:history};
  }
- const categories=KEYS.map(name=>({name,count:products[name]}));
- if(tab==="daily")return {...base,products:categories};
+ const productRows=categories.map(name=>({name,count:products[name]}));
+ if(tab==="daily")return {...base,products:productRows};
  if(tab==="goal")return {...base,actualCount:totalCount};
  const lines=[
   identity.companyName+"｜"+date+" 営業実績報告",
   "報告状況："+reportStatus,
   "総件数："+totalCount+"件",
   "報告した担当者："+lineItems.length+"人",
-  ...categories.filter(p=>p.count>0).map(p=>p.name+"："+p.count+"件")
+  ...productRows.filter(p=>p.count>0).map(p=>p.name+"："+p.count+"件")
  ];
  return {...base,lines};
 }

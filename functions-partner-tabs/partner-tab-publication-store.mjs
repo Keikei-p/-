@@ -316,7 +316,7 @@ export function createPartnerTabPublicationStore({db,FieldValue}={}) {
       // selection, source entries and audits use THIS read-only transaction.
       const result=await reader({tx,db,identity:who,tab,date});
       if(!obj(result)||result.tab!==tab||result.date!==date||
-         result.schema!=="nico-published-partner-optional-v1")
+         !["nico-published-partner-optional-v1","nico-published-partner-optional-v2"].includes(result.schema))
         blocked();
       return result;
     },{readOnly:true});

@@ -331,3 +331,45 @@ test("opaque code-token format and cross-company selection cannot bypass company
  assert(!f.reads.some(x=>x.includes("partnerWorkEntries")));
  assert.equal(f.writes(),0);
 });
+test("individual counts appear in all four optional tabs, OFF retained, combined legacy untouched",async()=>{
+ const f=env(),hub=paths.hub,root=paths.company;
+ const v={hubCompanyId:HUB,ownerUid:"hOwner",version:2,enabledHubProductIds:["light","duplicate"],partnerOverrides:{}};
+ const catalog={schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:HUB,ownerUid:"hOwner",version:2,
+  products:[{id:"light",companyId:HUB,name:"光",active:true},{id:"air",companyId:HUB,name:"AIR",active:true},
+   {id:"duplicate",companyId:HUB,name:"NURO",active:true}]};
+ f.data.set(hub+"/rankingProductVisibility/shared",v);
+ f.data.set(hub+"/rankingCountPublicCatalog/shared",catalog);
+ const entry=f.data.get(root+"/partnerWorkEntries/"+DATE+"__s1");
+ const audit=f.data.get(root+"/partnerWorkAudits/"+DATE+"__s1__v1");
+ for(const row of [entry,audit]){
+  row.counts["SB光・AIR"]=4;row.totalCount+=4;
+  row.ownerProductCounts={light:2,air:7,duplicate:3};row.ownerProductTotalCount=12;
+ }
+ audit.previousOwnerProductCounts={light:1,air:7,duplicate:0};
+ const original=structuredClone([...f.data]);
+ const daily=await f.get("daily");
+ assert.equal(daily.schema,"nico-published-partner-optional-v2");
+ assert.equal(daily.totalCount,17);assert.equal(daily.products.find(x=>x.name==="SB光・AIR").count,4);
+ assert.equal(daily.products.find(x=>x.name==="光").count,2);
+ assert.equal(daily.products.find(x=>x.name==="NURO（個別1）").count,3);
+ assert.equal(daily.products.some(x=>x.name==="AIR"),false);
+ assert.equal((await f.get("goal")).actualCount,17);
+ assert((await f.get("report")).lines.includes("光：2件"));
+ const history=await f.get("history");
+ const row=history.audits.find(x=>x.staffId==="s1");
+ assert.equal(row.previousCounts["光"],1);assert.equal(row.counts["光"],2);
+ assert.equal(row.previousTotalCount,1);assert.equal(row.totalCount,14);
+ assert(!Object.hasOwn(row.counts,"AIR"));
+ assert.deepEqual([...f.data],original);
+ assert.equal(f.writes(),0);
+ entry.ownerProductTotalCount=999;
+ await blocked(()=>f.get("daily"));
+ entry.ownerProductTotalCount=12;
+ catalog.products[0].name="売上 5000円";
+ await assert.rejects(()=>f.get("daily"));
+});
+test("individual optional-tab catalog verifier is byte-identical to the existing save verifier",async()=>{
+ const {readFileSync}=await import("node:fs");
+ assert.equal(readFileSync(new URL("../functions-partner-tabs/owner-approved-individual-count-input.cjs",import.meta.url),"utf8"),
+  readFileSync(new URL("../functions-partner-workspace/owner-approved-individual-count-input.cjs",import.meta.url),"utf8"));
+});

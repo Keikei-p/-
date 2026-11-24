@@ -230,3 +230,20 @@ test("code client rejects unpublished tab, session switch, financial data and se
  await assert.rejects(()=>illegal.load({tab:"history",date:day}),
   /PARTNER_OPTIONAL_TAB_RESPONSE_UNVERIFIED/);
 });
+test("v2 verifies exact dynamic count-only categories and history totals, never unknown fields",()=>{
+ const categories=[...keys,"光","NURO（個別1）"];
+ const productCounts={...counts(5),"光":2,"NURO（個別1）":3};
+ const common={...base("daily",{}),schema:"nico-published-partner-optional-v2",categories,totalCount:10};
+ const daily={...common,products:categories.map(name=>({name,count:productCounts[name]}))};
+ const history={...common,tab:"history",audits:[{staffId:"staff1",staffName:"担当A",version:2,
+  totalCount:10,previousTotalCount:6,counts:productCounts,previousCounts:{...counts(5),"光":1,"NURO（個別1）":0}}]};
+ for(const item of [daily,history,{...common,tab:"goal",actualCount:10},
+  {...common,tab:"report",lines:["総件数：10件","光：2件"]}]){
+  assert.deepEqual(verifyPartnerOptionalTabData(item,{tab:item.tab,date:day}),item);
+  for(const patch of [{categories:[...keys,"売上500円"]},{categories:[...keys,"光","光"]},{categories:[...keys,"__proto__"]},{revenue:1000}]){
+   assert.throws(()=>verifyPartnerOptionalTabData({...item,...patch},{tab:item.tab,date:day}));
+  }
+ }
+ const wrong=structuredClone(history);wrong.audits[0].counts["光"]=1;
+ assert.throws(()=>verifyPartnerOptionalTabData(wrong,{tab:"history",date:day}));
+});

@@ -149,8 +149,10 @@ function makePartnerTabPublicationCallables({
    const props={
     report:["lines"],daily:["products"],history:["audits"],goal:["actualCount"]
    }[d.tab];
-   if(!exact(out,[...common,...props])||
-      out.schema!=="nico-published-partner-optional-v1"||
+   const individual=out?.schema==="nico-published-partner-optional-v2";
+   if(!exact(out,[...common,...props,...(individual?["categories"]:[])])||
+      !["nico-published-partner-optional-v1","nico-published-partner-optional-v2"].includes(out.schema)||
+      (individual&&(!Array.isArray(out.categories)||out.categories.length>1009))||
       out.tab!==d.tab||out.date!==d.date||
       typeof out.companyName!=="string"||
       !["未報告","確定0件","報告済"].includes(out.reportStatus)||
