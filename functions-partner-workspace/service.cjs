@@ -15,7 +15,7 @@ const validCompanyName=x=>typeof x==="string"&&x.trim().length>0&&
 const clean=x=>typeof x==="string"?x.trim():"";
 function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>false,sharedRankingEnabled=()=>false,
  submissionPublicationEnabled=()=>false,ownerCorrectionReadEnabled=()=>false,
- ownerCorrectionWriteEnabled=()=>false,now=()=>Date.now()}={}){
+ ownerCorrectionWriteEnabled=()=>false,individualCountInputEnabled=()=>false,now=()=>Date.now()}={}){
  if(!db||!getAuth||!FieldValue||!Timestamp||!HttpsError)throw Error("missing_partner_workspace_dependency");
  const fail=(code="permission-denied")=>{throw new HttpsError(code,"権限・入力内容を確認できません。");};
  const verifySubmissionPublication=createPartnerSubmissionPublicationGuard({db});
@@ -50,6 +50,40 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    result[id]=count;sum+=count;
   }
   return {counts:result,total:sum};
+ };
+ // Separate new individual counts from the immutable legacy category sums.
+ // The isolated dependency is not wired to any production environment flag.
+ const individualOn=()=>submissionPublicationEnabled()===true&&individualCountInputEnabled()===true;
+ const hasIndividualLedger=x=>Object.hasOwn(x,"ownerProductCounts")||
+  Object.hasOwn(x,"ownerProductTotalCount");
+ const readIndividualLedger=(x,aggregate=false)=>{
+  if(!hasIndividualLedger(x))return {counts:{},total:0};
+  const raw=x.ownerProductCounts;
+  if(!raw||typeof raw!=="object"||Array.isArray(raw)||
+     Object.keys(raw).length>(aggregate?1000:200))fail("data-loss");
+  let total=0;const counts={};
+  for(const [id,n] of Object.entries(raw)){
+   if(!/^[A-Za-z0-9_:-]{1,200}$/.test(id)||
+      ["__proto__","constructor","prototype"].includes(id)||
+      id.startsWith("legacyPartnerSku:")||id.startsWith("partnerPrivate:")||
+      !Number.isSafeInteger(n)||n<0||(!aggregate&&n>9999))fail("data-loss");
+   counts[id]=n;total+=n;
+   if(!Number.isSafeInteger(total))fail("data-loss");
+  }
+  if(total!==x.ownerProductTotalCount)fail("data-loss");
+  return {counts,total};
+ };
+ const mergeIndividualDaily=(daily,prior,next)=>{
+  const counts={...daily.counts};
+  for(const id of new Set([...Object.keys(prior.counts),...Object.keys(next.counts)])){
+   const n=(counts[id]??0)-(prior.counts[id]??0)+(next.counts[id]??0);
+   if(!Number.isSafeInteger(n)||n<0||(counts[id]??0)<(prior.counts[id]??0))fail("data-loss");
+   counts[id]=n;
+  }
+  const total=Object.values(counts).reduce((a,b)=>a+b,0);
+  if(!Number.isSafeInteger(total)||total!==daily.total-prior.total+next.total||
+     Object.keys(counts).length>1000)fail("data-loss");
+  return {counts,total};
  };
  // Append-only history. Never change old sales, count documents or team snapshots.
  const appendTeamMove=(data,from,to,day)=>{
@@ -880,13 +914,17 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    allowed.set(sn.id,{id:sn.id,name:clean(x.name),teamId:x.teamId,
      kind:x.kind,role:x.role,uid:x.uid||null,active:x.active===true});
   }
-  const rows=[];
+  const rows=[],individualRows=new Map();
   for(const sn of entries.docs){
    const x=sn.data()||{};
    if(x.companyId!==s.cid||x.date!==date||!ID.test(x.staffId||""))fail("data-loss");
    if(!allowed.has(x.staffId))continue;
    const {counts,total}=validateCounts(x.counts);
    if(total!==x.totalCount)fail("data-loss");
+   if(hasIndividualLedger(x)){
+    if(!individualOn())fail("failed-precondition");
+    individualRows.set(x.staffId,readIndividualLedger(x));
+   }
    // Return only saved, immutable attribution metadata from the original entry.
    // Never infer a historical team from the member's current teamId.
    // Old entries without a snapshot stay unverified in the dashboard.
@@ -907,27 +945,35 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   // Keep the saved OFF category values untouched, but do not send them to
   // the partner browser when publication is enabled. Read the EXACT policy
   // from the same trusted server guard as the transactional submit path.
-  let enabledCategories;
+  let enabledCategories,individualProducts;
   if(submissionPublicationEnabled()===true){
    const blank=Object.fromEntries(KEYS.map(k=>[k,0]));
    try{
     const policy=await verifySubmissionPublication({
      tx:{get:ref=>ref.get()},
      scope:{verifiedByServer:true,kind:s.kind,uid:a.uid,cid:s.cid,hubId:s.hubId},
-     previousCounts:blank,nextCounts:blank
+     previousCounts:blank,nextCounts:blank,
+     ...(individualOn()?{individual:{previous:{}}}:{})
     });
     enabledCategories=policy.enabledCategories;
+    individualProducts=policy.individual?.publishedProducts;
    }catch{fail("failed-precondition");}
   }
   const safeRecords=enabledCategories===undefined?rows:rows.map(row=>{
    const on=new Set(enabledCategories);
    const visible=Object.fromEntries(KEYS.map(k=>[k,on.has(k)?row.counts[k]:0]));
+   const prior=individualRows.get(row.staffId)?.counts??{};
+   const visibleIndividual=individualProducts===undefined?undefined:
+    Object.fromEntries(individualProducts.map(p=>[p.id,prior[p.id]??0]));
    return {...row,counts:visible,
-    totalCount:KEYS.reduce((n,k)=>n+visible[k],0)};
+    totalCount:KEYS.reduce((n,k)=>n+visible[k],0),
+    ...(visibleIndividual===undefined?{}:{ownerProductCounts:visibleIndividual,
+     ownerProductTotalCount:Object.values(visibleIndividual).reduce((a,b)=>a+b,0)})};
   });
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:safeRecords,categories:KEYS,
     ...(enabledCategories===undefined?{}:{enabledCategories}),
+    ...(individualProducts===undefined?{}:{ownerProducts:individualProducts}),
     privateProducts:productList};
  }
 
@@ -1021,6 +1067,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         old.teamIdSnapshot!==undefined)
     fail("failed-precondition");
    if(old.version!==d.expectedVersion)fail("aborted");
+   // The old Owner correction contract does not yet expose the new fields.
+   if(hasIndividualLedger(old))fail("failed-precondition");
    if(daily.source!=="staff-entries-v1"||daily.hubCompanyId!==hub.cid||
       daily.partnerCompanyId!==d.partnerCompanyId||daily.date!==date||
       !validCompanyName(daily.partnerName))fail("failed-precondition");
@@ -1080,10 +1128,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
   const {counts,total}=validateCounts(d.counts);
-  // Until the individual product ledger is connected end to end, reject it
-  // explicitly rather than returning saved:true for numbers never persisted.
-  if(Object.prototype.hasOwnProperty.call(d,"ownerProductCounts"))
-   fail("failed-precondition");
+  const individualRequest=Object.hasOwn(d,"ownerProductCounts");
+  // This staged save/read connection is intentionally not enabled in index.js.
+  // Do not acknowledge an unsupported payload as saved.
+  if(individualRequest&&!individualOn())fail("failed-precondition");
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   // A count-only API must never silently accept and discard CB-tier entries.
@@ -1136,7 +1184,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    // while the server restores their immutable saved historical numbers
    // within this SAME authenticated count transaction. This permits ON-only
    // edits without deleting OFF history or altering the old company sum.
-   let effectiveCounts=counts,effectiveTotal=total;
+   let effectiveCounts=counts,effectiveTotal=total,individualResult,individualPrior,individualDaily;
+   if(hasIndividualLedger(old)&&!individualRequest)fail("failed-precondition");
    if(submissionPublicationEnabled()===true){
     // Private counts belong to the retired input scheme. Owner approval may
     // publish historic counts but cannot authorize writes through that scheme.
@@ -1146,7 +1195,23 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     try{
      const policy=await verifySubmissionPublication({tx,
       scope:{verifiedByServer:true,kind:fresh.kind,uid:a.uid,cid:fresh.cid,hubId:fresh.hubId},
-      previousCounts:prior,nextCounts:prior});
+      previousCounts:prior,nextCounts:prior,
+      ...(individualRequest?{individual:{
+       previous:readIndividualLedger(old).counts,requested:d.ownerProductCounts
+      }}:{})});
+     if(individualRequest){
+      individualPrior=readIndividualLedger(old);
+      individualResult=policy.individual;
+      if(!individualResult||individualResult.publishedProducts.length===0||
+         !d.ownerProductCounts||typeof d.ownerProductCounts!=="object"||
+         Array.isArray(d.ownerProductCounts))fail("failed-precondition");
+      // New individual entry is not an edit to a historical combined count.
+      if(KEYS.some(key=>counts[key]!==0&&counts[key]!==prior[key]))fail("failed-precondition");
+      effectiveCounts={...prior};
+      effectiveTotal=KEYS.reduce((sum,key)=>sum+prior[key],0);
+      individualDaily=mergeIndividualDaily(readIndividualLedger(existing,true),
+       individualPrior,individualResult);
+     }else{
      if(policy.enabledCategories.length===0)fail("failed-precondition");
      const on=new Set(policy.enabledCategories);
      effectiveCounts={...counts};
@@ -1155,6 +1220,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
       effectiveCounts[key]=prior[key];
      }
      effectiveTotal=KEYS.reduce((sum,key)=>sum+effectiveCounts[key],0);
+     }
     }catch{fail("failed-precondition");}
    }
    const aggregate={};let aggregateTotal=0;
@@ -1191,23 +1257,35 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      person.name;
    if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
    if(staffNameSnapshot!==null&&!validName(staffNameSnapshot))fail("data-loss");
+   const visibleIndividual=individualResult===undefined?{}:{
+    ownerProductCounts:individualResult.visibleCounts,
+    ownerProductTotalCount:Object.values(individualResult.visibleCounts).reduce((a,b)=>a+b,0)};
+   if(individualResult&&!individualResult.changed&&oldSnap.exists&&
+      hasIndividualLedger(old)&&workLocation===oldLocation)
+    return {saved:true,staffId,date,version:d.expectedVersion,totalCount:total,
+     privateTotalCount:privateValidated.total,...visibleIndividual};
    const nowStamp=FieldValue.serverTimestamp(),nextVersion=d.expectedVersion+1;
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
      counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
+     ...(individualResult?{ownerProductCounts:individualResult.counts,
+      ownerProductTotalCount:individualResult.total}:{}),
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,workLocation,
      updatedByUid:a.uid,updatedAt:nowStamp};
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
      partnerName:clean(s.companyName),date,counts:aggregate,totalCount:aggregateTotal,
+     ...(individualDaily?{ownerProductCounts:individualDaily.counts,
+      ownerProductTotalCount:individualDaily.total}:{}),
      updatedAt:nowStamp};
    if(!validCompanyName(sum.partnerName))fail();
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
+     ...(individualPrior?{previousOwnerProductCounts:individualPrior.counts}:{}),
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,
-     privateTotalCount:privateValidated.total};
+     privateTotalCount:privateValidated.total,...visibleIndividual};
   });
  }
  return Object.freeze({manage,accept,view,submit,listHubPartnerCounts,correctHubPartnerCounts});

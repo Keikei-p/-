@@ -1973,3 +1973,65 @@ test("unconnected individual product payload cannot silently succeed or change t
   }
  }
 });
+ 
+test("staged individual counts save and reload by exact Owner ID without rewriting legacy history",async()=>{
+ const {db,api,req,zero,dependencies}=setup(false,true,true,true);
+ const products=["hikari","air","tsubasa","htb"].map((id,i)=>({
+  id,companyId:"hub",name:["光","AIR","つばさ","HTB"][i],active:true}));
+ const visibilityPath="companies/hub/rankingProductVisibility/shared";
+ const catalogPath="companies/hub/rankingCountPublicCatalog/shared";
+ db.seed(visibilityPath,{hubCompanyId:"hub",ownerUid:"h",version:1,
+  enabledHubProductIds:products.map(p=>p.id),partnerOverrides:{}});
+ db.seed(catalogPath,{schema:"nico-reviewed-count-public-catalog-v1",
+  hubCompanyId:"hub",ownerUid:"h",version:1,products});
+ db.seed("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,bindings:[]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ const date="2026-10-31";
+ const legacy=makeWorkspace({...dependencies,submissionPublicationEnabled:()=>false});
+ const legacyCounts={...zero(),"SB光・AIR":3,"つばさ・HTB":4};
+ await legacy.submit(req("p",{date,staffId:staff,expectedVersion:0,counts:legacyCounts}));
+ const staged=makeWorkspace({...dependencies,individualCountInputEnabled:()=>true});
+ const save=(ownerProductCounts,expectedVersion)=>staged.submit(req("p",{
+  date,staffId:staff,expectedVersion,counts:zero(),ownerProductCounts}));
+ const ep="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const sp="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const moneyBefore=clone(db.store.get("products/money")),salesBefore=clone(db.store.get("records/old"));
+ const first=await save({hikari:2,air:3,tsubasa:4,htb:1},1);
+ assert.equal(first.version,2);
+ assert.equal(first.ownerProductTotalCount,10);
+ assert.deepEqual(db.store.get(ep).counts,legacyCounts);
+ assert.deepEqual(db.store.get(sp).counts,legacyCounts);
+ assert.equal(db.store.get(ep).totalCount,7);
+ assert.equal(db.store.get(sp).totalCount,7);
+ assert.deepEqual(db.store.get(ep).ownerProductCounts,{hikari:2,air:3,tsubasa:4,htb:1});
+ assert.deepEqual(db.store.get(sp).ownerProductCounts,db.store.get(ep).ownerProductCounts);
+ assert.equal(db.store.get(sp).ownerProductTotalCount,10);
+ const read=await staged.view(req("p",{date}));
+ assert.deepEqual(read.ownerProducts.map(p=>p.id),products.map(p=>p.id));
+ assert.deepEqual(read.records[0].ownerProductCounts,{hikari:2,air:3,tsubasa:4,htb:1});
+ const v=db.store.get(visibilityPath),c=db.store.get(catalogPath);
+ v.enabledHubProductIds=["hikari","tsubasa","htb"];v.version++;c.version++;
+ const before=clone([...db.store]);
+ await assert.rejects(save({air:0},2),{code:"failed-precondition"});
+ await assert.rejects(save({hikari:4},1),{code:"aborted"});
+ await assert.rejects(staged.submit(req("p",{date,staffId:staff,expectedVersion:2,counts:zero()})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],before);
+ const corrected=await save({hikari:5},2);
+ assert.equal(corrected.version,3);
+ assert.equal(corrected.ownerProductTotalCount,10);
+ assert.equal(db.store.get(ep).ownerProductCounts.air,3);
+ assert.equal(db.store.get(sp).ownerProductTotalCount,13);
+ assert.deepEqual(db.store.get(ep).counts,legacyCounts);
+ const hidden=await staged.view(req("p",{date}));
+ assert.equal(Object.hasOwn(hidden.records[0].ownerProductCounts,"air"),false);
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v3");
+ assert.equal(audit.previousOwnerProductCounts.hikari,2);
+ assert.equal(audit.ownerProductCounts.hikari,5);
+ const same=clone([...db.store]);
+ assert.equal((await save({hikari:5},3)).version,3);
+ assert.deepEqual([...db.store],same);
+ assert.deepEqual(db.store.get("products/money"),moneyBefore);
+ assert.deepEqual(db.store.get("records/old"),salesBefore);
+});

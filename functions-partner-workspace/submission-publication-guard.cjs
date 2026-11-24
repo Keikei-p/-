@@ -8,6 +8,7 @@
  * supplied previousCounts). OFF counts are immutable, not silently reset.
  */
 const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
+const {reconcileOwnerApprovedIndividualCounts}=require("./owner-approved-individual-count-input.cjs");
 // Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
 // never authorizes an unrelated partner count input or publish target.
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
@@ -106,7 +107,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
 }
 function createPartnerSubmissionPublicationGuard({db}={}){
  if(typeof db?.collection!=="function")deny();
- return async function verify({tx,scope,previousCounts,nextCounts}={}){
+ return async function verify({tx,scope,previousCounts,nextCounts,individual}={}){
   if(typeof tx?.get!=="function"||!scope||
      scope.verifiedByServer!==true||scope.kind!=="partner"||
      !id(scope.uid)||!id(scope.cid)||!id(scope.hubId)||
@@ -159,8 +160,15 @@ function createPartnerSubmissionPublicationGuard({db}={}){
    // OFF is a publication setting, never a destructive history migration.
    if(!policy.allowed.has(key)&&after[key]!==before[key])deny();
   }
+  // Only the isolated staged caller opts in. Reuse this very same verified
+  // snapshot; do not accept a browser-supplied publication or Owner identity.
+  let individualResult;
+  if(individual!==undefined)individualResult=reconcileOwnerApprovedIndividualCounts({
+   scope:{...scope,ownerUid:h.ownerUid},visibility,publicCatalog,
+   previous:individual.previous,requested:individual.requested});
   return Object.freeze({verified:true,publicationVersion:policy.version,
-   enabledCategories:Object.freeze(KEYS.filter(k=>policy.allowed.has(k)))});
+   enabledCategories:Object.freeze(KEYS.filter(k=>policy.allowed.has(k))),
+   ...(individualResult===undefined?{}:{individual:individualResult})});
  };
 }
 
