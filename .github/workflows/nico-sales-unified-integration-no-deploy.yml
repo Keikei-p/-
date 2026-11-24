@@ -21,6 +21,7 @@ on:
       - 'tests/integrated-canonical-count-ledger-emulator.test.mjs'
       - 'tests/partner-production-sized-joint-count-parity.test.mjs'
       - 'tests/historical-count-publication*.test.mjs'
+      - 'tests/partner-owner-individual-browser.cjs'
       - 'firestore.rules'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/partner-code-count-readonly-safety.test.mjs'
@@ -134,10 +135,53 @@ jobs:
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: Verify current pinned Owner package and reject source drift without changing historical release guards
         run: node --test tests/canonical-hub-owner-package.test.mjs tests/current-owner-correction-package.test.mjs
+      - name: Test the existing individual count form at mobile and desktop widths without live services
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/nico-individual-ui" --ignore-scripts --no-audit --no-fund --package-lock=false playwright@1.65.1
+          "$RUNNER_TEMP/nico-individual-ui/node_modules/.bin/playwright" install --with-deps chromium
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/nico-individual-ui/node_modules/playwright" node tests/partner-owner-individual-browser.cjs
       - name: Verify initial Owner Auth notification cannot leave a false publication read error
         run: node --test tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs
       - name: No deployment
         run: echo 'PRODUCTION_DEPLOYED=false SOURCE_DATA_MODIFIED=false REAL_ACCOUNT_E2E_UNPROVEN=true'
+      - name: Prepare reviewable source archive and verified existing Owner package without release approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          mkdir -p "$RUNNER_TEMP/nico-candidate-review"
+          git archive --format=zip --output="$RUNNER_TEMP/nico-candidate-review/source-NO-DEPLOY.zip" HEAD \
+            index.html partner-workspace.html owner-partner-setup.html ranking security \
+            functions-partner-workspace functions-ranking-approvals functions-partner-tabs \
+            staging/partner-owner-correction-v3 staging/partner-sb-v2 \
+            firebase.json firebase.partner-workspace.json firebase.ranking-approvals.json firebase.partner-tabs.json firestore.rules
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {execFileSync} from 'node:child_process';
+          import {REQUIRED_GATES} from './tools/production/prepare-integrated-count-release-bundle.mjs';
+          const root=process.env.RUNNER_TEMP+'/nico-candidate-review/';
+          const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+          writeFileSync(root+'review.json',JSON.stringify({
+            candidateHead:event.pull_request.head.sha,checkedOutTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),
+            sourceArchiveSha256:createHash('sha256').update(readFileSync(root+'source-NO-DEPLOY.zip')).digest('hex'),
+            productionWrites:0,productionDeploys:0,sourceFlagsChanged:false,
+            releaseApproved:false,safeToApply:false,hostingBaselineVerified:false,requiredGates:REQUIRED_GATES
+          },null,2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nico-candidate-review-NO-DEPLOY
+          path: |
+            ${{ runner.temp }}/nico-candidate-review/
+            ${{ runner.temp }}/nico-reviewed-owner-correction-v3-package/
+          retention-days: 7
+          if-no-files-found: error
 
   finance-and-count-emulator:
     if: ${{ github.head_ref == 'integration/sales-shared-screen-eight-tabs-20261119' }}

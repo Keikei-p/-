@@ -135,6 +135,55 @@ test('Owner-approved historical source groups publish all 245 counts through the
   }
   assert.equal((await call(3,1)).saved,true);
   assert.equal((await read(owner)).summary.partner,248,'correction replaces five with three exactly once');
+  // Latest integrated implementation: the SAME original save route accepts
+  // separate Owner product IDs, and the real Owner correction path follows.
+  const individual=makeWorkspace({db,getAuth:()=>auth,FieldValue,Timestamp,HttpsError,
+   enabled:()=>true,submissionPublicationEnabled:()=>true,individualCountInputEnabled:()=>true,
+   ownerCorrectionReadEnabled:()=>true,ownerCorrectionWriteEnabled:()=>true,now:()=>now});
+  const distinct=[['historyLight','SB光新規'],['historyAir','SBAIR'],['historyEnergy','つばさ電気']];
+  for(const [id,name] of distinct)await write('products/'+id,{companyId:hub,name,active:true});
+  let visibility=await store.readStatus(principal);
+  for(const id of ['historyRealHtb',...distinct.map(p=>p[0])]){
+   const changed=await store.saveSwitch({principal,productId:id,enabled:true,expectedVersion:visibility.version});
+   visibility={version:changed.version};
+  }
+  const request=(uid,data)=>({auth:{uid,token:decoded(uid)},data,
+   rawRequest:{headers:{authorization:'Bearer '+token(uid)}}});
+  const values={historyLight:2,historyAir:3,historyEnergy:4,historyRealHtb:5,historyNewSbmnp:1};
+  const individualSave=(ownerProductCounts,expectedVersion)=>individual.submit(request(owners[0],
+   {date,staffId:newStaff,counts:zero(),ownerProductCounts,expectedVersion}));
+  await individualSave(values,2);
+  const fresh=await individual.view(request(owners[0],{date}));
+  assert.equal(fresh.sharedCatalogVerified,true);
+  assert.deepEqual(fresh.records.find(r=>r.staffId===newStaff).ownerProductCounts,values);
+  for(const kind of ['day','week','month']){
+   const value=await read(owner,kind);assert.equal(value.summary.partner,263);
+   for(const rows of [value.productRanking,value.companyBreakdown,value.teamBreakdown,value.memberRanking])
+    assert.equal(rows.reduce((n,r)=>n+r.count,0),263);
+   for(const [name,count] of [['SB光・AIR（過去合算）',35],['つばさ・HTB（過去合算）',86],
+    ['SB光新規',2],['SBAIR',3],['つばさ電気',4],['HTB',5],['SBMNP',4]])
+    assert.equal(value.productRanking.find(p=>p.name===name).count,count,name);
+   assert.equal((await read(owners[0],kind,'product')).rows.reduce((n,r)=>n+r.count,0),263);
+  }
+  visibility=await store.readStatus(principal);
+  const offAir=await store.saveSwitch({principal,productId:'historyAir',enabled:false,expectedVersion:visibility.version});
+  assert.equal((await read(owner)).summary.partner,260);
+  await assert.rejects(individualSave({...values,historyAir:4},3),e=>e.code==='failed-precondition');
+  await individualSave({historyLight:1,historyEnergy:4,historyRealHtb:5,historyNewSbmnp:1},3);
+  assert.equal((await read(owner)).summary.partner,259);
+  const ownerListing=await individual.listHubPartnerCounts(request(owner,{date,partnerCompanyId:partners[0]}));
+  assert.equal(ownerListing.sharedCatalogVerified,true);
+  const correction={date,partnerCompanyId:partners[0],staffId:newStaff,expectedVersion:4,
+   counts:{...zero(),SBMNP:3},sbBreakdown:{'SB光':0,'SB AIR':0,'旧未分類':0},
+   correctionReason:'件数確認による訂正',ownerProductCounts:{historyLight:4}};
+  await assert.rejects(individual.correctHubPartnerCounts(request(owners[0],correction)),e=>e.code==='permission-denied');
+  await individual.correctHubPartnerCounts(request(owner,correction));
+  assert.equal((await read(owner)).summary.partner,262);
+  const event=(await db.doc('companies/'+partners[0]+'/partnerWorkAudits/'+date+'__'+newStaff+'__v5').get()).data();
+  assert.equal(event.previousOwnerProductCounts.historyLight,1);assert.equal(event.ownerProductCounts.historyLight,4);
+  assert.equal(event.correctedByOwnerUid,owner);assert.equal(event.ownerProductCounts.historyAir,3);
+  await store.saveSwitch({principal,productId:'historyAir',enabled:true,expectedVersion:offAir.version});
+  assert.equal((await read(owner)).summary.partner,265,'OFF Air is retained through partner and Owner corrections');
   for(const [p,v] of originals)if(p.includes('/partnerWorkEntries/'))
    assert.deepEqual((await db.doc(p).get()).data(),v,'the old 245 entries are unchanged');
   assert.deepEqual((await db.doc('products/historyRealHtb').get()).data(),masterBefore);
