@@ -31,6 +31,8 @@ const name=x=>typeof x==="string"&&x.trim().length>0&&
 const keys=(x,expected)=>obj(x)&&
  Object.keys(x).sort().join("|")===expected.slice().sort().join("|");
 const combined=x=>typeof x==="string"&&/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i.test(x.normalize("NFKC"));
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
+const energyCombined=x=>typeof x==="string"&&LEGACY_COMBINED_TSUBASA_HTB.test(x.normalize("NFKC"));
 const el=(doc,tag,text)=>{
  const n=doc.createElement(tag);
  if(text!==undefined)n.textContent=text;
@@ -90,6 +92,8 @@ function validate(mapping,catalog,partner){
   // unrelated "旧合算" products, or a different financial category.
   if((b.productId===LEGACY||combined(sourceName))&&
      !combined(products.get(b.hubProductId).name))fail();
+  if((b.productId==="partnerSku07"||energyCombined(sourceName))&&
+     !energyCombined(products.get(b.hubProductId).name))fail();
   match.set(b.productId,b.hubProductId);
  }
  return {version:mapping.version,products:[...products.values()],match,privateProducts};
@@ -116,7 +120,7 @@ export function suggestUnambiguousOwnerSkuMappings({mapping,catalog,partnerCompa
   // mapping only if the Owner has a unique matching combined hub SKU;
   // standalone 光/Air are never candidates and no save happens here.
   const candidates=view.products.filter(p=>productId===LEGACY?
-   combined(p.name):p.name===partnerLabel);
+   combined(p.name):productId==="partnerSku07"?energyCombined(p.name):p.name===partnerLabel);
   const [target]=candidates;
   if(candidates.length===1&&published.has(target.id)&&!occupied.has(target.id))
    result.push({partnerProductId:productId,partnerLabel,
@@ -189,7 +193,8 @@ export function createOwnerReviewedSkuMappingPanel({
     const currentId=view.match.get(category)||"";
     const candidates=view.products.filter(p=>
      (p.active||p.id===currentId)&&
-     (!(category===LEGACY||combined(view.privateProducts.get(category)?.name??""))||combined(p.name)));
+     (!(category===LEGACY||combined(view.privateProducts.get(category)?.name??""))||combined(p.name))&&
+     (!(category==="partnerSku07"||energyCombined(view.privateProducts.get(category)?.name??""))||energyCombined(p.name)));
     for(const p of candidates){
      const opt=el(document,"option",p.name+(p.active?"":"（取扱終了）"));
      opt.value=p.id;

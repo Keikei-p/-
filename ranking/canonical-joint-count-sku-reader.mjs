@@ -23,6 +23,7 @@ import {mergeVerifiedTwoMonthInputs}
 import {linkAllRegisteredCountsWithoutSetup}
  from "./zero-setup-count-linker.mjs";
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -165,6 +166,8 @@ export function composeCanonicalMonthlyRankingInput({
   if((b.productId==="partnerSku05"||
       LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC")))&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
+  if((b.productId==="partnerSku07"||LEGACY_COMBINED_TSUBASA_HTB.test(originalProduct.name.normalize("NFKC")))&&
+     !LEGACY_COMBINED_TSUBASA_HTB.test(target.name.normalize("NFKC")))STOP();
  }
  const groups=zeroSetupLink===true?
   linkAllRegisteredCountsWithoutSetup({

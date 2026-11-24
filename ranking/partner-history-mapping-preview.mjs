@@ -6,6 +6,7 @@
  */
 import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
 const CAT=PARTNER_RANK_SKUS.map(p=>({id:p.id,label:p.name.replace("（旧合算・未分類）","")}));
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const safe=x=>typeof x==="string"&&ID.test(x)&&!["__proto__","constructor","prototype"].includes(x);
 const obj=x=>!!x&&typeof x==="object"&&!Array.isArray(x);
@@ -70,7 +71,9 @@ export function previewHistoricalPartnerMapping({
    const p=catalog.get(item.hubProductId);
    if(!p||used.has(item.hubProductId))fail("COLLISION");
    if(item.productId==="partnerSku05"&&
-      !/(?:SB光・AIR|旧合算|未分類)/.test(p.name))fail("COMBINED_CANNOT_SPLIT");
+      !/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i.test(p.name.normalize("NFKC")))fail("COMBINED_CANNOT_SPLIT");
+   if(item.productId==="partnerSku07"&&
+      !LEGACY_COMBINED_TSUBASA_HTB.test(p.name.normalize("NFKC")))fail("ENERGY_COMBINED_CANNOT_SPLIT");
    used.add(item.hubProductId);
    bind.set(item.productId,item.hubProductId);
   }
@@ -113,7 +116,7 @@ export function previewHistoricalPartnerMapping({
   categories.push(Object.freeze({
    sourceSkuId:c.id,sourceLabel:c.label,originalCount,targetHubProductId,
    state,rankingIncludedCount:on?originalCount:0,
-   heldCount:on?0:originalCount,legacyCombined:c.id==="partnerSku05"
+   heldCount:on?0:originalCount,legacyCombined:c.id==="partnerSku05",legacyEnergyCombined:c.id==="partnerSku07"
   }));
  }
  if(included+held!==total||

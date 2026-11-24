@@ -249,3 +249,19 @@ test("historic 光/AIR never maps to an unrelated product labeled only 旧合算
   assert.equal(applied.saved,true,name+" is a genuine combined product");
  }
 });
+
+
+test("old legacy and archived private つばさ/HTB cannot become either standalone product or 光/AIR",async()=>{
+ for(const source of ["partnerSku07","partnerPrivate:energy"]){
+  const f=fake();
+  f.state.set("companies/partner/partnerPrivateProducts/energy",{companyId:"partner",name:"つばさ・HTB（旧合算）",active:false,origin:"partner_custom",visibility:"private"});
+  for(const [id,name] of [["htb","HTB"],["tsubasa","つばさ電気"],["generic","旧合算"],["combined","SB光・AIR"]]){
+   f.state.set("products/"+id,{companyId:"hub",name,active:true});
+   await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:id,expectedVersion:0}),/UNVERIFIED/);
+  }
+  assert.equal(f.writes,0);
+  f.state.set("products/energy",{companyId:"hub",name:"つばさ・HTB（旧合算）",active:true});
+  assert.equal((await f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:"energy",expectedVersion:0})).saved,true);
+  assert.equal(f.state.get("companies/partner/partnerPrivateProducts/energy").active,false);
+ }
+});

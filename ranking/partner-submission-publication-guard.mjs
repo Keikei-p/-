@@ -10,6 +10,7 @@ import {allowedPartnerCategories} from "./approved-published-categories.mjs";
 // Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
 // never authorizes an unrelated partner count input or publish target.
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -76,6 +77,8 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
   // Never interpret old combined SB光・AIR as either new 光 or Air.
   if(b.productId==="partnerSku05"&&
      !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
+  if(b.productId==="partnerSku07"&&
+     !LEGACY_COMBINED_TSUBASA_HTB.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
   mapped.set(b.productId,b.hubProductId);
  }
  const allowed=new Set();

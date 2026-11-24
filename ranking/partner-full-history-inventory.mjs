@@ -26,6 +26,8 @@ const named=x=>typeof x==="string"&&x.trim().length>0&&x.trim().length<=80&&
 const nameKey=x=>named(x)?x.trim():null;
 const combined=x=>typeof x==="string"&&
  /(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i.test(x.normalize("NFKC"));
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
+const energyCombined=x=>typeof x==="string"&&LEGACY_COMBINED_TSUBASA_HTB.test(x.normalize("NFKC"));
 function day(x){
  if(typeof x!=="string"||!/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(x))stop("INVALID_DATE");
  const d=new Date(x+"T00:00:00Z");
@@ -202,6 +204,7 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
    const sourceId=legacy?"partnerSku"+String(legacyIndex+1).padStart(2,"0"):pid;
    const sourceName=legacy?pid:privateKind?privates.get(pid)?.name:pub.products.get(pid)?.name;
    const legacyCombined=legacy&&legacyIndex===4;
+   const legacyEnergyCombined=legacy&&legacyIndex===6;
    const productRef=alias("P-",company.id,privateKind?"private":published?"published":"legacy",sourceId);
    const privateBindingId=privateKind?"partnerPrivate:"+sourceId:null;
    let target=published?pid:pub.bindings.get(privateBindingId??sourceId)??null;
@@ -217,17 +220,19 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
    if(!reason&&!targetProduct)reason="held_unknown_target";
    if(!reason&&(legacyCombined||(privateKind&&combined(sourceName)))&&
       !combined(targetProduct.name))reason="held_legacy_combined";
+   if(!reason&&(legacyEnergyCombined||(privateKind&&energyCombined(sourceName)))&&
+      !energyCombined(targetProduct.name))reason="held_legacy_energy_combined";
    if(!reason&&!pub.allowed(target))reason="held_off";
    const state=reason??"mapped",mapped=state==="mapped"?count:0;
    const exact=nameKey(sourceName);
    const nameMatches=hub.ownerProducts.filter(p=>exact!==null&&nameKey(p.name)===exact&&
-    (!legacyCombined||combined(p.name)));
+    (!legacyCombined||combined(p.name))&&(!legacyEnergyCombined||energyCombined(p.name)));
    const candidates=nameMatches.length===1&&nameMatches[0].active!==false?
     [alias("H-",hub.id,nameMatches[0].id)]:[];
    const exactIdKnown=published&&pub.products.has(pid);
    const rowKey=JSON.stringify([date.slice(0,7),kind,productRef,state,target]);
    if(!monthRows.has(rowKey))monthRows.set(rowKey,{
-    month:date.slice(0,7),sourceKind:kind,productRef,state,legacyCombined,
+    month:date.slice(0,7),sourceKind:kind,productRef,state,legacyCombined,legacyEnergyCombined,
     targetProductRef:target?alias("H-",hub.id,target):null,
     originalCount:0,mappedCount:0,heldCount:0,
     exactNameCandidates:candidates.sort(),candidateOnly:true,

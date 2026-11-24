@@ -182,3 +182,33 @@ test("OFF historical counts remain unchanged when a newly linked ON SKU is corre
  }
  assert.deepEqual(x.writes,[]);
 });
+
+
+test("both publication implementations refuse a split energy mapping but keep separate product masters untouched",()=>{
+ const products=[product("htb","HTB"),product("tsubasa","つばさ電気"),product("energy","つばさ・HTB（旧合算）")];
+ for(const allow of [esmAllowed,cjsAllowed]){
+  for(const target of ["htb","tsubasa"]){
+   const f=fixture({products,enabledHubProductIds:products.map(p=>p.id),bindings:[bound("partnerSku07",target)]});
+   assert.throws(()=>allow(f.params),/UNVERIFIED/);
+  }
+  const f=fixture({products,enabledHubProductIds:products.map(p=>p.id),bindings:[bound("partnerSku07","energy")]});
+  assert.deepEqual(allow(f.params),["つばさ・HTB"]);
+ }
+});
+
+
+test("both count-save implementations preserve 86 OFF energy counts while permitting an unrelated ON correction",async()=>{
+ for(const guard of [esmGuard,cjsGuard]){
+  const products=[...standard,product("htb","HTB"),product("tsubasa","つばさ電気")];
+  const f=fixture({products});
+  const before={...zero(),"つばさ・HTB":86},after={...before,NURO:2};
+  const r=await guard({db:f.db})({tx:f.tx,scope:f.scope,previousCounts:before,nextCounts:after});
+  assert(!r.enabledCategories.includes("つばさ・HTB"));
+  assert.equal(after["つばさ・HTB"],86);
+  await assert.rejects(guard({db:f.db})({tx:f.tx,scope:f.scope,previousCounts:before,
+   nextCounts:{...after,"つばさ・HTB":0}}),/UNVERIFIED/);
+  const bad=fixture({products,enabledHubProductIds:[...products.map(p=>p.id)],bindings:[bound("partnerSku07","htb")]});
+  await assert.rejects(guard({db:bad.db})({tx:bad.tx,scope:bad.scope,previousCounts:before,nextCounts:after}),/UNVERIFIED/);
+  assert.deepEqual(f.writes,[]);assert.deepEqual(bad.writes,[]);
+ }
+});

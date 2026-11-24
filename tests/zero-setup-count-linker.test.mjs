@@ -264,3 +264,19 @@ test("same actual 3-company ledger produces matching joint company, team, person
   owner.productRanking.map(x=>[x.name,x.count]));
  assert(!("companyBreakdown" in partner));
 });
+
+
+test("saved energy combination stays unmatched with separate future products and rejects wrong reviewed targets",()=>{
+ const f=fixture();
+ f.hubSource.products.push({companyId:"hub",sourceId:"htb",name:"HTB",active:true},
+  {companyId:"hub",sourceId:"tsubasa",name:"つばさ電気",active:true});
+ const before=structuredClone(f);
+ assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku07")
+  .every(x=>x.groupId==="partnerUnmatched:partnerSku07"));
+ for(const id of ["htb","tsubasa","combined"])
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup({...f,reviewedBindings:[
+   {companyId:"partner1",productId:"partnerSku07",hubProductId:id}]}),/UNVERIFIED/);
+ assert.deepEqual(f,before);
+ f.hubSource.products.push({companyId:"hub",sourceId:"energy",name:"つばさ・HTB",active:true});
+ assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku07").every(x=>x.groupId==="energy"));
+});

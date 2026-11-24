@@ -5,6 +5,7 @@
 // Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
 // never authorizes an unrelated partner count input or publish target.
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 // Fallback only for exact, long-established count category names. The Owner
 // must still have published the unique ACTIVE hub product in the public count
@@ -74,6 +75,8 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   seenHubSku.add(b.hubProductId);
   if(b.productId==="partnerSku05"&&
    !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))stop();
+  if(b.productId==="partnerSku07"&&
+   !LEGACY_COMBINED_TSUBASA_HTB.test(chosen.name.normalize("NFKC")))stop();
   // Reviewed private bindings reserve their target for historical counts.
   // The fixed legacy input form only accepts its own nine categories.
   if(!privateSku(b.productId))binding.set(b.productId,b.hubProductId);

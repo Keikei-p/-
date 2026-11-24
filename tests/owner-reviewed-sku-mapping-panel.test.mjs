@@ -461,3 +461,21 @@ test("Owner count-only picker never offers unrelated NURO旧合算 or 未分類 
  assert.deepEqual(selects(root)[4].children.map(x=>x.value),["","combined"]);
  p.destroy();
 });
+
+
+test("Owner picker keeps both historical combined families distinct and never saves on load",async()=>{
+ const c=catalog(),root=new Node("main"),auth={currentUser:user};
+ c.products.push({id:"energy",name:"つばさ・HTB（旧合算）",active:true,enabled:true},
+  {id:"htb",name:"HTB",active:true,enabled:true},{id:"tsubasa",name:"つばさ電気",active:true,enabled:true});
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>c,saveMapping:async()=>assert.fail("no confirmed save")});
+ assert.equal(await panel.refresh(),true);
+ assert.deepEqual(selects(root)[6].children.map(x=>x.value),["","energy"]);
+ assert.deepEqual(selects(root)[4].children.map(x=>x.value),["","combined"]);
+ panel.destroy();
+ for(const source of ["partnerSku07","partnerPrivate:oldEnergy"]){
+  const m={...status(1,[{companyId:"partner",productId:source,hubProductId:"htb"}]),
+   partnerProducts:[{id:"partnerPrivate:oldEnergy",name:"翼/HTB（旧合算）",active:false}]};
+  assert.throws(()=>suggestUnambiguousOwnerSkuMappings({mapping:m,catalog:c,partnerCompanyId:"partner"}),/UNVERIFIED/);
+ }
+});

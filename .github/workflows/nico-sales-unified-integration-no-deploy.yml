@@ -123,6 +123,9 @@ jobs:
           # The completed internal dashboard must remain byte-identical.
           node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
           node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs tests/firestore-managed-backup-inventory.test.mjs
+          # Both old combined families stay intact; standalone future IDs never
+          # reclassify old counts. These tests perform no live writes.
+          node --test tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-rollout.test.mjs tests/canonical-joint-count-sku-reader.test.mjs tests/zero-setup-count-linker.test.mjs tests/partner-submission-publication-guard.test.mjs tests/partner-full-history-inventory.test.mjs tests/partner-history-mapping-preview.test.mjs tests/partner-owner-on-exact-auto-input.test.mjs
           echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
       - name: Verify current pinned Owner package and reject source drift without changing historical release guards
         run: node --test tests/canonical-hub-owner-package.test.mjs tests/current-owner-correction-package.test.mjs

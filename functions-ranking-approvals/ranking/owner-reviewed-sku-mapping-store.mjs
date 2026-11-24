@@ -10,6 +10,7 @@
 import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
 
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９,.，]*\s*(?:円|万円))/i;
 const SKU=new Set(PARTNER_RANK_SKUS.map(p=>p.id));
@@ -154,6 +155,9 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
     if((partnerProductId==="partnerSku05"||
         (sourceName!==null&&LEGACY_COMBINED_LIGHT_AIR.test(sourceName.normalize("NFKC"))))&&
        !LEGACY_COMBINED_LIGHT_AIR.test(name.normalize("NFKC")))stop();
+    if((partnerProductId==="partnerSku07"||
+        (sourceName!==null&&LEGACY_COMBINED_TSUBASA_HTB.test(sourceName.normalize("NFKC"))))&&
+       !LEGACY_COMBINED_TSUBASA_HTB.test(name.normalize("NFKC")))stop();
    }
    if(prevId===hubProductId)return {
     saved:false,version:previous.version,partnerCompanyId,

@@ -224,3 +224,26 @@ test("pseudonymous full-history audit holds false combined labels without rewrit
   assert.equal(result.productionDocumentWrites,0);
  }
 });
+
+
+test("old 86 combined energy cases and separate published IDs coexist without rewriting or double counting",()=>{
+ const f=historicalFixture(),h=f.hubs[0],e=f.companies[0].entries[0],report=f.reports[0];
+ h.catalog.products.push(product("htb_private_id","HTB"),product("tsubasa_private_id","つばさ電気"));
+ h.visibility.enabledHubProductIds.push("htb_private_id","tsubasa_private_id");
+ e.counts=counts();e.counts["つばさ・HTB"]=86;e.totalCount=86;
+ e.privateCounts={};e.privateTotalCount=0;e.publishedCounts={htb_private_id:3,tsubasa_private_id:2};e.publishedTotalCount=5;
+ report.counts=structuredClone(e.counts);report.totalCount=86;
+ report.publishedCounts=structuredClone(e.publishedCounts);report.publishedTotalCount=5;
+ const before=structuredClone(f),r=inventoryPartnerFullHistory(f);
+ assert.equal(r.originalTotalCount,91);assert.equal(r.heldTotalCount,86);assert.equal(r.mappedTotalCount,5);
+ assert.equal(r.overlapDayCount,0);assert.equal(r.summaryMismatchDayCount,0);
+ const energy=r.companies[0].products.find(p=>p.legacyEnergyCombined&&p.originalCount>0);
+ assert.equal(energy.originalCount,86);assert.equal(energy.heldCount,86);
+ assert.deepEqual(f,before);
+ // A bad old mapping does not become evidence that these are all HTB cases.
+ delete e.publishedCounts;delete e.publishedTotalCount;delete report.publishedCounts;delete report.publishedTotalCount;
+ h.mapping.bindings.push({companyId:"partner_private_id",productId:"partnerSku07",hubProductId:"htb_private_id"});
+ const held=inventoryPartnerFullHistory(f);
+ assert.equal(held.heldCountsByReason.held_legacy_energy_combined,86);
+ assert.equal(held.mappedTotalCount,0);
+});

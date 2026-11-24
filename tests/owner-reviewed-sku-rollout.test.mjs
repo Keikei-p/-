@@ -219,3 +219,15 @@ test("rollout rejects unrelated generic 旧合算 and 未分類 names as combine
   }),/OWNER_SKU_ROLLOUT_UNVERIFIED/);
  }
 });
+
+
+test("rollout cannot copy an old energy combination into HTB, つばさ or another combined family",()=>{
+ for(const name of ["HTB","つばさ電気","旧合算","SB光・AIR"]){
+  const c=catalog();c.products.push({id:"energy",name,active:true,enabled:true});
+  assert.throws(()=>planOwnerReviewedSkuRollout({mapping:map(3,[bind("partnerA","partnerSku07","energy")]),
+   catalog:c,sourceCompanyId:"partnerA",targetCompanyIds:["partnerB"]}),/UNVERIFIED/);
+ }
+ const c=catalog();c.products.push({id:"energy",name:"翼/HTB（旧合算）",active:true,enabled:true});
+ assert.equal(planOwnerReviewedSkuRollout({mapping:map(3,[bind("partnerA","partnerSku07","energy")]),
+  catalog:c,sourceCompanyId:"partnerA",targetCompanyIds:["partnerB"]}).totalApply,1);
+});

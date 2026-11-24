@@ -19,6 +19,7 @@ const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const PRIVATE=/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/;
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const BAD=/(?:売上|単価|収益|原価|価格|キャッシュバック|報酬|利益|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const stop=()=>{throw Error("ZERO_SETUP_COUNT_SOURCE_UNVERIFIED");};
 const valid=x=>typeof x==="string"&&ID.test(x)&&
@@ -86,6 +87,8 @@ export function linkAllRegisteredCountsWithoutSetup({
     LEGACY_COMBINED_LIGHT_AIR.test(origin.name.normalize("NFKC")));
   if(oldCombined&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))stop();
+  if((b.productId==="partnerSku07"||LEGACY_COMBINED_TSUBASA_HTB.test(origin.name.normalize("NFKC")))&&
+     !LEGACY_COMBINED_TSUBASA_HTB.test(target.name.normalize("NFKC")))stop();
   const seen=boundIdsByCompany.get(b.companyId)||new Set();
   const reserved=reservedByCompany.get(b.companyId)||new Set();
   if(seen.has(b.productId)||reserved.has(b.hubProductId))stop();
@@ -152,6 +155,9 @@ export function linkAllRegisteredCountsWithoutSetup({
        (isPrivate&&LEGACY_COMBINED_LIGHT_AIR.test(name.normalize("NFKC"))))&&
       target&&!LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))
      target=null;
+   if((p.sourceId==="partnerSku07"||
+       (isPrivate&&LEGACY_COMBINED_TSUBASA_HTB.test(name.normalize("NFKC"))))&&
+      target&&!LEGACY_COMBINED_TSUBASA_HTB.test(target.name.normalize("NFKC")))target=null;
    // One hub SKU cannot be claimed by two categories in the SAME company.
    // Pre-reserving reviewed IDs prevents an alias from stealing an Owner map.
    if(!reviewedTarget&&target&&mappedHub.has(target.sourceId))target=null;

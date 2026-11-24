@@ -295,3 +295,16 @@ test("canonical ranking treats saved partnerSku05 as combined even when its disp
  assert.equal(mapped.groupId,"legacyCombined");
  assert.equal(partner.records[0].totalCount,5);
 });
+
+
+test("canonical reader refuses historical energy reclassification even with a reviewed source ID",()=>{
+ const f=sources(),p=f.partnerSources[0];
+ p.products=[{companyId:"partner",sourceId:"partnerSku07",name:"つばさ・HTB",active:true}];
+ p.lines[0].productId="partnerSku07";
+ f.hubSource.products.push({companyId:"hub",sourceId:"htb",name:"HTB",active:true});
+ const before=structuredClone(f);
+ assert.throws(()=>compose({...f,skuMap:{...map,bindings:[{companyId:"partner",productId:"partnerSku07",hubProductId:"htb"}]}}),/UNVERIFIED/);
+ assert.deepEqual(f,before);
+ f.hubSource.products.find(x=>x.sourceId==="htb").name="つばさ・HTB（旧合算）";
+ assert.equal(compose({...f,skuMap:{...map,bindings:[{companyId:"partner",productId:"partnerSku07",hubProductId:"htb"}]}}).productGroups.find(x=>x.productId==="partnerSku07").groupId,"htb");
+});
