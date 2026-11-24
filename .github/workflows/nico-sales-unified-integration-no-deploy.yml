@@ -19,6 +19,7 @@ on:
       - 'tests/firestore-managed-backup-inventory.test.mjs'
       - 'tests/managed-backup-rehearsal.test.mjs'
       - 'tests/integrated-canonical-count-ledger-emulator.test.mjs'
+      - 'tests/partner-production-sized-joint-count-parity.test.mjs'
       - 'firestore.rules'
       - 'tests/owner-product-visibility-rankings.test.mjs'
       - 'tests/partner-code-count-readonly-safety.test.mjs'

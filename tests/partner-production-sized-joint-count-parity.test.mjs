@@ -31,18 +31,18 @@ const scenario=[
  {cid:"partner3",entryCount:63,reportDays:20,total:176,linked:5,combined:17,zeros:4}
 ];
 
-function sourceFor({cid,entryCount,reportDays,total,linked,combined,zeros}){
+function sourceFor({cid,entryCount,reportDays,total,linked,combined,zeros,energy=0}){
  const relation={hubCompanyId:"hub",partnerCompanyId:cid,
   active:true,countSharingApproved:true};
  const ledger=[],daily=new Map();
- const positive=entryCount-zeros,other=total-linked-combined;
+ const positive=entryCount-zeros,other=total-linked-combined-energy;
  assert(other>=positive,"every nonzero report gets at least one synthetic count");
  for(let i=0;i<entryCount;i++){
   const date=month+"-"+String(1+i%reportDays).padStart(2,"0");
   const staffId="worker"+Math.floor(i/reportDays);
   const counts=zero(),isPositive=i<positive;
   if(isPositive)counts.SBMNP=1+(i===0?other-positive:0);
-  if(i===0){counts.NURO=linked;counts["SB光・AIR"]=combined;}
+  if(i===0){counts.NURO=linked;counts["SB光・AIR"]=combined;counts["つばさ・HTB"]=energy;}
   const totalCount=Object.values(counts).reduce((n,v)=>n+v,0);
   const row={id:date+"__"+staffId,companyId:cid,hubCompanyId:"hub",
    date,staffId,teamIdSnapshot:"team1",staffNameSnapshot:"担当者",
@@ -74,8 +74,8 @@ function sourceFor({cid,entryCount,reportDays,total,linked,combined,zeros}){
  assert.equal(result.products.length,PARTNER_RANK_SKUS.length);
  return {result,input};
 }
-function fixture(){
- const input=scenario.map(sourceFor);
+function fixture(specs=scenario){
+ const input=specs.map(sourceFor);
  const hubRecord={companyId:"hub",sourceId:"own1",uid:"ownerStaff",
   date:"2026-11-18",teamId:"team1",totalCount:5,reportStatus:"submitted",
   memberNameSnapshot:"直営担当",teamNameSnapshot:"1班",workLocation:""};
@@ -90,7 +90,7 @@ function fixture(){
   lines:[{companyId:"hub",recordId:"own1",sourceId:"ownline",
    date:"2026-11-18",uid:"ownerStaff",teamId:"team1",
    productId:"nuro",count:5}]};
- const approvedCompanyIds=["hub",...scenario.map(x=>x.cid)];
+ const approvedCompanyIds=["hub",...specs.map(x=>x.cid)];
  const context={serverVerified:true,userActive:true,memberActive:true,
   companyActive:true,activeCountSharingVerified:true,
   completeSnapshotBudgetApproved:true,individualNamesApproved:false,
@@ -99,7 +99,7 @@ function fixture(){
  const joined=composeCanonicalMonthlyRankingInput({
   context,hubSource:ownSource,partnerSources:input.map(x=>x.result),
   skuMap:{hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
-   active:true,version:1,bindings:scenario.map(({cid})=>({
+   active:true,version:1,bindings:specs.map(({cid})=>({
     companyId:cid,productId:"partnerSku01",hubProductId:"nuro"
    }))},
   zeroSetupLink:true,hubOwnerUid:"owner",month,serverAsOf:asOf
@@ -175,4 +175,55 @@ test("audit-size: Owner ON-only publication is explicit; 224 unmatched historic 
  assert.equal(input.reduce((n,x)=>n+x.result.lines.reduce((s,r)=>s+r.count,0),0),230);
  // Prevent claiming all 230 are published when only 6 are matched and ON.
  assert.notEqual(raw.summary.partner,230);
+});
+
+
+// Uses the latest AUDITED totals only. Staff/day/SKU distribution and the
+// later 5 new cases below are entirely synthetic; no live product approval.
+// Latest audited totals are reused only as sizes. Dates, people, source IDs
+// and per-record distribution below are synthetic, not production history.
+test("245 historical cases plus new separate inputs keep both combined histories in all four ranking dimensions",()=>{
+ const specs=[
+  {cid:"partner1",entryCount:5,reportDays:5,total:18,linked:0,combined:5,energy:0,zeros:1},
+  {cid:"partner2",entryCount:69,reportDays:20,total:187,linked:5,combined:18,energy:83,zeros:3},
+  {cid:"partner3",entryCount:19,reportDays:10,total:40,linked:1,combined:12,energy:3,zeros:0}
+ ];
+ const f=fixture(specs),past=structuredClone(f.input.map(x=>x.input.entries));
+ assert.equal(past.flat().length,93);
+ assert.equal(f.input.reduce((n,x)=>n+x.input.summaries.length,0),35);
+ const initial=buildVerifiedCountDashboard({...f.joined,context:f.context,period:f.period});
+ assert.equal(initial.summary.partner,245);
+ const next=f.input.map(x=>structuredClone(x.input)),p=next[1],date="2026-11-21";
+ p.includePrivateCounts=true;p.proof.completePrivateProductCatalogueRead=true;
+ p.privateProducts=[{id:"newHtb",companyId:p.partnerCompanyId,name:"HTB",active:true,origin:"partner_custom",visibility:"private"},
+  {id:"newTsubasa",companyId:p.partnerCompanyId,name:"つばさ電気",active:true,origin:"partner_custom",visibility:"private"}];
+ p.entries.push({id:date+"__futureWorker",companyId:p.partnerCompanyId,hubCompanyId:"hub",date,
+  staffId:"futureWorker",teamIdSnapshot:"team1",staffNameSnapshot:"新規担当",version:1,
+  counts:zero(),totalCount:0,privateCounts:{newHtb:3,newTsubasa:2},privateTotalCount:5});
+ p.summaries.push({source:"staff-entries-v1",hubCompanyId:"hub",partnerCompanyId:p.partnerCompanyId,date,counts:zero(),totalCount:0});
+ const own=structuredClone(f.joined.sources[0]);
+ own.products.push({companyId:"hub",sourceId:"newHtb",name:"HTB",active:true,sortOrder:1},
+  {companyId:"hub",sourceId:"newTsubasa",name:"つばさ電気",active:true,sortOrder:2});
+ const joined=composeCanonicalMonthlyRankingInput({context:f.context,hubSource:own,
+  partnerSources:next.map(buildPartnerCountRankingSource),zeroSetupLink:true,hubOwnerUid:"owner",
+  skuMap:{hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",active:true,version:1,
+   bindings:specs.map(({cid})=>({companyId:cid,productId:"partnerSku01",hubProductId:"nuro"}))},
+  month,serverAsOf:asOf});
+ const raw=buildVerifiedCountDashboard({...joined,context:f.context,period:f.period}),view=project(raw);
+ assert.equal(raw.summary.partner,250);assert.equal(raw.summary.total,255);
+ for(const rows of [raw.companyBreakdown,raw.teamBreakdown,raw.memberRanking,raw.productRanking])
+  assert.equal(rows.reduce((n,r)=>n+r.count,0),255);
+ for(const [name,n] of [["SB光・AIR（旧合算・未分類）",35],["つばさ・HTB",86],["HTB",3],["つばさ電気",2]])
+  assert.equal(view.productRows.find(x=>x.name===name)?.count,n);
+ for(let i=0;i<next.length;i++)assert.deepEqual(next[i].entries.slice(0,past[i].length),past[i]);
+ assert.equal(raw.companyBreakdown.find(c=>c.id==="partner2").count,192);
+ for(const [kind,total,partner] of [["day",5,5],["week",25,20]]){
+  const v=buildVerifiedCountDashboard({...joined,context:f.context,period:{kind,day:asOf,asOf}});
+  assert.equal(v.summary.total,total);assert.equal(v.summary.partner,partner);
+  for(const rows of [v.companyBreakdown,v.teamBreakdown,v.memberRanking,v.productRanking])
+   assert.equal(rows.reduce((n,r)=>n+r.count,0),total);
+ }
+
+ // Source/engine/projection proof only: no claim that unresolved historical
+ // categories bypass the real Owner publication gate or are already public.
 });
