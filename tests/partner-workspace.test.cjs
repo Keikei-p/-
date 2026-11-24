@@ -2104,3 +2104,40 @@ test("legacy partner-only rankings cannot certify partial counts after individua
  }
  assert.deepEqual([...db.store],before);
 });
+
+test("Owner and partner retain previously recorded SB split and adjust only the legacy unclassified remainder",async()=>{
+ const {db,api,req,zero}=setup(false,false,true,true),date="2026-10-31";
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ const initial={...zero(),"SB光・AIR":7,NURO:1};
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:0,counts:initial}));
+ const ep="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const sp="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const ap="companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v";
+ const split={"SB光":2,"SB AIR":1,"旧未分類":4};
+ db.store.get(ep).sbBreakdown=clone(split);
+ db.store.get(sp).sbBreakdown=clone(split);
+ const previousAudit=clone(db.store.get(ap+"1"));
+ const listed=await api.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
+ assert.deepEqual(listed.entries[0].sbBreakdown,split);
+ const payload={date,partnerCompanyId:"partner",staffId:staff,expectedVersion:1,
+  counts:{...initial,"SB光・AIR":8},sbBreakdown:{...split,"旧未分類":5},
+  correctionReason:"登録件数の確認訂正"};
+ const before=clone([...db.store]);
+ await assert.rejects(api.correctHubPartnerCounts(req("h",{...payload,sbBreakdown:{"SB光":3,"SB AIR":1,"旧未分類":4}})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],before);
+ await api.correctHubPartnerCounts(req("h",payload));
+ for(const path of [ep,sp])assert.deepEqual(db.store.get(path).sbBreakdown,payload.sbBreakdown);
+ assert.deepEqual(db.store.get(ap+"2").previousSbBreakdown,split);
+ assert.deepEqual(db.store.get(ap+"2").sbBreakdown,payload.sbBreakdown);
+ await api.submit(req("p",{date,staffId:staff,expectedVersion:2,counts:{...initial,"SB光・AIR":6}}));
+ for(const path of [ep,sp])assert.deepEqual(db.store.get(path).sbBreakdown,{"SB光":2,"SB AIR":1,"旧未分類":3});
+ assert.deepEqual(db.store.get(ap+"1"),previousAudit);
+ const after=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:3,counts:{...initial,"SB光・AIR":2}})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],after);
+ db.store.get(sp).sbBreakdown={"SB光":0,"SB AIR":0,"旧未分類":6};
+ const mismatch=clone([...db.store]);
+ await assert.rejects(api.submit(req("p",{date,staffId:staff,expectedVersion:3,counts:{...initial,"SB光・AIR":7}})),{code:"data-loss"});
+ assert.deepEqual([...db.store],mismatch);
+});

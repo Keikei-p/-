@@ -52,7 +52,7 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
   "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
   "functions-partner-workspace/index.js": "245cfa7241dec0c0424e4cf347c9cdc61ab06cdc",
-  "functions-partner-workspace/service.cjs": "5e61fb2bcf62a0675135f4ca073b0ffef88c6c29",
+  "functions-partner-workspace/service.cjs": "17540d18ac2bc90a77a6507f52cb2b53e3f23102",
   "firestore.rules": "9eca5c49957d370bbf092b9783dfa0e97f1a735a",
   "index.html": "25741b266d50d6549c248d1ae8c23653f3d39f48",
   "partner-workspace.html": "c4a51077dd05099e644b1bdc3dcdba05924a0d94",

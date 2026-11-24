@@ -992,7 +992,37 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
  // a selected workspaceCompanyId nor any browser role/finance flag grants access.
  const ownerCorrectionShape=d=>d&&typeof d==="object"&&!Array.isArray(d)&&
   Object.keys(d).sort().join("|")==="date|partnerCompanyId";
+ // Old combined counts remain unclassified. If an earlier approved writer
+ // did store a breakdown, preserve it exactly; never infer or erase it.
+ const sbParts=["SB光","SB AIR","旧未分類"];
  const unknownSb=n=>({"SB光":0,"SB AIR":0,"旧未分類":n});
+ const verifiedSb=(n,raw,code="data-loss")=>{
+  if(!Number.isSafeInteger(n)||n<0)fail(code);
+  if(raw===undefined||raw===null)return unknownSb(n);
+  if(typeof raw!=="object"||Array.isArray(raw)||
+     Object.keys(raw).sort().join("|")!=="SB AIR|SB光|旧未分類"||
+     sbParts.some(k=>!Number.isSafeInteger(raw[k])||raw[k]<0)||
+     sbParts.reduce((sum,k)=>sum+raw[k],0)!==n)fail(code);
+  return Object.fromEntries(sbParts.map(k=>[k,raw[k]]));
+ };
+ const savedSb=(row,previous,next)=>{
+  const before=verifiedSb(previous,row.sbBreakdown);
+  const unclassified=next-before["SB光"]-before["SB AIR"];
+  if(!Number.isSafeInteger(unclassified)||unclassified<0)fail("failed-precondition");
+  return {before,after:{...before,"旧未分類":unclassified}};
+ };
+ const sbUpdates=(row,daily,previous,next,aggregateBefore,aggregateAfter)=>{
+  const {before,after}=savedSb(row,previous,next);
+  if(row.sbBreakdown==null&&daily.sbBreakdown==null)return {before,after,tracked:false};
+  const current=verifiedSb(aggregateBefore,daily.sbBreakdown);
+  const updated={};
+  for(const k of sbParts){
+   if(current[k]<before[k])fail("data-loss");
+   updated[k]=current[k]-before[k]+after[k];
+  }
+  verifiedSb(aggregateAfter,updated);
+  return {before,after,tracked:true,updated};
+ };
  const validOwnerReason=x=>typeof x==="string"&&x.trim()===x&&
   x.length>=6&&x.length<=120&&!/[\r\n\x00-\x1f\x7f]/.test(x)&&
   !money.test(x.normalize("NFKC"));
@@ -1057,7 +1087,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      counts,totalCount:total,version:x.version,
      ...(individual?{ownerProductCounts:individual.visibleCounts,
       ownerProductTotalCount:Object.values(individual.visibleCounts).reduce((n,v)=>n+v,0)}:{}),
-     sbBreakdown:unknownSb(counts["SB光・AIR"])});
+     sbBreakdown:verifiedSb(counts["SB光・AIR"],x.sbBreakdown)});
    }
    rows.sort((x,y)=>x.staffId.localeCompare(y.staffId));
    return {role:"hub",scope:"existing-partner-counts-only",
@@ -1081,14 +1111,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
      d.expectedVersion>=999||!validOwnerReason(d.correctionReason))
    fail("invalid-argument");
   const date=validDate(d.date),{counts,total}=validateCounts(d.counts);
-  //光/AIR separation is explicitly out of scope for this release.
-  // An Owner may change the combined COUNT but cannot fabricate a breakdown.
-  const sb=d.sbBreakdown;
-  if(!sb||typeof sb!=="object"||Array.isArray(sb)||
-     Object.keys(sb).sort().join("|")!=="SB AIR|SB光|旧未分類"||
-     sb["SB光"]!==0||sb["SB AIR"]!==0||
-     sb["旧未分類"]!==counts["SB光・AIR"])
-   fail("failed-precondition");
+  // Do not classify old combined counts or overwrite any recorded split.
+  // Only the unclassified remainder may change in a legacy correction.
+  if(d.sbBreakdown==null)fail("failed-precondition");
+  const sb=verifiedSb(counts["SB光・AIR"],d.sbBreakdown,"failed-precondition");
   return db.runTransaction(async tx=>{
    const hub=await guardOwnerScope(a.uid,tx,d.partnerCompanyId);
    const er=entryRef(d.partnerCompanyId,date,d.staffId);
@@ -1114,12 +1140,6 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const {counts:companyCounts,total:companyTotal}=validateCounts(daily.counts);
    if(old.totalCount!==previousTotal||daily.totalCount!==companyTotal)
     fail("data-loss");
-   const combined=old.sbBreakdown;
-   if(combined!==undefined&&
-      (typeof combined!=="object"||combined===null||
-       combined["SB光"]!==0||combined["SB AIR"]!==0||
-       combined["旧未分類"]!==prior["SB光・AIR"]))
-    fail("failed-precondition");
    const updatedCounts={};let updatedTotal=0;
    for(const key of KEYS){
     const n=companyCounts[key]+counts[key]-prior[key];
@@ -1128,6 +1148,9 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    if(updatedTotal!==companyTotal+total-previousTotal||
       !Number.isSafeInteger(updatedTotal))fail("data-loss");
+   const split=sbUpdates(old,daily,prior["SB光・AIR"],counts["SB光・AIR"],
+    companyCounts["SB光・AIR"],updatedCounts["SB光・AIR"]);
+   if(sbParts.some(k=>sb[k]!==split.after[k]))fail("failed-precondition");
    let individual=null,individualPrior=null,individualDaily=null;
    if(individualRequest){
     // No simultaneous change to the original nine-category ledger.
@@ -1141,10 +1164,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }else if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
    const nextVersion=d.expectedVersion+1,stamp=FieldValue.serverTimestamp();
    const rowChanges={counts,totalCount:total,version:nextVersion,
+    ...(old.sbBreakdown==null?{}:{sbBreakdown:split.after}),
     ...(individual?{ownerProductCounts:individual.counts,ownerProductTotalCount:individual.total}:{}),
     updatedByUid:a.uid,updatedAt:stamp};
    tx.update(er,rowChanges);
    tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp,
+    ...(split.tracked?{sbBreakdown:split.updated}:{}),
     ...(individualDaily?{ownerProductCounts:individualDaily.counts,ownerProductTotalCount:individualDaily.total}:{})});
    const audit=collection(d.partnerCompanyId,"partnerWorkAudits")
     .doc(date+"__"+d.staffId+"__v"+nextVersion);
@@ -1167,6 +1192,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     privateCounts:savedPrivate.counts,privateTotalCount:savedPrivate.total,
     updatedByUid:a.uid,updatedAt:stamp,
     previousCounts:prior,previousPrivateCounts:savedPrivate.counts,
+    ...(split.tracked?{previousSbBreakdown:split.before,sbBreakdown:split.after}:{}),
     ...(individual?{ownerProductCounts:individual.counts,ownerProductTotalCount:individual.total,
      previousOwnerProductCounts:individualPrior.counts}:{}),
     correctionReason:d.correctionReason,correctedByOwnerUid:a.uid,
@@ -1285,6 +1311,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    if(totalSnap.exists&&existing.totalCount!==Object.values(previous).reduce((x,y)=>x+y,0))
      fail("data-loss");
+   const split=sbUpdates(old,existing,prior["SB光・AIR"],effectiveCounts["SB光・AIR"],
+    previous["SB光・AIR"],aggregate["SB光・AIR"]);
    // An existing report's team attribution is immutable. On the FIRST save
    // only, a selected working team must be an existing active team in this
    // verified partner company. Members cannot choose another person's team.
@@ -1322,6 +1350,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    const row={companyId:s.cid,hubCompanyId:s.hubId,staffId,date,
      counts:effectiveCounts,totalCount:effectiveTotal,
      privateCounts:privateValidated.counts,privateTotalCount:privateValidated.total,
+     ...(old.sbBreakdown==null?{}:{sbBreakdown:split.after}),
      ...(individualResult?{ownerProductCounts:individualResult.counts,
       ownerProductTotalCount:individualResult.total}:{}),
      version:nextVersion,staffNameSnapshot,teamIdSnapshot,workLocation,
@@ -1329,6 +1358,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(oldSnap.exists)tx.update(er,row);else tx.create(er,{...row,createdAt:nowStamp});
    const sum={source:"staff-entries-v1",hubCompanyId:s.hubId,partnerCompanyId:s.cid,
      partnerName:clean(s.companyName),date,counts:aggregate,totalCount:aggregateTotal,
+     ...(split.tracked?{sbBreakdown:split.updated}:{}),
      ...(individualDaily?{ownerProductCounts:individualDaily.counts,
       ownerProductTotalCount:individualDaily.total}:{}),
      updatedAt:nowStamp};
@@ -1336,6 +1366,7 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    if(totalSnap.exists)tx.update(summary,sum);else tx.create(summary,{...sum,createdAt:nowStamp});
    const audit=collection(s.cid,"partnerWorkAudits").doc(date+"__"+staffId+"__v"+nextVersion);
    tx.create(audit,{...row,previousCounts:prior,previousPrivateCounts:previousPrivate,
+     ...(split.tracked?{previousSbBreakdown:split.before,sbBreakdown:split.after}:{}),
      ...(individualPrior?{previousOwnerProductCounts:individualPrior.counts}:{}),
      createdAt:nowStamp});
    return {saved:true,staffId,date,version:nextVersion,totalCount:total,

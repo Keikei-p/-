@@ -65,7 +65,7 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 5e61fb2bcf62a0675135f4ca073b0ffef88c6c29
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 17540d18ac2bc90a77a6507f52cb2b53e3f23102
           test "$(git hash-object functions-partner-workspace/index.js)" = 245cfa7241dec0c0424e4cf347c9cdc61ab06cdc
           test "$(git hash-object functions-partner-workspace/workspace-identity.cjs)" = e06305c7dd151a3e5bab93a394396754fd25088e
           test "$(git hash-object firebase.json)" = d4d918a83f2675994d7aa211c42bb2c9e7242478
@@ -212,7 +212,7 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 5e61fb2bcf62a0675135f4ca073b0ffef88c6c29
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 17540d18ac2bc90a77a6507f52cb2b53e3f23102
           node security/secondary-finance-read-fence.mjs --check
       - name: Install emulator without production credentials
         run: |
