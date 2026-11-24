@@ -280,3 +280,23 @@ test("saved energy combination stays unmatched with separate future products and
  f.hubSource.products.push({companyId:"hub",sourceId:"energy",name:"つばさ・HTB",active:true});
  assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku07").every(x=>x.groupId==="energy"));
 });
+
+test("Owner ON historical IDs directly link original buckets for all companies without per-company mapping",async()=>{
+ const {withHistoricalCountProducts}=await import("../ranking/historical-count-publication-groups.mjs");
+ const f=fixture();
+ f.hubSource.products=withHistoricalCountProducts(f.hubSource.products,"hub",{source:true});
+ const historicalPublication={hubCompanyId:"hub",ownerUid:"owner",version:2,
+  enabledHubProductIds:["legacyPartnerSku:partnerSku05","legacyPartnerSku:partnerSku07"],
+  partnerOverrides:{partner3:["legacyPartnerSku:partnerSku05"]}};
+ const before=structuredClone(f);
+ const linked=linkAllRegisteredCountsWithoutSetup({...f,historicalPublication});
+ for(const row of linked.filter(r=>r.productId==="partnerSku05"&&r.companyId!=="hub"))
+  assert.equal(row.groupId,"legacyPartnerSku:partnerSku05");
+ assert.equal(linked.find(r=>r.companyId==="partner3"&&r.productId==="partnerSku07").groupId,"partnerUnmatched:partnerSku07");
+ assert.equal(linked.find(r=>r.companyId==="partner1"&&r.productId==="partnerSku07").groupId,"legacyPartnerSku:partnerSku07");
+ assert.equal(linked.find(r=>r.companyId==="partner1"&&r.productId==="partnerSku09").groupId,"partnerUnmatched:partnerSku09");
+ const reviewed=linkAllRegisteredCountsWithoutSetup({...f,historicalPublication,reviewedBindings:[
+  {companyId:"partner1",productId:"partnerSku05",hubProductId:"combined"}]});
+ assert.equal(reviewed.find(r=>r.companyId==="partner1"&&r.productId==="partnerSku05").groupId,"combined");
+ assert.deepEqual(f,before);
+});

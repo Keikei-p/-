@@ -7,6 +7,9 @@ on:
       - 'ranking/partner-workspace-count-source.mjs'
       - 'ranking/partner-month-readonly-loader.mjs'
       - 'tests/partner-workspace-count-source.test.mjs'
+      - 'ranking/partner-full-history-inventory.mjs'
+      - 'tools/production/inspect-partner-full-history-readonly.mjs'
+      - 'tests/partner-full-history-inventory.test.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -31,6 +34,9 @@ on:
       - 'ranking/partner-workspace-count-source.mjs'
       - 'ranking/partner-month-readonly-loader.mjs'
       - 'tests/partner-workspace-count-source.test.mjs'
+      - 'ranking/partner-full-history-inventory.mjs'
+      - 'tools/production/inspect-partner-full-history-readonly.mjs'
+      - 'tests/partner-full-history-inventory.test.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -102,5 +108,7 @@ jobs:
             tests/verified-dual-count-dashboards.test.mjs \
             tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/owner-product-visibility-rankings.test.mjs \
-            tests/partner-workspace-count-source.test.mjs
+            tests/partner-workspace-count-source.test.mjs \
+            tests/partner-full-history-inventory.test.mjs \
+            tests/inspect-partner-full-history-readonly.test.mjs
           echo 'OWNER_ON_ONLY_COUNT_RANKINGS_PASS_ZERO_SETUP_HELPER_STILL_TESTED_NO_PRODUCTION_DEPLOY'

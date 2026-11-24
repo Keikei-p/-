@@ -20,9 +20,9 @@ export const HISTORY_READ_LIMITS=Object.freeze({pageSize:100,companies:200,relat
  products:1000,entriesPerCompany:10000,privateProductsPerCompany:1000,reports:20000,
  totalDocuments:50000,totalQueries:2000});
 const ENTRY_FIELDS=Object.freeze(["id","companyId","hubCompanyId","date","staffId","version",
- "counts","totalCount","privateCounts","privateTotalCount","publishedCounts","publishedTotalCount"]);
+ "counts","totalCount","privateCounts","privateTotalCount","publishedCounts","publishedTotalCount","ownerProductCounts","ownerProductTotalCount"]);
 const REPORT_FIELDS=Object.freeze(["hubCompanyId","partnerCompanyId","date","source","version",
- "counts","totalCount","publishedCounts","publishedTotalCount"]);
+ "counts","totalCount","publishedCounts","publishedTotalCount","ownerProductCounts","ownerProductTotalCount"]);
 function readTime(s){
  const t=s?.readTime;
  if(!Number.isSafeInteger(t?.seconds)||!Number.isSafeInteger(t?.nanoseconds)||

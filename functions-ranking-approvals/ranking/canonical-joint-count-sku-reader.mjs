@@ -97,7 +97,7 @@ function partnerRankingSource(source){
 }
 export function composeCanonicalMonthlyRankingInput({
  context,hubSource,partnerSources,skuMap,hubOwnerUid,month,serverAsOf,
- zeroSetupLink=false,includeHistoricalGroups=false
+ zeroSetupLink=false,includeHistoricalGroups=false,historicalPublication
 }={}){
  if(typeof includeHistoricalGroups!=="boolean")STOP();
  if(!context||context.serverVerified!==true||
@@ -118,6 +118,7 @@ export function composeCanonicalMonthlyRankingInput({
      !Number.isSafeInteger(skuMap.version)||skuMap.version<1||
      !array(skuMap.bindings)||skuMap.bindings.length>1000)))
    STOP();
+ if(historicalPublication!==undefined&&(!includeHistoricalGroups||historicalPublication.hubCompanyId!==context.hubCompanyId||historicalPublication.ownerUid!==hubOwnerUid))STOP();
  const asOf=safeDay(serverAsOf,month);
  const hub=context.hubCompanyId;
  const partners=context.approvedCompanyIds.filter(id=>id!==hub);
@@ -177,7 +178,7 @@ export function composeCanonicalMonthlyRankingInput({
  const groups=zeroSetupLink===true?
   linkAllRegisteredCountsWithoutSetup({
    hubCompanyId:hub,hubSource,partnerSources:sources.slice(1),
-   reviewedBindings
+   reviewedBindings,...(includeHistoricalGroups&&historicalPublication!==undefined?{historicalPublication}:{})
   }):hubSource.products.map(p=>({
    companyId:hub,productId:p.sourceId,
    groupId:p.sourceId,groupName:p.name
@@ -272,10 +273,19 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),z
     source:partnerSources[i]
    })
   ));
+  let historicalPublication;
+  if(includeHistoricalGroups&&zeroSetupLink){
+   const policy=await tx.get(hubRef.collection("rankingProductVisibility").doc("shared"));
+   if(policy?.exists){
+    sameTime(policy,hubSource.readTime);
+    historicalPublication=doc(policy);
+    if(historicalPublication.ownerUid!==hubCompany.ownerUid||historicalPublication.hubCompanyId!==hubId)STOP();
+   }
+  }
   const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:mappingSnap.exists?doc(mappingSnap):null,
-   zeroSetupLink,includeHistoricalGroups,hubOwnerUid:hubCompany.ownerUid,
+   zeroSetupLink,includeHistoricalGroups,historicalPublication,hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
   const primary={...original,unassigned:legacyByCompany.flat()};

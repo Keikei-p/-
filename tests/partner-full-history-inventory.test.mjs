@@ -263,3 +263,36 @@ test("old 86 combined energy cases and separate published IDs coexist without re
  assert.equal(held.heldCountsByReason.held_legacy_energy_combined,86);
  assert.equal(held.mappedTotalCount,0);
 });
+
+test("explicit ON historical identity links unmapped original counts without any mapping write",()=>{
+ const input=historicalFixture(),hub=input.hubs[0];
+ hub.mapping.bindings=hub.mapping.bindings.filter(b=>b.productId!=="partnerSku05");
+ const group=HISTORICAL_COUNT_GROUPS.find(g=>g.sourceSkuId==="partnerSku05");
+ hub.catalog.products.push(product(group.id,group.name));
+ hub.visibility.enabledHubProductIds.push(group.id);
+ const before=structuredClone(input),r=inventoryPartnerFullHistory(input);
+ assert.equal(r.originalTotalCount,14);assert.equal(r.mappedTotalCount,10);assert.equal(r.heldTotalCount,4);
+ assert.equal(r.mappingWrites,0);assert.deepEqual(input,before);
+ hub.visibility.enabledHubProductIds=hub.visibility.enabledHubProductIds.filter(id=>id!==group.id);
+ const off=inventoryPartnerFullHistory(input);
+ assert.equal(off.mappedTotalCount,8);assert.equal(off.heldTotalCount,6);
+});
+test("new Owner individual ledger participates in full-history conservation and summary mismatch checks",()=>{
+ const input=historicalFixture(),hub=input.hubs[0],entry=input.companies[0].entries[0],report=input.reports[0];
+ hub.catalog.products.push(product("hikari","光"));
+ hub.visibility.enabledHubProductIds.push("hikari");
+ Object.assign(entry,{ownerProductCounts:{hikari:3},ownerProductTotalCount:3});
+ Object.assign(report,{ownerProductCounts:{hikari:3},ownerProductTotalCount:3});
+ const original=structuredClone(input),r=inventoryPartnerFullHistory(input);
+ assert.equal(r.originalTotalCount,17);assert.equal(r.mappedTotalCount,13);assert.equal(r.heldTotalCount,4);
+ assert.equal(r.companies[0].products.find(p=>p.sourceKind==="ledger_individual").mappedCount,3);
+ assert.deepEqual(input,original);
+ report.ownerProductCounts.hikari=2;report.ownerProductTotalCount=2;
+ const mismatch=inventoryPartnerFullHistory(input);
+ assert.equal(mismatch.originalTotalCount,null);assert.equal(mismatch.summaryMismatchDayCount,1);
+ assert.equal(mismatch.nonOverlappingSourceCounts.originalCount,17);
+ report.ownerProductCounts.hikari=3;report.ownerProductTotalCount=3;
+ entry.ownerProductCounts={addon_private_id:3};report.ownerProductCounts={addon_private_id:3};
+ const overlap=inventoryPartnerFullHistory(input);
+ assert.equal(overlap.originalTotalCount,null);assert.equal(overlap.productSourceOverlapDayCount,1);
+});

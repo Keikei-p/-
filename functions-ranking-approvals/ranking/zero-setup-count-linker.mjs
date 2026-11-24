@@ -14,6 +14,7 @@
 import {PARTNER_RANK_SKUS,individualOwnerSourceId} from "./partner-workspace-count-source.mjs";
 import {createHash} from "node:crypto";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
+import {historicalCountGroup} from "./historical-count-publication-groups.mjs";
 
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const PRIVATE=/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/;
@@ -34,7 +35,7 @@ const contract=new Map(PARTNER_RANK_SKUS.map(p=>[p.id,p.name]));
 if(contract.size!==9||!COMBINED_ALIASES.has(norm(contract.get("partnerSku05")??"")))stop();
 
 export function linkAllRegisteredCountsWithoutSetup({
- hubCompanyId,hubSource,partnerSources,reviewedBindings=[]
+ hubCompanyId,hubSource,partnerSources,reviewedBindings=[],historicalPublication
 }={}){
  if(!valid(hubCompanyId)||!hubSource||
     hubSource.companyId!==hubCompanyId||hubSource.kind!=="own"||
@@ -112,6 +113,29 @@ export function linkAllRegisteredCountsWithoutSetup({
   accepted.set(b.productId,target);
   reviewedByCompany.set(b.companyId,accepted);
  }
+ // An explicitly ON immutable historical identity is itself evidence of the
+ // original category. No separate per-company SKU mapping is needed for it.
+ // The trusted transaction reader supplies the Owner's same-snapshot policy.
+ // A previously reviewed mapping (including an OFF one) always wins.
+ let historicalEnabled=null;
+ if(historicalPublication!==undefined){
+  const v=historicalPublication;
+  const unique=ids=>Array.isArray(ids)&&ids.length<=1000&&new Set(ids).size===ids.length&&ids.every(id=>valid(id)&&own.has(id));
+  if(!v||v.hubCompanyId!==hubCompanyId||!Number.isSafeInteger(v.version)||v.version<1||
+     !unique(v.enabledHubProductIds)||!v.partnerOverrides||typeof v.partnerOverrides!=="object"||
+     Array.isArray(v.partnerOverrides)||Object.keys(v.partnerOverrides).length>100)stop();
+  for(const [cid,ids] of Object.entries(v.partnerOverrides))
+   if(!valid(cid)||!unique(ids))stop();
+  const on=new Set(v.enabledHubProductIds);
+  historicalEnabled=(cid,sku)=>{
+   const historic=own.get("legacyPartnerSku:"+sku);
+   if(!historic||!on.has(historic.sourceId)||historic.active!==true||
+      (Object.hasOwn(v.partnerOverrides,cid)&&!v.partnerOverrides[cid].includes(historic.sourceId)))return null;
+   const group=historicalCountGroup(historic.sourceId);
+   if(!group||group.sourceSkuId!==sku||group.name!==historic.name)stop();
+   return historic;
+  };
+ }
  const seenCompanies=new Set();
  for(const partner of partnerSources){
   if(!partner||!valid(partner.companyId)||
@@ -166,7 +190,9 @@ export function linkAllRegisteredCountsWithoutSetup({
    // Reviewed owner IDs always win, even when an unrelated category also
    // has a matching alias. That automatic candidate must remain separate.
    const reviewedTarget=reviewed.get(p.sourceId)||null;
-   let target=offBound.has(p.sourceId)?null:reviewedTarget||exactTarget;
+   const historicalTarget=isOriginal&&!originallyBound.has(p.sourceId)&&historicalEnabled?
+    historicalEnabled(partner.companyId,p.sourceId):null;
+   let target=offBound.has(p.sourceId)?null:reviewedTarget||historicalTarget||exactTarget;
    // Old SB光・AIR does not identify a separately sold Hikari or Air SKU.
    if((p.sourceId==="partnerSku05"||
        (isPrivate&&LEGACY_COMBINED_LIGHT_AIR.test(name.normalize("NFKC"))))&&
