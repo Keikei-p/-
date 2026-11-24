@@ -72,12 +72,12 @@ jobs:
           grep -Fq 'enforcePartnerTabPublication:true' functions-ranking-approvals/index.js
           grep -Fq 'const enforceOwnerSelection=zeroSetupLink===true&&' ranking/canonical-owner-count-server-factory.mjs
           grep -Fq 'enforcePartnerTabPublication===true;' ranking/canonical-owner-count-server-factory.mjs
-          grep -Fq 'createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer})' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer,includeHistoricalGroups:enforceOwnerSelection})' ranking/canonical-owner-count-server-factory.mjs
           grep -Fq 'buildOwnerVisibleCountRanking({input:rankingInput,publication})' ranking/owner-visible-count-server-handler.mjs
           if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
             echo 'STOP_RANKING_MUST_OBEY_OWNER_ON_OFF'; exit 1
           fi
-          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx; do
+          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx historical-count-publication-groups; do
             cmp "ranking/$f.mjs" "functions-ranking-approvals/ranking/$f.mjs"
             node --check "ranking/$f.mjs"
             node --check "functions-ranking-approvals/ranking/$f.mjs"

@@ -216,6 +216,7 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
    if(!reason&&!pub.ready)reason="held_publication";
    if(!reason&&!published&&!pub.mappingReady)reason="held_mapping";
    if(!reason&&!target)reason="held_unmapped";
+   if(!reason&&target?.startsWith("legacyPartnerSku:")&&target!=="legacyPartnerSku:"+(privateBindingId??sourceId))reason="held_historical_source_mismatch";
    const targetProduct=target?pub.products.get(target):null;
    if(!reason&&!targetProduct)reason="held_unknown_target";
    if(!reason&&(legacyCombined||(privateKind&&combined(sourceName)))&&

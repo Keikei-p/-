@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {inventoryPartnerFullHistory,LEGACY_PARTNER_CATEGORIES as KEYS}
  from "../ranking/partner-full-history-inventory.mjs";
+import {HISTORICAL_COUNT_GROUPS} from "../ranking/historical-count-publication-groups.mjs";
 
 const key="one_inventory_only_private_pseudonym_seed";
 const counts=(nuro=0,sb=0)=>Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?nuro:k==="SB光・AIR"?sb:0]));
@@ -9,6 +10,21 @@ const product=(id,name)=>({id,companyId:"hub_private_id",name,active:true});
 const proof=()=>({serverVerified:true,snapshotConsistent:true,completeCompanies:true,
  completeRelations:true,completeEntries:true,completePrivateProducts:true,completeReports:true,
  completeOwnerProducts:true,completeSettings:true,readTime:"2026-11-17T00:00:00.000Z"});
+
+test("read-only inventory verifies explicitly published historical identities without new product masters",()=>{
+ const input=historicalFixture(),h=input.hubs[0];
+ h.catalog.products.push(...HISTORICAL_COUNT_GROUPS.map(({id,name})=>product(id,name)));
+ h.visibility.enabledHubProductIds.push(...HISTORICAL_COUNT_GROUPS.map(p=>p.id));
+ for(const b of h.mapping.bindings)b.hubProductId='legacyPartnerSku:'+b.productId;
+ const before=structuredClone(input),r=inventoryPartnerFullHistory(input);
+ assert.equal(r.originalTotalCount,14);assert.equal(r.mappedTotalCount,10);assert.equal(r.heldTotalCount,4);
+ assert.equal(r.overlapDayCount,0);assert.equal(r.summaryMismatchDayCount,0);
+ assert.deepEqual(input,before);
+ h.mapping.bindings[0].hubProductId='legacyPartnerSku:partnerSku09';
+ const wrong=inventoryPartnerFullHistory(input);
+ assert.equal(wrong.heldCountsByReason.held_historical_source_mismatch,3);
+ assert.equal(wrong.originalTotalCount,14);assert.equal(wrong.sourceConservationVerified,true);
+});
 export function historicalFixture(){
  const products=[product("nuro_private_id","NURO"),product("combined_private_id","SB光・AIR（旧合算）"),
   product("custom_private_id","独自サービス"),product("addon_private_id","新規商材"),product("air_private_id","SoftBank Air")];

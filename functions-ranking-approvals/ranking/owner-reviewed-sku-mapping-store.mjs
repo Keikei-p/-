@@ -9,6 +9,7 @@
  */
 import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
 
+import {historicalCountGroup} from "./historical-count-publication-groups.mjs";
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
 const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -53,8 +54,8 @@ function mapping(doc,hub,uid){
  }
  return {version:doc.version,bindings:doc.bindings.map(b=>({...b}))};
 }
-export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
- if(!db?.collection||typeof db.runTransaction!=="function"||
+export function createOwnerReviewedSkuMappingStore({db,FieldValue,includeHistoricalGroups=false}={}){
+ if(typeof includeHistoricalGroups!=="boolean"||!db?.collection||typeof db.runTransaction!=="function"||
     typeof FieldValue?.serverTimestamp!=="function")stop();
  const c=id=>db.collection("companies").doc(id);
  const ref=hub=>c(hub).collection("rankingSkuMappings").doc("shared");
@@ -141,11 +142,13 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
       b.hubProductId===hubProductId))stop();
    if(hubProductId!==null){
     const originalId=privateId(partnerProductId);
+    const historical=historicalCountGroup(hubProductId);
+    if(historical&&(!includeHistoricalGroups||historical.sourceSkuId!==partnerProductId))stop();
     const [targetSnap,sourceSnap]=await Promise.all([
-     tx.get(db.collection("products").doc(hubProductId)),
+     historical?null:tx.get(db.collection("products").doc(hubProductId)),
      originalId===null?null:tx.get(privateProducts(partnerCompanyId).doc(originalId))
     ]);
-    const product=read(targetSnap);
+    const product=historical?{companyId:hub,name:historical.name,active:true}:read(targetSnap);
     if(!obj(product)||product.companyId!==hub||
        product.active===false)stop();
     const name=label(product.name);

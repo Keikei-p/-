@@ -51,6 +51,7 @@ function checked(mapping,catalog,source,targetIds){
      !id(b.companyId)||!id(b.hubProductId)||
      typeof b.productId!=="string"||
      !(LEGACY.has(b.productId)||/^partnerPrivate:[A-Za-z0-9_-]{1,128}$/.test(b.productId)))fail();
+  if(b.hubProductId.startsWith("legacyPartnerSku:")&&b.hubProductId!=="legacyPartnerSku:"+b.productId)fail();
   const sk=pair(b.companyId,b.productId),tk=pair(b.companyId,b.hubProductId);
   if(sources.has(sk)||targets.has(tk))fail();
   if(b.productId==="partnerSku05"){

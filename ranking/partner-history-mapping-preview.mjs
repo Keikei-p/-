@@ -68,6 +68,7 @@ export function previewHistoricalPartnerMapping({
    if(seenBindings.has(key))fail("DUPLICATE");
    seenBindings.add(key);
    if(item.companyId!==partnerCompanyId)continue;
+   if(item.hubProductId.startsWith("legacyPartnerSku:")&&item.hubProductId!=="legacyPartnerSku:"+item.productId)fail("HISTORICAL_SOURCE_MISMATCH");
    const p=catalog.get(item.hubProductId);
    if(!p||used.has(item.hubProductId))fail("COLLISION");
    if(item.productId==="partnerSku05"&&

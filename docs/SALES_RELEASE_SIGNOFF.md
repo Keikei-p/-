@@ -1314,3 +1314,13 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 - `partnerSku07` と、サーバーで元名称を確認できる旧private「つばさ/HTB」「翼/HTB」について、単独HTB、つばさ電気、光/AIRなど別の合算への誤対応を拒否。Owner writer、既存picker/rollout、canonical reader、zero-setup linker、publication/count-save guardと既存Functionsコピーへ同じ制約を適用。自社UI、ログイン、既存Functions entry/service、Rules、原票は変更しない。
 - 読取インベントリと履歴プレビューには旧energy合算の識別を追加。旧光/AIR用の `legacyCombined` と35件の意味は変更せず、つばさ/HTBを同じ数値へ混ぜない。個別の既存公開商材IDと旧合算が併存しても原票・件数・日付・所属を変えず保持する。これ自体は新規分離入力の本番接続や公開を完了したことを意味しない。
 - 実クラウド復元、500円内の実行費用/IAM、実協力店E2Eは未確認。本番配備/原票/対応設定書込は0。統合NO DEPLOY CIへ旧合算保全の回帰を接続し、Guardを無効化しない。
+
+
+### 2026-11-24 過去件数のOwner公開接続（PR内のみ・未配備）
+
+- 最新main `6be13e3fa9191117946d010f4d2c010c2d243591`、着手時PR HEAD `4a6a3ec6ec950ecac7c555f66a43a82774a9c7ae` を再取得。公開URLも匿名GETし、index SHA256 `1e23812c2811b8a1c4f12fd428e887201af2898f54c367f26ba80e6a79d61332`、partner-workspace SHA256 `965ba7250b60d2cadfa92c0b8900ab1f29188f810f5c2e6ad1f59ddd92bec3cc` が従来版のままと確認。今回の本番原票再読取は行わず、最新READ ONLY監査は既記録の2026-11-24 10:05 JST、245=連携6+保留239、重複/日次不整合0件。
+- 保留件数を推測で現行金額商材へ対応させず、旧9カテゴリ自身を表す固定ID `legacyPartnerSku:partnerSku01..09` を既存のOwner公開チェックボックス/APIへ接続。表示名は元名+過去分、光/AIRとつばさ/HTBは過去合算。全て初期OFF。既存のOwner確認、所属、会社関係、バージョン、会社別公開設定、8タブ公開制限を維持。Ownerの明示ON時のみ同一カテゴリIDを対応付け、既存のOwner対応は上書きしない。Firestore `products` は作成/変更しない。原票、件数、金額、獲得日、班/個人の帰属は不変更。
+- 過去集計用IDは新規入力を許可しない。private商材や異なる旧カテゴリが過去IDを騙る対応を拒否。既存の保存ガードとFunctionsミラーを一致させ、Owner ON/OFF・権限ゲートは解除しない。統合CIにはローカルEmulator経由の過去公開検証を追加し、既存の同一画面/金額遮断検証を残した。
+- ローカル：関連回帰331件PASS、自社UI/Owner金額/入力/Owner対応/パッケージ等138件PASS（重複あり）。追加Owner picker/固定ID25件PASS。Emulatorの権限/GET・LIST/既存入力/4ランキング統合9件PASS。さらに拡張したEmulatorで、Owner明示ON後に日・週・月それぞれ4ランキング245件、光/AIR35・つばさ/HTB86を分割せず確認。実際の既存保存処理で新規5件追加→250件、訂正3件→248件をOwner/協力店応答で検証し、過去の各実績と金額付き商材の不変を確認。これは架空ローカル原票であり、実アカウント/本番公開/クラウド復元の証明ではない。
+- 未完了：Owner共通の現行商材IDによる将来の個別光/AIR・つばさ/HTB入力。ブラウザの `owner-products-count-only-v1` 判定に対し、既存serviceはまだ固定9カテゴリで、同モードを返さない。過去公開の対応を個別新規入力の完成と扱わない。新たな原票移行やprivate商材の流用で解決しない。
+- 実協力店アカウント、実二重所属検証、隔離クラウド復元・必要IAM・個別容量と全費用500円以内の裏付けは未確認。公開フラグ変更、Hosting/Functions/Rules反映、Auth変更、本番データ/商材対応の保存はゼロ。本番切替は安全条件の未達により停止を維持する。

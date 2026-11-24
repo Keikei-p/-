@@ -74,7 +74,7 @@ function createOwnerSkuMappingCallables({
   try{
    const [,store]=await getModules();
    const result=await store.createOwnerReviewedSkuMappingStore({
-    db,FieldValue
+    db,FieldValue,includeHistoricalGroups:true
    }).status(actor,partnerCompanyId);
    const keys=["schema","hubCompanyId","version","bindings"];
    if(includeProducts)keys.push("partnerProducts");
@@ -112,7 +112,7 @@ function createOwnerSkuMappingCallables({
   try{
    const [,store]=await getModules();
    const result=await store.createOwnerReviewedSkuMappingStore({
-    db,FieldValue
+    db,FieldValue,includeHistoricalGroups:true
    }).change({principal:actor,partnerCompanyId:d.partnerCompanyId,
     partnerProductId:d.partnerProductId,hubProductId:d.hubProductId,
     expectedVersion:d.expectedVersion});

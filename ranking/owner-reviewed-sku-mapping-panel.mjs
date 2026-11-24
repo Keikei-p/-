@@ -86,6 +86,7 @@ function validate(mapping,catalog,partner){
   const isPrivate=PRIVATE.test(b.productId);
   if(isPrivate&&(!withPrivate||!privateProducts.has(b.productId)))fail();
   if(!products.has(b.hubProductId))fail();
+  if(b.hubProductId.startsWith("legacyPartnerSku:")&&b.hubProductId!=="legacyPartnerSku:"+b.productId)fail();
   const sourceName=isPrivate?privateProducts.get(b.productId).name:null;
   // Mirror the Owner writer and canonical count reader: old private 光/AIR
   // combined counts must never be displayed as mapped into standalone Air,
@@ -193,6 +194,7 @@ export function createOwnerReviewedSkuMappingPanel({
     const currentId=view.match.get(category)||"";
     const candidates=view.products.filter(p=>
      (p.active||p.id===currentId)&&
+     (!p.id.startsWith("legacyPartnerSku:")||p.id==="legacyPartnerSku:"+category)&&
      (!(category===LEGACY||combined(view.privateProducts.get(category)?.name??""))||combined(p.name))&&
      (!(category==="partnerSku07"||energyCombined(view.privateProducts.get(category)?.name??""))||energyCombined(p.name)));
     for(const p of candidates){

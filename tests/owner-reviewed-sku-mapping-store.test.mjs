@@ -4,7 +4,7 @@ import {createOwnerReviewedSkuMappingStore}
  from "../ranking/owner-reviewed-sku-mapping-store.mjs";
 
 const owner={uid:"owner",emailVerified:true};
-function fake(){
+function fake({includeHistoricalGroups=false}={}){
  const state=new Map([
   ["users/owner",{uid:"owner",companyId:"hub",companyRole:"owner",
     active:true,accessKind:"internal"}],
@@ -38,7 +38,7 @@ function fake(){
  };
  const db={collection:ref,async runTransaction(fn){return fn(tx)}};
  const FieldValue={serverTimestamp:()=>"SERVER_TIMESTAMP"};
- const store=createOwnerReviewedSkuMappingStore({db,FieldValue});
+ const store=createOwnerReviewedSkuMappingStore({db,FieldValue,includeHistoricalGroups});
  return {store,state,get writes(){return writes}};
 }
 test("missing owner-reviewed mapping starts at empty version 0, never auto-joins labels",async()=>{
@@ -264,4 +264,18 @@ test("old legacy and archived private つばさ/HTB cannot become either standal
   assert.equal((await f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:"energy",expectedVersion:0})).saved,true);
   assert.equal(f.state.get("companies/partner/partnerPrivateProducts/energy").active,false);
  }
+});
+
+
+test("explicit Owner historical mapping uses the same source identity without registering a sales product",async()=>{
+ const f=fake({includeHistoricalGroups:true}),before=[...f.state].filter(([p])=>p.startsWith("products/"));
+ const target="legacyPartnerSku:partnerSku07";
+ for(const source of ["partnerSku01","partnerSku05","partnerPrivate:energy"])
+  await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:target,expectedVersion:0}),/UNVERIFIED/);
+ assert.equal(f.writes,0);
+ const saved=await f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:"partnerSku07",hubProductId:target,expectedVersion:0});
+ assert(saved.saved);assert.equal(saved.version,1);
+ assert.deepEqual([...f.state].filter(([p])=>p.startsWith("products/")),before);
+ const old=fake();
+ await assert.rejects(old.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:"partnerSku07",hubProductId:target,expectedVersion:0}),/UNVERIFIED/);
 });

@@ -6,6 +6,7 @@
  * Caller MUST first verify the Firebase ID token on the server, including
  * token revocation + verified email, then pass the resulting principal.
  */
+import {historicalCountGroup,withHistoricalCountProducts} from "./historical-count-publication-groups.mjs";
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円))/i;
 const stop=()=>{throw Error("OWNER_PRODUCT_VISIBILITY_STORE_UNAUTHORIZED_OR_INCOMPLETE");};
@@ -35,6 +36,8 @@ const EXACT_CATEGORY_ALIASES=Object.freeze({
 const skuNorm=x=>x.normalize("NFKC").trim().toLowerCase()
  .replace(/[\s　・･\/／_－‐\-（()）!！]/g,"");
 function oneExactCategory(product,products){
+ const historical=historicalCountGroup(product?.id);
+ if(historical)return historical.sourceSkuId;
  if(!product?.active||!saneName(product.name))return null;
  const key=skuNorm(product.name);
  const categories=Object.entries(EXACT_CATEGORY_ALIASES)
@@ -79,7 +82,7 @@ const normalize=(s,hubId,ownerUid)=>{
   enabledHubProductIds:s.enabledHubProductIds.slice(),
   partnerOverrides};
 };
-function productsOf(snapshot,hubId){
+function productsOf(snapshot,hubId,includeHistoricalGroups=false){
  if(!Array.isArray(snapshot?.docs)||snapshot.docs.length>1000)stop();
  const rows=[],seen=new Set();
  for(const d of snapshot.docs){
@@ -90,7 +93,7 @@ function productsOf(snapshot,hubId){
   seen.add(d.id);
   rows.push({id:d.id,name:v.name.trim(),active:v.active!==false});
  }
- return rows.sort((a,b)=>a.name.localeCompare(b.name,"ja")||
+ return (includeHistoricalGroups?withHistoricalCountProducts(rows,hubId):rows).sort((a,b)=>a.name.localeCompare(b.name,"ja")||
   a.id.localeCompare(b.id));
 }
 function validateSelected(settings,products){
@@ -104,10 +107,12 @@ function validateSelected(settings,products){
   for(const x of arr)if(!found.has(x))stop();
  }
 }
-export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountViewer}={}){
+export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountViewer,includeHistoricalGroups=false}={}){
+ const selectedProducts=(snapshot,hub)=>productsOf(snapshot,hub,includeHistoricalGroups);
  if(!db||typeof db.collection!=="function"||
     typeof db.runTransaction!=="function"||
-    !FieldValue||typeof FieldValue.serverTimestamp!=="function")stop();
+    !FieldValue||typeof FieldValue.serverTimestamp!=="function"||
+    typeof includeHistoricalGroups!=="boolean")stop();
  const companies=()=>db.collection("companies");
  const users=()=>db.collection("users");
  const settingsRef=hub=>companies().doc(hub)
@@ -153,7 +158,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountView
    const [saved,all]=await Promise.all([
     tx.get(settingsRef(hub)),tx.get(catalog(hub))
    ]);
-   const products=productsOf(all,hub);
+   const products=selectedProducts(all,hub);
    const state=normalize(read(saved),hub,ownerUid);
    validateSelected(state,products);
    const selected=new Set(state.enabledHubProductIds);
@@ -176,7 +181,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountView
     tx.get(settingsRef(hub)),tx.get(catalog(hub)),
     tx.get(publicCatalogRef(hub))
    ]);
-   const products=productsOf(all,hub);
+   const products=selectedProducts(all,hub);
    const state=normalize(read(stored),hub,ownerUid);
    validateSelected(state,products);
    if(expectedVersion!==state.version)stop();
@@ -352,7 +357,7 @@ export function createOwnerProductVisibilityStore({db,FieldValue,verifyCountView
    }
    // Missing settings mean nothing is published. No implicit ON.
    const state=normalize(read(stateSnap),hub,company.ownerUid);
-   const productRows=productsOf(all,hub);
+   const productRows=selectedProducts(all,hub);
    validateSelected(state,productRows);
    const activeProducts=new Set(productRows.filter(p=>p.active).map(p=>p.id));
    const publication={serverVerified:true,ownerSettingsRead:true,

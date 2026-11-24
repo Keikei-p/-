@@ -22,6 +22,7 @@ import {mergeVerifiedTwoMonthInputs}
  from "./verified-two-month-count-input.mjs";
 import {linkAllRegisteredCountsWithoutSetup}
  from "./zero-setup-count-linker.mjs";
+import {historicalCountGroup,withHistoricalCountProducts} from "./historical-count-publication-groups.mjs";
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
 const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -96,8 +97,9 @@ function partnerRankingSource(source){
 }
 export function composeCanonicalMonthlyRankingInput({
  context,hubSource,partnerSources,skuMap,hubOwnerUid,month,serverAsOf,
- zeroSetupLink=false
+ zeroSetupLink=false,includeHistoricalGroups=false
 }={}){
+ if(typeof includeHistoricalGroups!=="boolean")STOP();
  if(!context||context.serverVerified!==true||
     !["hub_owner","partner_owner"].includes(context.role)||
     !valid(context.hubCompanyId)||!valid(hubOwnerUid)||
@@ -124,6 +126,7 @@ export function composeCanonicalMonthlyRankingInput({
     hubSource.isComplete!==true||hubSource.consentVerified!==true||
     !TIME.test(hubSource.readTime||"")||
     !array(hubSource.products))STOP();
+ if(includeHistoricalGroups)hubSource={...hubSource,products:withHistoricalCountProducts(hubSource.products,hub,{source:true})};
  const sourceProducts=new Map(),hubProducts=new Map();
  const sources=[hubSource,...partnerSources.map(partnerRankingSource)];
  if(!equal(sources.map(s=>s.companyId),context.approvedCompanyIds)||
@@ -160,6 +163,8 @@ export function composeCanonicalMonthlyRankingInput({
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
+  const historical=historicalCountGroup(b.hubProductId);
+  if(historical&&historical.sourceSkuId!==b.productId)STOP();
   // A stored OFF mapping must not blank out every other ON ranking.
   // Zero-setup holds it unmatched; classic mode does not emit the OFF group.
   // Historic combined light/AIR must never be guessed into separate SKUs.
@@ -216,7 +221,7 @@ function trustedJapanAsOf(month,clock){
   .toISOString().slice(0,10);
  return month===today.slice(0,7)?today:end;
 }
-export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),zeroSetupLink=false}={}){
+export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),zeroSetupLink=false,includeHistoricalGroups=false}={}){
  if(typeof clock!=="function")STOP();
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
@@ -270,7 +275,7 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),z
   const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
    skuMap:mappingSnap.exists?doc(mappingSnap):null,
-   zeroSetupLink,hubOwnerUid:hubCompany.ownerUid,
+   zeroSetupLink,includeHistoricalGroups,hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
   const primary={...original,unassigned:legacyByCompany.flat()};

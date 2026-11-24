@@ -75,6 +75,7 @@ export function linkAllRegisteredCountsWithoutSetup({
      !valid(b.hubProductId)||
      !own.has(b.hubProductId))stop();
   const target=own.get(b.hubProductId);
+  if(b.hubProductId.startsWith("legacyPartnerSku:")&&b.hubProductId!=="legacyPartnerSku:"+b.productId)stop();
   const sourceCompany=partnerSources.find(p=>p?.companyId===b.companyId);
   const origin=Array.isArray(sourceCompany?.products)?
    sourceCompany.products.find(p=>p?.sourceId===b.productId):null;

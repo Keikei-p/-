@@ -79,6 +79,10 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
      !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
   if(b.productId==="partnerSku07"&&
      !LEGACY_COMBINED_TSUBASA_HTB.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
+  if(b.hubProductId.startsWith("legacyPartnerSku:")){
+   if(b.hubProductId!=="legacyPartnerSku:"+b.productId)deny();
+   continue;
+  }
   mapped.set(b.productId,b.hubProductId);
  }
  const allowed=new Set();

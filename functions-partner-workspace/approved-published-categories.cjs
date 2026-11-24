@@ -77,6 +77,11 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
    !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))stop();
   if(b.productId==="partnerSku07"&&
    !LEGACY_COMBINED_TSUBASA_HTB.test(chosen.name.normalize("NFKC")))stop();
+  if(b.hubProductId.startsWith("legacyPartnerSku:")){
+   if(b.hubProductId!=="legacyPartnerSku:"+b.productId)stop();
+   binding.set(b.productId,null); // reserve it; never fall back into new input
+   continue;
+  }
   // Reviewed private bindings reserve their target for historical counts.
   // The fixed legacy input form only accepts its own nine categories.
   if(!privateSku(b.productId))binding.set(b.productId,b.hubProductId);
@@ -86,6 +91,7 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
  // aliases stay one category. A duplicate or inactive target grants no input.
  const byName=new Map(),combinedMatches=[];
  for(const product of catalog.values()){
+  if(product.id.startsWith("legacyPartnerSku:"))continue;
   if(typeof product.name!=="string"||
      !product.name.trim()||product.name.length>80||
      MONEY.test(product.name.normalize("NFKC")))continue;

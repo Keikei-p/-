@@ -42,10 +42,10 @@ export function createCanonicalOwnerCountSnapshot({
   enforcePartnerTabPublication===true;
  return createStagedAtomicOwnerCountLoader({
   db,
-  loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink}),
+  loadCountsInTransaction:createCanonicalCountTransactionReader({db,clock,zeroSetupLink,includeHistoricalGroups:enforceOwnerSelection}),
   loadPublicationInTransaction:zeroSetupLink===true&&!enforceOwnerSelection?
    createZeroSetupCountPublicationReader({db,verifyCountViewer}):
-   createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer}),
+   createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer,includeHistoricalGroups:enforceOwnerSelection}),
   // Auto name mapping stays enabled for counts, but there is no unfiltered
   // zero-settings publication shortcut for a partner-facing release.
   zeroSetupLink:zeroSetupLink&&!enforceOwnerSelection,

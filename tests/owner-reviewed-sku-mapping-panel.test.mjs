@@ -4,6 +4,7 @@ import {createOwnerReviewedSkuMappingPanel,PARTNER_CATEGORIES,suggestUnambiguous
  from "../ranking/owner-reviewed-sku-mapping-panel.mjs";
 import {createOwnerSkuMappingFirebaseBridge}
  from "../ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs";
+import {HISTORICAL_COUNT_GROUPS} from "../ranking/historical-count-publication-groups.mjs";
 
 class Node{
  constructor(tag){this.tagName=tag;this.children=[];this.listeners={};
@@ -30,6 +31,22 @@ const catalog=()=>({
   {id:"air",name:"SoftBank Air",active:true,enabled:false},
   {id:"combined",name:"SB光・AIR（旧合算・未分類）",active:true,enabled:false}
  ]
+});
+
+test("historical count-only Owner choices retain the exact source ID and never save on load",async()=>{
+ const c=catalog(),root=new Node("main");
+ c.products.push(...HISTORICAL_COUNT_GROUPS.map(({id,name})=>({id,name,active:true,enabled:false})));
+ const p=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth:{currentUser:user},partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>c,saveMapping:async()=>assert.fail("no Owner change")});
+ assert.equal(await p.refresh(),true);
+ for(let i=0;i<9;i++){
+  const virtual=selects(root)[i].children.map(x=>x.value).filter(x=>x.startsWith("legacyPartnerSku:"));
+  assert.deepEqual(virtual,[HISTORICAL_COUNT_GROUPS[i].id]);
+ }
+ p.destroy();
+ assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+  mapping:status(1,[{companyId:"partner",productId:"partnerSku01",hubProductId:"legacyPartnerSku:partnerSku09"}]),
+  catalog:c,partnerCompanyId:"partner"}),/UNVERIFIED/);
 });
 test("nine legacy categories are exact and mixed hikari/Air keeps its own slot",()=>{
  assert.equal(PARTNER_CATEGORIES.length,9);
