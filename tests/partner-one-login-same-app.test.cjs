@@ -401,3 +401,50 @@ test("same-app individual input sends exact Owner IDs and verifies independent l
   assert.equal(old.counts["SB光・AIR"],7);
  }
 });
+
+test("Owner individual correction client verifies exact count-only request, acknowledgement and readback",async()=>{
+ const {makeOwnerCorrectionClient}=await import("../staging/partner-owner-correction-v3/owner-client.mjs");
+ const {COUNT_KEYS,correctionPayload,verifyCorrectionReadback}=await import("../staging/partner-owner-correction-v3/owner-ui.mjs");
+ const counts=Object.fromEntries(COUNT_KEYS.map(k=>[k,k==="SB光・AIR"?7:0]));
+ const sbBreakdown={"SB光":0,"SB AIR":0,"旧未分類":7};
+ const previous={staffId:"s",staffName:"担当",teamIdSnapshot:"t",version:2,counts,totalCount:7,
+  sbBreakdown,ownerProductCounts:{hikari:2,air:3},ownerProductTotalCount:5};
+ const date="2026-11-13",partnerCompanyId="p";
+ const list={role:"hub",scope:"existing-partner-counts-only",date,partnerCompanyId,entries:[previous],
+  sbBreakdownSchema:"sb-separated-v1",containsFinance:false,ownerProducts:[{id:"hikari",name:"光"},{id:"air",name:"AIR"}],
+  sharedCatalogMode:"owner-products-count-only-v1",sharedCatalogVerified:true};
+ const user={uid:"owner",email:"owner@example.test",emailVerified:true,
+  getIdTokenResult:async()=>({claims:{email:"owner@example.test",email_verified:true}})};
+ const payload={date,partnerCompanyId,previous,draftCounts:counts,draftSb:sbBreakdown,correctionReason:"件数確認による訂正"};
+ const req=correctionPayload({...payload,draftOwnerProductCounts:{hikari:"4",air:"3"}});
+ assert.deepEqual(req.ownerProductCounts,{hikari:4,air:3});assert.deepEqual(req.counts,counts);
+ for(const draft of [{hikari:"4"},{hikari:"4",air:"3",off:"1"},{hikari:"-1",air:"3"}])
+  assert.throws(()=>correctionPayload({...payload,draftOwnerProductCounts:draft}));
+ assert.throws(()=>correctionPayload({...payload,draftCounts:{...counts,NURO:1},draftOwnerProductCounts:{hikari:"4",air:"3"}}));
+ for(const mode of ["ok","finance","catalog_finance","wrong_ack","wrong_readback"]){
+  let committed=false,writes=0;
+  const api=makeOwnerCorrectionClient({auth:{currentUser:user},enabled:()=>true,
+   listCallable:async()=>{
+    const result=structuredClone(list);
+    if(mode==="finance")result.entries[0].unitPrice=12345;
+    if(mode==="catalog_finance")result.ownerProducts[0].name="AIR 単価 12345円";
+    if(committed){result.entries[0].version=3;result.entries[0].ownerProductCounts={hikari:4,air:3};
+     result.entries[0].ownerProductTotalCount=7;
+     if(mode==="wrong_readback"){result.entries[0].ownerProductCounts.hikari=3;result.entries[0].ownerProductTotalCount=6;}
+    }
+    return {data:result};
+   },
+   correctCallable:async payload=>{
+    writes++;committed=true;assert.deepEqual(payload,req);
+    return {data:{saved:true,scope:"hub-owner-existing-only",date,partnerCompanyId,staffId:"s",version:3,
+     totalCount:7,containsFinance:false,ownerProductCounts:{hikari:mode==="wrong_ack"?3:4,air:3},
+     ownerProductTotalCount:mode==="wrong_ack"?6:7}};
+   }});
+  if(mode==="finance"||mode==="catalog_finance"){await assert.rejects(api.list({date,partnerCompanyId}));assert.equal(writes,0);continue;}
+  const before=await api.list({date,partnerCompanyId});assert.deepEqual(before.entries[0].ownerProductCounts,previous.ownerProductCounts);
+  if(mode==="wrong_ack"){await assert.rejects(api.correct(req));assert.equal(writes,1);continue;}
+  const ack=await api.correct(req),latest=await api.list({date,partnerCompanyId});
+  assert.equal(verifyCorrectionReadback(ack,req,latest),mode==="ok");
+  assert.equal(writes,1);
+ }
+});

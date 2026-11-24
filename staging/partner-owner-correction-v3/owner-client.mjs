@@ -7,7 +7,7 @@
  * A verified owner session is still NOT an authorization decision; the
  * backend must independently run trusted-auth.cjs for every invocation.
  */
-import {COUNT_KEYS,SB_PARTS,verifiedCount,normalizedSplit} from "./owner-ui.mjs";
+import {COUNT_KEYS,SB_PARTS,verifiedCount,normalizedSplit,verifiedIndividualCatalog,verifiedIndividualCounts} from "./owner-ui.mjs";
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
@@ -29,10 +29,14 @@ function safeSplit(counts,raw){
  try{return normalizedSplit(counts["SB光・AIR"],raw)}
  catch{fail("SPLIT_UNVERIFIED")}
 }
-function safeRow(row){
+const individualFields=["ownerProductCounts","ownerProductTotalCount"];
+function individualValues(raw,expectedIds){
+ try{return verifiedIndividualCounts(raw,expectedIds)}catch{fail("INDIVIDUAL_COUNTS_UNVERIFIED")}
+}
+function safeRow(row,productIds){
  if(!keys(row,[
   "staffId","staffName","teamIdSnapshot","counts","totalCount",
-  "version","sbBreakdown"
+  "version","sbBreakdown",...(productIds===undefined?[]:individualFields)
  ])||!safeId(row.staffId)||typeof row.staffName!=="string"||
     row.staffName.length>60||MONEY.test(row.staffName.normalize("NFKC"))||
     !(row.teamIdSnapshot===null||safeId(row.teamIdSnapshot))||
@@ -41,31 +45,42 @@ function safeRow(row){
  const counts=safeCounts(row.counts);
  if(row.totalCount!==total(counts))fail("TOTAL_UNVERIFIED");
  const sbBreakdown=safeSplit(counts,row.sbBreakdown);
+ const individual=productIds===undefined?undefined:individualValues(row.ownerProductCounts,productIds);
+ if(individual!==undefined&&row.ownerProductTotalCount!==total(individual))fail("TOTAL_UNVERIFIED");
  return {staffId:row.staffId,staffName:row.staffName,
   teamIdSnapshot:row.teamIdSnapshot,counts,totalCount:row.totalCount,
-  version:row.version,sbBreakdown};
+  version:row.version,sbBreakdown,
+  ...(individual===undefined?{}:{ownerProductCounts:individual,ownerProductTotalCount:total(individual)})};
 }
 function safeList(raw,expected){
+ const individual=object(raw)&&Object.hasOwn(raw,"ownerProducts");
  if(!keys(raw,[
   "role","scope","date","partnerCompanyId","entries",
-  "sbBreakdownSchema","containsFinance"
+  "sbBreakdownSchema","containsFinance",...(individual?["ownerProducts","sharedCatalogMode","sharedCatalogVerified"]:[])
  ])||raw.role!=="hub"||raw.scope!=="existing-partner-counts-only"||
     raw.date!==expected.date||raw.partnerCompanyId!==expected.partnerCompanyId||
     raw.sbBreakdownSchema!=="sb-separated-v1"||
     raw.containsFinance!==false||
     !Array.isArray(raw.entries)||raw.entries.length>200)
   fail("LIST_UNVERIFIED");
- const entries=raw.entries.map(safeRow);
+ let ownerProducts;
+ if(individual){
+  if(raw.sharedCatalogMode!=="owner-products-count-only-v1"||raw.sharedCatalogVerified!==true)fail("CATALOG_UNVERIFIED");
+  try{ownerProducts=verifiedIndividualCatalog(raw.ownerProducts)}catch{fail("CATALOG_UNVERIFIED")}
+ }
+ const entries=raw.entries.map(row=>safeRow(row,ownerProducts?.map(p=>p.id)));
  if(new Set(entries.map(r=>r.staffId)).size!==entries.length)
   fail("DUPLICATE_STAFF");
  return {role:"hub",scope:"existing-partner-counts-only",
   date:expected.date,partnerCompanyId:expected.partnerCompanyId,
-  sbBreakdownSchema:"sb-separated-v1",containsFinance:false,entries};
+  sbBreakdownSchema:"sb-separated-v1",containsFinance:false,entries,
+  ...(individual?{ownerProducts,sharedCatalogMode:"owner-products-count-only-v1",sharedCatalogVerified:true}:{})};
 }
 function safeWriteRequest(raw){
+ const individual=object(raw)&&Object.hasOwn(raw,"ownerProductCounts");
  if(!keys(raw,[
   "date","partnerCompanyId","staffId","expectedVersion",
-  "counts","sbBreakdown","correctionReason"
+  "counts","sbBreakdown","correctionReason",...(individual?["ownerProductCounts"]:[])
  ])||!DATE.test(raw.date)||!safeId(raw.partnerCompanyId)||
     !safeId(raw.staffId)||!Number.isSafeInteger(raw.expectedVersion)||
     raw.expectedVersion<1||raw.expectedVersion>=999||
@@ -76,21 +91,26 @@ function safeWriteRequest(raw){
  const counts=safeCounts(raw.counts),split=safeSplit(counts,raw.sbBreakdown);
  return {date:raw.date,partnerCompanyId:raw.partnerCompanyId,
   staffId:raw.staffId,expectedVersion:raw.expectedVersion,
-  counts,sbBreakdown:split,correctionReason:raw.correctionReason};
+  counts,sbBreakdown:split,correctionReason:raw.correctionReason,
+  ...(individual?{ownerProductCounts:individualValues(raw.ownerProductCounts)}:{})};
 }
 function safeWriteResult(raw,req){
+ const individual=req.ownerProductCounts!==undefined;
  if(!keys(raw,[
   "saved","scope","partnerCompanyId","staffId","date",
-  "version","totalCount","containsFinance"
+  "version","totalCount","containsFinance",...(individual?individualFields:[])
  ])||raw.saved!==true||raw.scope!=="hub-owner-existing-only"||
     raw.partnerCompanyId!==req.partnerCompanyId||raw.staffId!==req.staffId||
     raw.date!==req.date||raw.version!==req.expectedVersion+1||
     raw.totalCount!==total(req.counts)||raw.containsFinance!==false)
   fail("WRITE_RESULT_UNVERIFIED");
+ const ownerProductCounts=individual?individualValues(raw.ownerProductCounts,Object.keys(req.ownerProductCounts)):undefined;
+ if(individual&&(raw.ownerProductTotalCount!==total(ownerProductCounts)||
+    Object.keys(req.ownerProductCounts).some(id=>req.ownerProductCounts[id]!==ownerProductCounts[id])))fail("WRITE_RESULT_UNVERIFIED");
  return {saved:true,scope:"hub-owner-existing-only",
   partnerCompanyId:req.partnerCompanyId,staffId:req.staffId,
   date:req.date,version:raw.version,totalCount:raw.totalCount,
-  containsFinance:false};
+  containsFinance:false,...(individual?{ownerProductCounts,ownerProductTotalCount:total(ownerProductCounts)}:{})};
 }
 
 export function makeOwnerCorrectionClient({
