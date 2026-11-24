@@ -381,3 +381,35 @@ test("original owner cards use existing v3 callable names with frontend OFF and 
   page.indexOf("// Original internal owner sees existing teams PLUS partner-company teams.")),
   /getFirestore|deleteDoc|updateDoc|setDoc|signInWithEmailAndPassword/);
 });
+
+test("individual Owner correction keeps original form controls, locks old counts and refreshes rankings once",async()=>{
+ const f=fixture(),catalog=[{id:"hikari",name:"光"},{id:"air",name:"AIR"}];
+ let latest={...listing(),ownerProducts:catalog,sharedCatalogMode:"owner-products-count-only-v1",sharedCatalogVerified:true,
+  entries:[{...row(),ownerProductCounts:{hikari:2,air:3},ownerProductTotalCount:5}]};
+ f.fn.listCallable=async req=>{f.seen.list.push(req);return {data:structuredClone(latest)}};
+ f.fn.correctCallable=async req=>{
+  f.seen.correct.push(req);
+  assert.deepEqual(req.counts,counts());assert.deepEqual(req.sbBreakdown,split());
+  assert.deepEqual(req.ownerProductCounts,{hikari:4,air:3});
+  latest={...latest,entries:[{...latest.entries[0],version:3,ownerProductCounts:{...req.ownerProductCounts},ownerProductTotalCount:7}]};
+  return {data:{saved:true,scope:"hub-owner-existing-only",partnerCompanyId:cid,staffId:"s1",date,
+   version:3,totalCount:6,containsFinance:false,ownerProductCounts:{hikari:4,air:3},ownerProductTotalCount:7}};
+ };
+ const panel=await mountVerifiedOwnerCorrection(f.fn);
+ const wrap=f.root.children[0];wrap.children[3].value=cid;
+ await panel.load();
+ const editor=wrap.children[5],fields=editor.children[2];
+ assert.equal(editor.hidden,false);
+ assert(fields.children.slice(0,COUNT_KEYS.length).every(label=>label.children[0].disabled===true));
+ const individual=fields.children[COUNT_KEYS.length];
+ assert.equal(individual.children.length,2);
+ assert.equal(individual.children[0].children[0].disabled,false);
+ individual.children[0].children[0].value="4";
+ editor.children[6].value="登録済みの個別件数を訂正";
+ await panel.save();
+ assert.equal(f.seen.correct.length,1);
+ assert.equal(f.seen.list.length,2);
+ assert.equal(f.seen.invalidation.length,1);
+ assert.match(wrap.children[6].textContent,/保存・再照合完了：第3版/);
+ panel.destroy();
+});

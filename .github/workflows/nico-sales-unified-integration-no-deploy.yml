@@ -64,7 +64,7 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
           test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 442af45e493daf4162182e4ed76240bbcd4fccf2
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 414820fe3e0f098f4eaded47eb9e874a87c03c5f
           test "$(git hash-object functions-partner-workspace/index.js)" = 42eea81ab01449bedbbedabdc1a8fb6bfba1e284
           test "$(git hash-object functions-partner-workspace/workspace-identity.cjs)" = e06305c7dd151a3e5bab93a394396754fd25088e
           test "$(git hash-object firebase.json)" = d4d918a83f2675994d7aa211c42bb2c9e7242478
@@ -98,7 +98,7 @@ jobs:
           node --test tests/partner-code-count-readonly-safety.test.mjs tests/partner-code-auth-handoff.test.mjs tests/main-company-code-entry.test.mjs tests/partner-code-owner-published-tabs.test.mjs tests/partner-code-session-count-isolation.test.mjs tests/partner-zero-reported-day-parity.test.mjs tests/partner-count-dashboard.test.cjs tests/partner-company-code-goal-parity.test.mjs tests/partner-save-receipt-idempotency.test.mjs tests/partner-approved-week-ranking-page.test.mjs
           # Reuse the existing service fixture: real save transaction -> immediate
           # verified day/month partner ranks -> correction -> non-duplicated totals.
-          node --test tests/partner-workspace.test.cjs
+          node --test tests/partner-workspace.test.cjs tests/owner-approved-individual-count-input.test.cjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
           # Review the original count-only browser behaviors as part of the
           # current integration; stale standalone branch hashes do not stand
           # in for behavior/regression coverage.
@@ -168,7 +168,7 @@ jobs:
           test -z "$GOOGLE_APPLICATION_CREDENTIALS"
           test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
           test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = 442af45e493daf4162182e4ed76240bbcd4fccf2
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 414820fe3e0f098f4eaded47eb9e874a87c03c5f
           node security/secondary-finance-read-fence.mjs --check
       - name: Install emulator without production credentials
         run: |

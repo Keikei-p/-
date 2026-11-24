@@ -178,13 +178,14 @@ export function mountOwnerCorrection({
  status.setAttribute("role","status");status.setAttribute("aria-live","polite");
  const editor=el("div");editor.hidden=true;editor.style.cssText="display:grid;gap:10px";
  const gridInputs={},sbInputs={};
+ const legacyLabels=new Map();
  const individualFields=el("div","");individualFields.style.cssText=fields.style.cssText;
  const individualInputs=new Map();
  for(const key of COUNT_KEYS){
   const l=el("label","",key),input=el("input");
   input.type="number";input.min="0";input.max="9999";input.step="1";input.inputMode="numeric";
   input.setAttribute("aria-label",key+"の件数");input.style.cssText="width:100%;min-height:44px";
-  gridInputs[key]=input;l.append(input);fields.append(l);
+  gridInputs[key]=input;legacyLabels.set(input,l);l.append(input);fields.append(l);
  }
  for(const key of SB_PARTS){
   const l=el("label","",key),input=el("input");
@@ -193,7 +194,7 @@ export function mountOwnerCorrection({
   sbInputs[key]=input;l.append(input);sbFields.append(l);
  }
  const hint=el("p","", "光とAIRは現在も旧合算で管理しています。内訳の分離は後日の正式承認まで行いません。旧未分類の件数は「SB光・AIR」に一致します。");
- editor.append(staffLabel,staffSelect,fields,hint,sbFields,individualFields,reasonLabel,reason,saveButton);
+ editor.append(staffLabel,staffSelect,fields,hint,sbFields,reasonLabel,reason,saveButton);
  const companyShortcuts=el("div","nico-owner-company-shortcuts");
  companyShortcuts.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px";
  const companyButtons=new Map();
@@ -228,11 +229,13 @@ export function mountOwnerCorrection({
   selected=current?.entries.find(x=>x.staffId===staffSelect.value)||null;
   editor.hidden=!selected;
   individualFields.replaceChildren();individualInputs.clear();
+  fields.replaceChildren(...Object.values(gridInputs).map(input=>legacyLabels.get(input)));
   if(!selected)return;
   const individual=current.ownerProducts!==undefined;
   hint.textContent=individual?"旧登録の件数・内訳は保持します。公開中の個別商材だけを訂正できます。":
    "光とAIRは現在も旧合算で管理しています。内訳の分離は後日の正式承認まで行いません。旧未分類の件数は「SB光・AIR」に一致します。";
   if(individual){
+   fields.append(individualFields);
    for(const product of verifiedIndividualCatalog(current.ownerProducts)){
     const label=el("label","",product.name),input=el("input");
     input.type="number";input.min="0";input.max="9999";input.step="1";input.inputMode="numeric";
