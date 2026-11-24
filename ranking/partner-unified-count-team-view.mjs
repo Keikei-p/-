@@ -48,17 +48,68 @@ function counters(counts,keys,allowed){
  }
  return {counts:output,total};
 }
+/** Read-only display projection. Never use these labels or totals as a save payload. */
+export function projectPartnerDayDisplayCounts(workspace){
+ if(!object(workspace)||!["owner","leader","member"].includes(workspace.role))stop();
+ if(workspace.ownerProducts===undefined)return workspace;
+ if(workspace.sharedCatalogMode!=="owner-products-count-only-v1"||
+    workspace.sharedCatalogVerified!==true)stop();
+ const keys=limit(workspace.categories,PARTNER_DAY_PRODUCT_KEYS.length);
+ if(keys.join("|")!==PARTNER_DAY_PRODUCT_KEYS.join("|"))stop();
+ const oldSelected=limit(workspace.enabledCategories,keys.length);
+ if(new Set(oldSelected).size!==oldSelected.length||oldSelected.some(k=>!keys.includes(k)))stop();
+ const oldAllowed=new Set(oldSelected);
+ const products=limit(workspace.ownerProducts,1000),ids=new Set(),used=new Set(oldSelected);
+ const displayProducts=[];
+ for(const p of products){
+  if(!object(p)||Object.keys(p).sort().join("|")!=="id|name"||
+     typeof p.id!=="string"||!/^[-A-Za-z0-9_:]{1,200}$/.test(p.id)||
+     ["__proto__","constructor","prototype"].includes(p.id)||
+     p.id.startsWith("legacyPartnerSku:")||p.id.startsWith("partnerPrivate:")||
+     ids.has(p.id))stop();
+  const label=name(p.name);
+  if(/(?:commission|unit\s*price|cash\s*back|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円)/i.test(label.normalize("NFKC")))stop();
+  if(["__proto__","constructor","prototype"].includes(label))stop();
+  ids.add(p.id);
+  // A new exact-ID count and an old aggregate can share a label, not a ledger.
+  // Keep separate display rows and avoid guessing identities from labels.
+  let display=label;
+  for(let i=1;used.has(display);i++)display=label+"（個別"+i+"）";
+  used.add(display);displayProducts.push({id:p.id,label:display});
+ }
+ const categories=[...oldSelected,...displayProducts.map(p=>p.label)];
+ const records=limit(workspace.records,200).map(row=>{
+  if(!object(row))stop();
+  const old=counters(row.counts,keys,oldAllowed);
+  if(old.total!==row.totalCount)stop();
+  const raw=row.ownerProductCounts;
+  if(!object(raw)||Object.keys(raw).length!==ids.size||
+     Object.keys(raw).some(id=>!ids.has(id)))stop();
+  const counts={...old.counts};let individualTotal=0;
+  for(const p of displayProducts){
+   const n=number(raw[p.id]);individualTotal=add(individualTotal,n);
+   counts[p.label]=n;
+  }
+  if(individualTotal!==row.ownerProductTotalCount)stop();
+  // Do not include legacy private products, OFF products, or financial fields
+  // in the display total. Preserve the original snapshot for input/readback.
+  return {...row,counts,totalCount:add(old.total,individualTotal)};
+ });
+ return {...workspace,categories,enabledCategories:categories,records};
+}
 /** All reported team IDs are the immutable saved teamIdSnapshot, never current team. */
 export function buildPartnerUnifiedCountTeamView(workspace){
  if(!object(workspace)||!["owner","leader","member"].includes(workspace.role))stop();
  const companyName=name(workspace.companyName),reportDate=day(workspace.date);
- const categories=limit(workspace.categories,PARTNER_DAY_PRODUCT_KEYS.length);
- if(categories.join("|")!==PARTNER_DAY_PRODUCT_KEYS.join("|"))stop();
+ const individual=workspace.ownerProducts!==undefined;
+ if(individual)workspace=projectPartnerDayDisplayCounts(workspace);
+ const categories=limit(workspace.categories,individual?1009:PARTNER_DAY_PRODUCT_KEYS.length);
+ if(!individual&&categories.join("|")!==PARTNER_DAY_PRODUCT_KEYS.join("|"))stop();
  // The same verified 9-key count ledger serves all partner companies. The
  // optional legacy server restriction is honored only when it exists. There
  // is no additional browser-level per-company ON/OFF approval to configure.
  const selected=workspace.enabledCategories===undefined?
-  [...categories]:limit(workspace.enabledCategories,PARTNER_DAY_PRODUCT_KEYS.length);
+  [...categories]:limit(workspace.enabledCategories,individual?1009:PARTNER_DAY_PRODUCT_KEYS.length);
  if(new Set(selected).size!==selected.length||selected.some(key=>!categories.includes(key)))stop();
  const enabled=new Set(selected);
  const teams=limit(workspace.teams,150),staff=limit(workspace.staff,150);

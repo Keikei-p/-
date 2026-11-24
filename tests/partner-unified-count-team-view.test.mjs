@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
- buildPartnerUnifiedCountTeamView as view,PARTNER_DAY_PRODUCT_KEYS as PRODUCTS
+ buildPartnerUnifiedCountTeamView as view,projectPartnerDayDisplayCounts,PARTNER_DAY_PRODUCT_KEYS as PRODUCTS
 } from "../ranking/partner-unified-count-team-view.mjs";
 const blank=()=>Object.fromEntries(PRODUCTS.map(key=>[key,0]));
 function fixture(){
@@ -144,4 +144,42 @@ test("legacy server-side gate still cannot be bypassed by a no-toggle frontend",
  assert.deepEqual(out.activeInputCategories,["NURO"]);
  x.records[2].counts["SB光・AIR"]=1;x.records[2].totalCount=1;
  reject(()=>view(x)); // never accept a hidden positive value
+});
+
+test("individual Owner products reach company, historical team and member totals exactly once",()=>{
+ const x=fixture();
+ x.sharedCatalogMode="owner-products-count-only-v1";x.sharedCatalogVerified=true;
+ x.ownerProducts=[{id:"hikari",name:"光"},{id:"air",name:"AIR"},{id:"nuro",name:"NURO"}];
+ for(const row of x.records){
+  row.ownerProductCounts={hikari:0,air:0,nuro:0};row.ownerProductTotalCount=0;
+ }
+ Object.assign(x.records[0],{ownerProductCounts:{hikari:2,air:3,nuro:1},ownerProductTotalCount:6});
+ Object.assign(x.records[2],{ownerProductCounts:{hikari:1,air:0,nuro:0},ownerProductTotalCount:1});
+ const original=structuredClone(x),display=projectPartnerDayDisplayCounts(x),out=view(x);
+ assert.equal(display.records[0].totalCount,11);
+ assert.equal(out.companyTotalCount,19);
+ const first=out.teamDetails.find(t=>t.id==="t1");
+ assert.equal(first.totalCount,11);
+ assert.equal(first.counts.NURO,5);
+ assert.equal(first.counts["NURO（個別1）"],1);
+ assert.equal(first.counts["光"],2);
+ assert.equal(first.counts.AIR,3);
+ assert.equal(first.members.find(p=>p.id==="a").count,11);
+ assert.equal(first.members.find(p=>p.id==="b").count,0);
+ assert.equal(first.members.find(p=>p.id==="c").reported,false);
+ assert.equal(out.teamDetails.find(t=>t.id==="t3").totalCount,5);
+ assert.equal(out.historicalUnassigned[0].totalCount,3);
+ assert.equal(out.teamDetails.reduce((n,t)=>n+t.totalCount,0)+out.historicalUnassigned[0].totalCount,19);
+ assert.deepEqual(x,original);
+ for(const mutate of [
+  d=>{d.sharedCatalogVerified=false;},
+  d=>{d.ownerProducts[0].unitPrice=1;},
+  d=>{d.ownerProducts[0].name="CB 20000円";},
+  d=>{d.records[0].ownerProductTotalCount=99;},
+  d=>{d.records[0].ownerProductCounts.off=1;},
+  d=>{delete d.records[0].ownerProductCounts.air;},
+  d=>{d.records[0].counts.SBMNP=2;}
+ ]){
+  const invalid=structuredClone(x);mutate(invalid);reject(()=>view(invalid));
+ }
 });
