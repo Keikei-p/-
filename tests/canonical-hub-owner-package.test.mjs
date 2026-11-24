@@ -23,10 +23,11 @@ test('reuse the reviewed existing Owner implementation, two callable names and c
  assert.equal(p.report.codebase,'hub-owner-correction-v3');
  assert.deepEqual(p.report.exportedNames,['listHubPartnerCounts','correctHubPartnerCounts']);
  assert.equal(p.report.productionWrites,0);assert.equal(p.report.flagsChanged,false);
- assert.equal(p.bundle[OWNER_SOURCE+'/index.js'],readFileSync(join(root,'staging/partner-owner-correction-v3/entry.cjs'),'utf8'));
- assert.equal(p.bundle[OWNER_SOURCE+'/trusted-auth.cjs'],readFileSync(join(root,'staging/partner-owner-correction-v3/trusted-auth.cjs'),'utf8'));
- assert.equal(p.bundle[OWNER_SOURCE+'/service.cjs'],readFileSync(join(root,'staging/partner-owner-correction-v3/service.cjs'),'utf8')
-  .replace('require("../partner-sb-v2/sb-category-v2.cjs")','require("./sb-category-v2.cjs")'));
+ assert.equal(p.report.canonicalLedgerReused,true);
+ assert.equal(p.bundle[OWNER_SOURCE+'/index.js'],readFileSync(join(root,'staging/partner-owner-correction-v3/canonical-entry.cjs'),'utf8'));
+ for(const name of ["service.cjs","workspace-identity.cjs","shared-count-standings.cjs","approved-published-categories.cjs","submission-publication-guard.cjs","owner-approved-individual-count-input.cjs"])
+  assert.equal(p.bundle[OWNER_SOURCE+'/'+name],readFileSync(join(root,'functions-partner-workspace',name),'utf8'));
+ assert.doesNotMatch(p.bundle[OWNER_SOURCE+'/index.js'],/exports\.(submitPartnerWorkspaceCounts|managePartnerWorkspace)\s*=/);
  assert.doesNotMatch(readFileSync(join(root,'functions-partner-workspace/index.js'),'utf8'),/exports\.(listHubPartnerCounts|correctHubPartnerCounts)\s*=/);
  assert.equal(JSON.parse(p.bundle['firebase.owner-correction.json']).functions.codebase,CODEBASE);
 });
@@ -37,8 +38,8 @@ test('prepare only a self-contained disposable runner package; never overwrite a
  try{
   process.env.GITHUB_ACTIONS='true';process.env.GITHUB_REPOSITORY='Keikei-p/-';process.env.RUNNER_TEMP=folder;
   const p=prepareCanonicalOwnerPackage(root);writeCanonicalOwnerPackage(p,dest);
-  const runtime=createRequire(import.meta.url)(join(dest,OWNER_SOURCE,'trusted-auth.cjs'));
-  assert.equal(typeof runtime.makeAuthenticatedOwnerCorrectionV3,'function');
+  const runtime=createRequire(import.meta.url)(join(dest,OWNER_SOURCE,'service.cjs'));
+  assert.equal(typeof runtime.makeWorkspace,'function');
   assert(existsSync(join(dest,OWNER_SOURCE,'service.cjs')));
   assert.throws(()=>writeCanonicalOwnerPackage(p,dest),/DESTINATION|ALREADY_EXISTS/);
   assert.throws(()=>writeCanonicalOwnerPackage(p,'relative'),/DESTINATION/);
@@ -46,4 +47,29 @@ test('prepare only a self-contained disposable runner package; never overwrite a
   for(const [key,value]of Object.entries(prior))if(value===undefined)delete process.env[key];else process.env[key]=value;
   assert(resolve(folder).startsWith(resolve(tmpdir())+sep));rmSync(folder,{recursive:true,force:true});
  }
+});
+test('packaged Owner entry retains existing two names, count-only gates OFF and same canonical callable wiring',async()=>{
+ const vm=await import("node:vm");
+ const p=prepareCanonicalOwnerPackage(root),entry=p.bundle[OWNER_SOURCE+'/index.js'];
+ const env={},exports={},calls=[];
+ const fake={
+  "firebase-admin/app":{initializeApp:()=>{}},
+  "firebase-admin/auth":{getAuth:()=>{}},
+  "firebase-admin/firestore":{getFirestore:()=>({}),FieldValue:{},Timestamp:{}},
+  "firebase-functions/v2/https":{onCall:(options,handler)=>({options,handler}),HttpsError:Error},
+  "./service.cjs":{makeWorkspace:options=>{calls.push(options);return {listHubPartnerCounts:()=>"list",correctHubPartnerCounts:()=>"correct"}}}
+ };
+ vm.runInNewContext(entry,{exports,process:{env},require:name=>{assert(Object.hasOwn(fake,name),name);return fake[name]}});
+ assert.deepEqual(Object.keys(exports).sort(),["correctHubPartnerCounts","listHubPartnerCounts"]);
+ assert.equal(exports.listHubPartnerCounts.handler(),"list");
+ assert.equal(exports.correctHubPartnerCounts.handler(),"correct");
+ const gates=calls[0];
+ for(const k of ["enabled","ownerCorrectionReadEnabled","ownerCorrectionWriteEnabled","submissionPublicationEnabled","individualCountInputEnabled"])
+  assert.equal(gates[k](),false,k);
+ env.HUB_OWNER_COUNT_CORRECTION_V3_ENABLED="enabled";
+ assert.equal(gates.enabled(),true);assert.equal(gates.ownerCorrectionReadEnabled(),true);
+ assert.equal(gates.ownerCorrectionWriteEnabled(),true);assert.equal(gates.individualCountInputEnabled(),false);
+ env.NICO_PARTNER_INDIVIDUAL_COUNT_INPUT_ENABLED="enabled";
+ assert.equal(gates.individualCountInputEnabled(),true);assert.equal(gates.submissionPublicationEnabled(),false);
+ assert.equal(p.report.deployed,false);assert.equal(p.report.financeBoundaryVerified,false);
 });

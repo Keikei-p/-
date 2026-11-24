@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
-import {INTEGRATED_CANDIDATE,makeIntegratedCandidateOwnerPackage,writeDisposablePackage}
+import {INTEGRATED_CANDIDATE,makeIntegratedCandidateOwnerPackage,writeIntegratedDisposablePackage}
  from './prepare-hub-owner-correction-v3-package.mjs';
 export const CODEBASE='hub-owner-correction-v3';
 export const OWNER_SOURCE='functions-hub-owner-correction';
@@ -16,7 +16,7 @@ export function prepareCanonicalOwnerPackage(root){
   fileHashes:Object.fromEntries(Object.entries(prepared.bundle).map(([p,s])=>[p,createHash('sha256').update(s).digest('hex')]))}};
 }
 export function writeCanonicalOwnerPackage(prepared,destination){
- writeDisposablePackage(prepared,destination);return prepared.report;
+ writeIntegratedDisposablePackage(prepared,destination);return prepared.report;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
