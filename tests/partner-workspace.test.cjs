@@ -1953,3 +1953,23 @@ test("managed staff archive refuses other roles, registered people and revoked m
   {code:"permission-denied"});
  assert.equal(db.store.get(staffPath).active,true,"revoked manager cannot archive staff");
 });
+
+test("unconnected individual product payload cannot silently succeed or change the existing ledger",async()=>{
+ for(const publicationWriteOn of [false,true]){
+  const {db,api,req,zero,dependencies}=setup(false,publicationWriteOn);
+  const date="2026-10-31";
+  const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+  const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+  // Create the existing legacy row through the legacy path, not by changing history.
+  const legacy=makeWorkspace({...dependencies,submissionPublicationEnabled:()=>false});
+  const initial=await legacy.submit(req("p",{date,staffId:staff,expectedVersion:0,
+   counts:{...zero(),"SB光・AIR":3,"つばさ・HTB":4}}));
+  assert.equal(initial.saved,true);
+  const before=clone([...db.store]);
+  for(const ownerProductCounts of [{hikari:2,air:1},{},null]){
+   await assert.rejects(api.submit(req("p",{date,staffId:staff,
+    expectedVersion:1,counts:zero(),ownerProductCounts})),{code:"failed-precondition"});
+   assert.deepEqual([...db.store],before);
+  }
+ }
+});

@@ -1080,6 +1080,10 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   const a=await actor(request),d=request?.data||{},date=validDate(d.date),staffId=clean(d.staffId);
   if(!ID.test(staffId)||!Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<0)fail("invalid-argument");
   const {counts,total}=validateCounts(d.counts);
+  // Until the individual product ledger is connected end to end, reject it
+  // explicitly rather than returning saved:true for numbers never persisted.
+  if(Object.prototype.hasOwnProperty.call(d,"ownerProductCounts"))
+   fail("failed-precondition");
   const hasPrivateCounts=Object.prototype.hasOwnProperty.call(d,"privateCounts");
   const requestedPrivate=hasPrivateCounts?validatePrivateCounts(d.privateCounts).counts:null;
   // A count-only API must never silently accept and discard CB-tier entries.
