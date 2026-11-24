@@ -355,3 +355,49 @@ test("backgrounding either authenticated app hides dashboard immediately and rev
   assert.equal(run(mode,"block","visible").get().stop,0,"foreground untouched");
  }
 });
+
+test("same-app individual input sends exact Owner IDs and verifies independent legacy and individual counts",async()=>{
+ const a=index.indexOf("function partnerSavedCountReadbackState(");
+ const b=index.indexOf("function partnerCountSaveFailureMessage(",a);
+ const start=index.indexOf("function partnerIndividualCatalog(");
+ const end=index.indexOf("// Original internal owner sees existing teams PLUS partner-company teams.",start);
+ assert(a>0&&b>a&&start>0&&end>start);
+ for(const scenario of ["saved","dropped","legacy_changed","money_catalog","off_id"]){
+  const date="2026-11-13",calls=[],catalog=[{id:"hikari",name:"光"},{id:"air",name:"AIR"}];
+  const old={staffId:"worker",version:1,counts:{"SB光・AIR":7},totalCount:7,
+   privateCounts:{oldPrivate:2},privateTotalCount:2,workLocation:"現場",
+   teamIdSnapshot:"team",ownerProductCounts:{hikari:0,air:0},ownerProductTotalCount:0};
+  const snap={date,companyName:"検証会社",role:"member",categories:["SB光・AIR"],
+   enabledCategories:["SB光・AIR"],sharedCatalogMode:"owner-products-count-only-v1",
+   sharedCatalogVerified:true,ownerProducts:structuredClone(catalog),
+   staff:[{id:"worker",active:true,teamId:"team"}],teams:[{id:"team",active:true}],records:[old]};
+  if(scenario==="money_catalog")snap.ownerProducts[0].unitPrice=5;
+  const controls={pInlineSave:{},pInlineStaff:{value:"worker"},pInlineDate:{value:date},
+   pInlineRecordDate:{value:date},pInlineWorkLocation:{value:"現場"},pInlineWorkingTeam:{value:"team"},
+   pInlineCountFields:{querySelectorAll:selector=>selector==="input[data-owner-product-id]"?[
+    {dataset:{ownerProductId:"hikari"},value:"2"},
+    {dataset:{ownerProductId:scenario==="off_id"?"off":"air"},value:"3"}]:[]}};
+  const ctx=vm.createContext({pInline:id=>controls[id],partnerInlineData:snap,
+   partnerInlineWorkspaceCompany:"partner",partnerInlineIdentity:()=>"worker",
+   partnerInlinePayload:x=>x,partnerInlineRun:work=>work(),
+   partnerMainValidId:x=>/^[A-Za-z0-9_-]+$/.test(x),
+   partnerMainCountSubmit:async input=>{
+    calls.push("save");assert.equal(input.counts["SB光・AIR"],0);
+    assert.equal(input.ownerProductCounts.hikari,2);assert.equal(input.ownerProductCounts.air,3);
+    assert.equal(input.expectedVersion,1);
+    return {data:{saved:true,date,staffId:"worker",version:2}};
+   },
+   partnerMainCountRead:async()=>{
+    calls.push("get");
+    const row={...old,version:2,ownerProductCounts:{hikari:2,air:3},ownerProductTotalCount:5};
+    if(scenario==="dropped"){row.ownerProductCounts={hikari:0,air:0};row.ownerProductTotalCount=0;}
+    if(scenario==="legacy_changed"){row.counts={"SB光・AIR":0};row.totalCount=0;}
+    return {data:{...snap,records:[row]}};
+   }});
+  vm.runInContext(index.slice(a,b)+index.slice(start,end),ctx);
+  if(scenario==="saved")assert.match(await controls.pInlineSave.onclick(),/修正できました/);
+  else await assert.rejects(controls.pInlineSave.onclick());
+  assert.deepEqual(calls,["money_catalog","off_id"].includes(scenario)?[]:["save","get"]);
+  assert.equal(old.counts["SB光・AIR"],7);
+ }
+});

@@ -14768,10 +14768,12 @@ function partnerInlineHasUnsavedCounts(){
  if(pInline("pInlineWorkLocation").value.trim()!==(entry?.workLocation||""))return true;
  const person=snap.staff.find(p=>p.id===partnerInlineEditingStaffId);
  if(!entry&&pInline("pInlineWorkingTeam").value!==(person?.teamId||""))return true;
- for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
+ for(const node of fields.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier],input[data-owner-product-id]")){
   const current=node.value.trim();
   if(!current||!Number.isSafeInteger(Number(current))||Number(current)<0||Number(current)>9999)return true;
-  const previous=node.dataset.countKey?
+  const previous=node.dataset.ownerProductId?
+   (entry?.ownerProductCounts?.[node.dataset.ownerProductId]??0):
+   node.dataset.countKey?
    (entry?.counts?.[node.dataset.countKey]??0):
    node.dataset.cbTier?
     partnerUiCbCountSnapshot(entry)[node.dataset.cbTier]:
@@ -14784,7 +14786,7 @@ function renderPartnerEntryTotals(){
  const target=pInline("pInlineEntryTotals");
  const grid=pInline("pInlineCountFields");
  let shared=0,privateTotal=0;
- for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier]")){
+ for(const input of grid.querySelectorAll("input[data-count-key],input[data-private-count-id],input[data-cb-tier],input[data-owner-product-id]")){
   if(input.value.trim()===""||!Number.isSafeInteger(Number(input.value))||
      Number(input.value)<0||Number(input.value)>9999){
    target.textContent="件数を確認してください";
@@ -14804,6 +14806,7 @@ function partnerInlineRenderCounts(){
  const snap=partnerInlineData;
  if(!snap||snap.role==="hub")return;
  const enabledKeys=snap.enabledCategories??snap.categories;
+ const individualProducts=snap.ownerProducts===undefined?null:partnerIndividualCatalog(snap);
  const staffId=pInline("pInlineStaff").value;
  const entry=snap.records.find(x=>x.staffId===staffId);
  const person=snap.staff.find(x=>x.id===staffId);
@@ -14834,7 +14837,7 @@ function partnerInlineRenderCounts(){
  const grid=pInline("pInlineCountFields");grid.replaceChildren();
  pInline("pInlineSaveStatus").textContent="";
  delete pInline("pInlineSaveStatus").dataset.result;
- for(const key of enabledKeys){
+ if(individualProducts===null)for(const key of enabledKeys){
   const label=document.createElement("label");
   label.className="p-inline-field product-input-group product-input-group--compact";
   const title=document.createElement("div");title.className="product-input-group-title";
@@ -14845,6 +14848,30 @@ function partnerInlineRenderCounts(){
   input.value=String(entry?.counts?.[key]??0);
   input.addEventListener("input",renderPartnerEntryTotals);
   label.append(input);grid.append(label);
+ }
+ if(individualProducts!==null){
+  for(const product of individualProducts){
+   const label=document.createElement("label");
+   label.className="p-inline-field product-input-group product-input-group--compact";
+   const title=document.createElement("div");title.className="product-input-group-title";
+   const name=document.createElement("span");name.className="product-input-name";
+   name.textContent=product.name;title.append(name);label.append(title);
+   const input=document.createElement("input");input.type="number";input.min="0";
+   input.max="9999";input.step="1";input.inputMode="numeric";input.className="product-plan-input";
+   input.dataset.ownerProductId=product.id;
+   input.value=String(entry?.ownerProductCounts?.[product.id]??0);
+   input.addEventListener("input",renderPartnerEntryTotals);
+   label.append(input);grid.append(label);
+  }
+  for(const key of enabledKeys){
+   const prior=entry?.counts?.[key]??0;
+   if(prior>0){
+    const historical=document.createElement("div");
+    historical.className="p-inline-muted";
+    historical.textContent=key+"（旧登録 "+prior+"件・保持）";
+    grid.append(historical);
+   }
+  }
  }
  const unifiedProductList=partnerUsesVerifiedOwnerCatalog(snap);
  for(const product of snap.privateProducts||[]){
@@ -14876,7 +14903,7 @@ function partnerInlineRenderCounts(){
   label.append(input);grid.append(label);
  }
  pInline("pInlineSave").disabled=!staffId||partnerInlineBusy||
-  snap.enabledCategories?.length===0||(!entry&&
+  (individualProducts!==null?individualProducts.length===0:snap.enabledCategories?.length===0)||(!entry&&
   !allowedTeams.some(t=>t.id===teamSelect.value));
  pInline("pInlineVersion").textContent=entry?"登録済み・第"+entry.version+"版":"未登録";
  pInline("pInlineSave").textContent=entry?"変更した件数を保存（訂正）":"実績を一括登録";
@@ -15298,6 +15325,7 @@ async function partnerInlineFetch(){
       new Set(snap.enabledCategories).size!==snap.enabledCategories.length||
       snap.enabledCategories.some(key=>!snap.categories.includes(key))))
    throw Error("partner_publication_schema");
+  if(snap.ownerProducts!==undefined)partnerIndividualCatalog(snap);
   partnerOptionalVerifiedGoal=null;
   ++partnerOptionalTabGeneration;
   partnerInlineData=snap;partnerInlineRender();
@@ -15479,7 +15507,20 @@ function partnerSavedCountReadbackState(verified,expected){
      Number.isSafeInteger(privateSaved[id])&&privateSaved[id]===n);
  const privateTotal=Object.values(privateExpected).reduce((sum,n)=>sum+n,0);
  const total=Object.values(expected.counts).reduce((sum,n)=>sum+n,0);
- return record.totalCount===total&&record.privateTotalCount===privateTotal&&
+ let individualOk=true;
+ if(expected.ownerProductCounts!==undefined){
+  const wanted=expected.ownerProductCounts,saved=record.ownerProductCounts;
+  individualOk=verified.sharedCatalogMode==="owner-products-count-only-v1"&&
+   verified.sharedCatalogVerified===true&&Array.isArray(verified.ownerProducts)&&
+   verified.ownerProducts.length===Object.keys(wanted).length&&
+   new Set(verified.ownerProducts.map(p=>p.id)).size===verified.ownerProducts.length&&
+   verified.ownerProducts.every(p=>Object.hasOwn(wanted,p.id))&&
+   saved&&typeof saved==="object"&&!Array.isArray(saved)&&
+   Object.keys(saved).length===Object.keys(wanted).length&&
+   Object.entries(wanted).every(([id,n])=>Number.isSafeInteger(saved[id])&&saved[id]===n)&&
+   record.ownerProductTotalCount===Object.values(wanted).reduce((sum,n)=>sum+n,0);
+ }
+ return individualOk&&record.totalCount===total&&record.privateTotalCount===privateTotal&&
    record.workLocation===expected.workLocation&&
    (expected.expectedVersion!==0||record.teamIdSnapshot===expected.workTeamId)&&
    countOk&&privateOk?"saved":"unknown";
@@ -15645,8 +15686,10 @@ pInline("pInlineZero").onclick=()=>{
  if(partnerInlineBusy||!partnerInlineData)return;
  const staffId=pInline("pInlineStaff").value;
  const existing=partnerInlineData.records.find(row=>row.staffId===staffId);
- if(existing&&((existing.totalCount||0)>0||(existing.privateTotalCount||0)>0)&&
-    !window.confirm("登録済みの件数を0件に訂正します。過去の訂正履歴は残ります。続行しますか？"))return;
+ if(existing&&((existing.totalCount||0)>0||(existing.privateTotalCount||0)>0||(existing.ownerProductTotalCount||0)>0)&&
+    !window.confirm(partnerInlineData.ownerProducts===undefined?
+     "登録済みの件数を0件に訂正します。過去の訂正履歴は残ります。続行しますか？":
+     "入力対象の個別商材を0件に訂正します。旧登録・非公開の件数は保持されます。続行しますか？"))return;
  partnerInlineClearFields();
  pInline("pInlineSave").click();
 };
@@ -15861,6 +15904,33 @@ pInline("pInlineCopyInvite").onclick=async()=>{
   partnerInlineStatus("招待リンクをコピーしました。");
  }catch{pInline("pInlineInviteUrl").select();partnerInlineStatus("リンクを選択しました。コピーしてください。");}
 };
+// Only the staged server's exact count-only catalog permits this new input path.
+function partnerIndividualCatalog(snap){
+ if(snap?.ownerProducts===undefined)return null;
+ if(snap.sharedCatalogMode!=="owner-products-count-only-v1"||
+    snap.sharedCatalogVerified!==true||!Array.isArray(snap.ownerProducts)||
+    snap.ownerProducts.length>1000)throw Error("partner_publication_schema");
+ const ids=new Set();
+ const bad=/(?:売上|単価|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９,.，]*\s*(?:万|千)?円)/i;
+ for(const p of snap.ownerProducts){
+  if(!p||Object.keys(p).sort().join("|")!=="id|name"||
+     typeof p.id!=="string"||!/^[-A-Za-z0-9_:]{1,200}$/.test(p.id)||
+     ["__proto__","constructor","prototype"].includes(p.id)||
+     p.id.startsWith("legacyPartnerSku:")||p.id.startsWith("partnerPrivate:")||
+     ids.has(p.id)||typeof p.name!=="string"||!p.name.trim()||
+     p.name.length>80||bad.test(p.name.normalize("NFKC")))throw Error("partner_publication_schema");
+  ids.add(p.id);
+ }
+ for(const record of snap.records??[]){
+  const counts=record.ownerProductCounts;
+  if(!counts||typeof counts!=="object"||Array.isArray(counts)||
+     Object.keys(counts).length!==ids.size||
+     Object.entries(counts).some(([id,n])=>!ids.has(id)||!Number.isSafeInteger(n)||n<0||n>9999)||
+     Object.values(counts).reduce((a,b)=>a+b,0)!==record.ownerProductTotalCount)
+   throw Error("partner_publication_schema");
+ }
+ return snap.ownerProducts;
+}
 function partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLocation=""){
  // Saving an unchanged correction must not create a new audit version.
  // A first-ever zero-count report is still a legitimate new record.
@@ -15884,13 +15954,15 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  const workLocation=pInline("pInlineWorkLocation").value.trim();
  if(workLocation.length>100||/[\x00-\x1f\x7f]/.test(workLocation))throw Error("work_location_invalid");
  const enabledKeys=snap.enabledCategories??snap.categories;
- if(!Array.isArray(enabledKeys)||enabledKeys.length===0||
+ const individualProducts=snap.ownerProducts===undefined?null:partnerIndividualCatalog(snap);
+ if(!Array.isArray(enabledKeys)||(individualProducts===null?enabledKeys.length===0:individualProducts.length===0)||
     new Set(enabledKeys).size!==enabledKeys.length||
     enabledKeys.some(key=>!snap.categories.includes(key)))
   throw Error("partner_publication_schema");
  const counts=Object.create(null);
  for(const key of snap.categories){
   if(!enabledKeys.includes(key)){counts[key]=0;continue;}
+  if(individualProducts!==null){counts[key]=0;continue;}
   const node=[...pInline("pInlineCountFields").querySelectorAll("input[data-count-key]")]
     .find(x=>x.dataset.countKey===key);
   const n=Number(node?.value);
@@ -15898,6 +15970,19 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   counts[key]=n;
  }
  const before=snap.records.find(x=>x.staffId===staffId);
+ let individualCounts;
+ if(individualProducts!==null){
+  individualCounts=Object.create(null);
+  const inputs=[...pInline("pInlineCountFields").querySelectorAll("input[data-owner-product-id]")];
+  if(inputs.length!==individualProducts.length)throw Error("counts");
+  for(const product of individualProducts){
+   const matches=inputs.filter(node=>node.dataset.ownerProductId===product.id);
+   const node=matches[0],n=Number(node?.value);
+   if(matches.length!==1||!node||node.value.trim()===""||
+      !Number.isSafeInteger(n)||n<0||n>9999)throw Error("counts");
+   individualCounts[product.id]=n;
+  }
+ }
  // The server retains OFF historical counts in its own trusted transaction,
  // but deliberately REDACTS OFF categories to zero in getPartnerWorkspace.
  // Compare only the authenticated count-only GET projection, not inaccessible
@@ -15920,7 +16005,9 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   if(!product)throw Error("private_product_unknown");
   if(product.active)privateCounts[id]=n;
  }
- if(partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLocation))
+ if(individualCounts===undefined?partnerInlineCountsUnchanged(snap,staffId,counts,privateCounts,workLocation):
+    before&&String(before.workLocation||"")===workLocation&&
+    Object.entries(individualCounts).every(([id,n])=>before.ownerProductCounts?.[id]===n))
   return "登録済みの件数と同じです。変更がないため訂正履歴は追加していません。";
  // Firebase Functions JSON serialization expects normal own-property objects.
  // Keep the null-prototype maps internally to prevent prototype pollution,
@@ -15928,7 +16015,8 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
  // Otherwise serializer.mapValues can throw before any POST reaches Cloud Run.
  const wireCounts=Object.fromEntries(Object.entries(counts));
  const wirePrivateCounts=Object.fromEntries(Object.entries(privateCounts));
- const expected={date,staffId,counts,workLocation,workTeamId,
+ const expected={date,staffId,counts:individualCounts===undefined?counts:(before?.counts??counts),workLocation,workTeamId,
+  ...(individualCounts===undefined?{}:{ownerProductCounts:Object.fromEntries(Object.entries(individualCounts))}),
   privateCounts,previousPrivateCounts:before?.privateCounts??{},
   expectedVersion:before?.version??0,
   categories:snap.categories,companyName:snap.companyName};
@@ -15937,6 +16025,7 @@ pInline("pInlineSave").onclick=()=>partnerInlineRun(async()=>{
   result=(await partnerMainCountSubmit(partnerInlinePayload({
    date,staffId,counts:wireCounts,workLocation,
    ...(!before?{workTeamId}:{}),privateCounts:wirePrivateCounts,
+   ...(individualCounts===undefined?{}:{ownerProductCounts:expected.ownerProductCounts}),
    expectedVersion:expected.expectedVersion
   }))).data;
  }catch(error){saveError=error;}

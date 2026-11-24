@@ -973,7 +973,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   return {role:s.role,date,companyName:clean(s.companyName),teamId:s.teamId,
     teams:visibleTeams,staff:[...allowed.values()],records:safeRecords,categories:KEYS,
     ...(enabledCategories===undefined?{}:{enabledCategories}),
-    ...(individualProducts===undefined?{}:{ownerProducts:individualProducts}),
+    ...(individualProducts===undefined?{}:{ownerProducts:individualProducts,
+     sharedCatalogMode:"owner-products-count-only-v1",sharedCatalogVerified:true}),
     privateProducts:productList};
  }
 
