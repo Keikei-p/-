@@ -28,6 +28,23 @@ test('foreign databases/projects, missing pages, missing brackets and invalid nu
   const f=series();edit(f);assert.throws(()=>summarizeCapacity(f,SNAP),/STOP_CLOUD_SHELL_/);
  }
 });
+test('observed live project_id label is accepted only for the exact source project',()=>{
+ const f=series(),labels=f.timeSeries[0].resource.labels;
+ delete labels.resource_container;labels.project_id='sales-management-cc116';
+ assert.equal(summarizeCapacity(f,SNAP).maxObservedBytes,10100000);
+ labels.resource_container='projects/sales-management-cc116';
+ assert.equal(summarizeCapacity(f,SNAP).capacityUpperBoundApproved,false);
+ labels.resource_container='projects/other';
+ assert.throws(()=>summarizeCapacity(f,SNAP),/METRIC_SOURCE/);
+ labels.resource_container='projects/sales-management-cc116';labels.project_id='other';
+ assert.throws(()=>summarizeCapacity(f,SNAP),/METRIC_SOURCE/);
+ delete labels.resource_container;
+ assert.throws(()=>summarizeCapacity(f,SNAP),/METRIC_SOURCE/);
+ delete labels.project_id;
+ assert.throws(()=>summarizeCapacity(f,SNAP),/METRIC_SOURCE/);
+ labels.project_id=null;
+ assert.throws(()=>summarizeCapacity(f,SNAP),/METRIC_SOURCE/);
+});
 const bounds={sizeUpperBoundBytes:32*1024*1024,maxBillableReads:400000,
  networkUpperBoundBytes:2**30,retentionDays:1,now:NOW};
 test('JPY calculation includes restore, reads, temporary storage, network, tax and margin without approval',()=>{

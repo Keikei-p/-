@@ -33,9 +33,17 @@ export function summarizeCapacity(data,snapshotTime){
  const t=Date.parse(snapshotTime),series=data?.timeSeries;
  if(!Number.isFinite(t)||data.nextPageToken||!Array.isArray(series)||series.length!==1)STOP('INCOMPLETE_METRIC');
  const s=series[0],labels=s.resource?.labels;
+ // Live Firestore Monitoring responses may use project_id instead of the
+ // descriptor's resource_container. Require at least one exact identity;
+ // when both are returned, neither may contradict the source project.
+ const hasProject=labels!=null&&Object.hasOwn(labels,'project_id');
+ const hasContainer=labels!=null&&Object.hasOwn(labels,'resource_container');
+ const sourceProjectVerified=(hasProject||hasContainer)&&
+  (!hasProject||labels.project_id===PROJECT)&&
+  (!hasContainer||[PROJECT,'projects/'+PROJECT,'projects/904932511564'].includes(labels.resource_container));
  if(s.metric?.type!==METRIC||s.resource?.type!=='firestore.googleapis.com/Database'||
     labels?.database_id!=='(default)'||labels.location!=='asia-northeast1'||
-    ![PROJECT,'projects/'+PROJECT,'projects/904932511564'].includes(labels.resource_container))STOP('METRIC_SOURCE');
+    !sourceProjectVerified)STOP('METRIC_SOURCE');
  if(!Array.isArray(s.points)||!s.points.length)STOP('MISSING_POINTS');
  const points=s.points.map(p=>{
   const at=Date.parse(p.interval?.endTime),raw=p.value?.int64Value;
