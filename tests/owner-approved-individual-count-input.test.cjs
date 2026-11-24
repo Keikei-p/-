@@ -159,3 +159,11 @@ test("new count is bounded and zero must remain a valid reported value",()=>{
  reject({...args,requested:{hikari:9999,air:9999,tsubasa:9999,htb:9999},
   previous:Object.fromEntries(Array.from({length:200},(_,i)=>["retired"+i,9999]))});
 });
+
+test("only verified hub Owner with matching UID can reuse the count-only publication contract",()=>{
+ const args=base(),scope={...args.scope,kind:"hub_owner",role:"owner",uid:"hubOwner"};
+ assert.equal(reconcile({...args,scope,requested:{hikari:4}}).total,4);
+ for(const spoof of [{...scope,uid:"partnerUser"},{...scope,role:"leader"},{...scope,verifiedByServer:false}]){
+  reject({...args,scope:spoof,requested:{hikari:4}});
+ }
+});

@@ -2035,3 +2035,50 @@ test("staged individual counts save and reload by exact Owner ID without rewriti
  assert.deepEqual(db.store.get("products/money"),moneyBefore);
  assert.deepEqual(db.store.get("records/old"),salesBefore);
 });
+
+test("staged hub Owner corrects existing individual counts atomically and preserves OFF and original aggregates",async()=>{
+ const {db,api,req,zero,dependencies}=setup(false,true,true,true);
+ const products=[{id:"hikari",name:"光",companyId:"hub",active:true},{id:"air",name:"AIR",companyId:"hub",active:true}];
+ const vp="companies/hub/rankingProductVisibility/shared",cp="companies/hub/rankingCountPublicCatalog/shared";
+ db.seed(vp,{hubCompanyId:"hub",ownerUid:"h",version:1,enabledHubProductIds:["hikari","air"],partnerOverrides:{}});
+ db.seed(cp,{schema:"nico-reviewed-count-public-catalog-v1",hubCompanyId:"hub",ownerUid:"h",version:1,products});
+ db.seed("companies/hub/rankingSkuMappings/shared",{hubCompanyId:"hub",ownerUid:"h",reviewedByUid:"h",active:true,version:1,bindings:[]});
+ const team=(await api.manage(req("p",{action:"addTeam",name:"1班"}))).teamId;
+ const staff=(await api.manage(req("p",{action:"addManaged",name:"担当",teamId:team}))).staffId;
+ const date="2026-10-31",legacyCounts={...zero(),"SB光・AIR":7};
+ const legacy=makeWorkspace({...dependencies,submissionPublicationEnabled:()=>false});
+ await legacy.submit(req("p",{date,staffId:staff,expectedVersion:0,counts:legacyCounts}));
+ const staged=makeWorkspace({...dependencies,individualCountInputEnabled:()=>true});
+ await staged.submit(req("p",{date,staffId:staff,expectedVersion:1,counts:zero(),ownerProductCounts:{hikari:2,air:3}}));
+ const visibility=db.store.get(vp),catalog=db.store.get(cp);
+ visibility.enabledHubProductIds=["hikari"];visibility.version++;catalog.version++;
+ const ep="companies/partner/partnerWorkEntries/"+date+"__"+staff;
+ const sp="companies/hub/partnerWorkCountDays/"+date+"/reports/partner";
+ const listed=await staged.listHubPartnerCounts(req("h",{date,partnerCompanyId:"partner"}));
+ assert.equal(listed.sharedCatalogVerified,true);
+ assert.deepEqual(listed.ownerProducts,[{id:"hikari",name:"光"}]);
+ assert.deepEqual(listed.entries[0].ownerProductCounts,{hikari:2});
+ const payload={date,partnerCompanyId:"partner",staffId:staff,expectedVersion:2,
+  counts:legacyCounts,sbBreakdown:{"SB光":0,"SB AIR":0,"旧未分類":7},
+  correctionReason:"件数確認による訂正",ownerProductCounts:{hikari:5}};
+ const before=clone([...db.store]);
+ await assert.rejects(staged.correctHubPartnerCounts(req("p",payload)),{code:"permission-denied"});
+ await assert.rejects(staged.correctHubPartnerCounts(req("h",{...payload,ownerProductCounts:{air:0}})),{code:"failed-precondition"});
+ await assert.rejects(staged.correctHubPartnerCounts(req("h",{...payload,expectedVersion:1})),{code:"aborted"});
+ await assert.rejects(staged.correctHubPartnerCounts(req("h",{...payload,ownerProductCounts:{hikari:2}})),{code:"failed-precondition"});
+ assert.deepEqual([...db.store],before);
+ const saved=await staged.correctHubPartnerCounts(req("h",payload));
+ assert.equal(saved.version,3);assert.deepEqual(saved.ownerProductCounts,{hikari:5});
+ for(const path of [ep,sp]){
+  assert.deepEqual(db.store.get(path).counts,legacyCounts);
+  assert.equal(db.store.get(path).totalCount,7);
+  assert.deepEqual(db.store.get(path).ownerProductCounts,{hikari:5,air:3});
+  assert.equal(db.store.get(path).ownerProductTotalCount,8);
+ }
+ const audit=db.store.get("companies/partner/partnerWorkAudits/"+date+"__"+staff+"__v3");
+ assert.deepEqual(audit.previousOwnerProductCounts,{hikari:2,air:3});
+ assert.equal(audit.correctedByOwnerUid,"h");
+ const after=await staged.view(req("p",{date}));
+ assert.deepEqual(after.records[0].ownerProductCounts,{hikari:5});
+ for(const path of ["products/money","records/old"])assert.deepEqual(db.store.get(path),before.find(([p])=>p===path)[1]);
+});

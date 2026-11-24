@@ -4,6 +4,7 @@ const crypto=require("node:crypto");
 const {buildApprovedPartnerCountStandings}=require("./shared-count-standings.cjs");
 const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
 const {createPartnerSubmissionPublicationGuard}=require("./submission-publication-guard.cjs");
+const {reconcileOwnerApprovedIndividualCounts}=require("./owner-approved-individual-count-input.cjs");
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -994,6 +995,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(!rel.active)fail("failed-precondition");
   return s;
  };
+ // Authorization comes exclusively from guardOwnerScope in this transaction.
+ // This read uses the same approved count-only catalog as partner submissions.
+ const readOwnerIndividualPolicy=async(tx,hub,uid,partnerId)=>{
+  if(!individualOn()||hub.kind!=="hub"||hub.role!=="owner"||hub.uid!==uid)fail();
+  const root=db.collection("companies").doc(hub.cid);
+  const [company,visibility,catalog]=await Promise.all([
+   tx.get(root),tx.get(root.collection("rankingProductVisibility").doc("shared")),
+   tx.get(root.collection("rankingCountPublicCatalog").doc("shared"))
+  ]);
+  if(!company.exists||company.data()?.ownerUid!==uid||
+     company.data()?.active!==true||!visibility.exists||!catalog.exists)fail("failed-precondition");
+  return {scope:{verifiedByServer:true,kind:"hub_owner",role:"owner",uid,
+   cid:partnerId,hubId:hub.cid,ownerUid:uid},visibility:visibility.data(),publicCatalog:catalog.data()};
+ };
+ const ownerIndividualReconcile=(policy,previous,requested)=>{
+  try{return reconcileOwnerApprovedIndividualCounts({...policy,previous,requested});}
+  catch{fail("failed-precondition");}
+ };
  async function listHubPartnerCounts(request){
   if(ownerCorrectionReadEnabled()!==true)fail("unavailable");
   const a=await actor(request),d=request?.data||{};
@@ -1006,6 +1025,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     .where("date","==",date).limit(201);
    const entries=await tx.get(query);
    if(entries.size>200)fail("resource-exhausted");
+   const individualPolicy=individualOn()?await readOwnerIndividualPolicy(tx,hub,a.uid,d.partnerCompanyId):null;
+   const individualProducts=individualPolicy?ownerIndividualReconcile(individualPolicy,{}).publishedProducts:undefined;
    const rows=[];
    for(const snap of entries.docs){
     const x=snap.data()||{};
@@ -1022,13 +1043,18 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     if(teamIdSnapshot!==null&&!ID.test(teamIdSnapshot))fail("data-loss");
     // Keep old SB光・AIR together and mark its breakdown unclassified.
     // Never infer a split into SB光 and SB AIR from a combined legacy total.
+    if(hasIndividualLedger(x)&&!individualPolicy)fail("failed-precondition");
+    const individual=individualPolicy?ownerIndividualReconcile(individualPolicy,readIndividualLedger(x).counts):null;
     rows.push({staffId:x.staffId,staffName,teamIdSnapshot,
      counts,totalCount:total,version:x.version,
+     ...(individual?{ownerProductCounts:individual.visibleCounts,
+      ownerProductTotalCount:Object.values(individual.visibleCounts).reduce((n,v)=>n+v,0)}:{}),
      sbBreakdown:unknownSb(counts["SB光・AIR"])});
    }
    rows.sort((x,y)=>x.staffId.localeCompare(y.staffId));
    return {role:"hub",scope:"existing-partner-counts-only",
     date,partnerCompanyId:d.partnerCompanyId,entries:rows,
+    ...(individualProducts===undefined?{}:{ownerProducts:individualProducts,sharedCatalogMode:"owner-products-count-only-v1",sharedCatalogVerified:true}),
     sbBreakdownSchema:"sb-separated-v1",containsFinance:false};
   });
  }
@@ -1036,9 +1062,12 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
   if(ownerCorrectionReadEnabled()!==true||
      ownerCorrectionWriteEnabled()!==true)fail("unavailable");
   const a=await actor(request),d=request?.data||{};
+  const individualRequest=Object.hasOwn(d,"ownerProductCounts");
+  if(individualRequest&&!individualOn())fail("failed-precondition");
+  const keys=individualRequest?"correctionReason|counts|date|expectedVersion|ownerProductCounts|partnerCompanyId|sbBreakdown|staffId":
+   "correctionReason|counts|date|expectedVersion|partnerCompanyId|sbBreakdown|staffId";
   if(!d||typeof d!=="object"||Array.isArray(d)||
-     Object.keys(d).sort().join("|")!==
-      "correctionReason|counts|date|expectedVersion|partnerCompanyId|sbBreakdown|staffId"||
+     Object.keys(d).sort().join("|")!==keys||
      !ID.test(d.partnerCompanyId||"")||!ID.test(d.staffId||"")||
      !Number.isSafeInteger(d.expectedVersion)||d.expectedVersion<1||
      d.expectedVersion>=999||!validOwnerReason(d.correctionReason))
@@ -1068,8 +1097,8 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
         old.teamIdSnapshot!==undefined)
     fail("failed-precondition");
    if(old.version!==d.expectedVersion)fail("aborted");
-   // The old Owner correction contract does not yet expose the new fields.
-   if(hasIndividualLedger(old))fail("failed-precondition");
+   // Legacy-only requests must not silently ignore new individual counts.
+   if(hasIndividualLedger(old)&&!individualRequest)fail("failed-precondition");
    if(daily.source!=="staff-entries-v1"||daily.hubCompanyId!==hub.cid||
       daily.partnerCompanyId!==d.partnerCompanyId||daily.date!==date||
       !validCompanyName(daily.partnerName))fail("failed-precondition");
@@ -1091,12 +1120,24 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
    }
    if(updatedTotal!==companyTotal+total-previousTotal||
       !Number.isSafeInteger(updatedTotal))fail("data-loss");
-   if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
+   let individual=null,individualPrior=null,individualDaily=null;
+   if(individualRequest){
+    // No simultaneous change to the original nine-category ledger.
+    if(KEYS.some(key=>counts[key]!==prior[key])||!d.ownerProductCounts||
+       typeof d.ownerProductCounts!=="object"||Array.isArray(d.ownerProductCounts))fail("failed-precondition");
+    const policy=await readOwnerIndividualPolicy(tx,hub,a.uid,d.partnerCompanyId);
+    individualPrior=readIndividualLedger(old);
+    individual=ownerIndividualReconcile(policy,individualPrior.counts,d.ownerProductCounts);
+    if(!individual.changed)fail("failed-precondition");
+    individualDaily=mergeIndividualDaily(readIndividualLedger(daily,true),individualPrior,individual);
+   }else if(KEYS.every(key=>counts[key]===prior[key]))fail("failed-precondition");
    const nextVersion=d.expectedVersion+1,stamp=FieldValue.serverTimestamp();
    const rowChanges={counts,totalCount:total,version:nextVersion,
+    ...(individual?{ownerProductCounts:individual.counts,ownerProductTotalCount:individual.total}:{}),
     updatedByUid:a.uid,updatedAt:stamp};
    tx.update(er,rowChanges);
-   tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp});
+   tx.update(summary,{counts:updatedCounts,totalCount:updatedTotal,updatedAt:stamp,
+    ...(individualDaily?{ownerProductCounts:individualDaily.counts,ownerProductTotalCount:individualDaily.total}:{})});
    const audit=collection(d.partnerCompanyId,"partnerWorkAudits")
     .doc(date+"__"+d.staffId+"__v"+nextVersion);
    // Never spread an arbitrary saved entry into a new audit document.
@@ -1118,11 +1159,15 @@ function makeWorkspace({db,getAuth,FieldValue,Timestamp,HttpsError,enabled=()=>f
     privateCounts:savedPrivate.counts,privateTotalCount:savedPrivate.total,
     updatedByUid:a.uid,updatedAt:stamp,
     previousCounts:prior,previousPrivateCounts:savedPrivate.counts,
+    ...(individual?{ownerProductCounts:individual.counts,ownerProductTotalCount:individual.total,
+     previousOwnerProductCounts:individualPrior.counts}:{}),
     correctionReason:d.correctionReason,correctedByOwnerUid:a.uid,
     correctionKind:"hub_owner_existing_count_v3",createdAt:stamp});
    return {saved:true,scope:"hub-owner-existing-only",
     partnerCompanyId:d.partnerCompanyId,staffId:d.staffId,date,
-    version:nextVersion,totalCount:total,containsFinance:false};
+    version:nextVersion,totalCount:total,containsFinance:false,
+    ...(individual?{ownerProductCounts:individual.visibleCounts,
+     ownerProductTotalCount:Object.values(individual.visibleCounts).reduce((n,v)=>n+v,0)}:{})};
   });
  }
  async function submit(request){

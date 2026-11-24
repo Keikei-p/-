@@ -39,7 +39,8 @@ const countMap=(value)=>{
 };
 /** Verify Owner publication and a public count-only catalog, never finance products. */
 function verifiedCatalog({scope,visibility,publicCatalog}={}){
- if(!obj(scope)||scope.verifiedByServer!==true||scope.kind!=="partner"||
+ if(!obj(scope)||scope.verifiedByServer!==true||
+    !(scope.kind==="partner"||(scope.kind==="hub_owner"&&scope.role==="owner"&&scope.uid===scope.ownerUid))||
     !id(scope.uid)||!id(scope.cid)||!id(scope.hubId)||
     scope.cid===scope.hubId||!id(scope.ownerUid))fail();
  if(!obj(visibility)||visibility.hubCompanyId!==scope.hubId||
