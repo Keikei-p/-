@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {capacityUrl,summarizeCapacity,conditionalCost,review,QUOTE} from '../tools/production/review-managed-backup-cloud-shell.mjs';
+import {capacityUrl,summarizeCapacity,conditionalCost,review,QUOTE,aggregateCapacityUrl,summarizeAggregateCapacity,aggregateConditionalCost,AGGREGATE_METRIC,reviewAggregateBudget} from '../tools/production/review-managed-backup-cloud-shell.mjs';
 const SNAP='2026-11-23T07:53:46.403866Z',NOW=Date.parse('2026-11-24T09:00:00Z');
 const series=()=>({timeSeries:[{metric:{type:'firestore.googleapis.com/storage/data_and_index_storage_bytes'},
  resource:{type:'firestore.googleapis.com/Database',labels:{database_id:'(default)',location:'asia-northeast1',resource_container:'sales-management-cc116'}},
@@ -81,4 +81,57 @@ test('Cloud Shell adapter is inspection only and cannot invoke the paid lifecycl
  assert.doesNotMatch(source,/mode:'rehearse'|add-iam-policy-binding|setIamPolicy|firebase deploy|writeFile/);
  assert.match(source,/RESTORE_CAPACITY|restoreCapacityAndCostVerified:false/);
  assert.match(source,/REDACTED/);
+});
+const aggregateFixture=()=>({timeSeries:[{metric:{type:AGGREGATE_METRIC},resource:{
+ type:'firestore.googleapis.com/Database',labels:{project_id:'sales-management-cc116',database_id:'(default)',location:'asia-northeast1'}},
+ points:[{interval:{endTime:'2026-11-24T08:55:00Z'},value:{int64Value:'65137541'}},
+ {interval:{endTime:'2026-11-24T08:54:00Z'},value:{int64Value:'65137541'}}]}]});
+const aggregateInput={now:NOW,snapshotTime:SNAP,sourceObservedBytes:10100000};
+test('aggregate estimate checks exact source, post-backup fresh measurements and budget ceiling',()=>{
+ const u=new URL(aggregateCapacityUrl(NOW));
+ assert.match(u.searchParams.get('filter'),/storage\/backups_storage_bytes/);
+ const r=summarizeAggregateCapacity(aggregateFixture(),aggregateInput);
+ assert.equal(r.maxObservedAllBackupBytes,65137541);
+ assert.equal(r.estimateCapacityCeilingBytes,128*1024*1024);
+ assert.equal(r.exactBackupSizeVerified,false);
+ assert.equal(r.exactBackupDocumentCountVerified,false);
+ assert.equal(r.capacityUpperBoundApproved,false);
+ const c=aggregateConditionalCost(NOW);
+ assert(c.includingTaxAndMargin<500);assert.equal(c.hardBillingCapVerified,false);
+ assert.equal(c.releaseApproved,false);
+ assert.throws(()=>aggregateConditionalCost(NOW+86400000),/STALE_QUOTE/);
+});
+test('aggregate missing, foreign, stale, contradictory, or over-ceiling data never becomes a cost approval',()=>{
+ for(const edit of [x=>x.nextPageToken='more',x=>x.timeSeries.push(x.timeSeries[0]),
+ x=>x.timeSeries[0].resource.labels.project_id='other',
+ x=>x.timeSeries[0].resource.labels.resource_container='other',
+ x=>x.timeSeries[0].resource.labels.database_id='wrong',
+ x=>x.timeSeries[0].points[0].value.int64Value='134217729',
+ x=>x.timeSeries[0].points[0].value.int64Value='100',
+ x=>x.timeSeries[0].points[0].value.int64Value='NaN',
+ x=>x.timeSeries[0].points.pop(),
+ x=>x.timeSeries[0].points.forEach(p=>p.interval.endTime='2026-11-24T08:40:00Z')]){
+  const f=aggregateFixture();edit(f);
+  assert.throws(()=>summarizeAggregateCapacity(f,aggregateInput),/STOP_CLOUD_SHELL_/);
+ }
+});
+test('new aggregate route only reads metadata and metrics; no authorization, no restore',async()=>{
+ const source='projects/sales-management-cc116/databases/(default)',uid='source-database-uuid-1234';
+ const proof={mode:'inspect',backupSnapshotTime:SNAP,missingPermissions:[],managedBackupRestored:false,
+ sourceDocumentWrites:0,sourceRulesWrites:0,deployments:0};
+ const calls=[];
+ const read=async url=>{
+  calls.push(url);
+  if(url.endsWith('/databases'))return {databases:[{name:source,uid,type:'FIRESTORE_NATIVE',locationId:'asia-northeast1'}]};
+  if(url.endsWith('/backups'))return {backups:[{name:'projects/sales-management-cc116/locations/asia-northeast1/backups/backup-synthetic',
+   database:source,databaseUid:uid,state:'READY',snapshotTime:SNAP,expireTime:'2026-11-30T07:53:46Z'}]};
+  if(url===capacityUrl(SNAP))return series();
+  assert.equal(url,aggregateCapacityUrl(NOW));return aggregateFixture();
+ };
+ const result=await reviewAggregateBudget({read,inspect:async()=>proof,now:NOW});
+ assert.equal(calls.length,4);assert.equal(result.paidRestoreAuthorized,false);
+ assert.equal(result.restoreCapacityAndCostVerified,false);assert.equal(result.managedBackupRestored,false);
+ assert.equal(result.temporaryDatabaseCreated,false);assert.equal(result.sourceDocumentWrites,0);
+ assert(!JSON.stringify(result).includes(uid));
+ await assert.rejects(reviewAggregateBudget({read,inspect:async()=>({...proof,missingPermissions:['datastore.databases.delete']}),now:NOW}),/AGGREGATE_MISSING_IAM/);
 });

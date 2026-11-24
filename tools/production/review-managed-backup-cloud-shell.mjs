@@ -18,6 +18,9 @@ export const QUOTE=Object.freeze({reviewedDate:'2026-11-24',currency:'JPY',
  storageSku:'46BD-4CEB-6B94',egressSku:'C401-C373-C61E'});
 const METRIC='firestore.googleapis.com/storage/data_and_index_storage_bytes';
 const STOP=code=>{throw Error('STOP_CLOUD_SHELL_BACKUP_REVIEW_'+code)};
+export const AGGREGATE_METRIC='firestore.googleapis.com/storage/backups_storage_bytes';
+export const AGGREGATE_ESTIMATE_LIMIT=128*1024*1024;
+const MONITORING_SOURCE='https://cloud.google.com/monitoring/api/metrics_gcp_d_h#firestore';
 
 export function capacityUrl(snapshotTime){
  const t=Date.parse(snapshotTime);if(!Number.isFinite(t))STOP('SNAPSHOT_TIME');
@@ -83,6 +86,78 @@ export function conditionalCost({sizeUpperBoundBytes,maxBillableReads,networkUpp
   conditionalOnIndependentlyVerifiedBounds:true,releaseApproved:false};
 }
 
+/** New Owner-approved estimate route. The aggregate metric is delayed and
+ * does not give a document count. It must NEVER manufacture reviewedBudget
+ * or certify a hard billing cap. The paid lifecycle remains separate.
+ */
+export function aggregateCapacityUrl(now){
+ if(!Number.isFinite(now))STOP('AGGREGATE_TIME');
+ const u=new URL('https://monitoring.googleapis.com/v3/projects/'+PROJECT+'/timeSeries');
+ u.searchParams.set('filter','metric.type="'+AGGREGATE_METRIC+'" AND resource.type="firestore.googleapis.com/Database" AND resource.labels.database_id="(default)" AND resource.labels.location="asia-northeast1"');
+ u.searchParams.set('interval.startTime',new Date(now-20*60000).toISOString());
+ u.searchParams.set('interval.endTime',new Date(now).toISOString());
+ u.searchParams.set('view','FULL');u.searchParams.set('pageSize','1000');
+ return u.href;
+}
+export function summarizeAggregateCapacity(data,{now,snapshotTime,sourceObservedBytes}={}){
+ const snapshot=Date.parse(snapshotTime),series=data?.timeSeries;
+ if(!Number.isFinite(now)||!Number.isFinite(snapshot)||now-snapshot<15*60000||
+    data.nextPageToken||!Array.isArray(series)||series.length!==1||
+    !Number.isSafeInteger(sourceObservedBytes)||sourceObservedBytes<1)STOP('AGGREGATE_INCOMPLETE');
+ const s=series[0],labels=s.resource?.labels;
+ const hasProject=labels!=null&&Object.hasOwn(labels,'project_id');
+ const hasContainer=labels!=null&&Object.hasOwn(labels,'resource_container');
+ if(s.metric?.type!==AGGREGATE_METRIC||s.resource?.type!=='firestore.googleapis.com/Database'||
+    labels?.database_id!=='(default)'||labels.location!=='asia-northeast1'||
+    !(hasProject||hasContainer)||(hasProject&&labels.project_id!==PROJECT)||
+    (hasContainer&&![PROJECT,'projects/'+PROJECT,'projects/904932511564'].includes(labels.resource_container)))STOP('AGGREGATE_SOURCE');
+ if(!Array.isArray(s.points)||s.points.length<2||s.points.length>1000)STOP('AGGREGATE_POINTS');
+ const points=s.points.map(p=>{
+  const at=Date.parse(p.interval?.endTime),v=p.value?.int64Value;
+  if(!Number.isFinite(at)||at<now-20*60000||at>now||
+     typeof v!=='string'||!/^\d+$/.test(v)||!Number.isSafeInteger(Number(v))||Number(v)<1)STOP('AGGREGATE_POINT');
+  return {at,bytes:Number(v)};
+ }).sort((a,b)=>a.at-b.at);
+ if(new Set(points.map(p=>p.at)).size!==points.length)STOP('AGGREGATE_DUPLICATE');
+ const after=points.filter(p=>p.at>=snapshot+10*60000);
+ if(after.length<2||now-after.at(-1).at>10*60000)STOP('AGGREGATE_STALE');
+ const maximum=Math.max(...after.map(p=>p.bytes));
+ // Reject even a downward outlier below sampled source storage; never
+ // equate total backup storage to one exact backup or invent its stats.
+ if(after.some(p=>p.bytes<sourceObservedBytes))STOP('AGGREGATE_UNDER_SOURCE');
+ if(maximum>AGGREGATE_ESTIMATE_LIMIT)STOP('AGGREGATE_ESTIMATE_LIMIT');
+ return {metric:AGGREGATE_METRIC,source:MONITORING_SOURCE,samples:after.length,
+  latestSample:new Date(after.at(-1).at).toISOString(),maxObservedAllBackupBytes:maximum,
+  estimateCapacityCeilingBytes:AGGREGATE_ESTIMATE_LIMIT,exactBackupSizeVerified:false,
+  exactBackupDocumentCountVerified:false,capacityUpperBoundApproved:false};
+}
+export function aggregateConditionalCost(now){
+ if(new Date(now).toISOString().slice(0,10)!==QUOTE.reviewedDate)STOP('STALE_QUOTE');
+ const gib=AGGREGATE_ESTIMATE_LIMIT/2**30;
+ // Three bounded traversals (before, isolated restore, after). Existing
+ // collector permits at most 80,400 requests and 30,500 references per
+ // traversal; 400,000 read units is a planning allowance, not a runtime
+ // billable-read meter. Allow two billing days at the day boundary.
+ const parts={restore:gib*QUOTE.restorePerGiB,reads:4*QUOTE.readPer100000,
+  storage:gib*QUOTE.storagePerGiBMonth/28*2,network:QUOTE.egressPerGiB,
+  databaseCreateAndDelete:0};
+ const includingTaxAndMargin=Math.ceil(Object.values(parts).reduce((a,b)=>a+b,0)*1.1*2);
+ if(includingTaxAndMargin>500)STOP('COST_EXCEEDS_500_JPY');
+ return {currency:'JPY',parts,includingTaxAndMargin,authorizedLimit:500,
+  assumedMaximumReads:400000,assumedNetworkBytes:2**30,assumedRetentionDays:2,
+  maxCollectorDocuments:10000,conditionalOnExecutionBounds:true,
+  hardBillingCapVerified:false,releaseApproved:false};
+}
+export async function reviewAggregateBudget({read,inspect,now=Date.now()}={}){
+ const base=await review({read,inspect,now});
+ if(base.missingPermissions.length)STOP('AGGREGATE_MISSING_IAM');
+ const aggregate=summarizeAggregateCapacity(await read(aggregateCapacityUrl(now)),{
+  now,snapshotTime:base.backupSnapshotTime,sourceObservedBytes:base.capacity.maxObservedBytes});
+ return {...base,mode:'cloud-shell-aggregate-budget-readonly',aggregate,
+  estimatedCost:aggregateConditionalCost(now),paidRestoreAuthorized:false,
+  restoreCapacityAndCostVerified:false,managedBackupRestored:false};
+}
+
 export async function review({read,inspect,now=Date.now()}={}){
  if(typeof read!=='function'||typeof inspect!=='function')STOP('TRANSPORT');
  const databases=await read(DATABASES_URL),backups=await read(BACKUPS_URL);
@@ -102,7 +177,8 @@ export async function review({read,inspect,now=Date.now()}={}){
 
 async function main(){
  const sha=process.argv[2];
- if(process.argv.length!==3||!/^[a-f0-9]{40}$/.test(sha||'')||
+ const aggregate=process.argv.length===4&&process.argv[3]==='--aggregate-budget';
+ if((process.argv.length!==3&&!aggregate)||!/^[a-f0-9]{40}$/.test(sha||'')||
     process.env.CLOUD_SHELL!=='true'||process.env.DEVSHELL_PROJECT_ID!==PROJECT)STOP('CLOUD_SHELL_ONLY');
  const run=(cmd,args)=>execFileSync(cmd,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
  if(run('git',['rev-parse','HEAD'])!==sha||run('gcloud',['config','get-value','project'])!==PROJECT)STOP('CHECKOUT_OR_PROJECT');
@@ -118,7 +194,7 @@ async function main(){
   const r=await send('GET',url);if(r.status!==200)STOP('HTTP_'+r.status);
   return r.json();
  };
- const output=await review({read,inspect:()=>rehearse({mode:'inspect',send})});
+ const output=await (aggregate?reviewAggregateBudget:review)({read,inspect:()=>rehearse({mode:'inspect',send})});
  console.log('NICO_CLOUD_SHELL_BACKUP_REVIEW '+JSON.stringify(output));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))
