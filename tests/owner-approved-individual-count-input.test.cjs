@@ -89,15 +89,19 @@ test("missing Owner auth, revoked role and company spoofing are never allowed",(
   reject({...args,scope,requested:{hikari:2}});
  }
 });
-test("a historical combined category is not a new individually writable product",()=>{
+test("Owner may publish historical combined and new individual SKUs together without splitting",()=>{
  const args=base();
  args.publicCatalog.products.push({id:"legacyPartnerSku:partnerSku05",
   companyId:"hub",name:"SB光・AIR（過去合算）",active:true});
- reject({...args,requested:{hikari:1}});
- const safe=base();
- reject({...safe,requested:{"legacyPartnerSku:partnerSku05":1}});
- reject({...safe,requested:{"partnerPrivate:historic":1}});
- reject({...safe,requested:{"SB光・AIR":35}});
+ args.visibility.enabledHubProductIds.push("legacyPartnerSku:partnerSku05");
+ const proper=reconcile({...args,requested:{hikari:1}});
+ assert.equal(proper.counts.hikari,1);
+ assert.deepEqual(proper.publishedProducts.map(p=>p.id),
+  ["hikari","air","tsubasa","htb"],
+  "past combined group belongs ONLY to the historical ranking read");
+ reject({...args,requested:{"legacyPartnerSku:partnerSku05":1}});
+ reject({...args,requested:{"partnerPrivate:historic":1}});
+ reject({...args,requested:{"SB光・AIR":35}});
 });
 test("unapproved product, guessed SKU ID, money field and nested payload are rejected",()=>{
  const args=base();
