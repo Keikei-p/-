@@ -86,7 +86,9 @@ function verifiedCatalog({scope,visibility,publicCatalog}={}){
 function reconcileOwnerApprovedIndividualCounts({scope,visibility,publicCatalog,
  previous,requested}={}){
  const {catalog,permitted}=verifiedCatalog({scope,visibility,publicCatalog});
- const saved=countMap(previous??{});
+ // The caller must supply the transaction-read prior state, even when empty.
+ // Omitting it could otherwise erase or duplicate already saved OFF counts.
+ const saved=countMap(previous);
  if(requested===undefined){
   const visible=Object.fromEntries([...permitted].map(key=>[key,saved.counts[key]??0]));
   return Object.freeze({changed:false,delta:0,
