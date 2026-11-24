@@ -72,6 +72,12 @@ test("an omitted new-count payload is strictly read-only and retains OFF history
  assert.deepEqual({...response.visibleCounts},{hikari:1});
  assert.deepEqual(args.previous,old);
 });
+test("missing transaction-read old counts must stop before the first write",()=>{
+ const args=base();
+ reject({...args,previous:undefined,requested:{hikari:1}});
+ reject({...args,previous:null,requested:{hikari:1}});
+ assert.equal(reconcile({...args,previous:{},requested:{hikari:1}}).total,1);
+});
 test("same values are no-op, so callers need not create audit/version writes",()=>{
  const args=base();
  const r=reconcile({...args,previous:{hikari:2},requested:{hikari:2}});
