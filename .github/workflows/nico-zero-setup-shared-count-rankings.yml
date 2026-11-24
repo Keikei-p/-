@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - 'ranking/zero-setup-count-linker.mjs'
+      - 'ranking/partner-workspace-count-source.mjs'
+      - 'ranking/partner-month-readonly-loader.mjs'
+      - 'tests/partner-workspace-count-source.test.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -25,6 +28,9 @@ on:
     branches: [main]
     paths:
       - 'ranking/zero-setup-count-linker.mjs'
+      - 'ranking/partner-workspace-count-source.mjs'
+      - 'ranking/partner-month-readonly-loader.mjs'
+      - 'tests/partner-workspace-count-source.test.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -77,7 +83,7 @@ jobs:
           if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
             echo 'STOP_RANKING_MUST_OBEY_OWNER_ON_OFF'; exit 1
           fi
-          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx historical-count-publication-groups; do
+          for f in partner-workspace-count-source partner-month-readonly-loader zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx historical-count-publication-groups; do
             cmp "ranking/$f.mjs" "functions-ranking-approvals/ranking/$f.mjs"
             node --check "ranking/$f.mjs"
             node --check "functions-ranking-approvals/ranking/$f.mjs"

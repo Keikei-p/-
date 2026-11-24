@@ -11,12 +11,13 @@
  * unknown, the partner's ORIGINAL category is published as a separate group,
  * never dropped, guessed, or added to a different sale.
  */
-import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
+import {PARTNER_RANK_SKUS,individualOwnerSourceId} from "./partner-workspace-count-source.mjs";
 import {createHash} from "node:crypto";
 import {auditNoFinancialKeys} from "../security/public-projection.mjs";
 
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const PRIVATE=/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/;
+const INDIVIDUAL=/^ownerProduct:[a-f0-9]{64}$/;
 const TIME=/^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/;
 const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
 const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
@@ -42,12 +43,17 @@ export function linkAllRegisteredCountsWithoutSetup({
     !Array.isArray(hubSource.products)||hubSource.products.length>1000||
     !Array.isArray(partnerSources)||partnerSources.length>30||
     !Array.isArray(reviewedBindings)||reviewedBindings.length>1000)stop();
- const own=new Map(),combinedMatches=[],byExactName=new Map();
+ const own=new Map(),combinedMatches=[],byExactName=new Map(),individualTargets=new Map();
  const result=[];
  for(const p of hubSource.products){
   if(!p||p.companyId!==hubCompanyId||!valid(p.sourceId)||
      !label(p.name)||own.has(p.sourceId)||typeof p.active!=="boolean")stop();
   own.set(p.sourceId,p);
+  if(!p.sourceId.startsWith("legacyPartnerSku:")&&!p.sourceId.startsWith("partnerPrivate:")){
+   const sourceId=individualOwnerSourceId(p.sourceId);
+   if(individualTargets.has(sourceId))stop();
+   individualTargets.set(sourceId,p);
+  }
   if(COMBINED_ALIASES.has(norm(p.name)))combinedMatches.push(p);
   const exactName=p.name.trim();
   const exactMatches=byExactName.get(exactName)||[];
@@ -115,7 +121,7 @@ export function linkAllRegisteredCountsWithoutSetup({
      partner.readTime!==hubSource.readTime||
      !Array.isArray(partner.products)||
      partner.products.length<contract.size||
-     partner.products.length>contract.size+100)stop();
+     partner.products.length>contract.size+100+1000)stop();
   seenCompanies.add(partner.companyId);
   const reviewed=reviewedByCompany.get(partner.companyId)||new Map();
   const offBound=offBoundIdsByCompany.get(partner.companyId)||new Set();
@@ -138,10 +144,20 @@ export function linkAllRegisteredCountsWithoutSetup({
       typeof p.active!=="boolean"||seenProducts.has(p.sourceId))stop();
    const isOriginal=contract.has(p.sourceId);
    const isPrivate=PRIVATE.test(p.sourceId);
-   if(!isOriginal&&!isPrivate)stop();
+   const isIndividual=INDIVIDUAL.test(p.sourceId);
+   if(!isOriginal&&!isPrivate&&!isIndividual)stop();
    // Historic private products can now be inactive without losing counts.
    if(isOriginal&&(p.active!==true||p.name!==contract.get(p.sourceId)))stop();
    seenProducts.add(p.sourceId);
+   if(isIndividual){
+    const target=individualTargets.get(p.sourceId);
+    if(!target||target.name.trim()!==p.name.trim())stop();
+    // The full ledger includes OFF rows; the Owner publication filter hides
+    // them without losing or rewriting their saved values.
+    result.push({companyId:partner.companyId,productId:p.sourceId,
+     groupId:target.sourceId,groupName:target.name});
+    continue;
+   }
    // The fixed light/AIR combined label is the only alias exception.
    const name=p.name.trim();
    const possible=p.sourceId==="partnerSku05"?combinedMatches:byExactName.get(name)||[];
@@ -174,7 +190,8 @@ export function linkAllRegisteredCountsWithoutSetup({
     groupName:target?.name||p.name
    });
   }
-  if([...contract.keys()].some(id=>!seenProducts.has(id))||
+  if([...seenProducts].filter(id=>PRIVATE.test(id)).length>100||
+     [...contract.keys()].some(id=>!seenProducts.has(id))||
      [...originallyBound].some(id=>!seenProducts.has(id)))stop();
  }
  // All registered partner categories remain present in the result even

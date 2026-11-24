@@ -213,6 +213,24 @@ export function createPartnerMonthTransactionReader({
     if(s.date!==days[i])halt();
     summaries.push(s);
    }
+   // New individual ledger fields require the same-snapshot Owner public catalog.
+   // Older readers must stop rather than publish an incomplete total.
+   let individualPublicCatalog;
+   if([...entries,...summaries].some(row=>Object.hasOwn(row,"ownerProductCounts")||
+      Object.hasOwn(row,"ownerProductTotalCount"))){
+    if(!includePrivateCounts)halt();
+    const [catalogSnap,visibilitySnap]=await Promise.all([
+     tx.get(hub.collection("rankingCountPublicCatalog").doc("shared")),
+     tx.get(hub.collection("rankingProductVisibility").doc("shared"))]);
+    requireSameTime(catalogSnap,key);requireSameTime(visibilitySnap,key);
+    const catalog=doc(catalogSnap),visibility=doc(visibilitySnap);
+    if(!id(hubCompany.ownerUid)||catalog.ownerUid!==hubCompany.ownerUid||
+       visibility.ownerUid!==hubCompany.ownerUid||visibility.hubCompanyId!==hubCompanyId||
+       !Number.isSafeInteger(visibility.version)||visibility.version<1||
+       catalog.version!==visibility.version||Object.keys(catalog).some(k=>
+        !["schema","hubCompanyId","ownerUid","version","createdAt","updatedAt","products"].includes(k)))halt();
+    individualPublicCatalog=catalog;
+   }
    // The only two ways to pass are: complete empty month OR every saved
    // entry exactly agrees with the owner company's dated count summary.
    const source=buildPartnerCountRankingSource({
@@ -222,9 +240,10 @@ export function createPartnerMonthTransactionReader({
      serverVerified:true,countSharingVerified:true,
      completeMonthEntriesRead:true,completeMonthSummariesRead:true,
      historicalTeamsVerified:true,snapshotConsistent:true,
-     ...(includePrivateCounts?{completePrivateProductCatalogueRead:true}:{})
+     ...(includePrivateCounts?{completePrivateProductCatalogueRead:true}:{}),
+     ...(individualPublicCatalog?{completeIndividualCatalogRead:true}:{})
     },teams,entries,summaries,
-    includePrivateCounts,privateProducts
+    includePrivateCounts,privateProducts,individualPublicCatalog
    });
    // No raw staff documents or user-private data may leave this reader.
    const result={...source,roster:activeRoster,publicNamesVerified};

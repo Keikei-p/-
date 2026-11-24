@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {buildPartnerCountRankingSource,PARTNER_RANK_SKUS} from
+import {buildPartnerCountRankingSource,PARTNER_RANK_SKUS,individualOwnerSourceId} from
  "../ranking/partner-workspace-count-source.mjs";
 import {buildCombinedCountLeaderboard} from
  "../ranking/combined-count-leaderboard.mjs";
 import {createRankOnlyPublication} from "../ranking/rank-only-publication.mjs";
 
+import {linkAllRegisteredCountsWithoutSetup} from "../ranking/zero-setup-count-linker.mjs";
 const DATE1="2026-11-07",DATE2="2026-11-08",PERIOD="2026-11";
 const TIME="2026-11-08T02:00:00Z";
 const CATEGORIES=["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
@@ -164,4 +165,40 @@ test("count-sharing proof carries counts without fabricating personal-name appro
  const legacy=make();delete legacy.proof.countSharingVerified;
  legacy.proof.reciprocalOwnersApproved=true;
  assert.deepEqual(build(legacy),source,"old synthetic count proof remains compatible");
+});
+
+test("individual Owner IDs reconcile with daily totals and link independently of old combined counts",()=>{
+ const d=make();
+ const four=[["hikari","光"],["air","AIR"],["tsubasa","つばさ"],["htb","HTB"]];
+ d.proof.completeIndividualCatalogRead=true;
+ d.individualPublicCatalog={schema:"nico-reviewed-count-public-catalog-v1",
+  hubCompanyId:"own",ownerUid:"owner",version:2,
+  products:four.map(([id,name])=>({id,name,companyId:"own",active:id!=="air"}))};
+ const individual={hikari:2,air:3,tsubasa:4,htb:1};
+ Object.assign(d.entries[0],{ownerProductCounts:individual,ownerProductTotalCount:10});
+ Object.assign(d.summaries[0],{ownerProductCounts:{...individual},ownerProductTotalCount:10});
+ const before=copy(d),partner=build(d),hub=ownSource();
+ hub.products.push(...four.map(([sourceId,name])=>({sourceId,name,companyId:"own",
+  active:sourceId!=="air",sortOrder:0})));
+ const groups=linkAllRegisteredCountsWithoutSetup({hubCompanyId:"own",hubSource:hub,partnerSources:[partner]});
+ assert.equal(partner.records[0].totalCount,15);
+ assert.equal(partner.records[1].totalCount,2);
+ assert.equal(partner.lines.find(l=>l.productId==="partnerSku05").count,2);
+ for(const [sku] of four){
+  const id=individualOwnerSourceId(sku);
+  assert.equal(partner.lines.find(l=>l.productId===id).count,individual[sku]);
+  assert.equal(groups.find(g=>g.companyId==="partner"&&g.productId===id).groupId,sku);
+ }
+ assert.equal(groups.find(g=>g.companyId==="partner"&&g.productId==="partnerSku05").groupId,"partnerUnmatched:partnerSku05");
+ assert.deepEqual(d,before);
+ for(const mutate of [
+  x=>delete x.individualPublicCatalog,
+  x=>{x.proof.completeIndividualCatalogRead=false;},
+  x=>{x.summaries[0].ownerProductCounts.air=0;},
+  x=>{x.summaries[0].ownerProductTotalCount=9;},
+  x=>{x.individualPublicCatalog.products[0].unitPrice=5;},
+  x=>{delete x.summaries[0].ownerProductCounts;}
+ ]){
+  const bad=copy(d);mutate(bad);assert.throws(()=>build(bad));
+ }
 });
