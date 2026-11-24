@@ -54,56 +54,47 @@ export function permittedCall(method,url,body,{backup,etag,operation}={}){
  return method==='DELETE'&&body===undefined&&typeof etag==='string'&&etag.length>0&&
   etag.length<500&&url===API+TARGET+'?etag='+encodeURIComponent(etag);
 }
-export function selectBackup(databases,backups,now){
+export function selectBackup(databases,backups,now,reviewedBudget){
+ const metadata=inspectBackup(databases,backups,now);
+ const budget=validateReviewedBudget(reviewedBudget,{...metadata,now});
+ return {...metadata,budget};
+}
+
+/** Independent reviewed bounds, NEVER fields read from the Backup resource.
+ * The production entry point has no capacity/pricing evidence provider yet;
+ * restore remains blocked until that provider has been implemented/reviewed.
+ * Synthetic lifecycle tests inject a budget; that is not live cost proof.
+ */
+export function validateReviewedBudget(budget,{selected,current,now}){
+ if(!obj(budget))STOP('RESTORE_CAPACITY_AND_COST_EVIDENCE_REQUIRED');
+ const checkedAt=Date.parse(budget.reviewedAt);
+ if(budget.backup!==selected.name||budget.sourceUid!==current.uid||
+    budget.snapshotTime!==selected.snapshotTime||!Number.isFinite(checkedAt)||
+    checkedAt>now||now-checkedAt>3600000||checkedAt<Date.parse(selected.snapshotTime)||
+    budget.currency!=='JPY'||budget.capacityEvidenceReviewed!==true||
+    budget.pricingAndVerificationCostsReviewed!==true||
+    !Number.isFinite(budget.estimatedAdditionalCostJpy)||budget.estimatedAdditionalCostJpy<=0||
+    !Number.isFinite(budget.authorizedMaxJpy)||budget.authorizedMaxJpy<=0||
+    budget.authorizedMaxJpy>500||budget.estimatedAdditionalCostJpy>budget.authorizedMaxJpy)
+  STOP('RESTORE_CAPACITY_AND_COST_EVIDENCE_INVALID');
+ if(!Number.isSafeInteger(budget.sizeUpperBoundBytes)||budget.sizeUpperBoundBytes<1||
+    budget.sizeUpperBoundBytes>limit)STOP('BACKUP_SIZE_BUDGET');
+ if(!Number.isSafeInteger(budget.maxDocuments)||budget.maxDocuments<1||
+    budget.maxDocuments>10000)STOP('BACKUP_DOCUMENT_COUNT_BUDGET');
+ return Object.freeze({...budget});
+}
+/** Metadata inspection must not claim that unsupported Backup.stats is pending. */
+export function inspectBackup(databases,backups,now){
  const report=summarizeManagedRestorePreflight({databases,backups,nowMs:now,destination:DESTINATION});
  if(!report.backupRestoreMetadataPreflightPassed)STOP('NO_RECENT_BACKUP_OR_DESTINATION_OCCUPIED');
  const current=databases.databases.find(x=>x.name===SOURCE);
  if(current.locationId!=='asia-northeast1')STOP('SOURCE_LOCATION');
- const candidates=backups.backups.filter(x=>x.database===SOURCE&&x.state==='READY'&&
-  Date.parse(x.snapshotTime)<=now&&now-Date.parse(x.snapshotTime)<=48*3600000&&
+ const selected=backups.backups.filter(x=>x.database===SOURCE&&x.databaseUid===current.uid&&
+  x.state==='READY'&&Date.parse(x.snapshotTime)<=now&&now-Date.parse(x.snapshotTime)<=48*3600000&&
   Date.parse(x.expireTime)>now+24*3600000)
-  .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime));
- if(!BACKUP.test(candidates[0]?.name||''))STOP('BACKUP_NAME');
- const integer=x=>typeof x==='string'&&/^\d+$/.test(x)&&Number.isSafeInteger(Number(x));
- // A READY backup can lack stats until secondary-storage materialization completes.
- // Only skip unverified stats; never skip a valid but over-budget backup.
- const selected=candidates.find(x=>x.stats!==undefined&&x.stats!==null);
- if(!selected)STOP('BACKUP_STATS_UNAVAILABLE');
- if(!BACKUP.test(selected.name))STOP('BACKUP_NAME');
- const stats=selected.stats;
- if(!integer(stats?.documentCount)||Number(stats.documentCount)<1||
-    !integer(stats?.sizeBytes)||Number(stats.sizeBytes)<1)STOP('BACKUP_STATS_INVALID');
- if(Number(stats.documentCount)>10000)STOP('BACKUP_DOCUMENT_COUNT_BUDGET');
- if(Number(stats.sizeBytes)>limit)STOP('BACKUP_SIZE_BUDGET');
+  .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime))[0];
+ if(!BACKUP.test(selected?.name||''))STOP('BACKUP_NAME');
  return {selected,current,report};
-}
-/** Inspect-only mode may report why restore is blocked when Google has not
- * published the backup stats yet. Restore mode NEVER calls this fallback.
- * Source UID/location, unused destination and recent READY backup still
- * require the same verified metadata as the size-limited restore candidate.
- */
-export function inspectBackup(databases,backups,now){
- try{return {...selectBackup(databases,backups,now),statsUnavailable:false};}
- catch(error){
-  if(error?.message!=='STOP_MANAGED_REHEARSAL_BACKUP_STATS_UNAVAILABLE')throw error;
-  const report=summarizeManagedRestorePreflight({
-   databases,backups,nowMs:now,destination:DESTINATION
-  });
-  if(!report.backupRestoreMetadataPreflightPassed)
-   STOP('NO_RECENT_BACKUP_OR_DESTINATION_OCCUPIED');
-  const current=databases.databases.find(x=>x.name===SOURCE);
-  if(current?.locationId!=='asia-northeast1')STOP('SOURCE_LOCATION');
-  const candidates=backups.backups.filter(x=>x.database===SOURCE&&
-   x.databaseUid===current.uid&&x.state==='READY'&&
-   Date.parse(x.snapshotTime)<=now&&now-Date.parse(x.snapshotTime)<=48*3600000&&
-   Date.parse(x.expireTime)>now+24*3600000)
-   .sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime));
-  if(!BACKUP.test(candidates[0]?.name||''))STOP('BACKUP_NAME');
-  // Never replace the absent official stats with a guessed document count.
-  if(candidates[0].stats!==undefined&&candidates[0].stats!==null)
-   STOP('BACKUP_STATS_INVALID');
-  return {selected:candidates[0],current,report,statsUnavailable:true};
- }
 }
 
 export function validateRestoredDatabase(db,{backup,sourceUid,started,operation,uid}={}){
@@ -133,7 +124,7 @@ export function isolatedCollector(request){
 }
 
 export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulator,
- emulatorHost,now=Date.now,pause=ms=>new Promise(r=>setTimeout(r,ms)),log=()=>{}}={}){
+ emulatorHost,reviewedBudget,now=Date.now,pause=ms=>new Promise(r=>setTimeout(r,ms)),log=()=>{}}={}){
  if(!['inspect','rehearse'].includes(mode)||typeof send!=='function')STOP('MODE_OR_TRANSPORT');
  if(mode==='rehearse')emulatorBase(emulatorHost,'demo-sales-restore');
  let selected,operation,createdUid,cleanupEtag,started;
@@ -145,10 +136,10 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
   let data;try{data=await response.json()}catch{STOP('RESPONSE_JSON');}
   if(!obj(data))STOP('RESPONSE_SHAPE');return data;
  };
- const read=async(requireVerifiedStats=true)=>{
+ const read=async(requireBudget=true)=>{
   const databases=await call('GET',DATABASES_URL);
   const backups=await call('GET',BACKUPS_URL);
-  return requireVerifiedStats?selectBackup(databases,backups,now()):
+  return requireBudget?selectBackup(databases,backups,now(),reviewedBudget):
    inspectBackup(databases,backups,now());
  };
  const permissions=await call('POST',IAM,{permissions:PERMISSIONS});
@@ -157,17 +148,19 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
  const missingPermissions=PERMISSIONS.filter(x=>!permissions.permissions?.includes(x));
  const initial=await read(mode!=='inspect');selected=initial.selected;
  if(await call('GET',RULES,undefined,{allow404:true})!==null)STOP('DESTINATION_RULES_ALREADY_EXIST');
- const statsVerified=initial.statsUnavailable!==true;
+ const budgetVerified=mode==='rehearse';
  const proof={project:PROJECT,mode,backupSnapshotTime:selected.snapshotTime,
-  backupDocumentCount:statsVerified?Number(selected.stats.documentCount):null,
-  backupSizeWithin32MiB:statsVerified,
-  backupStatsVerified:statsVerified,restoreBlockedByMissingStats:!statsVerified,
+  backupApiProvidesSizeAndDocumentCount:false,
+  backupSizeWithin32MiB:budgetVerified,
+  restoreCapacityAndCostVerified:budgetVerified,
+  restoreBlockedByMissingCapacityAndCostEvidence:!budgetVerified,
   missingPermissions,sourceDocumentWrites:0,sourceRulesWrites:0,deployments:0,
   managedBackupRestored:false,temporaryDatabaseCreated:false,temporaryDatabaseDeleted:false,
   sourceTraversalIsAtomic:false,authOrStorageRestored:false,fullCutoverApproved:false};
  if(mode==='inspect')return proof;
  if(missingPermissions.length)STOP('EXISTING_IDENTITY_MISSING_RESTORE_OR_CLEANUP_PERMISSION');
- const snapshot=()=>collect((method,url,body)=>call(method,url,body),{maxDocuments:10000});
+ const maxDocuments=initial.budget.maxDocuments;
+ const snapshot=()=>collect((method,url,body)=>call(method,url,body),{maxDocuments});
  const before=await snapshot(),original=fingerprint(before);
  // Recheck UID/backup/unused destination after the potentially long source scan.
  const fresh=await read();
@@ -199,9 +192,8 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
   cleanupEtag=db.etag;
   log({temporaryDatabaseCreated:true,cleanupPending:true,sourceDocumentWrites:0});
   if(await call('GET',RULES,undefined,{allow404:true})!==null)STOP('DESTINATION_CLIENT_RULES_PRESENT');
-  const restored=await collect(isolatedCollector((m,u,b)=>call(m,u,b)),{maxDocuments:10000});
-  if(restored.documents.length!==Number(selected.stats.documentCount))STOP('RESTORED_COUNT_MISMATCH');
-  const isolated=await restore(restored,{emulatorHost,maxDocuments:10000});
+  const restored=await collect(isolatedCollector((m,u,b)=>call(m,u,b)),{maxDocuments});
+  const isolated=await restore(restored,{emulatorHost,maxDocuments});
   if(isolated.fieldsAndIdsVerified!==true||isolated.productionTouched!==false||
      isolated.documentCount!==restored.documents.length||
      isolated.sourceInventoryFingerprint!==fingerprint(restored))STOP('FIELDS_AND_IDS_NOT_VERIFIED');

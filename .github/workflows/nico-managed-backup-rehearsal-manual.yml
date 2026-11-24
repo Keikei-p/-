@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       mode:
-        description: Inspect permissions/backup metadata, or rehearse then remove only the new temporary DB
+        description: Inspect metadata/IAM; rehearse stays blocked until independent capacity and cost evidence is implemented
         required: true
         default: inspect
         type: choice
@@ -51,7 +51,12 @@ jobs:
           set -euo pipefail
           test "$(git hash-object tools/readonly-backup/backup.mjs)" = a7f21e94857a0e515655b99a725382974646dad7
           test "$(git hash-object tools/readonly-backup/restore-emulator.mjs)" = 638bd79ed31ad28e7298d8ed2e6927730ec129b1
-          test "$(git hash-object firestore.rules)" = d9f4df6a2ac0f8b5720534a2461ec66b94379190
+          # Both reviewed revisions are explicit; this workflow never deploys Rules.
+          # Existing main + PR814 finance fence, covered by the integration Emulator.
+          case "$(git hash-object firestore.rules)" in
+            6d3f165791188394d473417414e34208cd56bae6|9eca5c49957d370bbf092b9783dfa0e97f1a735a) ;;
+            *) echo STOP_UNREVIEWED_RULES; exit 1;;
+          esac
           node --check tools/production/rehearse-managed-backup.mjs
           node --test tests/managed-backup-rehearsal.test.mjs tests/managed-backup-restore-preflight-readonly.test.mjs tools/readonly-backup/backup.test.mjs
           npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-restore --only firestore 'node --test tests/managed-backup-rehearsal.test.mjs'
