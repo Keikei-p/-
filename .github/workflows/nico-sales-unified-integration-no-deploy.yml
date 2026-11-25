@@ -196,7 +196,7 @@ jobs:
             assert.equal(config.functions.source,plan.source);
             assert.equal(config.functions.codebase,plan.codebase);
             assertPackageSafety(files.get(plan.source+'/package.json'));
-            const names=[...files.get(plan.source+'/index.js').toString('utf8').matchAll(/exports\\.([A-Za-z][A-Za-z0-9_]*)\\s*=/g)].map(x=>x[1]);
+            const names=[...files.get(plan.source+'/index.js').toString('utf8').matchAll(/exports\.([A-Za-z][A-Za-z0-9_]*)\s*=/g)].map(x=>x[1]);
             assert.deepEqual(names.slice().sort(),plan.exports.slice().sort());
             for(const n of names){assert(!seen.has(n));seen.add(n);}
             assert(plan.reviewTargets.every(n=>names.includes(n)));
@@ -204,7 +204,7 @@ jobs:
             mkdirSync(dir,{recursive:true});
             for(const [p,b] of files){
               assert(/^[A-Za-z0-9_./-]+$/.test(p)&&p.split('/').every(x=>x&&!x.startsWith('.')));
-              assert(/\\.(?:js|cjs|mjs|json)$/.test(p));
+              assert(/\.(?:js|cjs|mjs|json)$/.test(p));
               mkdirSync(dir+p.slice(0,p.lastIndexOf('/')+1),{recursive:true});
               writeFileSync(dir+p,b,{flag:'wx'});
             }
