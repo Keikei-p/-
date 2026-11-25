@@ -164,14 +164,91 @@ jobs:
           import {readFileSync,writeFileSync} from 'node:fs';
           import {createHash} from 'node:crypto';
           import {execFileSync} from 'node:child_process';
-          import {REQUIRED_GATES} from './tools/production/prepare-integrated-count-release-bundle.mjs';
+          import {REQUIRED_GATES,assertPackageSafety} from './tools/production/prepare-integrated-count-release-bundle.mjs';
+          import {packageFiles,sourceBytes,sha256} from './tools/production/verify-integrated-count-release-candidate.mjs';
+          import {prepareCanonicalOwnerPackage} from './tools/production/prepare-canonical-hub-owner-correction-package.mjs';
+          import assert from 'node:assert/strict';
+          import {mkdirSync} from 'node:fs';
           const root=process.env.RUNNER_TEMP+'/nico-candidate-review/';
           const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+          // The previous six-target #704 manifest is historical, NOT an
+          // allowlist for the current eight-tab integration. Keep it intact.
+          // Candidate-only packages, with exact names and reviewed scope;
+          // final target selection still requires live codebase/identity review.
+          const plans=[
+            {folder:'workspace',source:'functions-partner-workspace',config:'firebase.partner-workspace.json',
+             codebase:'partner-workspace',reviewTargets:['getPartnerWorkspace','submitPartnerWorkspaceCounts'],
+             exports:['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts',
+              'issuePartnerCompanyCode','activatePartnerCompanyCode','loginPartnerCompanyCode','logoutPartnerCompanyCode']},
+            {folder:'ranking',source:'functions-ranking-approvals',config:'firebase.ranking-approvals.json',
+             codebase:'ranking-owner-approvals',reviewTargets:['getVerifiedJointCountRanking','getOwnerProductVisibility','setOwnerProductVisibility','getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping'],
+             exports:['getRankingOwnerConsentStatus','setRankingOwnerConsent','getOwnerProductVisibility','setOwnerProductVisibility',
+              'getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping','getVerifiedJointCountRanking']},
+            {folder:'tabs',source:'functions-partner-tabs',config:'firebase.partner-tabs.json',
+             codebase:'partner-shared-tabs',reviewTargets:['getOwnerPartnerTabPublication','setOwnerPartnerTabPublication','getPartnerPublishedTabs','getPartnerPublishedOptionalTab'],
+             exports:['getOwnerPartnerTabPublication','setOwnerPartnerTabPublication','getPartnerPublishedTabs','getPartnerPublishedOptionalTab']}
+          ];
+          const packages=[];
+          const seen=new Set();
+          const check=(plan,files)=>{
+            const config=JSON.parse(files.get(plan.config));
+            assert.deepEqual(Object.keys(config),['functions']);
+            assert.equal(config.functions.source,plan.source);
+            assert.equal(config.functions.codebase,plan.codebase);
+            assertPackageSafety(files.get(plan.source+'/package.json'));
+            const names=[...files.get(plan.source+'/index.js').toString('utf8').matchAll(/exports\\.([A-Za-z][A-Za-z0-9_]*)\\s*=/g)].map(x=>x[1]);
+            assert.deepEqual(names.slice().sort(),plan.exports.slice().sort());
+            for(const n of names){assert(!seen.has(n));seen.add(n);}
+            assert(plan.reviewTargets.every(n=>names.includes(n)));
+            const dir=root+'function-packages/'+plan.folder+'/';
+            mkdirSync(dir,{recursive:true});
+            for(const [p,b] of files){
+              assert(/^[A-Za-z0-9_./-]+$/.test(p)&&p.split('/').every(x=>x&&!x.startsWith('.')));
+              assert(/\\.(?:js|cjs|mjs|json)$/.test(p));
+              mkdirSync(dir+p.slice(0,p.lastIndexOf('/')+1),{recursive:true});
+              writeFileSync(dir+p,b,{flag:'wx'});
+            }
+            packages.push({folder:'function-packages/'+plan.folder,config:plan.config,codebase:plan.codebase,
+              exportedNames:names,candidateTargets:plan.reviewTargets.map(n=>'functions:'+plan.codebase+':'+n),
+              existingExportsOutsideCandidateTargets:names.filter(n=>!plan.reviewTargets.includes(n)),
+              files:[...files].map(([path,b])=>({path,sha256:sha256(b)}))});
+          };
+          for(const plan of plans){
+            const files=new Map();
+            for(const p of [...packageFiles('.',plan.source),plan.config]){
+              // Refuse untracked or modified checkout bytes rather than copy
+              // arbitrary local files or generated credentials into artifacts.
+              const committed=execFileSync('git',['show','HEAD:'+p],{maxBuffer:8000000});
+              const bytes=sourceBytes('.',p);
+              assert.deepEqual(bytes,committed);
+              files.set(p,bytes);
+            }
+            check(plan,files);
+          }
+          const owner=prepareCanonicalOwnerPackage('.');
+          const ownerNames=['listHubPartnerCounts','correctHubPartnerCounts'];
+          check({folder:'owner',source:'functions-hub-owner-correction',config:'firebase.owner-correction.json',
+            codebase:'hub-owner-correction-v3',reviewTargets:ownerNames,exports:ownerNames},
+            new Map(Object.entries(owner.bundle).map(([p,b])=>[p,Buffer.from(b)])));
+          assert.equal(packages.length,4);
+          assert.equal(packages.flatMap(p=>p.candidateTargets).length,13);
+          writeFileSync(root+'current-function-packages.json',JSON.stringify({
+            candidateHead:event.pull_request.head.sha,
+            checkedOutTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),
+            project:'sales-management-cc116',region:'asia-northeast1',packages,
+            candidateTargetsOnly:true,liveCodebaseInventoryVerified:false,
+            originalFunctionArchivesVerified:false,environmentFlagsChanged:false,
+            releaseApproved:false,safeToApply:false,productionDeploys:0
+          },null,2));
+          console.log('CURRENT_FOUR_CODEBASE_PACKAGES_PREPARED_NO_DEPLOY');
           writeFileSync(root+'review.json',JSON.stringify({
             candidateHead:event.pull_request.head.sha,checkedOutTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),
             sourceArchiveSha256:createHash('sha256').update(readFileSync(root+'source-NO-DEPLOY.zip')).digest('hex'),
             productionWrites:0,productionDeploys:0,sourceFlagsChanged:false,
-            releaseApproved:false,safeToApply:false,hostingBaselineVerified:false,requiredGates:REQUIRED_GATES
+            releaseApproved:false,safeToApply:false,hostingBaselineVerified:false,
+            currentFunctionPackages:'current-function-packages.json',functionCodebaseCount:4,
+            candidateFunctionTargetCount:13,liveFunctionIdentityVerified:false,
+            requiredGates:REQUIRED_GATES
           },null,2));
           NODE
       - uses: actions/upload-artifact@v4
