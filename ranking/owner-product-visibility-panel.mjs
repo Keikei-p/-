@@ -112,8 +112,14 @@ export function createOwnerProductVisibilityPanel({
    // The Owner explicitly chose ALL registered active products for ranking.
    // Do not bypass per-product, server-audited ON/OFF and version checks.
    // Company-specific overrides are never silently changed by a global save.
+   // Existing commercial IDs must get the exact-match opportunity BEFORE
+   // the fallback historical groups in the one-click action. The server
+   // preserves earlier reviewed mappings and never moves existing counts.
+   // Keep the display order; only order the explicitly requested ON writes.
+   const historical=p=>p.id.startsWith("legacyPartnerSku:")?1:0;
    const selectable=view.products.filter(p=>p.active&&(
-    scoped? p.enabled&&!partnerAllowed.has(p.id):!p.enabled));
+    scoped? p.enabled&&!partnerAllowed.has(p.id):!p.enabled))
+    .sort((a,b)=>historical(a)-historical(b));
    if(selectable.length){
     const all=el(document,"button",
      scoped?"この協力店の公開可能商材をすべてON":

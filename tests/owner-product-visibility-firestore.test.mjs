@@ -643,3 +643,23 @@ test("historical publication preserves version, company override, Owner authoriz
  assert(s.products.find(p=>p.id===productId).enabled);
  assert.deepEqual(s.partnerOverrides.partner,[]);
 });
+
+test("actual catalog ON first links exact legacy names; subsequent historic ON retains the binding and combined fallback",async()=>{
+ const f=fake({includeHistoricalGroups:true});
+ const before=structuredClone([...f.state]);
+ const order=["nuro","air","legacyPartnerSku:partnerSku01","legacyPartnerSku:partnerSku05","legacyPartnerSku:partnerSku07"];
+ let version=0;
+ for(const productId of order){
+  const r=await f.store.saveSwitch({principal,productId,enabled:true,expectedVersion:version});
+  assert.equal(r.saved,true);version=r.version;
+ }
+ const map=f.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.deepEqual(map.bindings,[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku05",hubProductId:"legacyPartnerSku:partnerSku05"},
+  {companyId:"partner",productId:"partnerSku07",hubProductId:"legacyPartnerSku:partnerSku07"}
+ ]);
+ assert.deepEqual([...f.state].filter(([k])=>!k.includes("/ranking")),before);
+ assert.equal(f.state.get("companies/hub/rankingProductVisibility/shared").version,5);
+ assert.equal(f.state.get("companies/hub/rankingCountPublicCatalog/shared").version,5);
+});
