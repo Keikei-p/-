@@ -165,7 +165,7 @@ jobs:
           import {createHash} from 'node:crypto';
           import {execFileSync} from 'node:child_process';
           import {REQUIRED_GATES,assertPackageSafety} from './tools/production/prepare-integrated-count-release-bundle.mjs';
-          import {packageFiles,sourceBytes,sha256} from './tools/production/verify-integrated-count-release-candidate.mjs';
+          import {packageFiles,sourceBytes,sha256,frontendClosure} from './tools/production/verify-integrated-count-release-candidate.mjs';
           import {prepareCanonicalOwnerPackage} from './tools/production/prepare-canonical-hub-owner-correction-package.mjs';
           import assert from 'node:assert/strict';
           import {mkdirSync} from 'node:fs';
@@ -241,12 +241,53 @@ jobs:
             releaseApproved:false,safeToApply:false,productionDeploys:0
           },null,2));
           console.log('CURRENT_FOUR_CODEBASE_PACKAGES_PREPARED_NO_DEPLOY');
+          // Review a browser-only overlay, never use the broad source archive
+          // as a Firebase public directory. Preserve all other live assets,
+          // including worker, icon/manifest and existing Hosting configuration.
+          const dependencies=frontendClosure('.');
+          const browserRoots=new Set(['index.html','partner-workspace.html','owner-partner-setup.html',
+            'sales-archive.js','archive-coverage.mjs','archive-output-policy.mjs','archive-read-budget.mjs']);
+          const overlay=[];
+          const preserved=[];
+          for(const p of dependencies){
+            const raw=sourceBytes('.',p);
+            assert.deepEqual(raw,execFileSync('git',['show','HEAD:'+p],{maxBuffer:8000000}));
+            if(p==='service-worker.js'){
+              assert.equal(execFileSync('git',['hash-object',p],{encoding:'utf8'}).trim(),
+                '33c00fe89f92e13d35a070447d62ddec100aa8e9');
+              preserved.push({path:'/'+p,expectedRawSha256:sha256(raw)});
+              continue;
+            }
+            assert(browserRoots.has(p)||/^(?:ranking|staging\/partner-owner-correction-v3)\/[A-Za-z0-9_-]+\.(?:mjs|js|css)$/.test(p),
+              'UNREVIEWED_BROWSER_DEPENDENCY '+p);
+            // No server entrypoints, credential files, Firestore rules,
+            // npm metadata or entire backend directories in public payload.
+            const dest=root+'hosting-overlay/'+p;
+            mkdirSync(dest.slice(0,dest.lastIndexOf('/')),{recursive:true});
+            writeFileSync(dest,raw,{flag:'wx'});
+            overlay.push({path:'/'+p,rawSha256:sha256(raw),rawBytes:raw.length});
+          }
+          for(const p of ['index.html','partner-workspace.html','owner-partner-setup.html',
+            'ranking/published-partner-tab-client.mjs','ranking/published-partner-optional-client.mjs',
+            'ranking/partner-tab-navigation-gate.mjs','ranking/owner-partner-tab-settings-panel.mjs'])
+            assert(overlay.some(x=>x.path==='/'+p),'MISSING_BROWSER_DEPENDENCY '+p);
+          assert.equal(preserved.length,1);
+          writeFileSync(root+'hosting-overlay-review.json',JSON.stringify({
+            candidateHead:event.pull_request.head.sha,
+            project:'sales-management-cc116',site:'nico-factory',
+            files:overlay,preserveExact:preserved,retainAllOtherLiveFiles:true,
+            retainLiveConfig:true,replaceOrAddOnly:true,deletePaths:[],
+            literalDependencyClosureOnly:true,liveBaselineVerified:false,
+            releaseApproved:false,safeToApply:false,productionDeploys:0
+          },null,2));
+          console.log('CURRENT_BROWSER_OVERLAY_PREPARED_NO_DEPLOY');
           writeFileSync(root+'review.json',JSON.stringify({
             candidateHead:event.pull_request.head.sha,checkedOutTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),
             sourceArchiveSha256:createHash('sha256').update(readFileSync(root+'source-NO-DEPLOY.zip')).digest('hex'),
             productionWrites:0,productionDeploys:0,sourceFlagsChanged:false,
             releaseApproved:false,safeToApply:false,hostingBaselineVerified:false,
             currentFunctionPackages:'current-function-packages.json',functionCodebaseCount:4,
+            hostingOverlay:'hosting-overlay-review.json',hostingOverlayFileCount:overlay.length,
             candidateFunctionTargetCount:13,liveFunctionIdentityVerified:false,
             requiredGates:REQUIRED_GATES
           },null,2));
