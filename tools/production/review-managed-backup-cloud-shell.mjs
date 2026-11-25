@@ -6,7 +6,7 @@
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
-import {PROJECT,rehearse,PERMISSIONS} from './rehearse-managed-backup.mjs';
+import {PROJECT,rehearse,PERMISSIONS,MAX_APPROVED_RESTORE_BYTES} from './rehearse-managed-backup.mjs';
 import {BACKUPS_URL,DATABASES_URL} from './audit-managed-backup-restore-preflight-readonly.mjs';
 import {inspectBackup} from './rehearse-managed-backup.mjs';
 
@@ -19,8 +19,39 @@ export const QUOTE=Object.freeze({reviewedDate:'2026-11-24',currency:'JPY',
 const METRIC='firestore.googleapis.com/storage/data_and_index_storage_bytes';
 const STOP=code=>{throw Error('STOP_CLOUD_SHELL_BACKUP_REVIEW_'+code)};
 export const AGGREGATE_METRIC='firestore.googleapis.com/storage/backups_storage_bytes';
-export const AGGREGATE_ESTIMATE_LIMIT=128*1024*1024;
+export const AGGREGATE_ESTIMATE_LIMIT=MAX_APPROVED_RESTORE_BYTES;
 const MONITORING_SOURCE='https://cloud.google.com/monitoring/api/metrics_gcp_d_h#firestore';
+const PRICE_BASE='https://cloudbilling.googleapis.com/v1beta/skus/';
+export const APPROVED_ESTIMATE_CONFIRMATION='RESTORE_128MIB_JPY500_TEMPORARY_DATABASE_AND_CLEAN_UP';
+const PRICES=Object.freeze([
+ ['restorePerGiB',QUOTE.restoreSku,'GiBy',1],
+ ['readPer100000',QUOTE.readSku,'count',100000],
+ ['storagePerGiBMonth',QUOTE.storageSku,'GiBy.mo',1],
+ ['egressPerGiB',QUOTE.egressSku,'GiBy',1]
+]);
+export const livePriceUrls=()=>PRICES.map(([,sku])=>PRICE_BASE+sku+'/price?currencyCode=JPY');
+
+/** Current public JPY list prices, not an exchange-rate assumption or billing cap. */
+export async function reviewLiveQuote({read,now=Date.now()}={}){
+ const quote={...QUOTE,reviewedDate:new Date(now).toISOString().slice(0,10),
+  reviewedAt:new Date(now).toISOString(),source:'https://cloudbilling.googleapis.com/v1beta/skus'};
+ for(const [key,sku,unit,multiplier] of PRICES){
+  const value=await read(PRICE_BASE+sku+'/price?currencyCode=JPY');
+  const rate=value?.rate,quantity=Number(rate?.unitInfo?.unitQuantity?.value);
+  if(value?.name!=='skus/'+sku+'/price'||value.currencyCode!=='JPY'||
+     rate?.unitInfo?.unit!==unit||!Number.isFinite(quantity)||quantity<=0||
+     !Array.isArray(rate?.tiers)||!rate.tiers.length)STOP('LIVE_PRICE_SHAPE');
+  const amounts=rate.tiers.map(t=>{
+   const p=t.listPrice,units=Number(p?.units??0),nanos=p?.nanos??0;
+   if(p?.currencyCode!=='JPY'||!Number.isSafeInteger(units)||units<0||
+      !Number.isInteger(nanos)||nanos<0||nanos>=1e9)STOP('LIVE_PRICE_CURRENCY');
+   return (units+nanos/1e9)/quantity*multiplier;
+  });
+  quote[key]=Math.max(...amounts);
+  if(!Number.isFinite(quote[key])||quote[key]<=0)STOP('LIVE_PRICE_RATE');
+ }
+ return Object.freeze(quote);
+}
 
 export function capacityUrl(snapshotTime){
  const t=Date.parse(snapshotTime);if(!Number.isFinite(t))STOP('SNAPSHOT_TIME');
@@ -131,31 +162,67 @@ export function summarizeAggregateCapacity(data,{now,snapshotTime,sourceObserved
   estimateCapacityCeilingBytes:AGGREGATE_ESTIMATE_LIMIT,exactBackupSizeVerified:false,
   exactBackupDocumentCountVerified:false,capacityUpperBoundApproved:false};
 }
-export function aggregateConditionalCost(now){
- if(new Date(now).toISOString().slice(0,10)!==QUOTE.reviewedDate)STOP('STALE_QUOTE');
- const gib=AGGREGATE_ESTIMATE_LIMIT/2**30;
+export function aggregateConditionalCost(now,quote=QUOTE){
+ if(new Date(now).toISOString().slice(0,10)!==quote.reviewedDate)STOP('STALE_QUOTE');
+ if(quote.currency!=='JPY'||PRICES.some(([key])=>!Number.isFinite(quote[key])||quote[key]<=0))STOP('LIVE_PRICE_RATE');
+ // Round the estimate up to a whole GiB; this does not enlarge the approved
+ // 128 MiB capacity ceiling or assert that Google bills a one-GiB minimum.
+ const gib=Math.ceil(AGGREGATE_ESTIMATE_LIMIT/2**30);
  // Three bounded traversals (before, isolated restore, after). Existing
  // collector permits at most 80,400 requests and 30,500 references per
  // traversal; 400,000 read units is a planning allowance, not a runtime
  // billable-read meter. Allow two billing days at the day boundary.
- const parts={restore:gib*QUOTE.restorePerGiB,reads:4*QUOTE.readPer100000,
-  storage:gib*QUOTE.storagePerGiBMonth/28*2,network:QUOTE.egressPerGiB,
+ const parts={restore:gib*quote.restorePerGiB,reads:4*quote.readPer100000,
+  storage:gib*quote.storagePerGiBMonth/28*2,network:quote.egressPerGiB,
   databaseCreateAndDelete:0};
  const includingTaxAndMargin=Math.ceil(Object.values(parts).reduce((a,b)=>a+b,0)*1.1*2);
  if(includingTaxAndMargin>500)STOP('COST_EXCEEDS_500_JPY');
  return {currency:'JPY',parts,includingTaxAndMargin,authorizedLimit:500,
   assumedMaximumReads:400000,assumedNetworkBytes:2**30,assumedRetentionDays:2,
   maxCollectorDocuments:10000,conditionalOnExecutionBounds:true,
+  estimateRoundedUpToWholeGiB:true,
   hardBillingCapVerified:false,releaseApproved:false};
 }
-export async function reviewAggregateBudget({read,inspect,now=Date.now()}={}){
+export async function reviewAggregateBudget({read,inspect,now=Date.now(),quote=QUOTE}={}){
  const base=await review({read,inspect,now});
  if(base.missingPermissions.length)STOP('AGGREGATE_MISSING_IAM');
  const aggregate=summarizeAggregateCapacity(await read(aggregateCapacityUrl(now)),{
   now,snapshotTime:base.backupSnapshotTime,sourceObservedBytes:base.capacity.maxObservedBytes});
  return {...base,mode:'cloud-shell-aggregate-budget-readonly',aggregate,
-  estimatedCost:aggregateConditionalCost(now),paidRestoreAuthorized:false,
+  estimatedCost:aggregateConditionalCost(now,quote),quote,paidRestoreAuthorized:false,
   restoreCapacityAndCostVerified:false,managedBackupRestored:false};
+}
+
+/** Explicit operator approval connects independently read evidence to the existing
+ * lifecycle. Neither a metric nor this read-only reviewer grants approval itself. */
+export function approveAggregateBudget({review,databases,backups,confirmation,now=Date.now()}={}){
+ if(confirmation!==APPROVED_ESTIMATE_CONFIRMATION)STOP('EXPLICIT_ESTIMATE_APPROVAL_REQUIRED');
+ const {selected,current}=inspectBackup(databases,backups,now);
+ const a=review?.aggregate,c=review?.capacity,q=review?.quote;
+ const checked=Date.parse(q?.reviewedAt),latest=Date.parse(a?.latestSample);
+ if(review?.project!==PROJECT||review.mode!=='cloud-shell-aggregate-budget-readonly'||
+    review.backupSnapshotTime!==selected.snapshotTime||review.missingPermissions?.length!==0||
+    !Number.isFinite(checked)||checked>now||now-checked>3600000||
+    q.source!=='https://cloudbilling.googleapis.com/v1beta/skus'||
+    a?.metric!==AGGREGATE_METRIC||!Number.isInteger(a.samples)||a.samples<2||!Number.isFinite(latest)||
+    latest>now||now-latest>600000||latest<Date.parse(selected.snapshotTime)+600000||
+    a.estimateCapacityCeilingBytes!==AGGREGATE_ESTIMATE_LIMIT||
+    c?.metric!==METRIC||c.snapshotTime!==selected.snapshotTime||
+    !Number.isSafeInteger(c.maxObservedBytes)||c.maxObservedBytes<1||
+    !Number.isSafeInteger(a.maxObservedAllBackupBytes)||
+    a.maxObservedAllBackupBytes<c.maxObservedBytes||a.maxObservedAllBackupBytes>AGGREGATE_ESTIMATE_LIMIT||
+    a.exactBackupSizeVerified!==false||a.exactBackupDocumentCountVerified!==false)
+  STOP('APPROVED_ESTIMATE_EVIDENCE');
+ const cost=aggregateConditionalCost(now,q);
+ if(JSON.stringify(cost)!==JSON.stringify(review.estimatedCost))STOP('APPROVED_ESTIMATE_COST_DRIFT');
+ return Object.freeze({backup:selected.name,sourceUid:current.uid,snapshotTime:selected.snapshotTime,
+  reviewedAt:new Date(now).toISOString(),currency:'JPY',authorizedMaxJpy:500,
+  estimatedAdditionalCostJpy:cost.includingTaxAndMargin,capacityEvidenceReviewed:true,
+  pricingAndVerificationCostsReviewed:true,sizeUpperBoundBytes:AGGREGATE_ESTIMATE_LIMIT,maxDocuments:10000,
+  capacityEvidenceKind:'owner-approved-aggregate-estimate-v1',capacityEvidence:a,pricingEvidence:{quote:q,cost},
+  estimateApproval:APPROVED_ESTIMATE_CONFIRMATION,
+  maxBillableReads:400000,networkUpperBoundBytes:2**30,retentionDays:2,
+  exactBackupSizeVerified:false,hardBillingCapVerified:false});
 }
 
 export async function review({read,inspect,now=Date.now()}={}){
@@ -189,12 +256,13 @@ async function main(){
   signal:AbortSignal.timeout(30000),headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
   ...(body===undefined?{}:{body:JSON.stringify(body)})});
  const read=async url=>{
-  if(![DATABASES_URL,BACKUPS_URL].includes(url)&&
+  if(![DATABASES_URL,BACKUPS_URL,...livePriceUrls()].includes(url)&&
      !url.startsWith('https://monitoring.googleapis.com/v3/projects/'+PROJECT+'/timeSeries?'))STOP('GET_SCOPE');
   const r=await send('GET',url);if(r.status!==200)STOP('HTTP_'+r.status);
   return r.json();
  };
- const output=await (aggregate?reviewAggregateBudget:review)({read,inspect:()=>rehearse({mode:'inspect',send})});
+ const quote=aggregate?await reviewLiveQuote({read}):QUOTE;
+ const output=await (aggregate?reviewAggregateBudget:review)({read,quote,inspect:()=>rehearse({mode:'inspect',send})});
  console.log('NICO_CLOUD_SHELL_BACKUP_REVIEW '+JSON.stringify(output));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))

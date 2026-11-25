@@ -1,8 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {capacityUrl,summarizeCapacity,conditionalCost,review,QUOTE,aggregateCapacityUrl,summarizeAggregateCapacity,aggregateConditionalCost,AGGREGATE_METRIC,reviewAggregateBudget} from '../tools/production/review-managed-backup-cloud-shell.mjs';
+import {capacityUrl,summarizeCapacity,conditionalCost,review,QUOTE,aggregateCapacityUrl,summarizeAggregateCapacity,aggregateConditionalCost,AGGREGATE_METRIC,reviewAggregateBudget,reviewLiveQuote,livePriceUrls} from '../tools/production/review-managed-backup-cloud-shell.mjs';
 const SNAP='2026-11-23T07:53:46.403866Z',NOW=Date.parse('2026-11-24T09:00:00Z');
+test('fresh official JPY SKU prices use the highest tier and explicit unit quantities',async()=>{
+ const seen=[];
+ const read=async url=>{
+  seen.push(url);assert(livePriceUrls().includes(url));
+  const sku=url.split('/skus/')[1].split('/')[0],reads=sku===QUOTE.readSku;
+  return {name:'skus/'+sku+'/price',currencyCode:'JPY',rate:{
+   unitInfo:{unit:reads?'count':sku===QUOTE.storageSku?'GiBy.mo':'GiBy',unitQuantity:{value:reads?'100000':'1'}},
+   tiers:[{listPrice:{currencyCode:'JPY',units:'0'}},{listPrice:{currencyCode:'JPY',units:'10'}}]}};
+ };
+ const q=await reviewLiveQuote({read,now:NOW});assert.equal(seen.length,4);
+ assert.equal(q.readPer100000,10);assert.equal(q.restorePerGiB,10);
+ assert.equal(q.reviewedAt,new Date(NOW).toISOString());
+ assert(aggregateConditionalCost(NOW,q).includingTaxAndMargin<500);
+ for(const patch of [x=>x.currencyCode='USD',x=>x.rate.unitInfo.unit='h',
+  x=>x.rate.unitInfo.unitQuantity.value='0',x=>x.rate.tiers[0].listPrice.currencyCode='USD',
+  x=>x.rate.tiers=[],x=>x.name='skus/foreign/price']){
+  await assert.rejects(reviewLiveQuote({now:NOW,read:async u=>{const x=await read(u);patch(x);return x;}}),/LIVE_PRICE/);
+ }
+});
 const series=()=>({timeSeries:[{metric:{type:'firestore.googleapis.com/storage/data_and_index_storage_bytes'},
  resource:{type:'firestore.googleapis.com/Database',labels:{database_id:'(default)',location:'asia-northeast1',resource_container:'sales-management-cc116'}},
  points:[{interval:{endTime:'2026-11-23T07:53:00Z'},value:{int64Value:'10000000'}},

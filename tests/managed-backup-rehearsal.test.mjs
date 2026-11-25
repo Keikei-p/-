@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {PROJECT,DESTINATION,TARGET,PERMISSIONS,permittedCall,selectBackup,
  inspectBackup,validateRestoredDatabase,isolatedCollector,rehearse} from '../tools/production/rehearse-managed-backup.mjs';
 import {fingerprint} from '../tools/readonly-backup/backup.mjs';
 import {restoreToLocalEmulator} from '../tools/readonly-backup/restore-emulator.mjs';
+import {QUOTE,approveAggregateBudget,aggregateConditionalCost,APPROVED_ESTIMATE_CONFIRMATION} from '../tools/production/review-managed-backup-cloud-shell.mjs';
 const API='https://firestore.googleapis.com/v1/';
 const SOURCE='projects/'+PROJECT+'/databases/(default)';
 const DB=API+'projects/'+PROJECT+'/databases';
@@ -76,6 +79,70 @@ function fixture(options={}){
 }
 const run=(f,extra={})=>rehearse({mode:'rehearse',send:f.send,restore:f.restore,
  emulatorHost:'127.0.0.1:8080',reviewedBudget:budget,now:()=>NOW,pause:async()=>{},...extra});
+
+// Entirely fictional evidence. This does not certify a live quote or restore.
+function approvedFixture(){
+ const quote={...QUOTE,reviewedDate:new Date(NOW).toISOString().slice(0,10),
+  reviewedAt:new Date(NOW).toISOString(),source:'https://cloudbilling.googleapis.com/v1beta/skus'};
+ const review={project:PROJECT,mode:'cloud-shell-aggregate-budget-readonly',
+  backupSnapshotTime:backup.snapshotTime,missingPermissions:[],quote,
+  capacity:{metric:'firestore.googleapis.com/storage/data_and_index_storage_bytes',snapshotTime:backup.snapshotTime,maxObservedBytes:10000000},
+  aggregate:{metric:'firestore.googleapis.com/storage/backups_storage_bytes',samples:2,
+   latestSample:new Date(NOW-60000).toISOString(),maxObservedAllBackupBytes:65000000,
+   estimateCapacityCeilingBytes:128*1024*1024,exactBackupSizeVerified:false,exactBackupDocumentCountVerified:false},
+  estimatedCost:aggregateConditionalCost(NOW,quote)};
+ return {review,databases,backups,confirmation:APPROVED_ESTIMATE_CONFIRMATION,now:NOW};
+}
+test('128 MiB approval binds the current backup and reviewed JPY cost without claiming 32 MiB or exact size',async()=>{
+ const b=approveAggregateBudget(approvedFixture()),f=fixture();
+ assert.equal(b.sizeUpperBoundBytes,128*1024*1024);
+ assert.equal(b.pricingEvidence.cost.parts.restore,b.pricingEvidence.quote.restorePerGiB);
+ assert.equal(b.pricingEvidence.cost.estimateRoundedUpToWholeGiB,true);
+ assert.deepEqual(selectBackup(databases,backups,NOW,b).budget,b);
+ const result=await run(f,{reviewedBudget:b,send:async(...args)=>{
+  const response=await f.send(...args);
+  return new Response(JSON.stringify(await response.json()),{status:response.status});
+ }});
+ assert.equal(result.managedBackupRestored,true);assert.equal(result.temporaryDatabaseDeleted,true);
+ assert.equal(result.approvedAggregate128MiBEstimate,true);assert.equal(result.backupSizeWithin32MiB,false);
+ assert.equal(result.exactBackupSizeVerified,false);assert.equal(result.hardBillingCapVerified,false);
+ assert(result.executionUsage.readUnitsUpperBound>0);assert(result.executionUsage.networkBytesUpperBound>0);
+ assert(result.executionUsage.estimatedAdditionalCostJpy<=500);
+});
+test('128 MiB cannot bypass authorization, evidence freshness, cost binding, source binding or the legacy ceiling',()=>{
+ assert.throws(()=>approveAggregateBudget({...approvedFixture(),confirmation:''}),/EXPLICIT_ESTIMATE_APPROVAL/);
+ const good=approveAggregateBudget(approvedFixture());
+ for(const edit of [x=>x.estimateApproval='',x=>x.capacityEvidence.latestSample=new Date(NOW-700000).toISOString(),
+  x=>x.pricingEvidence.quote.reviewedAt=new Date(NOW-3600001).toISOString(),
+  x=>x.estimatedAdditionalCostJpy=1,x=>x.sourceUid='foreign',x=>x.sizeUpperBoundBytes++,
+  x=>x.maxBillableReads=800000,x=>x.networkUpperBoundBytes++,x=>x.retentionDays=3]){
+  const b=clone(good);edit(b);assert.throws(()=>selectBackup(databases,backups,NOW,b),/STOP_MANAGED_/);
+ }
+ assert.throws(()=>selectBackup(databases,backups,NOW,{...budget,sizeUpperBoundBytes:128*1024*1024}),/BACKUP_SIZE_BUDGET/);
+ const enterprise=clone(databases);enterprise.databases[0].databaseEdition='ENTERPRISE';
+ assert.throws(()=>selectBackup(enterprise,backups,NOW,good),/UNREVIEWED_DATABASE_EDITION/);
+ const f=approvedFixture();f.review.estimatedCost.includingTaxAndMargin=1;
+ assert.throws(()=>approveAggregateBudget(f),/COST_DRIFT/);
+ const expensive=approvedFixture();expensive.review.quote.restorePerGiB=100000;
+ assert.throws(()=>approveAggregateBudget(expensive),/COST_EXCEEDS_500/);
+});
+test('the paid CLI cannot borrow the GitHub gate or run outside the exact Cloud Shell project',()=>{
+ const entry=fileURLToPath(new URL('../tools/production/rehearse-managed-backup.mjs',import.meta.url));
+ for(const patch of [{CLOUD_SHELL:'false',DEVSHELL_PROJECT_ID:PROJECT},
+  {CLOUD_SHELL:'true',DEVSHELL_PROJECT_ID:'foreign-project'}]){
+  const r=spawnSync(process.execPath,[entry,'rehearse-approved-aggregate','a'.repeat(40),APPROVED_ESTIMATE_CONFIRMATION],
+   {encoding:'utf8',env:{...process.env,...patch}});
+  assert.equal(r.status,1);assert.match(r.stderr,/STOP_MANAGED_REHEARSAL_MANUAL_CLOUD_SHELL_GATE/);
+ }
+});
+test('verification deadline still permits cleanup of this proven owned temporary database',async()=>{
+ const f=fixture(),b=approveAggregateBudget(approvedFixture());let clock=NOW;
+ await assert.rejects(run(f,{reviewedBudget:b,now:()=>clock,restore:async snap=>{
+  const result=await f.restore(snap);clock+=46*60000;return result;
+ }}),/EXECUTION_BUDGET/);
+ assert.equal(f.deleted,true);
+ assert(!f.calls.some(x=>x.method==='DELETE'&&x.url.includes('(default)')));
+});
 
 test('latest recent READY backup requires an independent reviewed budget and unused destination',()=>{
  assert.equal(selectBackup(databases,backups,NOW,budget).selected.name,BACKUP);
