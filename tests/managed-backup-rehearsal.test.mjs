@@ -144,6 +144,46 @@ test('verification deadline still permits cleanup of this proven owned temporary
  assert(!f.calls.some(x=>x.method==='DELETE'&&x.url.includes('(default)')));
 });
 
+test('owned deletion confirms database absence without requiring a deleted operation endpoint',async()=>{
+ const f=fixture(),events=[];let removing=false,polls=0;
+ const result=await run(f,{log:x=>events.push(x),send:async(method,url,body)=>{
+  if(removing&&url===API+TARGET&&polls++<2)
+   return {status:200,json:async()=>restoredMeta()};
+  const response=await f.send(method,url,body);
+  if(method==='DELETE'){
+   removing=true;
+   // The operation cannot be polled after its parent database disappears.
+   return {status:200,json:async()=>({name:DEL,done:false})};
+  }
+  return response;
+ }});
+ assert.equal(result.temporaryDatabaseDeleted,true);assert.equal(polls,3);
+ assert.equal(f.calls.filter(x=>x.method==='DELETE').length,1);
+ assert(!f.calls.some(x=>x.url===API+DEL));
+ const checkpoint=events.find(x=>x.verificationBeforeCleanup)?.verificationBeforeCleanup;
+ assert.equal(checkpoint.restoredFieldsAndIdsVerified,true);
+ assert.equal(checkpoint.productionSnapshotUnchanged,true);
+ assert.equal(checkpoint.temporaryDatabaseDeleted,false);
+});
+
+test('cleanup never certifies a replacement database or a database that remains present',async()=>{
+ for(const replacement of [false,true]){
+  const f=fixture(),events=[];let removing=false;
+  await assert.rejects(run(f,{log:x=>events.push(x),send:async(method,url,body)=>{
+   if(removing&&url===API+TARGET){
+    const meta=restoredMeta();if(replacement)meta.uid='foreign-database-uuid-9999';
+    return {status:200,json:async()=>meta};
+   }
+   const response=await f.send(method,url,body);
+   if(method==='DELETE')removing=true;
+   return response;
+  }}),/TEMPORARY_CLEANUP_REQUIRES_OPERATOR/);
+  assert.equal(f.calls.filter(x=>x.method==='DELETE').length,1);
+  assert(!events.some(x=>x.temporaryDatabaseDeleted===true));
+  assert(events.some(x=>x.temporaryDatabaseCleanupRequired===true));
+ }
+});
+
 test('latest recent READY backup requires an independent reviewed budget and unused destination',()=>{
  assert.equal(selectBackup(databases,backups,NOW,budget).selected.name,BACKUP);
  for(const change of [b=>b.databaseUid='wrong-uid',

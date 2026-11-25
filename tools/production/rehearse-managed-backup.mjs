@@ -266,7 +266,9 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
    backupMatchesCurrentDocumentFields:same(fields(before),fields(restored)),
    // A backup may predate legitimate changes; never "repair" or overwrite them.
    productionDataReplacedOrReclassified:false};
- }catch(e){failure=e;}
+  log({verificationBeforeCleanup:{...result}});
+ }catch(e){failure=e;log({verificationFailed:true,
+  stopReason:/^STOP_MANAGED_REHEARSAL_[A-Z0-9_]+$/.test(e?.message||'')?e.message:'REDACTED_VERIFICATION_FAILURE'});}
  finally{
   cleanupPhase=true;
   if(attempted){
@@ -280,13 +282,26 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
      // Never disable a delete-protection policy set by another operator.
      if(db.deleteProtectionState==='DELETE_PROTECTION_ENABLED')STOP('TEMPORARY_DELETE_PROTECTED');
      cleanupEtag=db.etag;
-     await wait(await call('DELETE',API+TARGET+'?etag='+encodeURIComponent(cleanupEtag),undefined,{etag:cleanupEtag}),30);
-     if(await call('GET',API+TARGET,undefined,{allow404:true})!==null)STOP('TEMPORARY_CLEANUP_NOT_CONFIRMED');
+     const deletion=await call('DELETE',API+TARGET+'?etag='+encodeURIComponent(cleanupEtag),undefined,{etag:cleanupEtag});
+     if(deletion.error)STOP('TEMPORARY_DELETE_FAILED');
+     // A deleted database's operation endpoint can disappear with it. The
+     // authoritative postcondition is 404 for OUR fixed, UID/etag-verified DB,
+     // not continued availability of its operation resource. Never re-delete.
+     let absent=false;
+     for(let attempt=0;attempt<108;attempt++){
+      const remaining=await call('GET',API+TARGET,undefined,{allow404:true});
+      if(remaining===null){absent=true;break;}
+      validateRestoredDatabase(remaining,{backup:selected.name,sourceUid:initial.current.uid,
+       started,operation,uid:createdUid});
+      await pause(10000);
+     }
+     if(!absent)STOP('TEMPORARY_CLEANUP_NOT_CONFIRMED');
      if(result)result.temporaryDatabaseDeleted=true;
      log({temporaryDatabaseDeleted:true,sourceDocumentWrites:0});
     }
-   }catch{
-    log({temporaryDatabaseCleanupRequired:true,sourceDocumentWrites:0});
+   }catch(e){
+    log({temporaryDatabaseCleanupRequired:true,sourceDocumentWrites:0,
+     stopReason:/^STOP_MANAGED_REHEARSAL_[A-Z0-9_]+$/.test(e?.message||'')?e.message:'REDACTED_CLEANUP_FAILURE'});
     STOP('TEMPORARY_CLEANUP_REQUIRES_OPERATOR');
    }
   }
@@ -331,7 +346,10 @@ async function cloudShellMain(){
  };
  const quote=await reviewLiveQuote({read});
  const review=await reviewAggregateBudget({read,quote,inspect:()=>rehearse({mode:'inspect',send})});
- const reviewedBudget=approveAggregateBudget({review,databases,backups,confirmation});
+ const remaining=Number(env.NICO_REMAINING_REHEARSAL_BUDGET_JPY??500);
+ if(!Number.isInteger(remaining)||remaining<1||remaining>500)STOP('REMAINING_COST_BUDGET');
+ const reviewedBudget={...approveAggregateBudget({review,databases,backups,confirmation}),authorizedMaxJpy:remaining};
+ if(reviewedBudget.estimatedAdditionalCostJpy>remaining)STOP('CUMULATIVE_COST_BUDGET');
  console.log('NICO_MANAGED_REHEARSAL_ESTIMATE '+JSON.stringify({
   backupSnapshotTime:review.backupSnapshotTime,capacity:review.capacity,aggregate:review.aggregate,
   quote,estimatedCost:review.estimatedCost,missingPermissions:review.missingPermissions,
