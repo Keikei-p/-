@@ -13298,25 +13298,35 @@ async function refreshPartnerPublishedTabNavigation(){
  if(NICO_PARTNER_TAB_UI_ENABLED!==true||
     NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true)return false;
  const user=auth.currentUser,company=partnerInlineWorkspaceCompany;
+ const identity=partnerInlineIdentity(),codeToken=partnerMainCodeToken;
+ const codeMode=partnerMainCodeActive();
  const generation=++partnerPublishedTabGeneration;
+ const current=()=>auth.currentUser===user&&partnerInlineIdentity()===identity&&
+  partnerMainCodeToken===codeToken&&partnerInlineWorkspaceCompany===company&&
+  generation===partnerPublishedTabGeneration;
  let policy=null;
  try{
-  if(!user||user.emailVerified!==true||!company||!partnerInlineData)
+  if(!identity||!partnerInlineData||
+     (codeMode?(!!user||!!company||!/^[A-Za-z0-9_-]{43}$/.test(codeToken)):
+      (!!codeToken||!user||user.emailVerified!==true)))
    throw Error("PARTNER_PUBLICATION_IDENTITY_UNVERIFIED");
-  const result=await httpsCallable(partnerCountFunctions,"getPartnerPublishedTabs")({
-   workspaceCompanyId:company
-  });
-  if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
-     generation!==partnerPublishedTabGeneration)return false;
+  // Company-code sessions use the isolated anonymous Functions instance.
+  // Never send an opaque session with a Firebase user or company hint.
+  const result=codeMode?
+   await httpsCallable(partnerAnonymousCodeFunctions,"getPartnerPublishedTabs")({
+    codeSessionToken:codeToken
+   }):
+   await httpsCallable(partnerCountFunctions,"getPartnerPublishedTabs")({
+    ...(company?{workspaceCompanyId:company}:{})
+   });
+  if(!current())return false;
   policy=result?.data;
  }catch{policy=null;} // missing/invalid or revoked => NO optional tabs
- if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
-    generation!==partnerPublishedTabGeneration)return false;
+ if(!current())return false;
  try{
   const {applyPartnerTabPublicationToNavigation}=await import(
    "./ranking/partner-tab-navigation-gate.mjs");
-  if(auth.currentUser!==user||partnerInlineWorkspaceCompany!==company||
-     generation!==partnerPublishedTabGeneration)return false;
+  if(!current())return false;
   const view=applyPartnerTabPublicationToNavigation({
    navigation:pInline("partnerSameAppNavigation"),
    management:pInline("partnerManagementTabs"),
@@ -13324,11 +13334,20 @@ async function refreshPartnerPublishedTabNavigation(){
    policy,selectedPanel:partnerSameAppSelectedPanel
   });
   partnerPublishedTabIds=new Set(view.visibleTabs);
+  if(!partnerPublishedTabIds.has("goal"))partnerOptionalVerifiedGoal=null;
+  if(!partnerPublishedTabIds.has("report"))pInline("pPartnerReportText").value="";
+  if(!partnerPublishedTabIds.has("daily"))pInline("pInlineDailySummary").replaceChildren();
+  if(!partnerPublishedTabIds.has("history"))pInline("pInlineHistory").replaceChildren();
+  if(codeMode)for(const b of document.querySelectorAll(
+   '#partnerInlineWorkspace [data-partner-panel="invite"]'))b.hidden=true;
   if(!view.selectedPanelAllowed)partnerSameAppSelectedPanel="record";
   return true;
  }catch{
   // No optional tab can be opened if the verified policy fails parsing.
-  partnerPublishedTabIds=new Set();
+  partnerPublishedTabIds=new Set();partnerOptionalVerifiedGoal=null;
+  pInline("pPartnerReportText").value="";
+  pInline("pInlineDailySummary").replaceChildren();
+  pInline("pInlineHistory").replaceChildren();
   for(const panel of ["individual","product","team","detail","report",
     "daily","history","goal","analysis","chart","products"]){
    for(const b of document.querySelectorAll(
@@ -13738,7 +13757,8 @@ function renderPartnerGoalEstimate(){
   out.textContent="目標件数と残り稼働日数を確認してください。";return;
  }
  const actual=partnerOptionalPublicationProtectionActive()?
-  (partnerOptionalVerifiedGoal?.uid===auth.currentUser?.uid&&
+  (partnerInlineIdentity()&&partnerPublishedTabIds?.has("goal")&&
+   partnerOptionalVerifiedGoal?.identity===partnerInlineIdentity()&&
    partnerOptionalVerifiedGoal?.company===partnerInlineWorkspaceCompany&&
    partnerOptionalVerifiedGoal?.date===snap.date?
     partnerOptionalVerifiedGoal.total:null):
@@ -15075,13 +15095,16 @@ function partnerInlineRender(){
 
 
 async function loadPartnerPublishedOptionalPanel(tab){
- const uid=auth.currentUser?.uid,day=pInline("pInlineDate").value;
+ const user=auth.currentUser,day=pInline("pInlineDate").value;
+ const identity=partnerInlineIdentity(),codeToken=partnerMainCodeToken;
+ const codeMode=partnerMainCodeActive();
  const company=partnerInlineWorkspaceCompany,seq=++partnerOptionalTabGeneration;
  const snap=partnerInlineData;
- const stillCurrent=()=>uid===auth.currentUser?.uid&&
-  company===partnerInlineWorkspaceCompany&&
+ const stillCurrent=()=>!!identity&&auth.currentUser===user&&
+  partnerInlineIdentity()===identity&&partnerMainCodeToken===codeToken&&
+  company===partnerInlineWorkspaceCompany&&partnerInlineData===snap&&
   day===pInline("pInlineDate").value&&
-  seq===partnerOptionalTabGeneration&&
+  seq===partnerOptionalTabGeneration&&partnerPublishedTabIds?.has(tab)===true&&
   tab===partnerSameAppSelectedPanel&&
   !pInline("partnerSameAppDashboardDetails").hidden;
  const report=pInline("pPartnerReportText"),daily=pInline("pInlineDailySummary");
@@ -15092,15 +15115,20 @@ async function loadPartnerPublishedOptionalPanel(tab){
  if(tab==="goal"){partnerOptionalVerifiedGoal=null;goal.textContent="公開設定を確認中…";}
  if(NICO_PARTNER_TAB_UI_ENABLED!==true||
     NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED!==true||
-    !partnerPublishedTabIds?.has(tab)||!snap||!uid){
+    !partnerPublishedTabIds?.has(tab)||!snap||!identity||
+    (codeMode?(!!user||!!company||!/^[A-Za-z0-9_-]{43}$/.test(codeToken)):
+     (!!codeToken||user?.emailVerified!==true))){
   if(tab==="goal")goal.textContent="このタブはまだ公開されていません。";
   return false;
  }
  try{
-  const {createPartnerPublishedOptionalTabClient}=await import(
+  const {createPartnerPublishedOptionalTabClient,createPartnerCodeSessionOptionalTabClient}=await import(
    "./ranking/published-partner-optional-client.mjs");
   if(!stillCurrent())return false;
-  const loader=createPartnerPublishedOptionalTabClient({
+  const loader=codeMode?createPartnerCodeSessionOptionalTabClient({
+   enabled:true,serverGuardVerified:true,functions:partnerAnonymousCodeFunctions,
+   httpsCallable,getCodeSessionToken:()=>stillCurrent()&&partnerMainCodeActive()?partnerMainCodeToken:""
+  }):createPartnerPublishedOptionalTabClient({
    enabled:true,serverGuardVerified:true,auth,functions:partnerCountFunctions,
    httpsCallable,getWorkspaceCompanyId:()=>partnerInlineWorkspaceCompany
   });
@@ -15114,7 +15142,7 @@ async function loadPartnerPublishedOptionalPanel(tab){
     if(product.count)partnerMainAppendRow(daily,product.name,product.count+"件");
   }
   if(tab==="goal"){
-   partnerOptionalVerifiedGoal={uid,company,date:day,total:verified.actualCount};
+   partnerOptionalVerifiedGoal={identity,company,date:day,total:verified.actualCount};
    renderPartnerGoalEstimate();
   }
   if(tab==="history"){
