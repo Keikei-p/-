@@ -4423,6 +4423,7 @@ body.product-reordering .product-list {
 #authScreen[data-nico-code-login="true"] .auth-card > .switch-text,
 #authScreen[data-nico-code-login="true"] #authRecoveryControls{display:none!important}
 #nicoMainCompanyCodeToggle{width:100%;min-height:44px;margin-top:12px}
+#authScreen #nicoMainCompanyCodeToggle[hidden]{display:none!important}
 #nicoMainCompanyCodePanel{margin-top:14px;text-align:left}
 #nicoMainCompanyCodePanel .form-group{margin-top:12px}
 #nicoMainCompanyCodePanel input{width:100%;box-sizing:border-box;min-height:46px}
@@ -4773,7 +4774,7 @@ body:has(#authScreen:not([style*="display: none"]))>.app>header .subtitle{font-s
       </div>
 
       <!-- One entry screen, existing isolated partner-code backend and count-only destination. -->
-      <button id="nicoMainCompanyCodeToggle" type="button" class="link-button" aria-expanded="false" aria-controls="nicoMainCompanyCodePanel">協力店は会社コードでログイン</button>
+      <button id="nicoMainCompanyCodeToggle" type="button" class="link-button" aria-expanded="false" aria-controls="nicoMainCompanyCodePanel" hidden disabled>協力店は会社コードでログイン</button>
       <section id="nicoMainCompanyCodePanel" class="nico-main-code-panel" hidden aria-label="協力店の会社コードログイン">
         <p style="font-size:13px;line-height:1.6;">自社は従来のメールログイン、協力店は会社コードとパスワードを入力します。協力店に売上・単価は公開されません。</p>
         <form id="nicoMainCompanyCodeForm" class="nico-main-code-form" autocomplete="on">
@@ -11651,7 +11652,10 @@ async function register() {
 
 /* One login entry; the company-code session is kept in this tab only.
    No Finance auth, Firestore original read, email account creation or writes. */
+// Email/password is the only new login entry. Keep existing backend and session recovery intact.
+const NICO_NEW_COMPANY_CODE_LOGIN_ENABLED=false;
 function nicoShowMainCompanyCodeLogin(open){
+ if(open&&!NICO_NEW_COMPANY_CODE_LOGIN_ENABLED)return;
  const panel=document.getElementById("nicoMainCompanyCodePanel");
  const toggle=document.getElementById("nicoMainCompanyCodeToggle");
  if(!panel||!toggle)return;
@@ -11762,7 +11766,7 @@ nicoMainCodeToggle.onclick=()=>nicoShowMainCompanyCodeLogin(true);
 nicoMainCodeBack.onclick=()=>nicoShowMainCompanyCodeLogin(false);
 nicoMainCodeForm.onsubmit=async event=>{
  event.preventDefault();
- if(nicoMainCodeLoginBusy||nicoMainCodePanel.hidden)return;
+ if(!NICO_NEW_COMPANY_CODE_LOGIN_ENABLED||nicoMainCodeLoginBusy||nicoMainCodePanel.hidden)return;
  const code=document.getElementById("nicoMainCompanyCode").value.trim().toUpperCase();
  const field=document.getElementById("nicoMainCompanyPassword");
  const password=field.value;
