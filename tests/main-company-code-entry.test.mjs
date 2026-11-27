@@ -143,6 +143,8 @@ test("unified code login never logs out an Owner just to check a password",async
   const auth={currentUser:signedIn?{uid:"existing-owner"}:null};
   const form={onsubmit:null};
   const ctx=vm.createContext({
+   // Exercise retained legacy handler only in this synthetic compatibility test.
+   NICO_NEW_COMPANY_CODE_LOGIN_ENABLED:true,
    nicoMainCodeForm:form,nicoMainCodePanel:{hidden:false},auth,
    partnerAnonymousCodeFunctions:app,
    document:{getElementById:key=>nodes[key]},
