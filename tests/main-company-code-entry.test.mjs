@@ -143,6 +143,8 @@ test("unified code login never logs out an Owner just to check a password",async
   const auth={currentUser:signedIn?{uid:"existing-owner"}:null};
   const form={onsubmit:null};
   const ctx=vm.createContext({
+   // Exercise retained legacy handler only in this synthetic compatibility test.
+   NICO_NEW_COMPANY_CODE_LOGIN_ENABLED:true,
    nicoMainCodeForm:form,nicoMainCodePanel:{hidden:false},auth,
    partnerAnonymousCodeFunctions:app,
    document:{getElementById:key=>nodes[key]},
@@ -578,4 +580,34 @@ test("company-code login reaches ONLY the verified joint-count ranking bridge af
   ...args,featureEnabled:false
  }),/PUBLISHED_PARTNER_TAB_DATA_UNVERIFIED/);
  assert.equal(sent,1,"disabled flags never send a request");
+});
+
+test("Owner policy: email-only entry hides and disables the new code-login controls",()=>{
+ assert.match(html,/id="nicoMainCompanyCodeToggle"[^>]* hidden disabled>/);
+ assert.match(html,/#authScreen #nicoMainCompanyCodeToggle\[hidden\]\{display:none!important\}/);
+ assert.match(html,/const NICO_NEW_COMPANY_CODE_LOGIN_ENABLED=false;/);
+ assert.match(html,/await signInWithEmailAndPassword\(/);
+ assert.match(html,/async function openSameAppPartnerWorkspace\(user,workspaceCompanyId/);
+ const start=html.indexOf("const NICO_NEW_COMPANY_CODE_LOGIN_ENABLED=");
+ const end=html.indexOf("\n// Company-code and email login",start);
+ assert(start>=0&&end>start);
+ const sandbox=vm.createContext({document:{getElementById(){throw Error("disabled entry must not touch DOM")}}});
+ const open=vm.runInContext(html.slice(start,end)+"\nnicoShowMainCompanyCodeLogin",sandbox);
+ assert.doesNotThrow(()=>open(true));
+});
+test("Disabled code form exits before reading credentials or invoking a callable",async()=>{
+ const start=html.indexOf("nicoMainCodeForm.onsubmit=async event=>{");
+ const end=html.indexOf("\n/* =====================================================\n   ログイン",start);
+ assert(start>=0&&end>start);
+ const form={};
+ const sandbox=vm.createContext({
+  NICO_NEW_COMPANY_CODE_LOGIN_ENABLED:false,nicoMainCodeForm:form,
+  nicoMainCodeLoginBusy:false,nicoMainCodePanel:{hidden:false},
+  document:{getElementById(){throw Error("must not read credentials")}},
+  httpsCallable(){throw Error("must not contact login API")}
+ });
+ vm.runInContext(html.slice(start,end),sandbox);
+ let prevented=0;
+ await form.onsubmit({preventDefault(){prevented++}});
+ assert.equal(prevented,1);
 });
