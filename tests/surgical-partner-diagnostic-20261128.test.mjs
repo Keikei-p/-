@@ -35,3 +35,66 @@ test("changed version, altered previous hash, missing required page or unreviewe
  assert(f.calls.every(x=>x==="GET"));
  }
 });
+
+function releaseFake(mode="ok"){
+ const calls=[],created="sites/nico-factory/versions/mock_new";
+ const config={rewrites:[],headers:[{glob:"**",headers:[{key:"X-Test",value:"keep"}]}]};
+ let expected={},latestReads=0;
+ const request=async(method,url,body,type)=>{
+  calls.push({method,url,body,type});
+  if(method==="GET"&&url.endsWith("/releases?pageSize=1")){
+   latestReads++;
+   return {releases:[{version:{name:mode==="concurrent"&&latestReads===3?
+    "sites/nico-factory/versions/other":EXACT_PREVIOUS_VERSION}}]};
+  }
+  if(method==="GET"&&url.endsWith("/"+EXACT_PREVIOUS_VERSION))
+   return {name:EXACT_PREVIOUS_VERSION,status:"FINALIZED",config,fileCount:entries.length};
+  if(method==="GET"&&url.includes("/"+EXACT_PREVIOUS_VERSION+"/files?"))return {files:entries};
+  if(method==="POST"&&url.endsWith("/sites/nico-factory/versions")){
+   assert.deepEqual(body,{config});
+   return {name:created,status:"CREATED"};
+  }
+  if(method==="POST"&&url.endsWith("/"+created+":populateFiles")){
+   expected=body.files;
+   return {uploadRequiredHashes:[mode==="old-blob-missing"?entries[0].hash:hash(candidate)],
+    uploadUrl:"https://upload-firebasehosting.googleapis.com/upload/"+created};
+  }
+  if(method==="POST"&&url.startsWith("https://upload-firebasehosting.googleapis.com/upload/")){
+   assert.equal(type,"application/octet-stream");
+   assert.deepEqual(body,gzipSync(candidate,{mtime:0}));
+   return {};
+  }
+  if(method==="PATCH"&&url.includes("/"+created+"?")){
+   assert.deepEqual(body,{status:"FINALIZED"});
+   return {name:created,status:"FINALIZED",config,fileCount:entries.length};
+  }
+  if(method==="GET"&&url.includes("/"+created+"/files?")){
+   const files=Object.entries(expected).map(([path,hash])=>({path,hash}));
+   if(mode==="hash-mismatch")files.find(f=>f.path==="/index.html").hash="e".repeat(64);
+   return {files};
+  }
+  if(method==="GET"&&url.endsWith("/"+created))
+   return {name:created,status:"FINALIZED",config:mode==="config-mismatch"?{}:config};
+  if(method==="POST"&&url.includes("/sites/nico-factory/releases?versionName="))
+   return {name:"mock_release",version:{name:created}};
+  throw Error("UNEXPECTED_MOCK_REQUEST");
+ };
+ return {request,calls,get expected(){return expected}};
+}
+test("mock full release replaces exactly one path and preserves all other hashes and config",async()=>{
+ const f=releaseFake();
+ const result=await uploadReviewedPartnerDiagnostic({assetBytes:candidate,originalBytes:old,request:f.request,release:true,log:()=>{}});
+ assert.equal(result.released,true);
+ assert.equal(Object.keys(f.expected).length,entries.length);
+ assert.equal(f.expected[ASSET],hash(candidate));
+ for(const entry of entries)if(entry.path!==ASSET)assert.equal(f.expected[entry.path],entry.hash);
+ assert.equal(f.calls.filter(c=>c.method==="POST"&&c.url.includes("/releases?versionName=")).length,1);
+ assert.equal(f.calls.filter(c=>c.url.startsWith("https://upload-firebasehosting.googleapis.com/")).length,1);
+});
+test("mock release refuses changed final hash, config, live version or unavailable original asset before release",async()=>{
+ for(const [mode,pattern] of [["hash-mismatch",/FINAL_ASSET_HASH_MISMATCH/],["config-mismatch",/FINAL_VERSION_CONFIG_UNVERIFIED/],["concurrent",/LIVE_CHANGED_BEFORE_RELEASE/],["old-blob-missing",/OLD_LIVE_BLOB_NOT_REUSABLE/]]){
+  const f=releaseFake(mode);
+  await assert.rejects(uploadReviewedPartnerDiagnostic({assetBytes:candidate,originalBytes:old,request:f.request,release:true,log:()=>{}}),pattern);
+  assert.equal(f.calls.some(c=>c.method==="POST"&&c.url.includes("/releases?versionName=")),false);
+ }
+});
