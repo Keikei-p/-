@@ -230,3 +230,29 @@ test("company-specific all-ON cannot change globally OFF products or other compa
  assert.match(text(root),/対象商材1件のONを保存・再確認しました/);
  ctrl.destroy();
 });
+
+test("one-click global ON prioritizes actual product IDs, then unmatched historical groups",async()=>{
+ const root=new Node("main"),auth={currentUser:user},calls=[];
+ let v=response(false,5);
+ v.products.unshift({id:"legacyPartnerSku:partnerSku01",name:"NURO（過去分）",active:true,enabled:false});
+ v.products.splice(2,0,{id:"legacyPartnerSku:partnerSku05",name:"SB光・AIR（過去合算）",active:true,enabled:false});
+ v.partnerOverrides={partner:[]};
+ const displayOrder=v.products.map(p=>p.id);
+ const ctrl=createOwnerProductVisibilityPanel({document,root,auth,
+  load:async()=>structuredClone(v),
+  save:async input=>{
+   calls.push(input);
+   assert.equal(input.expectedVersion,v.version);
+   assert.equal(input.partnerCompanyId,null);
+   v.products.find(p=>p.id===input.productId).enabled=true;v.version++;
+   return {saved:true,productId:input.productId,enabled:true,version:v.version,partnerCompanyId:null};
+  }});
+ await ctrl.refresh();
+ assert.equal(calls.length,0);
+ await nodes(root).find(x=>x.tagName==="button").fire("click");
+ assert.deepEqual(calls.map(x=>x.productId),["nuro","air","legacyPartnerSku:partnerSku01","legacyPartnerSku:partnerSku05"]);
+ assert.deepEqual(v.products.map(p=>p.id),displayOrder);
+ assert.deepEqual(v.partnerOverrides,{partner:[]});
+ assert(v.products.every(p=>p.enabled));
+ ctrl.destroy();
+});

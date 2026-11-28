@@ -47,6 +47,18 @@ jobs:
           node --check legacy-finance-entry-guard.mjs
           node --test tests/legacy-finance-entry-guard.test.mjs
 
+      - name: Enforce 2026-11-20 confirmed one-app and no-money partner scope
+        run: node --test tests/sales-shared-app-confirmed-scope.test.mjs tests/partner-same-app-auth-status.test.mjs tests/partner-legacy-private-count-parity.test.cjs tests/internal-owner-finance-visibility.test.cjs
+
+      - name: Guard immutable original internal dashboard, input and finance rendering
+        run: node --test tests/sales-self-dashboard-frozen.test.mjs
+
+      - name: Verify original company-code session, safe same-app counts and managed staff archive
+        run: |
+          node --check functions-partner-workspace/service.cjs
+          node --check functions-partner-workspace/workspace-identity.cjs
+          node --test tests/partner-company-code-auth.test.cjs tests/main-company-code-entry.test.mjs tests/partner-one-login-same-app.test.cjs
+
       - name: Check sales input and correction regressions
         run: node --test tests/sales-regressions.cjs tests/count-pricing-update-hotfix.test.cjs tests/count-pricing-live-package.test.mjs tests/count-pricing-release.test.mjs tests/surgical-existing-index.test.mjs
 

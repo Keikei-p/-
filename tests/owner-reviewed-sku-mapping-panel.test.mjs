@@ -4,6 +4,7 @@ import {createOwnerReviewedSkuMappingPanel,PARTNER_CATEGORIES,suggestUnambiguous
  from "../ranking/owner-reviewed-sku-mapping-panel.mjs";
 import {createOwnerSkuMappingFirebaseBridge}
  from "../ranking/owner-reviewed-sku-mapping-firebase-bridge.mjs";
+import {HISTORICAL_COUNT_GROUPS} from "../ranking/historical-count-publication-groups.mjs";
 
 class Node{
  constructor(tag){this.tagName=tag;this.children=[];this.listeners={};
@@ -26,10 +27,26 @@ const catalog=()=>({
  schema:"nico-hub-product-visibility-v1",role:"hub_owner",
  version:3,hubCompanyId:"hub",partnerOverrides:{},
  products:[
-  {id:"nuro",name:"NURO光",active:true,enabled:true},
+  {id:"nuro",name:"NURO",active:true,enabled:true},
   {id:"air",name:"SoftBank Air",active:true,enabled:false},
   {id:"combined",name:"SB光・AIR（旧合算・未分類）",active:true,enabled:false}
  ]
+});
+
+test("historical count-only Owner choices retain the exact source ID and never save on load",async()=>{
+ const c=catalog(),root=new Node("main");
+ c.products.push(...HISTORICAL_COUNT_GROUPS.map(({id,name})=>({id,name,active:true,enabled:false})));
+ const p=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth:{currentUser:user},partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>c,saveMapping:async()=>assert.fail("no Owner change")});
+ assert.equal(await p.refresh(),true);
+ for(let i=0;i<9;i++){
+  const virtual=selects(root)[i].children.map(x=>x.value).filter(x=>x.startsWith("legacyPartnerSku:"));
+  assert.deepEqual(virtual,[HISTORICAL_COUNT_GROUPS[i].id]);
+ }
+ p.destroy();
+ assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+  mapping:status(1,[{companyId:"partner",productId:"partnerSku01",hubProductId:"legacyPartnerSku:partnerSku09"}]),
+  catalog:c,partnerCompanyId:"partner"}),/UNVERIFIED/);
 });
 test("nine legacy categories are exact and mixed hikari/Air keeps its own slot",()=>{
  assert.equal(PARTNER_CATEGORIES.length,9);
@@ -109,6 +126,57 @@ test("changing category calls exact scoped owner mapping API and reloads confirm
  assert.equal(panel.getVersion(),1);
  assert.equal(selects(root)[0].value,"nuro");
 });
+test("Owner panel rejects archived private combined 光/AIR mapped to Air or an unrelated legacy name",async()=>{
+ for(const wrongTarget of ["air","unrelated"]){
+  const root=new Node("main"),auth={currentUser:user};let writes=0;
+  const products=catalog();
+  products.products.push({id:"unrelated",name:"NURO旧合算",
+   active:true,enabled:true});
+  const map={...status(3,[{companyId:"partner",
+   productId:"partnerPrivate:historicMix",hubProductId:wrongTarget}]),
+   partnerProducts:[{id:"partnerPrivate:historicMix",
+    name:"光/AIR（旧合算）",active:false}]};
+  const panel=createOwnerReviewedSkuMappingPanel({
+   enabled:true,document,root,auth,partnerCompanyId:"partner",
+   readMappings:async()=>map,readProducts:async()=>products,
+   saveMapping:async()=>{writes++;throw Error("unexpected write");}
+  });
+  assert.equal(await panel.refresh(),false,
+   "wrong historic combined target must fail closed: "+wrongTarget);
+  assert.equal(selects(root).length,0);
+  assert.match(displayed(root),/読み込めません/);
+  assert.equal(writes,0);
+  assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+   mapping:map,catalog:products,partnerCompanyId:"partner"
+  }),/OWNER_PARTNER_SKU_PANEL_UNVERIFIED/);
+  panel.destroy();
+ }
+});
+
+test("Owner panel requires server private-source evidence for existing bindings, but accepts true combined target",async()=>{
+ const binding={companyId:"partner",
+  productId:"partnerPrivate:historicMix",hubProductId:"combined"};
+ const products=catalog(),withoutSource=status(2,[binding]);
+ const withSource={...withoutSource,partnerProducts:[{
+  id:binding.productId,name:"SB光・AIR（旧合算）",active:false
+ }]};
+ assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+  mapping:withoutSource,catalog:products,partnerCompanyId:"partner"
+ }),/OWNER_PARTNER_SKU_PANEL_UNVERIFIED/);
+ const root=new Node("main"),auth={currentUser:user};let writes=0;
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>withSource,readProducts:async()=>products,
+  saveMapping:async()=>{writes++;throw Error("unexpected write");}
+ });
+ assert.equal(await panel.refresh(),true);
+ const archived=selects(root).at(-1);
+ assert.equal(archived.value,"combined");
+ assert.deepEqual(archived.children.map(x=>x.value),["","combined"]);
+ assert.equal(writes,0,"the Owner's historical data must never be auto-written");
+ panel.destroy();
+});
+
 test("server rejects mapping write: no fake success or kept optimistic selection",async()=>{
  const root=new Node("main"),auth={currentUser:user};
  const panel=createOwnerReviewedSkuMappingPanel({
@@ -256,7 +324,7 @@ test("Owner batch performs versioned sequential exact mappings only after click,
 test("ambiguous matching, already mapped SKU, and legacy split never get a batch proposal",()=>{
  const c=catalog();
  c.products[2].enabled=true;
- c.products.push({id:"nuro2",name:"nuro",active:true,enabled:true});
+ c.products.push({id:"nuro2",name:"NURO",active:false,enabled:false});
  let proposals=suggestUnambiguousOwnerSkuMappings({
   mapping:status(),catalog:c,partnerCompanyId:"partner"
  });
@@ -273,6 +341,62 @@ test("ambiguous matching, already mapped SKU, and legacy split never get a batch
  assert.equal(suggestUnambiguousOwnerSkuMappings({
   mapping:status(),catalog:c,partnerCompanyId:"partner"
  }).length,0,"company-specific OFF is respected");
+});
+
+test("Owner preview proposes unique combined 光/AIR aliases but never splits or guesses",()=>{
+ const c=catalog();
+ c.products[2].enabled=true;
+ c.products[2].name="光/AIR";
+ c.products.push(
+  {id:"light",name:"SB光",active:true,enabled:true},
+  {id:"solar",name:"太陽光/AIR（旧合算）",active:true,enabled:true},
+  {id:"other",name:"NURO旧合算",active:true,enabled:true});
+ const mapping=status();
+ const choose=()=>suggestUnambiguousOwnerSkuMappings({
+  mapping,catalog:c,partnerCompanyId:"partner"
+ }).filter(p=>p.partnerProductId==="partnerSku05");
+ assert.deepEqual(choose().map(p=>p.hubProductId),["combined"]);
+ for(const alias of ["SB光・AIR","SB光・AIR（旧合算）","ソフトバンク光/Air"]){
+  c.products[2].name=alias;
+  assert.deepEqual(choose().map(p=>p.hubProductId),["combined"],alias);
+ }
+ // Two eligible combined products must cause a hold, not a random choice.
+ c.products.push({id:"combinedTwo",name:"SB光・AIR",
+  active:true,enabled:true});
+ assert.deepEqual(choose(),[]);
+ c.products.pop();
+ c.products[2].enabled=false;
+ assert.deepEqual(choose(),[],"Owner OFF cannot be silently bypassed");
+ c.products[2].enabled=true;
+ c.products[2].name="SoftBank Air";
+ assert.deepEqual(choose(),[],"standalone Air is never combined");
+ assert.deepEqual(mapping,status(),"preview has no historical writes");
+});
+
+test("only exact archived private SKU names can be proposed in the company-scoped Owner panel",async()=>{
+ const c=catalog();
+ c.products[0].name="NURO光";
+ c.products.push({id:"extra",name:"共通商材",active:true,enabled:true});
+ c.products.push({id:"ambiguous1",name:"重複商材",active:true,enabled:true});
+ c.products.push({id:"ambiguous2",name:"重複商材",active:false,enabled:false});
+ const mapping={...status(),partnerProducts:[
+  {id:"partnerPrivate:historic",name:"共通商材",active:false},
+  {id:"partnerPrivate:ambiguous",name:"重複商材",active:true}
+ ]};
+ assert.deepEqual(suggestUnambiguousOwnerSkuMappings({mapping,catalog:c,partnerCompanyId:"partner"}),[{
+  partnerProductId:"partnerPrivate:historic",partnerLabel:"共通商材",
+  hubProductId:"extra",hubProductLabel:"共通商材"
+ }]);
+ const root=new Node("main"),calls=[];
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,
+  auth:{currentUser:user},partnerCompanyId:"partner",
+  readMappings:async args=>{calls.push(args);return mapping;},
+  readProducts:async()=>c,saveMapping:async()=>assert.fail("preview wrote to server")});
+ assert.equal(await panel.refresh(),true);
+ assert.equal(calls[0].partnerCompanyId,"partner");
+ assert.match(displayed(root),/共通商材（過去の商材）/);
+ assert.match(displayed(root),/上記1件を確認して連携する/);
+ panel.destroy();
 });
 
 test("batch failure stops at first error and reloads server-confirmed partial state",async()=>{
@@ -299,4 +423,76 @@ test("batch failure stops at first error and reloads server-confirmed partial st
  assert.equal(selects(root)[5].value,"");
  assert.match(displayed(root),/途中で停止しました。保存確認済み1件/);
  panel.destroy();
+});
+
+test("Owner preview refuses a duplicated persisted target without modifying any saved counts",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ let writes=0;
+ const map=status(3,[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku06",hubProductId:"nuro"}
+ ]);
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>map,readProducts:async()=>catalog(),
+  saveMapping:async()=>{writes++;return {};}
+ });
+ assert.equal(await panel.refresh(),false);
+ assert.equal(selects(root).length,0);
+ assert.match(displayed(root),/読み込めません/);
+ assert.equal(writes,0);
+ assert.throws(()=>suggestUnambiguousOwnerSkuMappings({
+  mapping:map,catalog:catalog(),partnerCompanyId:"partner"
+ }),/UNVERIFIED/);
+ panel.destroy();
+});
+test("separate partner companies can correctly reuse the same hub ranking SKU",async()=>{
+ const root=new Node("main"),auth={currentUser:user};
+ const mapping=status(2,[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"otherPartner",productId:"partnerSku01",hubProductId:"nuro"}
+ ]);
+ const panel=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>mapping,readProducts:async()=>catalog(),
+  saveMapping:async()=>assert.fail("read-only preview must not save")
+ });
+ assert.equal(await panel.refresh(),true);
+ assert.equal(selects(root)[0].value,"nuro");
+ panel.destroy();
+});
+
+
+test("Owner count-only picker never offers unrelated NURO旧合算 or 未分類 products for 光/AIR",async()=>{
+ const c=catalog();
+ c.products.push({id:"notLightAir",name:"NURO旧合算",active:true,enabled:true},
+  {id:"unknown",name:"U-NEXT（未分類）",active:true,enabled:true},
+  {id:"solar",name:"太陽光/AIR（旧合算）",active:true,enabled:true});
+ const root=new Node("main"),auth={currentUser:user};
+ const p=createOwnerReviewedSkuMappingPanel({
+  enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>c,
+  saveMapping:async()=>assert.fail("Owner has not confirmed any mapping")
+ });
+ assert.equal(await p.refresh(),true);
+ assert.deepEqual(selects(root)[4].children.map(x=>x.value),["","combined"]);
+ p.destroy();
+});
+
+
+test("Owner picker keeps both historical combined families distinct and never saves on load",async()=>{
+ const c=catalog(),root=new Node("main"),auth={currentUser:user};
+ c.products.push({id:"energy",name:"つばさ・HTB（旧合算）",active:true,enabled:true},
+  {id:"htb",name:"HTB",active:true,enabled:true},{id:"tsubasa",name:"つばさ電気",active:true,enabled:true});
+ const panel=createOwnerReviewedSkuMappingPanel({enabled:true,document,root,auth,partnerCompanyId:"partner",
+  readMappings:async()=>status(),readProducts:async()=>c,saveMapping:async()=>assert.fail("no confirmed save")});
+ assert.equal(await panel.refresh(),true);
+ assert.deepEqual(selects(root)[6].children.map(x=>x.value),["","energy"]);
+ assert.deepEqual(selects(root)[4].children.map(x=>x.value),["","combined"]);
+ panel.destroy();
+ for(const source of ["partnerSku07","partnerPrivate:oldEnergy"]){
+  const m={...status(1,[{companyId:"partner",productId:source,hubProductId:"htb"}]),
+   partnerProducts:[{id:"partnerPrivate:oldEnergy",name:"翼/HTB（旧合算）",active:false}]};
+  assert.throws(()=>suggestUnambiguousOwnerSkuMappings({mapping:m,catalog:c,partnerCompanyId:"partner"}),/UNVERIFIED/);
+ }
 });

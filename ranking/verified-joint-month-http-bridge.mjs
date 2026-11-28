@@ -26,7 +26,7 @@ const shifted=(day,offset)=>{
  d.setUTCDate(d.getUTCDate()+offset);
  return d.toISOString().slice(0,10);
 };
-const expectedWindow=period=>{
+export const getVerifiedJointCountWindow=period=>{
  if(!period||Object.keys(period).sort().join("|")!=="asOf|day|kind"||
     !["month","day","week"].includes(period.kind)||
     !goodDay(period.day)||!goodDay(period.asOf)||
@@ -51,7 +51,7 @@ export function createVerifiedJointMonthHttpBridge({
     (expectedRole!==null&&!["hub_owner","partner_owner"].includes(expectedRole)))stop();
  let generation=0;
  async function load({period,filters}={}){
-  const window=expectedWindow(period);
+  const window=getVerifiedJointCountWindow(period);
   if(!filters||typeof filters!=="object"||Array.isArray(filters)||
      Object.keys(filters).some(k=>k!=="scope")||
      (filters.scope!==undefined&&!["joint","direct","partner"].includes(filters.scope)))stop();
@@ -93,6 +93,8 @@ export function createVerifiedJointMonthHttpBridge({
       !["hub_owner","partner_owner"].includes(value.role)||
       value.period!==period.kind||value.unit!=="件"||
       (expectedRole!==null&&value.role!==expectedRole)||
+      (value.role==="hub_owner"&&
+       (value.filters?.scope??"joint")!==(filters.scope??"joint"))||
       !goodDay(value.range?.start)||value.range.start!==window.start||
       !goodDay(value.range?.end)||value.range.end!==window.end)stop();
    return value; // existing DOM renderer strictly rejects all finance keys

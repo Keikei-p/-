@@ -26,7 +26,14 @@ const startup=section('const auth =\n  getAuth(app);','auth.languageCode =');
 const background=section('document.addEventListener("visibilitychange", () => {','\n});')+'\n});';
 
 test('existing screen and exact email/password login code are unchanged',()=>{
-  assert.equal(fnv(markup),'6d07c2d1','login markup/design drift');
+  // Owner-approved PR #828 changes only the old company-code entry button.
+  // Reverse precisely those two attributes and retain the original markup pin.
+  const disabledEntry='aria-controls="nicoMainCompanyCodePanel" hidden disabled>';
+  assert.equal(markup.split(disabledEntry).length,2,'company-code entry must be disabled exactly once');
+  assert.equal(fnv(markup),'bf85931e','approved email-only entry markup drift');
+  assert.equal(fnv(markup.replace(disabledEntry,'aria-controls="nicoMainCompanyCodePanel">')),'011c2d96','original email screen markup drift');
+  assert.match(html,/const NICO_NEW_COMPANY_CODE_LOGIN_ENABLED=false;/);
+  assert.match(html,/if\(!NICO_NEW_COMPANY_CODE_LOGIN_ENABLED\|\|nicoMainCodeLoginBusy\|\|nicoMainCodePanel\.hidden\)return;/);
   assert.equal(fnv(existingLogin),'9d04c3ad','existing email/password flow drift');
   assert.match(existingLogin,/signInWithEmailAndPassword\(\s*auth,\s*email,\s*password\s*\)/);
   assert.equal((html.match(/id="authButton"/g)||[]).length,1);
@@ -102,6 +109,7 @@ function backgroundHarness({visible='block',state='hidden',user={uid:'synthetic'
   }};
   const context={
     document:doc,auth,appScreen,authScreen,
+    partnerMainCodeActive:()=>false,
     stopRealtimeListeners:()=>{stop++;},
     signOut:async()=>{signouts++;auth.currentUser=null;},
     location:{reload:()=>{reloads++;}}

@@ -1,0 +1,38 @@
+name: NICO approved individual partner count contract (NO DEPLOY)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions-partner-workspace/owner-approved-individual-count-input.cjs'
+      - 'tests/owner-approved-individual-count-input.test.cjs'
+      - '.github/workflows/nico-owner-approved-individual-count-contract-no-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  count-only-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Strict server-owned Owner publication and separate count history contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node --check functions-partner-workspace/owner-approved-individual-count-input.cjs
+          node --check tests/owner-approved-individual-count-input.test.cjs
+          node --test tests/owner-approved-individual-count-input.test.cjs
+          echo 'OWNER_APPROVED_INDIVIDUAL_COUNT_CONTRACT_PASS_NO_DEPLOY'
+      - name: No production changes or actual input acceptance claimed
+        run: echo 'PRODUCTION_DEPLOYED=false REAL_PARTNER_INPUT_PROVEN=false SERVICE_WIRING_STILL_REQUIRED=true'

@@ -208,6 +208,7 @@ test("verified active partner roster preserves no-report staff and historic coun
 
 test("zero-setup same month reconciles both companies and all counts without mappings or ON switches",()=>{
  const source=sources();
+ source.hubSource.products.find(p=>p.sourceId==="nuro").name="NURO";
  source.partnerSources[0].products=PARTNER_RANK_SKUS.map((p,i)=>({
   companyId:"partner",sourceId:p.id,name:p.name,active:true,sortOrder:i
  }));
@@ -216,27 +217,94 @@ test("zero-setup same month reconciles both companies and all counts without map
  const group=input.productGroups.find(x=>x.companyId==="partner"&&
   x.productId==="partnerSku01");
  assert.deepEqual(group,{companyId:"partner",productId:"partnerSku01",
-  groupId:"nuro",groupName:"NURO光"});
+  groupId:"nuro",groupName:"NURO"});
  const result=buildVerifiedCountDashboard({...input,context});
  assert.equal(result.summary.own,3);
  assert.equal(result.summary.partner,5);
  assert.equal(result.summary.total,8);
- assert.equal(result.productRanking.find(x=>x.name==="NURO光").count,7);
+ assert.equal(result.productRanking.find(x=>x.name==="NURO").count,7);
  assert.equal(result.productRanking.find(x=>x.name==="SoftBank Air").count,1);
  assert.equal(result.memberRanking.find(x=>x.id==="partner:p1").count,5);
  assert.equal(result.memberRanking.find(x=>x.id==="hub:owner").count,3);
  assert.deepEqual(source,snapshot,"source records and financial masters are never edited");
  assert(!/(revenue|unitPrice|cashback|price|[¥￥])/.test(JSON.stringify(result)));
 });
-test("zero-setup mode never reads a mapping document even when it is absent",async()=>{
+test("zero-setup reads existing Owner mapping optionally; absent doc never requires new setup",async()=>{
  const f=fakeReader({noMapping:true});
  const read=createCanonicalCountTransactionReader({db:f.db,zeroSetupLink:true});
+ // The intentionally partial fake store lacks full count sources and still
+ // fails closed. An absent optional reviewed mapping is not the reason.
  await assert.rejects(read({tx:f.tx,context,month:"2026-11"}));
- assert(!f.seen.includes("companies/hub/rankingSkuMappings/shared"),
-  "the user must not be required to open a SKU mapping setup page");
+ assert(f.seen.includes("companies/hub/rankingSkuMappings/shared"),
+  "an existing reviewed map must be consulted in the same transaction");
+ // The complete-source case without ANY mapping is independently covered
+ // by the pure zero-setup count-conservation and Owner publication tests.
 });
 test("zero-setup mode rejects a mismatched role before any mapping or source reading",()=>{
  const invalid={...context,serverVerified:false};
  assert.throws(()=>compose({zeroSetupLink:true,skuMap:null,context:invalid}),
   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+});
+
+
+test("canonical ranking rejects unrelated generic 旧合算 / 未分類 labels for old 光/AIR source",()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const {hubSource,partnerSources}=sources();
+  hubSource.products[1].name=name;
+  partnerSources[0].products[0].sourceId="partnerSku05";
+  partnerSources[0].products[0].name="SB光・AIR";
+  partnerSources[0].lines[0].productId="partnerSku05";
+  const bad={...map,bindings:[{companyId:"partner",
+   productId:"partnerSku05",hubProductId:"air"}]};
+  assert.throws(()=>compose({hubSource,partnerSources,skuMap:bad}),
+   /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+ }
+});
+
+
+test("canonical ranking rejects a duplicated target hub SKU even when partner source IDs differ",()=>{
+ const input=sources(),partner=input.partnerSources[0];
+ partner.products.push({companyId:"partner",sourceId:"partnerSku02",
+  name:"SBMNP",active:true,sortOrder:1});
+ const duplicate={...map,bindings:[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}
+ ]};
+ assert.throws(()=>compose({...input,skuMap:duplicate}),
+  /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+ // No history or original count was rewritten by failed composition.
+ assert.equal(partner.records[0].totalCount,5);
+ assert.equal(partner.lines[0].count,5);
+});
+test("canonical ranking treats saved partnerSku05 as combined even when its display label was changed",()=>{
+ const input=sources(),partner=input.partnerSources[0];
+ partner.products[0].sourceId="partnerSku05";
+ partner.products[0].name="名称変更後の旧カテゴリ";
+ partner.lines[0].productId="partnerSku05";
+ const legacyBinding=(hubProductId)=>({...map,bindings:[{
+  companyId:"partner",productId:"partnerSku05",hubProductId
+ }]});
+ assert.throws(()=>compose({...input,skuMap:legacyBinding("air")}),
+  /CANONICAL_RANKING_SOURCE_OR_SKU_MAP_UNVERIFIED/);
+ // A real combined target remains usable without changing original counts.
+ input.hubSource.products.push({companyId:"hub",sourceId:"legacyCombined",
+  name:"SB光・AIR（旧合算）",active:true,sortOrder:3});
+ const result=compose({...input,skuMap:legacyBinding("legacyCombined")});
+ const mapped=result.productGroups.find(x=>x.companyId==="partner");
+ assert.equal(mapped.productId,"partnerSku05");
+ assert.equal(mapped.groupId,"legacyCombined");
+ assert.equal(partner.records[0].totalCount,5);
+});
+
+
+test("canonical reader refuses historical energy reclassification even with a reviewed source ID",()=>{
+ const f=sources(),p=f.partnerSources[0];
+ p.products=[{companyId:"partner",sourceId:"partnerSku07",name:"つばさ・HTB",active:true}];
+ p.lines[0].productId="partnerSku07";
+ f.hubSource.products.push({companyId:"hub",sourceId:"htb",name:"HTB",active:true});
+ const before=structuredClone(f);
+ assert.throws(()=>compose({...f,skuMap:{...map,bindings:[{companyId:"partner",productId:"partnerSku07",hubProductId:"htb"}]}}),/UNVERIFIED/);
+ assert.deepEqual(f,before);
+ f.hubSource.products.find(x=>x.sourceId==="htb").name="つばさ・HTB（旧合算）";
+ assert.equal(compose({...f,skuMap:{...map,bindings:[{companyId:"partner",productId:"partnerSku07",hubProductId:"htb"}]}}).productGroups.find(x=>x.productId==="partnerSku07").groupId,"htb");
 });

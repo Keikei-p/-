@@ -379,3 +379,177 @@ test("NFKC-normalized money labels cannot cross the partner ranking HTTP boundar
   assert(!out.body.includes(name));
  }
 });
+
+test("verified partner-only saved team breakdown passes the real HTTP boundary",async()=>{
+ const p=data();
+ p.own={company:"協力店",count:5,unidentifiedCount:0,people:[],products:[],
+  teamDetails:[
+   {name:"1班",count:5,reportStatus:"報告済",
+    members:[{name:"協力店の担当",count:5,reportStatus:"報告済"}],
+    products:[{name:"NURO光",count:5}]},
+   {name:"2班",count:0,reportStatus:"未報告",members:[],products:[]}
+  ]};
+ p.publicRanking.teams=[
+  {rank:1,name:"1班",company:"協力店",count:5,own:true},
+  {rank:2,name:"1班",company:"直営",count:3,own:false}
+ ];
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>true,loadHandler:()=>make(200,p)
+ });
+ const out=response();
+ await adapter(req(),out);
+ assert.equal(out.statusCode,200);
+ const safe=JSON.parse(out.body);
+ assert.equal(safe.own.teamDetails[0].members[0].count,5);
+ assert(!("teamDetails" in safe.publicRanking));
+ assert.equal(safe.publicRanking.teams[1].own,false);
+ assert(!("summary" in safe));
+ assert(!out.body.includes("unitPrice"));
+});
+
+test("partner-only team details cannot smuggle other company or miscount",async()=>{
+ const fixture=()=>{
+  const p=data();
+  p.own={company:"協力店",count:5,unidentifiedCount:0,people:[],products:[],
+   teamDetails:[{name:"1班",count:5,reportStatus:"報告済",
+    members:[{name:"協力店の担当",count:5,reportStatus:"報告済"}],
+    products:[{name:"NURO光",count:5}]}]};
+  p.publicRanking.teams=[
+   {rank:1,name:"1班",company:"協力店",count:5,own:true},
+   {rank:2,name:"1班",company:"直営",count:3,own:false}
+  ];
+  return p;
+ };
+ const cases=[
+  p=>{p.own.teamDetails[0].members[0].count=6;},
+  p=>{p.own.teamDetails[0].products[0].count=4;},
+  p=>{p.own.teamDetails[0].members[0].uid="foreign-uid";},
+  p=>{p.own.teamDetails[0].products[0].unitPrice=99999;},
+  p=>{p.publicRanking.teams[1].own=true;},
+  p=>{p.publicRanking.teams[0].own=false;},
+  p=>{p.own.teamDetails[0].name="直営・1班";},
+  p=>{p.own.teamDetails[0].members[0].reportStatus="未報告";},
+  p=>{p.own.teamDetails[0].reportStatus="未報告";},
+  p=>{p.own.teamDetails.push({name:"2班",count:10,reportStatus:"報告済",
+    members:[{name:"架空",count:10,reportStatus:"報告済"}],
+    products:[{name:"商品",count:10}]});},
+  p=>{delete p.own.unidentifiedCount;},
+  p=>{delete p.publicRanking.teams[0].own;}
+ ];
+ for(const mutate of cases){
+  const p=fixture();mutate(p);
+  const adapter=createJointCountHttpAdapter({
+   enabled:()=>true,loadHandler:()=>make(200,p)
+  });
+  const out=response();await adapter(req(),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+
+test("strict published-only HTTP accepts exactly the selected count-only tab resource",async()=>{
+ const published={schema:"nico-published-partner-count-tab-v1",
+  role:"partner_owner",unit:"件",period:"month",
+  range:{start:"2026-11-01",end:"2026-11-18"},
+  readTime:"2026-11-18T09:00:00.000Z",tab:"individual",
+  rows:[{rank:1,name:"担当A",company:"協力店A",count:3}]
+ };
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>make(200,published)});
+ const out=response();
+ await adapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=individual"),out);
+ assert.equal(out.statusCode,200);
+ assert.deepEqual(JSON.parse(out.body),published);
+ assert(!out.body.includes("products"));
+ assert(!out.body.includes("teamDetails"));
+ assert(!out.body.includes("unitPrice"));
+});
+test("published-only refuses legacy full dashboards even if their fields are individually approved",async()=>{
+ const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>make(200,data())});
+ const out=response();await adapter(req(),out);
+ assert.equal(out.statusCode,503);
+ assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+});
+test("published-only HTTP rejects other tab keys, cross-scope details and monetary labels",async()=>{
+ const published={schema:"nico-published-partner-count-tab-v1",
+  role:"partner_owner",unit:"件",period:"month",
+  range:{start:"2026-11-01",end:"2026-11-18"},
+  readTime:"2026-11-18T09:00:00.000Z",tab:"team",
+  rows:[{rank:1,name:"1班",company:"協力店A",count:3,own:true}],
+  companies:[{rank:1,name:"協力店A",count:3}]
+ };
+ const teamAdapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>make(200,published)});
+ const teamResponse=response();
+ await teamAdapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=team"),teamResponse);
+ assert.equal(teamResponse.statusCode,200);
+ assert.deepEqual(JSON.parse(teamResponse.body),published);
+ const mismatchedTab=response();
+ await teamAdapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=product"),mismatchedTab);
+ assert.equal(mismatchedTab.statusCode,503);
+ const mutations=[
+  p=>p.companies[0].revenue=20000,
+  p=>delete p.companies,
+  p=>p.rows[0].uid="foreignUid",
+  p=>p.rows[0].unitPrice=20000,
+  p=>p.rows[0].name="1班 売上5万円",
+  p=>p.tab="report",
+  p=>p.teamDetails=[],
+  p=>p.rows[0].own="true",
+  p=>p.rows[0].rank=0
+ ];
+ for(const mutate of mutations){
+  const p=structuredClone(published);mutate(p);
+  const adapter=createJointCountHttpAdapter({enabled:()=>true,publishedOnly:true,
+   loadHandler:()=>make(200,p)});
+  const out=response();
+  await adapter(req("/getVerifiedJointCountRanking?month=2026-11&tab=team"),out);
+  assert.equal(out.statusCode,503,mutate.toString());
+  assert.deepEqual(JSON.parse(out.body),{error:"request_blocked"});
+ }
+});
+
+test("code-session rank bearer is accepted only through the same protected published-only HTTP contract",async()=>{
+ const opaque="C".repeat(43),requests=[];
+ const proof={schema:"nico-published-partner-count-tab-v1",
+  role:"partner_owner",unit:"件",period:"day",
+  range:{start:"2026-11-18",end:"2026-11-18"},
+  readTime:"2026-11-18T09:00:00.000Z",tab:"product",
+  rows:[{rank:1,name:"NURO",count:5}]
+ };
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>true,publishedOnly:true,
+  loadHandler:()=>async request=>{
+   requests.push(request);
+   return new Response(JSON.stringify(proof),{
+    status:200,headers:{"Content-Type":"application/json"}
+   });
+  }
+ });
+ const result=response();
+ await adapter(req("/getVerifiedJointCountRanking?day=2026-11-18&tab=product",{
+  headers:{authorization:"Bearer "+opaque}
+ }),result);
+ assert.equal(result.statusCode,200);
+ assert.deepEqual(JSON.parse(result.body),proof);
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].headers.get("Authorization"),"Bearer "+opaque);
+ assert(!requests[0].url.includes(opaque));
+ assert.equal(new URL(requests[0].url).searchParams.get("workspaceCompanyId"),null);
+ assert.equal(result.headers["cache-control"],"no-store");
+});
+test("company-code rank token never bypasses the three default-OFF server release checks",async()=>{
+ let loads=0;
+ const adapter=createJointCountHttpAdapter({
+  enabled:()=>false,publishedOnly:true,
+  loadHandler:()=>{loads++;return make();}
+ });
+ const result=response();
+ await adapter(req("/getVerifiedJointCountRanking?day=2026-11-18&tab=product",{
+  headers:{authorization:"Bearer "+"C".repeat(43)}
+ }),result);
+ assert.equal(result.statusCode,503);
+ assert.equal(loads,0);
+ assert.deepEqual(JSON.parse(result.body),{error:"request_blocked"});
+});

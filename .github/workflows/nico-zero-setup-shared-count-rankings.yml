@@ -4,6 +4,12 @@ on:
     branches: [main]
     paths:
       - 'ranking/zero-setup-count-linker.mjs'
+      - 'ranking/partner-workspace-count-source.mjs'
+      - 'ranking/partner-month-readonly-loader.mjs'
+      - 'tests/partner-workspace-count-source.test.mjs'
+      - 'ranking/partner-full-history-inventory.mjs'
+      - 'tools/production/inspect-partner-full-history-readonly.mjs'
+      - 'tests/partner-full-history-inventory.test.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -25,6 +31,12 @@ on:
     branches: [main]
     paths:
       - 'ranking/zero-setup-count-linker.mjs'
+      - 'ranking/partner-workspace-count-source.mjs'
+      - 'ranking/partner-month-readonly-loader.mjs'
+      - 'tests/partner-workspace-count-source.test.mjs'
+      - 'ranking/partner-full-history-inventory.mjs'
+      - 'tools/production/inspect-partner-full-history-readonly.mjs'
+      - 'tests/partner-full-history-inventory.test.mjs'
       - 'ranking/canonical-joint-count-sku-reader.mjs'
       - 'ranking/canonical-owner-count-server-factory.mjs'
       - 'ranking/owner-product-visibility-in-atomic-tx.mjs'
@@ -62,11 +74,22 @@ jobs:
           test -z "$FIREBASE_TOKEN"
           test "$NICO_JOINT_COUNT_RANKING_ENABLED" = disabled
           grep -Fq 'process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"' functions-ranking-approvals/index.js
-          grep -Fq 'zeroSetupLink:false' functions-ranking-approvals/index.js
+          # The integrated route is OFF unless all three server-owned gates are enabled.
+          # Auto-SKU matching does not grant an unrestricted publication shortcut:
+          # the atomic Owner ON/OFF selection and published partner tab must both pass.
+          grep -Fq 'process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"' functions-ranking-approvals/index.js
+          grep -Fq 'publishedOnly:true' functions-ranking-approvals/index.js
+          grep -Fq 'enforcePartnerTabPublication:true' functions-ranking-approvals/index.js
+          grep -Fq 'const enforceOwnerSelection=zeroSetupLink===true&&' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'enforcePartnerTabPublication===true;' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'createAtomicOwnerPublicationReader({db,FieldValue,verifyCountViewer,includeHistoricalGroups:enforceOwnerSelection})' ranking/canonical-owner-count-server-factory.mjs
+          grep -Fq 'buildOwnerVisibleCountRanking({input:rankingInput,publication})' ranking/owner-visible-count-server-handler.mjs
           if grep -Fq 'zeroSetupLink:true' functions-ranking-approvals/index.js; then
             echo 'STOP_RANKING_MUST_OBEY_OWNER_ON_OFF'; exit 1
           fi
-          for f in zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx; do
+          for f in partner-workspace-count-source partner-month-readonly-loader zero-setup-count-linker canonical-joint-count-sku-reader canonical-owner-count-server-factory owner-visible-count-server-handler owner-visible-count-atomic-loader owner-product-visibility-in-atomic-tx historical-count-publication-groups; do
             cmp "ranking/$f.mjs" "functions-ranking-approvals/ranking/$f.mjs"
             node --check "ranking/$f.mjs"
             node --check "functions-ranking-approvals/ranking/$f.mjs"
@@ -85,5 +108,7 @@ jobs:
             tests/verified-dual-count-dashboards.test.mjs \
             tests/verified-inline-joint-ranking-cards.test.mjs \
             tests/owner-product-visibility-rankings.test.mjs \
-            tests/partner-workspace-count-source.test.mjs
+            tests/partner-workspace-count-source.test.mjs \
+            tests/partner-full-history-inventory.test.mjs \
+            tests/inspect-partner-full-history-readonly.test.mjs
           echo 'OWNER_ON_ONLY_COUNT_RANKINGS_PASS_ZERO_SETUP_HELPER_STILL_TESTED_NO_PRODUCTION_DEPLOY'

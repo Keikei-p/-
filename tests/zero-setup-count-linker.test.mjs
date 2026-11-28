@@ -6,10 +6,10 @@ import {PARTNER_RANK_SKUS}
  from "../ranking/partner-workspace-count-source.mjs";
 const TIME="2026-11-17T09:00:00.000Z";
 const hubProducts=[
- {companyId:"hub",sourceId:"nuro",name:"NURO光",active:true,sortOrder:0},
+ {companyId:"hub",sourceId:"nuro",name:"NURO",active:true,sortOrder:0},
  {companyId:"hub",sourceId:"air",name:"SoftBank Air",active:true,sortOrder:1},
  {companyId:"hub",sourceId:"combined",name:"SB光・AIR（旧合算・未分類）",active:true,sortOrder:2},
- {companyId:"hub",sourceId:"mnp",name:"SoftBank MNP",active:true,sortOrder:3}
+ {companyId:"hub",sourceId:"mnp",name:"SBMNP",active:true,sortOrder:3}
 ];
 function fixture(){
  const hubSource={companyId:"hub",kind:"own",consentVerified:true,
@@ -49,6 +49,14 @@ test("ambiguous same-named hub products do not guess a master product",()=>{
   .every(x=>x.groupId==="partnerUnmatched:partnerSku01"),
   "two legitimate hub products are never merged by a guess");
 });
+test("unreviewed labels cannot be linked by alias, case, width or whitespace",()=>{
+ for(const label of ["NURO光","nuro","ＮＵＲＯ","NU RO"]){
+  const f=fixture();
+  f.hubSource.products[0].name=label;
+  assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku01")
+   .every(x=>x.groupId==="partnerUnmatched:partnerSku01"));
+ }
+});
 test("all reviewed historical 光/AIR combined aliases join only an exact unique hub combined SKU",()=>{
  for(const name of ["光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"]){
   const f=fixture();
@@ -80,6 +88,42 @@ test("standalone 光 and Air never impersonate an old combined optical/AIR SKU",
  const actual=linkAllRegisteredCountsWithoutSetup(f);
  assert(actual.filter(p=>p.companyId!=="hub"&&p.productId==="partnerSku05")
   .every(p=>p.groupId==="partnerUnmatched:partnerSku05"));
+});
+
+test("zero-setup direct linker rejects unrelated generic old-combined labels in reviewed ID mappings",()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const f=fixture(),before=structuredClone(f);
+  f.hubSource.products.push({companyId:"hub",sourceId:"unrelated",
+   name,active:true,sortOrder:9});
+  const saved=structuredClone(f);
+  f.reviewedBindings=[{companyId:"partner1",
+   productId:"partnerSku05",hubProductId:"unrelated"}];
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup(f),
+   /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/,name);
+  assert.deepEqual({...f,reviewedBindings:[]},{...saved,reviewedBindings:[]},
+   "rejected mapping never edits historical source counts");
+  assert.deepEqual(before.partnerSources,f.partnerSources);
+ }
+});
+
+test("archived private combined 光/AIR cannot be reviewed into a standalone or unrelated SKU",()=>{
+ const f=fixture();
+ f.partnerSources[0].products.push({companyId:"partner1",
+  sourceId:"partnerPrivate:historicMix",name:"光/AIR（旧合算）",active:false});
+ const before=structuredClone(f);
+ for(const hubProductId of ["air","nuro"]){
+  f.reviewedBindings=[{companyId:"partner1",
+   productId:"partnerPrivate:historicMix",hubProductId}];
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup(f),
+   /ZERO_SETUP_COUNT_SOURCE_UNVERIFIED/);
+ }
+ f.reviewedBindings=[{companyId:"partner1",
+  productId:"partnerPrivate:historicMix",hubProductId:"combined"}];
+ const actual=linkAllRegisteredCountsWithoutSetup(f);
+ assert(actual.some(x=>x.companyId==="partner1"&&
+  x.productId==="partnerPrivate:historicMix"&&x.groupId==="combined"));
+ assert.deepEqual(f.hubSource,before.hubSource);
+ assert.deepEqual(f.partnerSources,before.partnerSources);
 });
 
 test("legacy combined 光/AIR never silently splits into separate Hikari or Air",()=>{
@@ -198,7 +242,7 @@ test("same actual 3-company ledger produces matching joint company, team, person
  for(const view of views){
   const products=view.role==="hub_owner"?view.productRanking:
    view.publicRanking.products;
-  const nuro=products.find(x=>x.name==="NURO光");
+  const nuro=products.find(x=>x.name==="NURO");
   assert(nuro,"all three companies share the existing product label");
   assert.equal(nuro.count,12);
   assert.equal(nuro.rank,1);
@@ -219,4 +263,40 @@ test("same actual 3-company ledger produces matching joint company, team, person
  assert.deepEqual(partner.publicRanking.products.map(x=>[x.name,x.count]),
   owner.productRanking.map(x=>[x.name,x.count]));
  assert(!("companyBreakdown" in partner));
+});
+
+
+test("saved energy combination stays unmatched with separate future products and rejects wrong reviewed targets",()=>{
+ const f=fixture();
+ f.hubSource.products.push({companyId:"hub",sourceId:"htb",name:"HTB",active:true},
+  {companyId:"hub",sourceId:"tsubasa",name:"つばさ電気",active:true});
+ const before=structuredClone(f);
+ assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku07")
+  .every(x=>x.groupId==="partnerUnmatched:partnerSku07"));
+ for(const id of ["htb","tsubasa","combined"])
+  assert.throws(()=>linkAllRegisteredCountsWithoutSetup({...f,reviewedBindings:[
+   {companyId:"partner1",productId:"partnerSku07",hubProductId:id}]}),/UNVERIFIED/);
+ assert.deepEqual(f,before);
+ f.hubSource.products.push({companyId:"hub",sourceId:"energy",name:"つばさ・HTB",active:true});
+ assert(linkAllRegisteredCountsWithoutSetup(f).filter(x=>x.productId==="partnerSku07").every(x=>x.groupId==="energy"));
+});
+
+test("Owner ON historical IDs directly link original buckets for all companies without per-company mapping",async()=>{
+ const {withHistoricalCountProducts}=await import("../ranking/historical-count-publication-groups.mjs");
+ const f=fixture();
+ f.hubSource.products=withHistoricalCountProducts(f.hubSource.products,"hub",{source:true});
+ const historicalPublication={hubCompanyId:"hub",ownerUid:"owner",version:2,
+  enabledHubProductIds:["legacyPartnerSku:partnerSku05","legacyPartnerSku:partnerSku07"],
+  partnerOverrides:{partner3:["legacyPartnerSku:partnerSku05"]}};
+ const before=structuredClone(f);
+ const linked=linkAllRegisteredCountsWithoutSetup({...f,historicalPublication});
+ for(const row of linked.filter(r=>r.productId==="partnerSku05"&&r.companyId!=="hub"))
+  assert.equal(row.groupId,"legacyPartnerSku:partnerSku05");
+ assert.equal(linked.find(r=>r.companyId==="partner3"&&r.productId==="partnerSku07").groupId,"partnerUnmatched:partnerSku07");
+ assert.equal(linked.find(r=>r.companyId==="partner1"&&r.productId==="partnerSku07").groupId,"legacyPartnerSku:partnerSku07");
+ assert.equal(linked.find(r=>r.companyId==="partner1"&&r.productId==="partnerSku09").groupId,"partnerUnmatched:partnerSku09");
+ const reviewed=linkAllRegisteredCountsWithoutSetup({...f,historicalPublication,reviewedBindings:[
+  {companyId:"partner1",productId:"partnerSku05",hubProductId:"combined"}]});
+ assert.equal(reviewed.find(r=>r.companyId==="partner1"&&r.productId==="partnerSku05").groupId,"combined");
+ assert.deepEqual(f,before);
 });

@@ -1,0 +1,347 @@
+name: NICO sales unified screen integration review - NO DEPLOY
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/nico-sales-unified-integration-no-deploy.yml'
+      - 'index.html'
+      - 'ranking/**'
+      - 'functions-ranking-approvals/**'
+      - 'functions-partner-tabs/**'
+      - 'functions-partner-workspace/**'
+      - 'staging/partner-owner-correction-v3/**'
+      - 'tools/production/prepare-hub-owner-correction-v3-package.mjs'
+      - 'tools/production/prepare-canonical-hub-owner-correction-package.mjs'
+      - 'tests/canonical-hub-owner-package.test.mjs'
+      - 'tests/owner-product-visibility-dashboard-mount.test.mjs'
+      - 'tools/production/inspect-firestore-backups-readonly.mjs'
+      - 'tools/production/rehearse-managed-backup.mjs'
+      - 'tests/firestore-managed-backup-inventory.test.mjs'
+      - 'tests/managed-backup-rehearsal.test.mjs'
+      - 'tests/integrated-canonical-count-ledger-emulator.test.mjs'
+      - 'tests/partner-production-sized-joint-count-parity.test.mjs'
+      - 'tests/historical-count-publication*.test.mjs'
+      - 'tests/partner-owner-individual-browser.cjs'
+      - 'firestore.rules'
+      - 'tests/owner-product-visibility-rankings.test.mjs'
+      - 'tests/partner-code-count-readonly-safety.test.mjs'
+      - 'tests/partner-code-auth-handoff.test.mjs'
+      - 'tests/main-company-code-entry.test.mjs'
+      - 'tests/partner-code-owner-published-tabs.test.mjs'
+      - 'tests/partner-code-session-count-isolation.test.mjs'
+      - 'tests/partner-zero-reported-day-parity.test.mjs'
+      - 'tests/partner-count-dashboard.test.cjs'
+      - 'tests/partner-company-code-goal-parity.test.mjs'
+      - 'tests/partner-save-receipt-idempotency.test.mjs'
+      - 'tests/partner-approved-week-ranking-page.test.mjs'
+      - 'partner-workspace.html'
+permissions:
+  contents: read
+jobs:
+  integrated-count-and-finance-offline:
+    if: ${{ github.head_ref == 'integration/sales-shared-screen-eight-tabs-20261119' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Required to compare original internal UI to the reviewed main
+          # commit; a shallow PR checkout cannot resolve that immutable tree.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Current protected original source, reviewed PR-only finance Rules and release switches OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 17540d18ac2bc90a77a6507f52cb2b53e3f23102
+          test "$(git hash-object functions-partner-workspace/index.js)" = 245cfa7241dec0c0424e4cf347c9cdc61ab06cdc
+          test "$(git hash-object functions-partner-workspace/workspace-identity.cjs)" = e06305c7dd151a3e5bab93a394396754fd25088e
+          test "$(git hash-object firebase.json)" = d4d918a83f2675994d7aa211c42bb2c9e7242478
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import assert from "node:assert/strict";
+          const ui=fs.readFileSync("index.html","utf8");
+          for(const flag of [
+            "const NICO_SAME_APP_JOINT_HTTP_ENABLED = false;",
+            "const NICO_PARTNER_TAB_UI_ENABLED = false;",
+            "const NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED = false;",
+            "const NICO_OWNER_SKU_MAPPING_UI_ENABLED = false;"
+          ])assert(ui.includes(flag),"Unexpected live switch: "+flag);
+          const ranking=fs.readFileSync("functions-ranking-approvals/index.js","utf8");
+          for(const flag of ["NICO_JOINT_COUNT_RANKING_ENABLED","NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED",
+           "NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED"])assert(ranking.includes(flag));
+          assert(ranking.includes("publishedOnly:true"));
+          assert(ranking.includes("enforcePartnerTabPublication:true"));
+          const partner=fs.readFileSync("functions-partner-tabs/index.js","utf8");
+          for(const flag of ["NICO_PARTNER_TAB_PUBLICATION_ENABLED",
+           "NICO_PARTNER_OPTIONAL_TAB_DATA_VERIFIED"])assert(partner.includes(flag));
+          const cfg=JSON.parse(fs.readFileSync("firebase.json","utf8"));
+          assert(!cfg.functions,"Default config must not deploy staging Functions");
+          console.log("INTEGRATED_SOURCES_PINNED_ALL_PUBLIC_RELEASE_FLAGS_OFF");
+          NODE
+      - name: Existing ranking, published tabs, history preservation and finance-denial contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/owner-product-visibility-rankings.test.mjs tests/owner-visible-count-server-handler.test.mjs tests/verified-dual-count-dashboards.test.mjs tests/same-app-joint-count-wire.test.mjs tests/joint-count-http-adapter.test.cjs tests/partner-unified-count-team-view.test.mjs tests/partner-tab-publication-callables.test.mjs tests/partner-tab-publication-firestore.test.mjs tests/partner-tab-publication-token.test.mjs tests/partner-optional-four-tab-read.test.mjs tests/partner-optional-client.test.mjs tests/published-partner-tab-server.test.mjs tests/published-partner-tab-client.test.mjs tests/nico-eight-tab-release-preflight.test.mjs tests/partner-tab-visibility-policy.test.mjs tests/owner-partner-eight-tab-settings-panel.test.mjs tests/partner-eight-tab-navigation-bridge.test.mjs
+          node --test tests/partner-code-count-readonly-safety.test.mjs tests/partner-code-auth-handoff.test.mjs tests/main-company-code-entry.test.mjs tests/partner-code-owner-published-tabs.test.mjs tests/partner-code-session-count-isolation.test.mjs tests/partner-zero-reported-day-parity.test.mjs tests/partner-count-dashboard.test.cjs tests/partner-company-code-goal-parity.test.mjs tests/partner-save-receipt-idempotency.test.mjs tests/partner-approved-week-ranking-page.test.mjs
+          # Reuse the existing service fixture: real save transaction -> immediate
+          # verified day/month partner ranks -> correction -> non-duplicated totals.
+          node --test tests/partner-workspace.test.cjs tests/owner-approved-individual-count-input.test.cjs tests/partner-owner-correction-v3-mobile-bootstrap.test.mjs
+          # Review the original count-only browser behaviors as part of the
+          # current integration; stale standalone branch hashes do not stand
+          # in for behavior/regression coverage.
+          node --test tests/partner-money-free-workspace.test.cjs tests/partner-original-team-card-parity.test.mjs
+          # Verify ALL historical partner count categories, not only the nine
+          # original SKUs: saved privateCounts, retired private products, old
+          # quick/staff overlaps, source conservation, pagination bounds and
+          # no financial fields. Synthetic/in-memory ONLY, never production GET.
+          node --test tests/partner-full-history-inventory.test.mjs tests/inspect-partner-full-history-readonly.test.mjs
+          # Reproduce latest READ-ONLY production totals (synthetic SKU split): 3 partners, 87 reports, 230 cases, 34 legacy combined, 4 zero reports.
+          # Verify unchanged source ledgers, exact count conservation, partner finance exclusion and Owner ON-only publication boundary.
+          node --test tests/partner-production-sized-joint-count-parity.test.mjs
+          # Historical identities are count-only, default OFF and require the
+          # existing authenticated/versioned Owner publication action.
+          node --test tests/historical-count-publication-groups.test.mjs tests/owner-product-visibility-firestore.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs
+          # Existing OFF product history remains in original ledger and is verified after one ON-only correction; no production write.
+          node --test tests/partner-same-app-off-history-save.test.mjs
+          # A temporary company-code GET outage must not log out the isolated count principal.
+          node --test tests/partner-same-app-company-code-transient-login.test.mjs
+          # Existing Owner ON public SKUs may enable unique exact category names without per-partner setup.
+          node --test tests/partner-owner-on-exact-auto-input.test.mjs
+          # Owner-reviewed SKU IDs must win over zero-setup aliases; no original count write.
+          node --test tests/owner-reviewed-zero-setup-linker.test.mjs
+          node --test tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-sku-mapping-controller.test.cjs tests/owner-reviewed-sku-mapping-dashboard-mount.test.mjs tests/owner-reviewed-sku-rollout.test.mjs tests/owner-reviewed-sku-rollout-panel.test.mjs
+          # End-to-end synthetic 234-count history conservation through explicit Owner SKU review + two-company rollout.
+          node --test tests/owner-sku-rollout-historical-count-conservation.test.mjs
+          # The completed internal dashboard must remain byte-identical.
+          node --test tests/sales-self-dashboard-frozen.test.mjs tests/partner-legacy-private-count-parity.test.cjs
+          node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs tests/firestore-managed-backup-inventory.test.mjs
+          # Both old combined families stay intact; standalone future IDs never
+          # reclassify old counts. These tests perform no live writes.
+          node --test tests/owner-reviewed-sku-mapping-store.test.mjs tests/owner-reviewed-sku-mapping-panel.test.mjs tests/owner-reviewed-sku-rollout.test.mjs tests/canonical-joint-count-sku-reader.test.mjs tests/zero-setup-count-linker.test.mjs tests/partner-submission-publication-guard.test.mjs tests/partner-full-history-inventory.test.mjs tests/partner-history-mapping-preview.test.mjs tests/partner-owner-on-exact-auto-input.test.mjs
+          echo "INTEGRATION_OFFLINE_TESTS_PASS_NO_PRODUCTION_WRITE"
+      - name: Verify current pinned Owner package and reject source drift without changing historical release guards
+        run: node --test tests/canonical-hub-owner-package.test.mjs tests/current-owner-correction-package.test.mjs
+      - name: Test the existing individual count form at mobile and desktop widths without live services
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/nico-individual-ui" --ignore-scripts --no-audit --no-fund --package-lock=false playwright@1.65.1
+          "$RUNNER_TEMP/nico-individual-ui/node_modules/.bin/playwright" install --with-deps chromium
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/nico-individual-ui/node_modules/playwright" node tests/partner-owner-individual-browser.cjs
+      - name: Verify initial Owner Auth notification cannot leave a false publication read error
+        run: node --test tests/owner-product-visibility-dashboard-mount.test.mjs tests/owner-product-visibility-panel.test.mjs tests/owner-product-visibility-firebase-bridge.test.mjs
+      - name: No deployment
+        run: echo 'PRODUCTION_DEPLOYED=false SOURCE_DATA_MODIFIED=false REAL_ACCOUNT_E2E_UNPROVEN=true'
+      - name: Prepare reviewable source archive and verified existing Owner package without release approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          node tools/production/prepare-canonical-hub-owner-correction-package.mjs --prepare . "$RUNNER_TEMP/nico-reviewed-owner-correction-v3-package"
+          mkdir -p "$RUNNER_TEMP/nico-candidate-review"
+          git archive --format=zip --output="$RUNNER_TEMP/nico-candidate-review/source-NO-DEPLOY.zip" HEAD \
+            index.html partner-workspace.html owner-partner-setup.html ranking security \
+            functions-partner-workspace functions-ranking-approvals functions-partner-tabs \
+            staging/partner-owner-correction-v3 staging/partner-sb-v2 \
+            firebase.json firebase.partner-workspace.json firebase.ranking-approvals.json firebase.partner-tabs.json firestore.rules
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {execFileSync} from 'node:child_process';
+          import {REQUIRED_GATES,assertPackageSafety} from './tools/production/prepare-integrated-count-release-bundle.mjs';
+          import {packageFiles,sourceBytes,sha256,frontendClosure} from './tools/production/verify-integrated-count-release-candidate.mjs';
+          import {prepareCanonicalOwnerPackage} from './tools/production/prepare-canonical-hub-owner-correction-package.mjs';
+          import assert from 'node:assert/strict';
+          import {mkdirSync} from 'node:fs';
+          const root=process.env.RUNNER_TEMP+'/nico-candidate-review/';
+          const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+          // The previous six-target #704 manifest is historical, NOT an
+          // allowlist for the current eight-tab integration. Keep it intact.
+          // Candidate-only packages, with exact names and reviewed scope;
+          // final target selection still requires live codebase/identity review.
+          const plans=[
+            {folder:'workspace',source:'functions-partner-workspace',config:'firebase.partner-workspace.json',
+             codebase:'partner-workspace',reviewTargets:['getPartnerWorkspace','submitPartnerWorkspaceCounts'],
+             exports:['getPartnerWorkspace','managePartnerWorkspace','acceptPartnerWorkspaceInvite','submitPartnerWorkspaceCounts',
+              'issuePartnerCompanyCode','activatePartnerCompanyCode','loginPartnerCompanyCode','logoutPartnerCompanyCode']},
+            {folder:'ranking',source:'functions-ranking-approvals',config:'firebase.ranking-approvals.json',
+             codebase:'ranking-owner-approvals',reviewTargets:['getVerifiedJointCountRanking','getOwnerProductVisibility','setOwnerProductVisibility','getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping'],
+             exports:['getRankingOwnerConsentStatus','setRankingOwnerConsent','getOwnerProductVisibility','setOwnerProductVisibility',
+              'getOwnerReviewedSkuMapping','setOwnerReviewedSkuMapping','getVerifiedJointCountRanking']},
+            {folder:'tabs',source:'functions-partner-tabs',config:'firebase.partner-tabs.json',
+             codebase:'partner-shared-tabs',reviewTargets:['getOwnerPartnerTabPublication','setOwnerPartnerTabPublication','getPartnerPublishedTabs','getPartnerPublishedOptionalTab'],
+             exports:['getOwnerPartnerTabPublication','setOwnerPartnerTabPublication','getPartnerPublishedTabs','getPartnerPublishedOptionalTab']}
+          ];
+          const packages=[];
+          const seen=new Set();
+          const check=(plan,files)=>{
+            const config=JSON.parse(files.get(plan.config));
+            assert.deepEqual(Object.keys(config),['functions']);
+            assert.equal(config.functions.source,plan.source);
+            assert.equal(config.functions.codebase,plan.codebase);
+            assertPackageSafety(files.get(plan.source+'/package.json'));
+            const names=[...files.get(plan.source+'/index.js').toString('utf8').matchAll(/exports\.([A-Za-z][A-Za-z0-9_]*)\s*=/g)].map(x=>x[1]);
+            assert.deepEqual(names.slice().sort(),plan.exports.slice().sort());
+            for(const n of names){assert(!seen.has(n));seen.add(n);}
+            assert(plan.reviewTargets.every(n=>names.includes(n)));
+            const dir=root+'function-packages/'+plan.folder+'/';
+            mkdirSync(dir,{recursive:true});
+            for(const [p,b] of files){
+              assert(/^[A-Za-z0-9_./-]+$/.test(p)&&p.split('/').every(x=>x&&!x.startsWith('.')));
+              assert(/\.(?:js|cjs|mjs|json)$/.test(p));
+              mkdirSync(dir+p.slice(0,p.lastIndexOf('/')+1),{recursive:true});
+              writeFileSync(dir+p,b,{flag:'wx'});
+            }
+            packages.push({folder:'function-packages/'+plan.folder,config:plan.config,codebase:plan.codebase,
+              exportedNames:names,candidateTargets:plan.reviewTargets.map(n=>'functions:'+plan.codebase+':'+n),
+              existingExportsOutsideCandidateTargets:names.filter(n=>!plan.reviewTargets.includes(n)),
+              files:[...files].map(([path,b])=>({path,sha256:sha256(b)}))});
+          };
+          for(const plan of plans){
+            const files=new Map();
+            for(const p of [...packageFiles('.',plan.source),plan.config]){
+              // Refuse untracked or modified checkout bytes rather than copy
+              // arbitrary local files or generated credentials into artifacts.
+              const committed=execFileSync('git',['show','HEAD:'+p],{maxBuffer:8000000});
+              const bytes=sourceBytes('.',p);
+              assert.deepEqual(bytes,committed);
+              files.set(p,bytes);
+            }
+            check(plan,files);
+          }
+          const owner=prepareCanonicalOwnerPackage('.');
+          const ownerNames=['listHubPartnerCounts','correctHubPartnerCounts'];
+          check({folder:'owner',source:'functions-hub-owner-correction',config:'firebase.owner-correction.json',
+            codebase:'hub-owner-correction-v3',reviewTargets:ownerNames,exports:ownerNames},
+            new Map(Object.entries(owner.bundle).map(([p,b])=>[p,Buffer.from(b)])));
+          assert.equal(packages.length,4);
+          assert.equal(packages.flatMap(p=>p.candidateTargets).length,13);
+          writeFileSync(root+'current-function-packages.json',JSON.stringify({
+            candidateHead:event.pull_request.head.sha,
+            checkedOutTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),
+            project:'sales-management-cc116',region:'asia-northeast1',packages,
+            candidateTargetsOnly:true,liveCodebaseInventoryVerified:false,
+            originalFunctionArchivesVerified:false,environmentFlagsChanged:false,
+            releaseApproved:false,safeToApply:false,productionDeploys:0
+          },null,2));
+          console.log('CURRENT_FOUR_CODEBASE_PACKAGES_PREPARED_NO_DEPLOY');
+          // Review a browser-only overlay, never use the broad source archive
+          // as a Firebase public directory. Preserve all other live assets,
+          // including worker, icon/manifest and existing Hosting configuration.
+          const dependencies=frontendClosure('.');
+          const browserRoots=new Set(['index.html','partner-workspace.html','owner-partner-setup.html',
+            'sales-archive.js','archive-coverage.mjs','archive-output-policy.mjs','archive-read-budget.mjs']);
+          const overlay=[];
+          const preserved=[];
+          for(const p of dependencies){
+            const raw=sourceBytes('.',p);
+            assert.deepEqual(raw,execFileSync('git',['show','HEAD:'+p],{maxBuffer:8000000}));
+            if(p==='service-worker.js'){
+              assert.equal(execFileSync('git',['hash-object',p],{encoding:'utf8'}).trim(),
+                '33c00fe89f92e13d35a070447d62ddec100aa8e9');
+              preserved.push({path:'/'+p,expectedRawSha256:sha256(raw)});
+              continue;
+            }
+            assert(browserRoots.has(p)||/^(?:ranking|staging\/partner-owner-correction-v3)\/[A-Za-z0-9_-]+\.(?:mjs|js|css)$/.test(p),
+              'UNREVIEWED_BROWSER_DEPENDENCY '+p);
+            // No server entrypoints, credential files, Firestore rules,
+            // npm metadata or entire backend directories in public payload.
+            const dest=root+'hosting-overlay/'+p;
+            mkdirSync(dest.slice(0,dest.lastIndexOf('/')),{recursive:true});
+            writeFileSync(dest,raw,{flag:'wx'});
+            overlay.push({path:'/'+p,rawSha256:sha256(raw),rawBytes:raw.length});
+          }
+          for(const p of ['index.html','partner-workspace.html','owner-partner-setup.html',
+            'ranking/published-partner-tab-client.mjs','ranking/published-partner-optional-client.mjs',
+            'ranking/partner-tab-navigation-gate.mjs','ranking/owner-partner-tab-settings-panel.mjs'])
+            assert(overlay.some(x=>x.path==='/'+p),'MISSING_BROWSER_DEPENDENCY '+p);
+          assert.equal(preserved.length,1);
+          writeFileSync(root+'hosting-overlay-review.json',JSON.stringify({
+            candidateHead:event.pull_request.head.sha,
+            project:'sales-management-cc116',site:'nico-factory',
+            files:overlay,preserveExact:preserved,retainAllOtherLiveFiles:true,
+            retainLiveConfig:true,replaceOrAddOnly:true,deletePaths:[],
+            literalDependencyClosureOnly:true,liveBaselineVerified:false,
+            releaseApproved:false,safeToApply:false,productionDeploys:0
+          },null,2));
+          console.log('CURRENT_BROWSER_OVERLAY_PREPARED_NO_DEPLOY');
+          writeFileSync(root+'review.json',JSON.stringify({
+            candidateHead:event.pull_request.head.sha,checkedOutTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),
+            sourceArchiveSha256:createHash('sha256').update(readFileSync(root+'source-NO-DEPLOY.zip')).digest('hex'),
+            productionWrites:0,productionDeploys:0,sourceFlagsChanged:false,
+            releaseApproved:false,safeToApply:false,hostingBaselineVerified:false,
+            currentFunctionPackages:'current-function-packages.json',functionCodebaseCount:4,
+            hostingOverlay:'hosting-overlay-review.json',hostingOverlayFileCount:overlay.length,
+            candidateFunctionTargetCount:13,liveFunctionIdentityVerified:false,
+            requiredGates:REQUIRED_GATES
+          },null,2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nico-candidate-review-NO-DEPLOY
+          path: |
+            ${{ runner.temp }}/nico-candidate-review/
+            ${{ runner.temp }}/nico-reviewed-owner-correction-v3-package/
+          retention-days: 7
+          if-no-files-found: error
+
+  finance-and-count-emulator:
+    if: ${{ github.head_ref == 'integration/sales-shared-screen-eight-tabs-20261119' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
+      GCLOUD_PROJECT: demo-nico-secondary-finance-fence
+      GOOGLE_CLOUD_PROJECT: demo-nico-secondary-finance-fence
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify reviewed staged finance Rules and immutable count sources before emulator
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = 'demo-nico-secondary-finance-fence'
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test "$(git hash-object firestore.rules)" = 9eca5c49957d370bbf092b9783dfa0e97f1a735a
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 17540d18ac2bc90a77a6507f52cb2b53e3f23102
+          node security/secondary-finance-read-fence.mjs --check
+      - name: Install emulator without production credentials
+        run: |
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Synthetic second-role finance GET LIST rejection and count save compatibility
+        run: |
+          firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore \
+            'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs tests/integrated-canonical-count-ledger-emulator.test.mjs tests/historical-count-publication-emulator.test.mjs'
+          echo 'EMULATOR_ONLY_PASS_REAL_PARTNER_ACCESS_UNPROVEN'
+      - name: No real deployment or restore
+        if: always()
+        run: echo 'PRODUCTION_DEPLOYED=false LIVE_FINANCE_GET_LIST_PROVEN=false LIVE_BACKUP_ISOLATED_RESTORE_PROVEN=false'

@@ -175,7 +175,7 @@ function shape(value){
      Object.keys(value.filters).some(k=>!["companyId","teamId","uid","productId","scope"].includes(k))||
      (value.filters.scope!==undefined&&!["joint","direct","partner"].includes(value.filters.scope)))halt();
  }else{
-  strict(value.own,["company","count","unidentifiedCount","people","products"]);
+  strict(value.own,["company","count","unidentifiedCount","people","products","teamDetails"]);
   if(!Number.isSafeInteger(value.own.count)||value.own.count<0||
      !Number.isSafeInteger(value.own.unidentifiedCount)||value.own.unidentifiedCount<0)halt();
   list(value.own.people,PERSON);
@@ -185,7 +185,56 @@ function shape(value){
   list(value.publicRanking.members,["rank","company","name","count"]);
   list(value.publicRanking.products,["rank","name","count"]);
   list(value.publicRanking.companies,["rank","name","count"]);
-  list(value.publicRanking.teams,["rank","name","company","count"]);
+  list(value.publicRanking.teams,["rank","name","company","count","own"]);
+  // The verified server now returns count-only detail for the signed-in
+  // partner's own teams. Accept it only when every member/product subtotal
+  // reconciles to that team and the company's exact saved count.
+  list(value.own.teamDetails,["name","count","reportStatus","members","products"]);
+  let ownTeamCount=0;
+  const publishedOwnTeams=new Map();
+  for(const team of value.own.teamDetails){
+   if(typeof team.name!=="string"||!team.name.trim()||
+      !Number.isSafeInteger(team.count)||team.count<0||
+      !["未報告","確定0件","報告済"].includes(team.reportStatus)||
+      (team.reportStatus==="未報告"&&team.count!==0)||
+      (team.reportStatus==="確定0件"&&team.count!==0)||
+      (team.reportStatus==="報告済"&&team.count===0))halt();
+   list(team.members,["name","count","reportStatus"]);
+   list(team.products,["name","count"]);
+   for(const person of team.members){
+    if(typeof person.name!=="string"||!person.name.trim()||
+       !Number.isSafeInteger(person.count)||person.count<0||
+       !["未報告","確定0件","一部未報告","報告済"].includes(person.reportStatus)||
+       (person.reportStatus==="未報告"&&person.count!==0))halt();
+   }
+   for(const product of team.products)
+    if(typeof product.name!=="string"||!product.name.trim()||
+       !Number.isSafeInteger(product.count)||product.count<0)halt();
+   const memberSum=team.members.reduce((s,p)=>s+p.count,0);
+   const productSum=team.products.reduce((s,p)=>s+p.count,0);
+   if(!Number.isSafeInteger(memberSum)||!Number.isSafeInteger(productSum)||
+      memberSum!==team.count||productSum!==team.count)halt();
+   ownTeamCount+=team.count;
+   if(!Number.isSafeInteger(ownTeamCount))halt();
+   if(team.reportStatus!=="未報告"){
+    const key=JSON.stringify([team.name,team.count]);
+    publishedOwnTeams.set(key,(publishedOwnTeams.get(key)||0)+1);
+   }
+  }
+  if(!Number.isSafeInteger(ownTeamCount+value.own.unidentifiedCount)||
+     ownTeamCount+value.own.unidentifiedCount!==value.own.count)halt();
+  for(const team of value.publicRanking.teams){
+   if(typeof team.own!=="boolean")halt();
+   if(team.own){
+    if(team.company!==value.own.company)halt();
+    const key=JSON.stringify([team.name,team.count]);
+    const n=publishedOwnTeams.get(key)||0;
+    if(!n)halt();
+    if(n===1)publishedOwnTeams.delete(key);
+    else publishedOwnTeams.set(key,n-1);
+   }
+  }
+  if(publishedOwnTeams.size)halt();
   for(const key of ["members","products","companies","teams"])
    checkedCompetition(value.publicRanking[key],{allowRedactedGaps:true});
  }
@@ -322,9 +371,25 @@ export function renderVerifiedDualCountDashboard({document,root,payload}={}){
   }else{
    metrics.appendChild(metric(document,data.own.company,data.own.count));
    page.appendChild(metrics);
-   // The partner retains its own company KPI and existing detailed workspace.
-   // Public ranks are projected by the server; no private scores, IDs or
-   // financial fields are promoted to the shared ranking cards.
+   // Only the signed-in partner's own server-verified team details are
+   // rendered. Hub staff/team originals and money are never in this payload.
+   const ownTeams=el(document,"section","nico-dual-partner-teams");
+   add(ownTeams,document,"h3","nico-dual-title",data.own.company+"の班詳細");
+   for(const team of data.own.teamDetails){
+    const section=el(document,"div","nico-dual-partner-team");
+    add(section,document,"span","nico-dual-team-name",
+     team.name+"（"+team.reportStatus+"）");
+    add(section,document,"strong","nico-dual-team-count",team.count+"件");
+    for(const member of team.members)
+     add(section,document,"p","nico-dual-team-member",
+      member.name+"（"+member.reportStatus+"） "+member.count+"件");
+    for(const product of team.products)
+     add(section,document,"p","nico-dual-team-product",
+      product.name+" "+product.count+"件");
+    ownTeams.appendChild(section);
+   }
+   page.appendChild(ownTeams);
+   // Public ranks are server-projected count-only fields.
   }
   // One four-card layout for both roles. Partner-only sub-rankings used to
   // duplicate the same results and made partners look excluded. Never infer

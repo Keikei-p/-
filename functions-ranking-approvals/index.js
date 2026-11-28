@@ -51,19 +51,28 @@ exports.setOwnerReviewedSkuMapping=onCall(options,skuMapping.save);
 exports.getVerifiedJointCountRanking=onRequest({
  region:"asia-northeast1",maxInstances:2,concurrency:10,cors:false
 },createJointCountHttpAdapter({
- enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled",
+ // Both release proofs MUST be enabled before any Auth/Firestore read.
+ // Do not silently fall back to old owner-product publication settings.
+ enabled:()=>process.env.NICO_JOINT_COUNT_RANKING_ENABLED==="enabled"&&
+  process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled"&&
+  process.env.NICO_PARTNER_TAB_SERVER_GUARD_VERIFIED==="enabled",
+ publishedOnly:true,
  loadHandler:async()=>{
   const {createCanonicalOwnerCountHandler}=await import(
    "./ranking/canonical-owner-count-server-factory.mjs"
   );
   return createCanonicalOwnerCountHandler({
    enabled:true,auth:getAuth(),db:getFirestore(),FieldValue,
-   // The hub Owner's published ON/OFF and exact reviewed/auto-confirmed
-   // partner SKU IDs are REQUIRED for the public count ranking. The old
-   // zero-setup mode ignored OFF switches, so it must not back this endpoint.
-   // The outer production flag stays OFF until the live finance-denial,
-   // isolated restore, and real-account count save/read proofs are complete.
-   zeroSetupLink:false
+   // Same active hub catalog + original partner ledger, no extra Owner
+   // merchant ON/OFF settings. Existing zero-setup linker matches only
+   // unique canonical names/known legacy aliases; unmatched SKUs remain
+   // distinct so historic counts can never silently vanish or double count.
+   // Double release gate: BOTH env vars must explicitly be "enabled".
+   // No new Fn endpoint, financial access path or Firestore write is added.
+   // DO NOT enable until live finance denial, isolated restore and E2E pass.
+   zeroSetupLink:process.env.NICO_JOINT_ZERO_SETUP_COUNT_LINK_ENABLED==="enabled",
+   // New partner rank route never returns an unrestricted dashboard.
+   enforcePartnerTabPublication:true
   });
  }
 }));

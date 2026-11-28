@@ -4,8 +4,9 @@ import {readFileSync} from "node:fs";
 import {
  PROJECT,RELEASE_URL,gitBlob,auditLiveFirestoreRules
 } from "../tools/production/audit-live-firestore-rules-readonly.mjs";
+import {originalRules} from "../security/secondary-finance-read-fence.mjs";
 
-const reviewed=readFileSync(new URL("../firestore.rules",import.meta.url),"utf8");
+const reviewed=originalRules();
 const RULESET="projects/"+PROJECT+"/rulesets/abc123456789";
 const calls=[];
 const fixture=(live=reviewed)=>async url=>{

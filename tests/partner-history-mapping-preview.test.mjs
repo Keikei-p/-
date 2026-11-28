@@ -130,3 +130,23 @@ test("reject stale or fake backend verification and finance-coded catalog labels
   assert.throws(()=>previewHistoricalPartnerMapping(input),/PARTNER_HISTORY_PREVIEW_/);
  }
 });
+
+
+test("history preview retains combined energy and rejects a fabricated standalone correspondence",()=>{
+ const f=inputs();f.products.push({id:"htb",companyId:"hub",name:"HTB",active:true});
+ f.entries[0].counts["つばさ・HTB"]=86;f.entries[0].totalCount+=86;
+ const before=structuredClone(f),r=previewHistoricalPartnerMapping(f);
+ const energy=r.categories.find(c=>c.sourceSkuId==="partnerSku07");
+ assert.equal(energy.originalCount,86);assert.equal(energy.heldCount,86);assert.equal(energy.legacyEnergyCombined,true);
+ assert.deepEqual(f,before);
+ f.mapping.bindings.push({companyId:"partner",productId:"partnerSku07",hubProductId:"htb"});
+ assert.throws(()=>previewHistoricalPartnerMapping(f),/ENERGY_COMBINED_CANNOT_SPLIT/);
+});
+
+
+test("history preview does not accept generic combined words as a 光/AIR correspondence",()=>{
+ for(const name of ["NURO旧合算","未分類","つばさ・HTB"]){
+  const f=inputs();f.products.find(p=>p.id==="combined").name=name;
+  assert.throws(()=>previewHistoricalPartnerMapping(f),/COMBINED_CANNOT_SPLIT/);
+ }
+});

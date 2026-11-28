@@ -42,7 +42,7 @@ export const CURRENT_CANDIDATE=Object.freeze({
   "index.html": "5edde6d5e5459ba283d12d157c021d4eee03d587",
   "partner-workspace.html": "431b200e02934315eda57b6998bdde801252f78f"
 });
-// Exact integrated source review; historical release/default pins remain unchanged.
+// Exact #814 source review plus partner-only shared form shells; historical pins stay unchanged.
 export const INTEGRATED_CANDIDATE=Object.freeze({
   "staging/partner-owner-correction-v3/entry.cjs": "309bd57fa808c59ab2cba4e9d7fd10b664f0b626",
   "staging/partner-owner-correction-v3/firebase.owner-correction.json": "2bb289edd33de3a17c2579c2ffbdf1eae0a75417",
@@ -51,13 +51,18 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "staging/partner-sb-v2/sb-category-v2.cjs": "7f1f7214dd38c6aae3339bab26a8378f1e556f4c",
   "functions-partner-workspace/package.json": "6572599ecac0b8e2b05c166f9e921dc07c0b39f1",
   "functions/index.js": "dfb4c48ada6fa89a24c898cd4a2f911bcede822f",
-  "functions-partner-workspace/index.js": "42eea81ab01449bedbbedabdc1a8fb6bfba1e284",
-  "functions-partner-workspace/service.cjs": "ff2911be0bfa23d7c041e7451729d59862b2261f",
-  "firestore.rules": "d9f4df6a2ac0f8b5720534a2461ec66b94379190",
-  "index.html": "03e213565a2037c73913602701363476ae0db9fd",
-  "partner-workspace.html": "d8262633f35cf0f015de44c9a223c4289f8d2a6b",
+  "functions-partner-workspace/index.js": "245cfa7241dec0c0424e4cf347c9cdc61ab06cdc",
+  "functions-partner-workspace/service.cjs": "17540d18ac2bc90a77a6507f52cb2b53e3f23102",
+  "firestore.rules": "9eca5c49957d370bbf092b9783dfa0e97f1a735a",
+  "index.html": "c6e416bee43b41ace58f0149e22744ec3ecf79d7", // Owner-approved email-only entry, PR #828
+  "partner-workspace.html": "c4a51077dd05099e644b1bdc3dcdba05924a0d94",
   "functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
-  "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e"
+  "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
+  "staging/partner-owner-correction-v3/canonical-entry.cjs": "b925313fb4c0a560338daee845f9773d33be8b6b",
+  "functions-partner-workspace/shared-count-standings.cjs": "6db486042c7cea83e1e2d557cb9a7b7a10f8c3f6",
+  "functions-partner-workspace/approved-published-categories.cjs": "fad94694eabb21aaa35de889ed14903289f955b3",
+  "functions-partner-workspace/submission-publication-guard.cjs": "c495baacd49a50bddc60ba4f27038113da0ed793",
+  "functions-partner-workspace/owner-approved-individual-count-input.cjs": "772c4808771e236576565a2e8bec92308b8e3ab2"
 });
 const stop=x=>{throw Error("STOP_OWNER_V3_PACKAGE_"+x)};
 export function gitBlob(s){
@@ -65,7 +70,7 @@ export function gitBlob(s){
  return createHash("sha1").update(Buffer.from("blob "+data.length+"\0")).update(data).digest("hex");
 }
 export function makeOwnerPackage(files,sourcePins=REVIEWED){
- if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE&&sourcePins!==INTEGRATED_CANDIDATE)stop("UNREVIEWED_BASELINE");
+ if(sourcePins!==REVIEWED&&sourcePins!==CURRENT_CANDIDATE)stop("UNREVIEWED_BASELINE");
  if(!files||typeof files!=="object"||Array.isArray(files))stop("SOURCE_SHAPE");
  for(const [name,digest] of Object.entries(sourcePins)){
   if(typeof files[name]!=="string"||gitBlob(files[name])!==digest)
@@ -182,4 +187,81 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
  });
 }
 
-export function makeIntegratedCandidateOwnerPackage(files){return makeOwnerPackage(files,INTEGRATED_CANDIDATE);}
+// Integrated package uses the *canonical*, already tested workspace ledger.
+const INTEGRATED_FILES=Object.freeze(["service.cjs","workspace-identity.cjs","shared-count-standings.cjs","approved-published-categories.cjs","submission-publication-guard.cjs","owner-approved-individual-count-input.cjs"]);
+const INTEGRATED_PACKAGE_PATHS=Object.freeze([
+ "functions-hub-owner-correction/index.js",
+ ...INTEGRATED_FILES.map(name=>"functions-hub-owner-correction/"+name),
+ "functions-hub-owner-correction/package.json","firebase.owner-correction.json"
+]);
+export function makeIntegratedCandidateOwnerPackage(files){
+ if(!files||typeof files!=="object"||Array.isArray(files))stop("SOURCE_SHAPE");
+ for(const [name,digest] of Object.entries(INTEGRATED_CANDIDATE)){
+  if(typeof files[name]!=="string"||gitBlob(files[name])!==digest)stop("SOURCE_CHANGED");
+ }
+ const entry=files["staging/partner-owner-correction-v3/canonical-entry.cjs"];
+ const config=JSON.parse(files["staging/partner-owner-correction-v3/firebase.owner-correction.json"]);
+ const pkg=JSON.parse(files["functions-partner-workspace/package.json"]);
+ const intendedExports=["listHubPartnerCounts","correctHubPartnerCounts"];
+ const found=[...entry.matchAll(/exports\.([A-Za-z][A-Za-z0-9_]*)\s*=/g)].map(x=>x[1]);
+ if(found.length!==2||!intendedExports.every(x=>found.includes(x))||
+    config.functions?.source!=="functions-hub-owner-correction"||
+    config.functions?.codebase!=="hub-owner-correction-v3"||
+    pkg.engines?.node!=="22"||pkg.private!==true||
+    !entry.includes('HUB_OWNER_COUNT_CORRECTION_V3_ENABLED==="enabled"')||
+    !entry.includes('NICO_PARTNER_COUNT_PUBLICATION_WRITE_ENABLED==="enabled"')||
+    !entry.includes('NICO_PARTNER_INDIVIDUAL_COUNT_INPUT_ENABLED==="enabled"')||
+    !entry.includes('makeWorkspace')||!entry.includes('service.listHubPartnerCounts')||
+    !entry.includes('service.correctHubPartnerCounts')||
+    !entry.includes('minInstances:0')||!entry.includes('maxInstances:2')||
+    !entry.includes('region:"asia-northeast1"')||
+    !entry.includes('cors:["https://nico-factory.web.app"]'))stop("SAFETY_CONTRACT_CHANGED");
+ const bundle=Object.freeze({
+  "functions-hub-owner-correction/index.js":entry,
+  ...Object.fromEntries(INTEGRATED_FILES.map(name=>["functions-hub-owner-correction/"+name,
+   files["functions-partner-workspace/"+name]])),
+  "functions-hub-owner-correction/package.json":JSON.stringify({...pkg,name:"sales-hub-owner-correction-v3"},null,2)+"\n",
+  "firebase.owner-correction.json":files["staging/partner-owner-correction-v3/firebase.owner-correction.json"]
+ });
+ return Object.freeze({bundle,report:Object.freeze({
+  project:"sales-management-cc116",codebase:"hub-owner-correction-v3",exports:intendedExports,
+  separateFromOriginalFunctions:true,canonicalLedgerReused:true,
+  stagingSecurityGateDefaultDisabled:true,financeSourcePreserved:true,
+  productDataWrites:0,productionDataWrites:0,deployed:false,realUserVerified:false,financeBoundaryVerified:false
+ })});
+}
+// Existing historical writer and its fixed six-file allowlist remain unchanged.
+// This new candidate writer never invokes Firebase and checks every exact source.
+export function writeIntegratedDisposablePackage(prepared,base){
+ if(process.env.GITHUB_ACTIONS!=="true"||process.env.GITHUB_REPOSITORY!=="Keikei-p/-"||
+    typeof process.env.RUNNER_TEMP!=="string"||process.env.RUNNER_TEMP.length<2)stop("RUNNER_ONLY");
+ const root=path.resolve(process.env.RUNNER_TEMP);
+ const wanted=path.join(root,"nico-reviewed-owner-correction-v3-package");
+ if(root==="/"||!path.isAbsolute(root)||base!==wanted||existsSync(base))stop("DESTINATION");
+ const bundle=prepared?.bundle;
+ if(!bundle||prepared.report?.canonicalLedgerReused!==true||
+    Object.keys(bundle).sort().join("|")!==[...INTEGRATED_PACKAGE_PATHS].sort().join("|"))stop("BUNDLE");
+ for(const name of INTEGRATED_FILES){
+  if(typeof bundle["functions-hub-owner-correction/"+name]!=="string"||
+     gitBlob(bundle["functions-hub-owner-correction/"+name])!==INTEGRATED_CANDIDATE["functions-partner-workspace/"+name])
+   stop("BUNDLE_SOURCE_CHANGED");
+ }
+ if(gitBlob(bundle["functions-hub-owner-correction/index.js"])!==INTEGRATED_CANDIDATE["staging/partner-owner-correction-v3/canonical-entry.cjs"]||
+    gitBlob(bundle["firebase.owner-correction.json"])!==INTEGRATED_CANDIDATE["staging/partner-owner-correction-v3/firebase.owner-correction.json"])
+  stop("BUNDLE_SOURCE_CHANGED");
+ const pkg=JSON.parse(bundle["functions-hub-owner-correction/package.json"]);
+ if(pkg.name!=="sales-hub-owner-correction-v3"||pkg.engines?.node!=="22"||
+    pkg.private!==true||pkg.main!=="index.js"||
+    Object.keys(pkg.dependencies??{}).sort().join("|")!=="firebase-admin|firebase-functions"||
+    pkg.dependencies["firebase-admin"]!=="14.4.0"||pkg.dependencies["firebase-functions"]!=="7.4.0"||
+    Object.keys(pkg.scripts??{}).length)stop("BUNDLE_PACKAGE");
+ let created=false;
+ try{
+  mkdirSync(base,{mode:0o700});created=true;
+  mkdirSync(path.join(base,"functions-hub-owner-correction"),{mode:0o700});
+  for(const name of INTEGRATED_PACKAGE_PATHS)
+   writeFileSync(path.join(base,name),bundle[name],{encoding:"utf8",mode:0o600,flag:"wx"});
+ }catch(e){if(created)rmSync(base,{recursive:true,force:true});throw e}
+ return Object.freeze([...INTEGRATED_PACKAGE_PATHS]);
+}
+

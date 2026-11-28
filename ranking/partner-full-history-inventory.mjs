@@ -5,6 +5,7 @@
  * may count as mapped. Ambiguous quick/staff days have NO combined total.
  */
 import {createHmac} from "node:crypto";
+import {historicalCountGroup} from "./historical-count-publication-groups.mjs";
 
 export const LEGACY_PARTNER_CATEGORIES=Object.freeze([
  "NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
@@ -23,8 +24,11 @@ const add=(a,b)=>safeCount(safeCount(a)+safeCount(b));
 const sum=rows=>rows.reduce((n,x)=>add(n,x),0);
 const named=x=>typeof x==="string"&&x.trim().length>0&&x.trim().length<=80&&
  !MONEY.test(x.normalize("NFKC"));
-const nameKey=x=>named(x)?x.trim().normalize("NFKC"):null;
-const combined=x=>typeof x==="string"&&/SB光・AIR|旧合算|未分類/.test(x);
+const nameKey=x=>named(x)?x.trim():null;
+const combined=x=>typeof x==="string"&&
+ /(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i.test(x.normalize("NFKC"));
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
+const energyCombined=x=>typeof x==="string"&&LEGACY_COMBINED_TSUBASA_HTB.test(x.normalize("NFKC"));
 function day(x){
  if(typeof x!=="string"||!/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/.test(x))stop("INVALID_DATE");
  const d=new Date(x+"T00:00:00Z");
@@ -41,6 +45,14 @@ function counts(value,{legacy=false,max=9999}={}){
  }
  return result;
 }
+function ownerIndividualCounts(row,max=9999){
+ const present=Object.hasOwn(row,"ownerProductCounts")||Object.hasOwn(row,"ownerProductTotalCount");
+ if(!present)return new Map();
+ const value=counts(row.ownerProductCounts,{max});
+ if([...value.keys()].some(id=>id.startsWith("legacyPartnerSku:")||id.startsWith("partnerPrivate:"))||
+    row.ownerProductTotalCount!==sum([...value.values()]))stop("INDIVIDUAL_TOTAL");
+ return value;
+}
 function entryCounts(e){
  const legacy=counts(e.counts,{legacy:true});
  const privateCounts=counts(e.privateCounts??{});
@@ -48,7 +60,7 @@ function entryCounts(e){
  if(e.totalCount!==sum([...legacy.values()])||
     (e.privateTotalCount??0)!==sum([...privateCounts.values()])||
     (e.publishedTotalCount??0)!==sum([...published.values()]))stop("ENTRY_TOTAL");
- return {legacy,private:privateCounts,published};
+ return {legacy,private:privateCounts,published,individual:ownerIndividualCounts(e)};
 }
 function reportCounts(r){
  if(r.kind==="quick"&&(!Number.isSafeInteger(r.version)||r.version<1||r.version>999))stop("QUICK_REPORT_VERSION");
@@ -57,7 +69,9 @@ function reportCounts(r){
  if(r.totalCount!==sum([...legacy.values()])||
     (r.publishedTotalCount??0)!==sum([...published.values()])||
     (r.kind==="quick"&&published.size))stop("REPORT_TOTAL");
- return {legacy,published};
+ const individual=ownerIndividualCounts(r,Number.MAX_SAFE_INTEGER);
+ if(r.kind==="quick"&&individual.size)stop("QUICK_INDIVIDUAL");
+ return {legacy,published,individual};
 }
 function sameCounts(a,b){
  const keys=new Set([...a.keys(),...b.keys()]);
@@ -180,7 +194,7 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
   }
   sourcePrivateProductCount+=privates.size;sourceEntryCount+=company.entries.length;
   const getDay=date=>{
-   if(!days.has(date))days.set(date,{entries:0,zeroReports:0,legacy:new Map(),private:new Map(),published:new Map()});
+   if(!days.has(date))days.set(date,{entries:0,zeroReports:0,legacy:new Map(),private:new Map(),published:new Map(),individual:new Map()});
    return days.get(date);
   };
   for(const e of company.entries){
@@ -189,41 +203,58 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
       !Number.isSafeInteger(e.version)||e.version<1)stop("ENTRY_IDENTITY");
    seenEntries.add(e.id);
    const values=entryCounts(e),d=getDay(e.date);d.entries++;
-   if(sum([...values.legacy.values(),...values.private.values(),...values.published.values()])===0)d.zeroReports++;
-   for(const type of ["legacy","private","published"])
+   if(sum([...values.legacy.values(),...values.private.values(),...values.published.values(),...values.individual.values()])===0)d.zeroReports++;
+   for(const type of ["legacy","private","published","individual"])
     for(const [pid,n] of values[type])d[type].set(pid,add(d[type].get(pid)??0,n));
   }
   for(const r of reports)if(r.partnerCompanyId===company.id)getDay(r.date);
   const monthRows=new Map(),conflicts=[],summaryMismatches=[],sourceTotals=new Map();
   const addRow=({date,kind,pid,count,forcedReason=null})=>{
-   const legacy=kind.endsWith("legacy"),privateKind=kind==="ledger_private",published=kind==="ledger_published";
+   const legacy=kind.endsWith("legacy"),privateKind=kind==="ledger_private",published=kind==="ledger_published"||kind==="ledger_individual";
    const legacyIndex=legacy?LEGACY_PARTNER_CATEGORIES.indexOf(pid):-1;
    const sourceId=legacy?"partnerSku"+String(legacyIndex+1).padStart(2,"0"):pid;
    const sourceName=legacy?pid:privateKind?privates.get(pid)?.name:pub.products.get(pid)?.name;
    const legacyCombined=legacy&&legacyIndex===4;
-   const productRef=alias("P-",company.id,privateKind?"private":published?"published":"legacy",sourceId);
-   let target=published?pid:pub.bindings.get(sourceId)??null;
+   const legacyEnergyCombined=legacy&&legacyIndex===6;
+   const productRef=alias("P-",company.id,privateKind?"private":kind==="ledger_individual"?"individual":published?"published":"legacy",sourceId);
+   const privateBindingId=privateKind?"partnerPrivate:"+sourceId:null;
+   let target=published?pid:pub.bindings.get(privateBindingId??sourceId)??null;
+   // The Owner ON switch for a synthetic historic ID is an explicit
+   // publication of that exact original bucket, not a guessed commercial SKU.
+   let exactHistorical=false;
+   if(!target&&legacy&&pub.ready){
+    const historicalId="legacyPartnerSku:"+sourceId;
+    const historic=pub.products.get(historicalId);
+    if(historic&&pub.allowed(historicalId)&&historicalCountGroup(historicalId)?.name===historic.name){
+     target=historicalId;exactHistorical=true;
+    }
+   }
    let reason=forcedReason;
    if(!reason&&!approved)reason="held_relation";
    if(!reason&&privateKind&&!privates.has(pid))reason="held_unknown_private_product";
-   // A private document with a reserved legacy identifier cannot be paired
-   // through the untyped legacy map; leave it for explicit Owner review.
-   if(!reason&&privateKind&&/^partnerSku0[1-9]$/.test(pid))reason="held_ambiguous_source_id";
+   // Never infer that an untyped old binding applies to a private catalog.
+   if(!reason&&privateKind&&!target&&pub.bindings.has(sourceId))reason="held_ambiguous_source_id";
    if(!reason&&!pub.ready)reason="held_publication";
-   if(!reason&&!published&&!pub.mappingReady)reason="held_mapping";
+   if(!reason&&!published&&!exactHistorical&&!pub.mappingReady)reason="held_mapping";
    if(!reason&&!target)reason="held_unmapped";
+   if(!reason&&target?.startsWith("legacyPartnerSku:")&&target!=="legacyPartnerSku:"+(privateBindingId??sourceId))reason="held_historical_source_mismatch";
    const targetProduct=target?pub.products.get(target):null;
    if(!reason&&!targetProduct)reason="held_unknown_target";
-   if(!reason&&legacyCombined&&!combined(targetProduct.name))reason="held_legacy_combined";
+   if(!reason&&(legacyCombined||(privateKind&&combined(sourceName)))&&
+      !combined(targetProduct.name))reason="held_legacy_combined";
+   if(!reason&&(legacyEnergyCombined||(privateKind&&energyCombined(sourceName)))&&
+      !energyCombined(targetProduct.name))reason="held_legacy_energy_combined";
    if(!reason&&!pub.allowed(target))reason="held_off";
    const state=reason??"mapped",mapped=state==="mapped"?count:0;
    const exact=nameKey(sourceName);
-   const candidates=hub.ownerProducts.filter(p=>p.active!==false&&exact!==null&&nameKey(p.name)===exact&&
-    (!legacyCombined||combined(p.name))).map(p=>alias("H-",hub.id,p.id));
+   const nameMatches=hub.ownerProducts.filter(p=>exact!==null&&nameKey(p.name)===exact&&
+    (!legacyCombined||combined(p.name))&&(!legacyEnergyCombined||energyCombined(p.name)));
+   const candidates=nameMatches.length===1&&nameMatches[0].active!==false?
+    [alias("H-",hub.id,nameMatches[0].id)]:[];
    const exactIdKnown=published&&pub.products.has(pid);
    const rowKey=JSON.stringify([date.slice(0,7),kind,productRef,state,target]);
    if(!monthRows.has(rowKey))monthRows.set(rowKey,{
-    month:date.slice(0,7),sourceKind:kind,productRef,state,legacyCombined,
+    month:date.slice(0,7),sourceKind:kind,productRef,state,legacyCombined,legacyEnergyCombined,
     targetProductRef:target?alias("H-",hub.id,target):null,
     originalCount:0,mappedCount:0,heldCount:0,
     exactNameCandidates:candidates.sort(),candidateOnly:true,
@@ -260,15 +291,17 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
      const sku="partnerSku"+String(LEGACY_PARTNER_CATEGORIES.indexOf(name)+1).padStart(2,"0");
      registerTarget(pub.bindings.get(sku),"legacy");
     }
-    for(const [pid,n] of d.private)if(n>0)registerTarget(pub.bindings.get(pid),"private");
+    for(const [pid,n] of d.private)if(n>0)registerTarget(pub.bindings.get("partnerPrivate:"+pid),"private");
    }
    for(const [pid,n] of d.published)if(n>0)registerTarget(pid,"published");
+   for(const [pid,n] of d.individual)if(n>0)registerTarget(pid,"individual");
    const targetOverlaps=[...occupiedTargets].filter(([,sources])=>sources.size>1);
    const targetOverlap=targetOverlaps.length>0,overlap=quickOverlap||targetOverlap;
    let mismatch=false;
    if(staff){
     mismatch=d.entries===0||staff.source!=="staff-entries-v1"||
-     !sameCounts(d.legacy,staff.normalized.legacy)||!sameCounts(d.published,staff.normalized.published);
+     !sameCounts(d.legacy,staff.normalized.legacy)||!sameCounts(d.published,staff.normalized.published)||
+     !sameCounts(d.individual,staff.normalized.individual);
    }else if(d.entries>0)mismatch=true;
    if(mismatch){
     mismatchDays++;issues.add("STAFF_SUMMARY_MISMATCH");
@@ -277,7 +310,9 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
      ledgerPublishedCount:sum([...d.published.values()]),
      staffSummaryPresent:!!staff,
      staffSummaryLegacyCount:staff?sum([...staff.normalized.legacy.values()]):null,
-     staffSummaryPublishedCount:staff?sum([...staff.normalized.published.values()]):null});
+     staffSummaryPublishedCount:staff?sum([...staff.normalized.published.values()]):null,
+     ...(d.individual.size||staff?.normalized.individual.size?{
+      ledgerIndividualCount:sum([...d.individual.values()]),staffSummaryIndividualCount:staff?sum([...staff.normalized.individual.values()]):null}:{})});
    }
    if(quick&&sum([...quick.normalized.legacy.values()])===0)zeroQuickReports++;
    if(overlap){
@@ -288,11 +323,12 @@ export function inventoryPartnerFullHistory({hubs,companies,relations,reports,pr
      targetProductRefs:targetOverlaps.map(([pid])=>alias("H-",hub.id,pid)).sort(),
      ledgerLegacyCount:sum([...d.legacy.values()]),ledgerPrivateCount:sum([...d.private.values()]),
      ledgerPublishedCount:sum([...d.published.values()]),
+     ...(d.individual.size?{ledgerIndividualCount:sum([...d.individual.values()])}:{}),
      staffSummaryLegacyCount:staff?sum([...staff.normalized.legacy.values()]):null,
      quickLegacyCount:quick?sum([...quick.normalized.legacy.values()]):null});
    }
    const forcedReason=overlap?"held_overlap":mismatch?"held_summary_mismatch":null;
-   for(const [type,kind] of [["legacy","ledger_legacy"],["private","ledger_private"],["published","ledger_published"]])
+   for(const [type,kind] of [["legacy","ledger_legacy"],["private","ledger_private"],["published","ledger_published"],["individual","ledger_individual"]])
     for(const [pid,n] of d[type])addRow({date,kind,pid,count:n,forcedReason});
    if(quick)for(const [pid,n] of quick.normalized.legacy)
     addRow({date,kind:"quick_legacy",pid,count:n,forcedReason:quickOverlap?"held_overlap":null});

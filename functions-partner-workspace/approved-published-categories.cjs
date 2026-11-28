@@ -2,12 +2,24 @@
 // Shared ranks are released ONLY for exact Owner-reviewed SKU mappings and
 // server-stored per-partner visibility. This module never writes or returns
 // financial master fields, inactive products, raw IDs or cashback tier labels.
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+// Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
+// never authorizes an unrelated partner count input or publish target.
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター","つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
+// Fallback only for exact, long-established count category names. The Owner
+// must still have published the unique ACTIVE hub product in the public count
+// catalog; browser aliases, financial masters, fuzzy or partial names are banned.
+const normalizeLabel=x=>x.normalize("NFKC").trim().toLowerCase().replace(/[\s　]+/g,"");
+const COMBINED_ALIASES=new Set(["SB光・AIR","SB光・AIR（旧合算・未分類）",
+ "光/AIR","光・Air","SB光/AIR","ソフトバンク光/Air"].map(normalizeLabel));
+
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュバック|cash\s*back|revenue|unit\s*price|commission|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9][0-9,.]*\s*(?:万|千)?円)/i;
 const stop=()=>{throw Error("PARTNER_PUBLICATION_UNVERIFIED")};
 const id=x=>typeof x==="string"&&ID.test(x)&&!["__proto__","constructor","prototype"].includes(x);
+const privateSku=x=>typeof x==="string"&&
+ id(x.match(/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/)?.[1]);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const unique=x=>Array.isArray(x)&&x.length<=1000&&x.every(id)&&new Set(x).size===x.length;
 function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,products}={}){
@@ -43,7 +55,7 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   if(!obj(b)||Object.keys(b).sort().join("|")!==
    ["companyId","productId","hubProductId"].sort().join("|")||
    !id(b.companyId)||b.companyId===hubId||
-   !/^partnerSku0[1-9]$/.test(b.productId)||
+   (!/^partnerSku0[1-9]$/.test(b.productId)&&!privateSku(b.productId))||
    !id(b.hubProductId)||!catalog.has(b.hubProductId))stop();
   const k=JSON.stringify([b.companyId,b.productId]);
   if(seen.has(k))stop();
@@ -63,8 +75,47 @@ function allowedPartnerCategories({hubId,cid,ownerUid,visibility,mapping,product
   seenHubSku.add(b.hubProductId);
   if(b.productId==="partnerSku05"&&
    !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))stop();
-  binding.set(b.productId,b.hubProductId);
+  if(b.productId==="partnerSku07"&&
+   !LEGACY_COMBINED_TSUBASA_HTB.test(chosen.name.normalize("NFKC")))stop();
+  if(b.hubProductId.startsWith("legacyPartnerSku:")){
+   if(b.hubProductId!=="legacyPartnerSku:"+b.productId)stop();
+   binding.set(b.productId,null); // reserve it; never fall back into new input
+   continue;
+  }
+  // Reviewed private bindings reserve their target for historical counts.
+  // The fixed legacy input form only accepts its own nine categories.
+  if(!privateSku(b.productId))binding.set(b.productId,b.hubProductId);
  }
+ // Exact Owner-reviewed IDs remain first priority. For genuinely unmapped
+ // categories ONLY, join a unique exact hub label. The old combined light/AIR
+ // aliases stay one category. A duplicate or inactive target grants no input.
+ const byName=new Map(),combinedMatches=[];
+ for(const product of catalog.values()){
+  if(product.id.startsWith("legacyPartnerSku:"))continue;
+  if(typeof product.name!=="string"||
+     !product.name.trim()||product.name.length>80||
+     MONEY.test(product.name.normalize("NFKC")))continue;
+  const name=product.name.trim(),rows=byName.get(name)||[];
+  rows.push(product);byName.set(name,rows);
+  if(COMBINED_ALIASES.has(normalizeLabel(product.name)))combinedMatches.push(product);
+ }
+ const proposed=new Map(),claims=new Map();
+ for(let i=0;i<KEYS.length;i++){
+  const sku="partnerSku"+String(i+1).padStart(2,"0");
+  if(binding.has(sku))continue;
+  const possible=sku==="partnerSku05"?combinedMatches:byName.get(KEYS[i])||[];
+  if(possible.length!==1||possible[0].active!==true)continue;
+  const target=possible[0];
+  if(seenHubSku.has(target.id))continue;
+  // Old light/AIR combined never becomes separate 光 or separate AIR.
+  if(sku==="partnerSku05"&&
+     !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))continue;
+  proposed.set(sku,target.id);
+  claims.set(target.id,(claims.get(target.id)||0)+1);
+ }
+ // Two different original categories cannot claim the same hub SKU.
+ for(const [sku,pid] of proposed)
+  if(claims.get(pid)===1)binding.set(sku,pid);
  return Object.freeze(KEYS.filter((category,i)=>{
   const sku="partnerSku"+String(i+1).padStart(2,"0"),pid=binding.get(sku);
   return pid&&approved.has(pid)&&scoped.has(pid)&&catalog.get(pid).active!==false;

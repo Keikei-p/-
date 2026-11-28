@@ -1202,6 +1202,41 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 
 - 2026-11-18: PR #795 の商材使用停止権限Rulesだけについて、GitHub連携で `sales-production-reviewed` を追加。保護チェック評価用であり、本番公開・署名を意味しない。追加後のコミットで必須CIを再検証する。
 
+---
+
+## PR814_COUNT_ONLY_INTEGRATION_TECHNICAL_REVIEW_20261119 — 統合画面・協力店件数の公開前技術レビュー（未公開・未署名）
+
+### 対象と検証済みの事実
+
+- 対象PR: https://github.com/Keikei-p/-/pull/814 。作業開始時HEAD: `883aa1779a17aebe63f16e7dbd23cc70b7e47345` 、基準main: `ff3c024a18c48a0f0b95fa672b860c8dfe98805e`。
+- 対象の本番プロジェクト: `sales-management-cc116` 、正式URL: https://nico-factory.web.app/ 。この技術レビューでは本番に書込・デプロイを行わない。
+- 確認した差分: 77ファイル。 `index.html` を含むため `sales-safety-guard.yml` の保護対象に該当する。 `firestore.rules`、`functions/index.js`、既存 `functions-partner-workspace/service.cjs` と認証境界の変更は含まない。
+- 2026-11-19のHEAD検証: [統合NO-DEPLOY CI](https://github.com/Keikei-p/-/actions/runs/44540758552)成功、[Sales App Validation](https://github.com/Keikei-p/-/actions/runs/44540758418)成功、[金額遮断・件数保存Emulator](https://github.com/Keikei-p/-/actions/runs/44540758647)成功、[商材ON/OFFと過去件数](https://github.com/Keikei-p/-/actions/runs/44540758321)成功、[読み取り専用の公開準備](https://github.com/Keikei-p/-/actions/runs/44540758585)成功。
+- 確認済みの合成試験: 自社・協力店画面UI契約、未報告/報告済0件の区別、件数保存→訂正→会社/班/個人/商材ランキングの再計算、重複送信防止、ロール切替時のキャッシュ隔離、非金額情報へのアクセスのみを許可するEmulator検証。
+- 最新CIのうち旧個別PR専用の固定SHA・ファイルスコープ検査は35件失敗を含む。これを全件合格や実アカウント検証成功と読み替えない。
+- GitHubの有効な `main` Ruleset `25567655` で実際に必須のステータスチェックは `validate` と `protected-change-guard` の2件。後者は本記録の更新前、保護対象 `index.html` 変更に対する個別レビュー記録と `sales-production-reviewed` ラベル不足で停止した。
+
+### 保護方針・明確に未完了の確認
+
+- `sales-production-reviewed` はコードの限定技術レビューを示すGitHubラベルであり、実アカウント権限・本番売上遮断・Firestoreバックアップの復旧証明、管理者自筆署名、デプロイの承認を代行しない。現在のラベル有無とCI成否はGitHubで都度照合する。
+- **本番オーナー／協力店のメール・会社コード・二重所属アカウントによる件数保存と拒否動作: 未検証。**
+- **本番の実トークンを使う金額・単価・CB・原票のGET/LISTサーバー拒否: 未検証。**
+- **本番バックアップを隔離環境に復元した件数・商材・所属・個人・履歴の完全照合: 未検証。**
+- **本番料金上限とFirebase無料運用の確認: 未検証。**
+- **iPhone/Android/PCの同一画面・既存データ不変・公開後確認: 未検証。**
+- `NICO_PARTNER_SAME_SCREEN_TABS_ENABLED` 等の公開ゲートは既定OFF。Backend Functions/Rules/Hostingを許可なく一括公開しない。協力店へ金額情報を直接取得できる旧経路が残る場合は本番切替停止。
+- 既存の件数、獲得日、商材、会社/班/個人、原票、売上、単価、CB、訂正履歴は上書き・移行・初期化しない。
+- ロールバックは差分・適用対象を固定し、実データの巻き戻しを実施せずにコード/設定の対象限定復帰で行う。破壊的な本番DB操作は別途明示承認が必要。
+
+### レビュー状態
+
+- 技術レビュー記録: 2026-11-19、上記に記載したGitHub/CIおよび現行ルールの読み取り専用照合。
+- `sales-production-reviewed` ラベル: PR #814 に技術レビュー後 GitHub連携から付与済み。GitHub PR APIで付与状態を確認。ラベル付与前に作られたGitHub ActionsのPRイベントを再試行しても、当時のラベル情報は更新されないため、**この付与事実の追記コミットで新規PRイベントの保護CIを再検証する**。
+- このラベルによる状態遷移は**本番リリースGO・管理者本人署名・実アカウント金額遮断実証を意味しない**。
+- 個人による管理者署名: **未取得**（代理で署名しない）。
+- 実アカウント/実機に基づく本番公開許可: **未取得**。
+- 本PRのマージ: **未実施**。本番Hosting/Functions/Rulesのデプロイ: **未実施**。
+- この記録の更新は、欠けている本番検証や署名の完了を意味しない。
 
 ---
 
@@ -1226,3 +1261,122 @@ PR #748 レビュー追記：GitHub管理者接続で `sales-production-reviewed
 ### 承認・署名の取り扱い
 - この文章は利用者のチャットでの明示的な実装指示に基づく技術レビュー記録であり、本人の自筆・電子署名を代理作成するものではない。**管理者本人の独立署名は未取得**。GitHub `sales-production-reviewed` は技術差分のレビューラベルであり、本人署名・実アカウント動作・実公開の証明ではない。
 - 記録時点の本番：既存版。Firebase Hosting/Functions/Rules/Auth/Firestoreへの書込・配備なし。PRのmain統合と本番公開は別工程。
+
+
+### 2026-11-22 公開後検証（上記「未配備」はPRレビュー当時の記録）
+- 手動リリース run #45020575489 は SUCCESS。既存本番 `index.html` のみ公開し、公開HTML Git Blob `54c0f91a2d0326e6742ebde30002641a0e6ff8e8` 一致を確認。元Hosting 33ファイル保持、Firestore/Functions/Auth/Rules/データ書込なし。
+- 本人から「毎回ログインできている」と実機確認報告あり。既存ログイン画面・メール＋パスワード保持。
+- 統合PR #814 はこれらの保持を追加検証するが、協力店同一画面・8タブ・合同順位は別途実アカウント検証が完了するまで本番未公開。
+
+## PR #814 | 2026-11-22 の統合候補と本番監査
+
+- 比較基準は main `6be13e3fa9191117946d010f4d2c010c2d243591` と統合作業開始時の Draft `afc457c0ccaf671134e4fbaa0bdb6c82312708b1`。公開中の `/index.html` は #825 公開済みの main とバイト一致した。
+- [最新の本番読み取り専用監査](https://github.com/Keikei-p/-/actions/runs/45025350518/job/137217126767) は234件、対応済み6件、保留228件。保留に有効な一意完全一致候補と承認済みの対応先が見つからず、光・AIR合算35件も保留に含む。監査時点で重複・日次集計不整合は0件。原票・対応設定は変更していない。
+- 候補で日・週・月と合同・自社のみ・協力店のみの件数集計を接続。既存Ownerの商材承認画面から過去商材を確認できるようにし、自動候補は一意な完全一致に限定した。既存の光・AIR合算と承認済みID対応を保持する。
+- 公開フラグおよび本番リソースに変更はない。公開条件として、保留商材のOwner承認と再照合、実アカウント・実機確認、管理バックアップの隔離復元と費用確認が残る。候補の協力店入力は同じ `index.html` の既存協力店フォームであり、自社入力部品の共用とOwnerの複数期間の訂正履歴は追加確認が必要。
+
+### 2026-11-23 #814 再検証・入力部品接続（本番未公開）
+
+- 開始時にGitHubとGit fetchでmain `6be13e3fa9191117946d010f4d2c010c2d243591`、head `bbe5bce796621bcd729052a4d8f7fdda8ddec893` の一致を確認。既存チェックアウトの未コミット変更は保持した。
+- 失敗39ワークフローの全失敗ジョブログを確認。旧限定差分/固定SHA/過去のログイン表示限定ガードは維持。現行Ownerパッケージ生成にも `STOP_OWNER_V3_PACKAGE_SOURCE_CHANGED` があり、統合候補用の4固定値だけを検証済み原本へ更新。過去の `REVIEWED` / `CURRENT_CANDIDATE` と旧#704公開manifestは変更しない。旧manifest専用の失敗は引き続き公開を許可しない。
+- ローカルに残っていた協力店入力の部品共用変更だけを取り込み、同じindexの自社フォームからクラスだけの空レイアウトを作成。既存協力店の件数・日付・班・担当者・入力値・保存ハンドラを再利用。自社DOM/イベント、子要素、金額欄、フィールド値、IDはコピーしない。既存自社UI/売上/単価/CB/ログインは不変。入力保持・金額欄除外・二度目のマウントの同値を含む24件PASS。
+- 統合CIに現行Ownerパッケージと既存canonical保存→即時四順位→協力店訂正→Owner訂正→OFF拒否・履歴保持→再ONのEmulatorを追加。日/週/月、会社/班/個人/商材、相互承認なし、原金額データ不変を検証する。
+- ローカル: 保存/ON/OFF/履歴/既存計算216件、合同順位/認証/旧合算166件PASS。実Firestore Emulatorで二重所属の金額GET/LIST遮断・保存7件、canonical保存と四順位1件、従来自社Rules53件、Finance全MJSとfinance-locked Rules209件PASS。Finance全MJS初回の単独実行はEmulator必須ファイルで停止したため、Emulator内で全件再実行してPASS。実アカウントの証明にはしない。
+- [最新本番全履歴GET監査 #45194443338](https://github.com/Keikei-p/-/actions/runs/45194443338) live成功。snapshot `2026-11-23T14:28:05.932Z`、**245件=連携6件+商材対応保留239件**（前回234件から11件増）、旧光/AIR合算35件。93原エントリ、重複/日次不一致0、全件保全/合算整合性PASS。保留の安全な完全一致候補はなく、商材の自動確定・原票変更・連携設定書込0。
+- [最新バックアップGET監査 #45195420238](https://github.com/Keikei-p/-/actions/runs/45195420238) live成功。READY7件、48時間以内2件、最新snapshot `2026-11-23T07:53:46.403866Z`。公式statsは7件とも未提供、個別GET2件でも回収できず。実復元は未実施。
+- [main本番準備監査 #45194817978](https://github.com/Keikei-p/-/actions/runs/45194817978) は旧ログインHTML `c7ea136...` 固定値でoffline停止、liveはskipped。現在main/本番HTMLは#825の `54c0f91a2d0326e6742ebde30002641a0e6ff8e8`。監査失敗を本番金額漏洩の実証や本番監査成功と混同しない。
+- 最新匿名HTTP: 公式ホーム/協力店/招待/既存診断ページHTTP200、件数Callable/Finance Gateway匿名拒否。公開ホーム904,019bytes/SHA256 `1e23812c2811b8a1c4f12fd428e887201af2898f54c367f26ba80e6a79d61332`。協力店91,245bytes/SHA256 `965ba7250b60d2cadfa92c0b8900ab1f29188f810f5c2e6ad1f59ddd92bec3cc`。#814候補とは不一致。今回Hosting/Functions/Rules/Auth/原票変更0。
+- Firebase管理画面で既存20 Functionsを確認。ランキングは11/09、既存workspace GETは11/18、submitは11/02の配備表示で、8タブ用4 Functionsは一覧にない。Rulesの公開履歴は11/18 14:07。Blaze無料トライアル残高と2027-01-02の期限は確認したが、費用上限や継続無料の保証にはしない。
+- 利用者回答: 二重所属の実アカウントなし、IAMと許容費用上限は未確定。Owner/協力店の本人ログイン・実トークン拒否・指定日付での保存、Ownerによる保留商材確認、隔離復元/費用/権限が揃うまで `GO=false`。データ巻戻し・IAM追加・課金設定変更なし。Ownerの複数期間の訂正履歴など、既存未確認項目をこの入力接続の完了と混同しない。
+
+### Owner本人による現行本番の閲覧確認と初回読取競合の修正
+
+- 利用者が本番ブラウザでOwnerとして本人ログイン。Ownerロール、ダッシュボードの売上数値表示、既存商材一覧と単価表示、商材公開設定のサーバー読取成功を確認。実金額・氏名・メール・トークンは検証ログへ出していない。商材ON/OFF、実績、招待、権限は変更していない。ログアウト後にログイン画面へ戻り、売上とOwner管理画面が不可視になることを確認。候補版を公開した証明ではなく、現行本番Ownerの基準確認である。
+- 商材公開一覧が取得済みなのに外側へ「取得に失敗しました」が残る初回競合を実画面で確認。開き直すと解消。Firebaseの初回Auth通知が画面からの取得を無効化し、別の取得だけが成功する順序を架空アカウントで再現（修正前false/true、修正後true/true）。`ranking/owner-product-visibility-dashboard-mount.mjs` だけで、初回の同一ユーザー通知と同時の画面読取を共用する。以後のAuth変更・ログアウト・破棄は引き続き読取と表示を失効させる。
+- 初回通知の前後両順序・読取1回・共有読取中ログアウト・遅延した初回null通知の表示消去を追加し、既存Owner公開設定の読取/保存/権限テストを含む22件PASS。自社UI不変とOwnerパッケージも含め29件PASS。自社UI/フォーム/計算/ログイン、Functions、Rules、公開フラグ、既存データは不変更。統合NO DEPLOY CIに追加し、実協力店の検証・隔離復元・IAM/費用上限が未確認のため本番反映は行わない。
+
+
+### 2026-11-24 バックアップAPI誤診断の訂正と500円上限（未復元・未公開）
+
+- 利用者が今回の追加費用上限を**500円**と指定。費用上限の指定は、実容量・円建て料金・復元/削除IAM・実協力店検証が確認済みになったことを意味しない。追加IAM、課金設定、クラウドDB作成/復元/削除、Hosting/Functions/Rules反映は行っていない。
+- 公式 [Backup v1 API](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.locations.backups) は `name/database/databaseUid/snapshotTime/expireTime/state` のみを定義し、`stats.documentCount/sizeBytes` を定義していない。前記の「公式statsは未提供・後から取得可能」という解釈を訂正する。APIが後日statsを返すのを待つ対策は無効である。
+- GET専用インベントリからstats判定と無益な個別GET再試行を削除。実復元や費用確認済みとは報告しない。復元ライブラリはBackup.statsを信用せず、対象バックアップ/元DB UID/時点に結び付く独立した容量・費用レビューを必須にした。上限500円、従来32MiB/10,000ドキュメントの保護、1時間以内のレビュー、元DB不変、所有を確認できた一時DBのみの削除を維持。**本番CLIには独立した容量/料金の証拠取得経路がまだ実装されておらず、rehearseは明示停止する。テストのレビュー値は全て架空であり、本番の見積りや復元成功ではない。**
+- 実コンソール閲覧で本番DBはStandard、Firestore Native、asia-northeast1、既存(default)のみ。READYバックアップ7件、最新2026-11-23 16:53:46 JST。復元前ダイアログは確認後キャンセル。容量や費用は表示されていない。
+- 公式Monitoringの `firestore.googleapis.com/storage/backups_storage_bytes` を未集計で閲覧し、対象 `(default)` / `asia-northeast1` / `sales-management-cc116` の値 **約62.12MiB** を確認（11/24 00:18 JST頃、表示の直近1時間）。[公式指標仕様](https://docs.cloud.google.com/monitoring/api/metrics_gcp_d_h#firestore)でこれは**DBごとの全バックアップ合計**。個別バックアップ容量と混同せず、32MiB以下や500円以内の実復元見積りを証明したとは扱わない。料金は[公式Firestore価格表](https://cloud.google.com/firestore/pricing)による容量・復元/読取・ネットワーク・一時保存を含むJPY確認が必要。
+- 復元ワークフローの古いRules固定値 `d9f4df...` は、監査対象として明示的にレビューした現行main `6d3f165...` とPR814金額遮断 `9eca5c4...` の2値限定へ更新。未知のRulesは引き続き停止。GET専用collector/localhost verifierの固定ハッシュ、最新main SHA、手動文字列、権限読取、secret非公開、原票不変と一時DBの由来/etag保護を解除しない。統合Emulatorで金額遮断を別途検証する。
+- ローカルのバックアップ・復元・読取・停止条件・原票保護49件はFirestore Emulator内で**49 PASS / 0 FAIL / 0 SKIP**。容量根拠なし/500円超/古いレビュー/対象変更で復元前停止、架空API statsによる通過禁止、原票不変、検証用DBの所有未確認時の削除禁止、型/ID/履歴保持を検証。これは実クラウド復元ではない。
+- 作業再開時 main `6be13e3fa9191117946d010f4d2c010c2d243591`、PR head `3c32278c7660bf5e725cd535fb98f996a9214789` を再取得し一致。Owner本人の基準ログイン/再ログイン確認は維持。協力店実アカウントと二重所属本人のGET/LIST拒否・保存は未確認。直近の本番全履歴監査は11/23 14:28Zの245件=連携6+保留239、旧光/AIR35、重複/日次不整合0であり、11/24の再監査済みとは記載しない。
+
+
+### 2026-11-24 Owner指示：旧合算の保持と統一後の新規入力
+
+- 利用者が、旧「光・AIR」は合算のまま保持し、統一後の新規入力で光とAirを分ける方針を指定。「つばさ・HTB」も同じ扱いと明示。直近READ ONLY監査の旧光/AIR35件、Owner画面照合のつばさ/HTB86件は分割・片寄せ・移行・再投入をしない。他の商材対応はこの回答では承認されていない。続けて利用者が「過去分も、新規入力分と合わせて合同ランキングへ含める」と確定。過去245件を切り捨てず、新規分と合算する。旧光/AIR35件・つばさ/HTB86件はそれぞれ旧合算項目として保持し、単独商材へ配分しない。開始日の推測・件数リセットなし。未対応商材の推測マッピング許可ではない。過去分の全件を公開対象の合同集計へ接続できた証明はまだ未完了。
+- `partnerSku07` と、サーバーで元名称を確認できる旧private「つばさ/HTB」「翼/HTB」について、単独HTB、つばさ電気、光/AIRなど別の合算への誤対応を拒否。Owner writer、既存picker/rollout、canonical reader、zero-setup linker、publication/count-save guardと既存Functionsコピーへ同じ制約を適用。自社UI、ログイン、既存Functions entry/service、Rules、原票は変更しない。
+- 読取インベントリと履歴プレビューには旧energy合算の識別を追加。旧光/AIR用の `legacyCombined` と35件の意味は変更せず、つばさ/HTBを同じ数値へ混ぜない。個別の既存公開商材IDと旧合算が併存しても原票・件数・日付・所属を変えず保持する。これ自体は新規分離入力の本番接続や公開を完了したことを意味しない。
+- 実クラウド復元、500円内の実行費用/IAM、実協力店E2Eは未確認。本番配備/原票/対応設定書込は0。統合NO DEPLOY CIへ旧合算保全の回帰を接続し、Guardを無効化しない。
+
+
+### 2026-11-24 過去件数のOwner公開接続（PR内のみ・未配備）
+
+- 最新main `6be13e3fa9191117946d010f4d2c010c2d243591`、着手時PR HEAD `4a6a3ec6ec950ecac7c555f66a43a82774a9c7ae` を再取得。公開URLも匿名GETし、index SHA256 `1e23812c2811b8a1c4f12fd428e887201af2898f54c367f26ba80e6a79d61332`、partner-workspace SHA256 `965ba7250b60d2cadfa92c0b8900ab1f29188f810f5c2e6ad1f59ddd92bec3cc` が従来版のままと確認。今回の本番原票再読取は行わず、最新READ ONLY監査は既記録の2026-11-24 10:05 JST、245=連携6+保留239、重複/日次不整合0件。
+- 保留件数を推測で現行金額商材へ対応させず、旧9カテゴリ自身を表す固定ID `legacyPartnerSku:partnerSku01..09` を既存のOwner公開チェックボックス/APIへ接続。表示名は元名+過去分、光/AIRとつばさ/HTBは過去合算。全て初期OFF。既存のOwner確認、所属、会社関係、バージョン、会社別公開設定、8タブ公開制限を維持。Ownerの明示ON時のみ同一カテゴリIDを対応付け、既存のOwner対応は上書きしない。Firestore `products` は作成/変更しない。原票、件数、金額、獲得日、班/個人の帰属は不変更。
+- 過去集計用IDは新規入力を許可しない。private商材や異なる旧カテゴリが過去IDを騙る対応を拒否。既存の保存ガードとFunctionsミラーを一致させ、Owner ON/OFF・権限ゲートは解除しない。統合CIにはローカルEmulator経由の過去公開検証を追加し、既存の同一画面/金額遮断検証を残した。
+- ローカル：関連回帰331件PASS、自社UI/Owner金額/入力/Owner対応/パッケージ等138件PASS（重複あり）。追加Owner picker/固定ID25件PASS。Emulatorの権限/GET・LIST/既存入力/4ランキング統合9件PASS。さらに拡張したEmulatorで、Owner明示ON後に日・週・月それぞれ4ランキング245件、光/AIR35・つばさ/HTB86を分割せず確認。実際の既存保存処理で新規5件追加→250件、訂正3件→248件をOwner/協力店応答で検証し、過去の各実績と金額付き商材の不変を確認。これは架空ローカル原票であり、実アカウント/本番公開/クラウド復元の証明ではない。
+- 未完了：Owner共通の現行商材IDによる将来の個別光/AIR・つばさ/HTB入力。ブラウザの `owner-products-count-only-v1` 判定に対し、既存serviceはまだ固定9カテゴリで、同モードを返さない。過去公開の対応を個別新規入力の完成と扱わない。新たな原票移行やprivate商材の流用で解決しない。
+- 実協力店アカウント、実二重所属検証、隔離クラウド復元・必要IAM・個別容量と全費用500円以内の裏付けは未確認。公開フラグ変更、Hosting/Functions/Rules反映、Auth変更、本番データ/商材対応の保存はゼロ。本番切替は安全条件の未達により停止を維持する。
+
+### 2026-11-24 最新引き継ぎ0f59b72aの接続確認（未公開）
+
+- 利用者指定の最新HEAD `0f59b72a0be26c769db3d014f1ef6500c163d15f` とmain `6be13e3fa9191117946d010f4d2c010c2d243591` を再取得。前段の「個別入力未接続」は更新され、既存 `ownerProductCounts`、Owner訂正、Functionsの明示ONゲートまで接続済み。重複する未コミットの別案はローカル退避し、最新実装を正本として再利用した。本変更で自社画面・ログイン・計算・Functions・Rules・原票・公開スイッチを編集していない。
+- `historical-count-publication-emulator` を拡張し、実Firestore Emulatorの同じ保存・再取得・合同HTTP・Owner訂正経路で検証。過去245→既存新規5→250→訂正3→248→個別光2/AIR3/つばさ4/HTB5/SBMNP1追加→263件。日・週・月の商材/会社/班/個人の各合計が一致し、光/AIR35・つばさ/HTB86は合算のまま。AIRをOFF→260、協力店訂正→259、Owner訂正→262、再ON→265。Owner訂正前後の監査履歴、協力店からのOwner訂正拒否、旧全実績/金額付き商材の不変を確認。架空のローカル原票であり、本番登録や実アカウントの証拠ではない。
+- 実際の最新版indexのフォーム関数とCSSを使う通信遮断ブラウザ検証を追加。375/390/1280pxの3幅で4商材の入力、旧35/86件の保持表示、保存・GET照合、横はみ出しなしを確認。元の自社画面は変更しない。既存CIへ同じ検証と、正本ソースZIP/既存Ownerパッケージの候補artifact作成を追加。公開承認、現行Hosting全ファイルの照合、実アカウント、隔離復元、費用証拠はartifact作成だけで満たした扱いにしない。
+- 統合readinessのオフライン検査が、旧workspace起動ファイル固定値のため停止していた。旧main `42eea81...` と、確認済みの個別入力ゲート接続 `245cfa7...` の2値限定へ更新し、未知の変更は拒否。live/mainの固定値、main-only条件、GET-only、秘密情報非公開の条件は変更しない。ローカルの既存readiness/Ownerパッケージ関連35件PASS。WindowsチェックアウトのCRLFを正本GitのLFバイトへ戻して検証し、許容ハッシュやアプリ内容は変更していない。
+- 本番URLの匿名GETは200。公開index SHA256 `1e23812c2811b8a1c4f12fd428e887201af2898f54c367f26ba80e6a79d61332` は従来版のまま。本番全履歴の最終取得は既記録の2026-11-24 10:05 JST、245=連携6+保留239・重複/日次不整合0で、今回のEmulator件数を本番監査の更新値に混ぜない。
+- mainから既存バックアップワークフローを `inspect/INSPECT_ONLY` で起動した[監査45342583411](https://github.com/Keikei-p/-/actions/runs/45342583411)は、main側の旧Rules固定値 `d9f4df...` の検査で失敗し、manual/IAM読取に到達しなかった。実クラウド復元・最新IAM・個別容量・500円内の総費用は依然未確認。復元/削除/権限付与/デプロイ/本番件数保存はいずれも行っていない。
+
+### 2026-11-24: actual IAM inspection and operator-side recovery preparation
+
+- CI-only #827 backported exactly the three existing backup-inspection files to main `23f0f2d52be3590afe3dc0433fa037a51501be99`. Required Sales App Validation, protected-change guard, additive Hosting safety and backup offline/Emulator workflow passed. No application, Rules, Functions, Hosting or source-data changes.
+- Main inspect run [45349057842](https://github.com/Keikei-p/-/actions/runs/45349057842) reached actual IAM. Existing automation identity lacks `datastore.backups.restoreDatabase`, `datastore.databases.create`, `datastore.databases.delete`. Snapshot inspected: 2026-11-23T07:53:46.403866Z. This successful inspection explicitly reports `managedBackupRestored:false` and unverified independent capacity/full costs. No IAM grants, restore, database create/delete or deployment occurred.
+- User confirmed they can operate as Cloud administrator. Cloud Console read-only checks confirmed Standard/Tokyo, only the existing `(default)` DB, and the matching backup. The restore dialog was inspected then cancelled. Monitoring data-and-index storage over the two-day range containing the snapshot showed 9.333–9.721 MiB. These sampled source values are not an exact managed-backup size. The earlier 62.12 MiB is aggregate backup storage, not individual backup capacity.
+- Official JPY SKU rates rechecked: Tokyo restore CF20-1835-1639 = 40.500479999/GiB, reads 20AE-F990-C014 = 6.01179/100000, storage 46BD-4CEB-6B94 = 18.193574999/GiB-month, highest listed Tokyo egress C401-C373-C61E = 36.387149999/GiB. Named database create/delete has no extra administration fee; usage remains chargeable. Cloud Shell itself is free. Sources: https://cloud.google.com/skus?currency=JPY&filter=Cloud%20Firestore%20Tokyo ; https://cloud.google.com/firestore/pricing ; https://cloud.google.com/shell/pricing .
+- Added an operator Cloud Shell **READ-ONLY review** adapter around the existing inspector. It requires the exact reviewed Git HEAD and fixed existing project, uses the operator's existing identity without IAM grants, queries source-specific Monitoring samples bracketing the selected backup, rejects incomplete/foreign evidence, suppresses credentials/private IDs and never runs the paid lifecycle. Seven new adversarial/offline tests passed locally; the existing backup CI runs them. No application implementation changed.
+- The conditional calculator gives 136 JPY including tax/margin **only if** independent bounds of 32 MiB backup, 400000 billed reads, 1 GiB network and one storage day are verified. Those bounds are not automatically established by the chart or calculator; capacity/cost and release approval remain false. The existing 32 MiB / 10000-document / 500 JPY restore guards are retained. Actual Cloud Shell identity/capacity review, an approved bounded recovery execution and safe cleanup still remain before any application publication.
+- Latest live count-only history audit [45344586240](https://github.com/Keikei-p/-/actions/runs/45344586240), 2026-11-24T07:00:21.833Z: 245 = mapped 6 + retained pending 239, 93 original entries, overlap/mismatch days 0; combined light/AIR 35 retained. No source or mapping edits. Real partner-account and secondary-membership E2E remain unproven; Owner baseline login alone does not satisfy those gates.
+
+### 2026-11-24 20:17 JST Owner-approved final scope (not production release)
+
+- Owner confirmed the current HQ dashboard, input design, login and operation remain unchanged. Partner users must use the same UI/components and count-based functionality, including joint individual/product/team rankings, company/team/person count detail, daily/weekly/monthly counts, report text, entry history and count goals. Only financial items (company revenue details, sales ranking/analysis, revenue goals, prices, CB, original monetary data) must be unavailable to partners, including API/Firestore denial. All existing roles/membership and server publication proofs stay intact; no authorization bypass.
+- Preserve historical counts, original dates/team/person attribution and audit records; old light/AIR and Tsubasa/HTB remain combined; new entries use exact Owner-approved product IDs. Owner may correct partner counts with auditable history. The same rank data must be shown to both sides. Existing separate partner-only UI is not sufficient evidence of completion.
+- Owner's approval is a specification approval, not a fabricated technical release signature. Read-only Cloud Shell result at reviewed commit 6405afb3d95dcd4754170f34b13bf3d049f24949: 8/8 tests passed, missingPermissions=[], selected READY snapshot 2026-11-24T08:00:31.458093Z, 20 source metric samples at 10193209 bytes, bracketing 08:00/08:01 UTC. No document writes, temporary DB or deploy. The observed source metric is not an independently verified backup capacity bound; restore/cost and real partner/dual-membership proofs still outstanding.
+- Fixed an actual integration omission: the four optional count tabs had read only the fixed nine legacy counters, silently excluding new individual counts. Candidate uses the exact existing count-only catalog verifier in the tab deployment package, validates entry/audit ledger parity, retains v1 for old rows and v2 for individual rows, filters unpublished individual IDs, and preserves existing legacy categories without merging same-name IDs. The existing partner history panel reads verified categories. No self-company UI, financial originals, production flags or live data changed. New tests must pass before counting this work as verified.
+
+### 2026-11-24 Owner-approved conservative backup estimate (read-only)
+- Cloud Shell describe returned READY and snapshot 2026-11-24T08:00:31.458093Z without stats. Owner authorized a conservative estimate based on all-backup storage rather than requiring exact per-backup stats, preserving the JPY 500 budget. This is not consent to initiate a chargeable restore.
+- Official metric firestore.googleapis.com/storage/backups_storage_bytes is total backup storage per database, sampled every 60s with up to 240s latency. Added read-only aggregate estimation with explicit project, Tokyo, (default), post-snapshot sample and freshness checks, 128 MiB planning ceiling, 400,000 read-unit allowance, 1 GiB network allowance, two billing days, tax/margin. Not exact individual capacity or document count. No hard billing cap is asserted. Actual read/network enforcement and separate operator-reviewed budget/restore execution remain required. Legacy 32 MiB restore guard is not silently relaxed; no fabricated proof, production writes or deployment.
+- Sources: https://cloud.google.com/monitoring/api/metrics_gcp_d_h#firestore ; https://cloud.google.com/firestore/pricing .
+
+### Main-screen company-code publication wiring (2026-11-25, draft only)
+- Main index had an email-only guard in refreshPartnerPublishedTabNavigation and loadPartnerPublishedOptionalPanel despite existing anonymous code-session endpoints and helper. A legitimate code login could not open the eight published tabs. Connect the existing isolated anonymous Functions instance and verified code client, preserve email mode, reject mixed identities and stale sessions, clear revoked optional content and goal state. No finance, original self-company renderer, original data, runtime flags, or production changes. Actual main-index VM tests added to the existing integration suite; pending CI. No claim of full real-account/visual parity or release.
+
+### 2026-11-25 exact-name history publication order (draft only)
+- Main company-code integration tests 4/4 and integrated CI 45531118887 passed. Real accounts and deployed behavior remain unverified.
+- Existing historical ON groups and canonical binding logic are reused. The global bulk ON previously followed display order, allowing an old-history fallback to claim a category before its matching actual product was enabled. Bulk ON now executes actual product IDs first, historical fallback IDs last, leaving display order, explicit prior mappings, company overrides, version checks and audit paths unchanged. Regression tests cover action ordering and real store contracts; no production settings or count writes. Prior 245=6+239 read-only evidence is unchanged until a live Owner-approved publication and reconciliation. Tests pending for this change.
+
+### 2026-11-25 current four-codebase package (NO DEPLOY)
+- Previous bulk publication ordering tests pass in 45580761314, both integration jobs successful. Latest source is still draft; no live count publication claimed. Three old scope-specific packaging workflows fail their original source scope guards; preserve these rather than declaring all CI green.
+- The old #704 six-target manifest is not the current eight-tab deployment package. Extend the existing integrated CI artifact to contain separate candidate packages for partner-workspace, ranking-owner-approvals, partner-shared-tabs and the existing canonical hub-owner-correction-v3. Each package uses existing source and config, checks exact exports, SDK pins and codebase, excludes untracked files, hashes every copied file, and enumerates 13 **review candidate** targets (not final authorized live scope). Existing other exports are recorded separately to avoid accidental broad redeployment. No new runtime code or source flags, no credentials, no default config changes.
+- The current package manifest still requires live target/codebase inventory, previous Function rollback archives, current Hosting baseline/config and real account evidence. The older fixed package/restore gates are not silently weakened. This change is package assembly only; CI result pending, no deployment, no live writes. Separate optional restore research from non-destructive release planning as directed; do not certify actual restore.
+
+### 2026-11-26 approved 128 MiB estimate connected to the existing restore lifecycle
+
+- User explicitly authorized the existing 128 MiB aggregate-estimate route, a total incremental estimate within JPY 500, one isolated restore and owned cleanup. Legacy independent-budget callers retain the 32 MiB ceiling. The 128 MiB route requires the explicit confirmation `RESTORE_128MIB_JPY500_TEMPORARY_DATABASE_AND_CLEAN_UP`, current backup/source UID/snapshot binding, fresh source/aggregate Monitoring evidence, all existing restore/deletion permissions, and fresh public JPY prices for the four previously reviewed SKUs. An estimate is never reported as an exact individual backup capacity or a hard billing cap.
+- The existing Cloud Shell reviewer remains GET-only and cannot authorize or invoke restore. The existing rehearsal entry point now has an explicit Cloud Shell mode with exact checkout/project checks; it obtains the evidence, constructs a reviewed budget, and calls the original fixed-target restore/field-ID verifier/ownership-and-etag cleanup. No source document writes, Rules changes, IAM grants, schedules, Auth changes or application features were added.
+- Runtime verification reserves cleanup capacity and bounds read units, network transfer and time consistently with the estimate. Capacity remains limited to the approved 128 MiB estimate; cost is conservatively rounded up to a whole GiB, without claiming a Google billing minimum. Unreviewed database editions are rejected. The original protections against occupied destinations, foreign provenance, changed source inventory, delete protection and unproved cleanup remain in place.
+- Targeted tests: 31 passed, 1 existing emulator-only case skipped in the offline invocation. This is synthetic evidence, not a cloud restore result. The application source remains byte-identical to candidate `af4ff8808c25d61275879fa2898ce5a1c7a950ba`; its successful integrated CI, Emulator and finance-boundary evidence is reused. Actual cloud measurements, current prices, restore, cleanup and final release are still pending at this entry.
+
+### 2026-11-26 owned cleanup postcondition correction
+
+- The first authorized cloud execution restored the fixed temporary DB from the READY 2026-11-25T08:07:18.792840Z backup. Current IAM missing permissions: zero. Source samples: 10,410,331 bytes; aggregate backup samples: at most 57,365,456 bytes. Fresh public JPY prices yielded a conservative 225 JPY estimate. Individual backup capacity and a hard billing cap remain unverified.
+- Its original cleanup reported `TEMPORARY_CLEANUP_REQUIRES_OPERATOR`; subsequent read-only API returned 404 for the temporary DB and Admin Activity confirmed the same DB's restore and deletion. No production document writes or application deployment occurred. The lost final verification result is not certified retrospectively. Cleanup now verifies disappearance of the same UID/etag-proven DB without relying on continued availability of an operation below a deleted database; replacement/protected/foreign databases remain blocked, and deletion is never retried.
+- Added a redacted verification checkpoint before cleanup, safe failure reasons, and a remaining-budget ceiling for an explicitly supervised second execution (first estimate 225 + second estimate at most 275, total at most 500 JPY). Targeted tests: 33 passed, one existing emulator-only case skipped. Actual second cloud verification and production release remain pending.

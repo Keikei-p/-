@@ -1112,11 +1112,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // A secondary partner must never inherit the old internal company's money reads.
+    // The caller cannot supply this context: it comes from protected Firestore.
+    function activeSecondaryPartnerContext() {
+      let ref = /databases/$(database)/documents/partnerWorkspaceContexts/$(request.auth.uid);
+      return verifiedUser()
+        && exists(ref)
+        // Only the explicit Boolean false clears a partner context.
+        // Missing, null, string and any other malformed active flag deny.
+        && get(ref).data.get('active', true) != false;
+    }
+
     match /products/{productId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && !activeSecondaryPartnerContext();
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if !activeSecondaryPartnerContext()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'name', 'revenue', 'cashbackOptions', 'pricingOptions',
           'sortOrder', 'active', 'createdAt', 'updatedAt'
         ])
@@ -1136,7 +1149,8 @@ service cloud.firestore {
       // predicate before this exception (permission-denied even with both
       // authoritative companyRole=owner documents). Only active+updatedAt
       // can change; old pricing, historical counts and product IDs stay put.
-      allow update: if resource.data.companyId != null
+      allow update: if !activeSecondaryPartnerContext()
+        && resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.updatedAt == request.time
         && (
@@ -1173,14 +1187,17 @@ service cloud.firestore {
 
     match /records/{recordId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && !activeSecondaryPartnerContext();
 
       // 新規登録のトランザクションで、未作成ドキュメントだけ読取を許可。
       // 既存データの会社分離は上のreadルールを維持する。
-      allow get: if verifiedUser() && isCompanyMember(currentCompanyId())
+      allow get: if !activeSecondaryPartnerContext()
+        && verifiedUser() && isCompanyMember(currentCompanyId())
         && !exists(/databases/$(database)/documents/records/$(recordId));
 
-      allow create: if recordId == request.resource.data.companyId + '_' + request.resource.data.uid + '_' + request.resource.data.date
+      allow create: if !activeSecondaryPartnerContext()
+        && recordId == request.resource.data.companyId + '_' + request.resource.data.uid + '_' + request.resource.data.date
         && validSelectableTeam(request.resource.data.companyId, request.resource.data.teamId)
         && request.resource.data.keys().hasOnly([
           'companyId', 'uid', 'memberNameSnapshot', 'teamId',
@@ -1232,7 +1249,8 @@ service cloud.firestore {
           request.resource.data.uid, request.resource.data.teamId);
 
 
-      allow update: if resource.data.companyId != null
+      allow update: if !activeSecondaryPartnerContext()
+        && resource.data.companyId != null
         && request.resource.data.companyId == resource.data.companyId
         && sameCompany(resource.data.companyId)
         && request.resource.data.uid == resource.data.uid
@@ -1284,9 +1302,11 @@ service cloud.firestore {
 
     match /recordCorrections/{correctionId} {
       allow read: if resource.data.companyId != null
-        && sameCompany(resource.data.companyId);
+        && sameCompany(resource.data.companyId)
+        && !activeSecondaryPartnerContext();
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if !activeSecondaryPartnerContext()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'recordId', 'recordUid', 'recordDate',
           'changedByUid', 'changedByName', 'before', 'after', 'createdAt'
         ])
@@ -1356,6 +1376,7 @@ service cloud.firestore {
     match /revenueGoals/{goalId} {
       allow read: if resource.data.companyId != null
         && sameCompany(resource.data.companyId)
+        && !activeSecondaryPartnerContext()
         && (
           (
             get(memberPath(resource.data.companyId, request.auth.uid)).data.companyRole == 'owner'
@@ -1368,7 +1389,8 @@ service cloud.firestore {
           )
         );
 
-      allow create: if request.resource.data.keys().hasOnly([
+      allow create: if !activeSecondaryPartnerContext()
+        && request.resource.data.keys().hasOnly([
           'companyId', 'teamId', 'month', 'targetRevenue',
           'createdAt', 'updatedAt'
         ])
@@ -1398,7 +1420,8 @@ service cloud.firestore {
           )
         );
 
-      allow update: if resource.data.companyId != null
+      allow update: if !activeSecondaryPartnerContext()
+        && resource.data.companyId != null
         && isCompanyMember(resource.data.companyId)
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.teamId == resource.data.teamId

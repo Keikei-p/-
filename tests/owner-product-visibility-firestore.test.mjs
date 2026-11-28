@@ -16,7 +16,7 @@ import {buildOwnerVisibleCountRanking}
 const principal={uid:"owner",email:"owner@example.test",emailVerified:true};
 const product=(id,name,active=true)=>({companyId:"hub",name,active,
  revenue:25000,unitPrice:10000,cashbackOptions:[5000]});
-function fake(){
+function fake({includeHistoricalGroups=false}={}){
  const state=new Map([
   ["users/owner",{uid:"owner",email:"owner@example.test",
    companyId:"hub",companyRole:"owner",active:true,accessKind:"internal"}],
@@ -64,7 +64,7 @@ function fake(){
  };
  const db={collection:ref,async runTransaction(fn){return fn(tx)}};
  const store=createOwnerProductVisibilityStore({
-  db,FieldValue:{serverTimestamp:()=> "SERVER_TIMESTAMP"}
+  db,FieldValue:{serverTimestamp:()=> "SERVER_TIMESTAMP"},includeHistoricalGroups
  });
  return {store,state,tx,db,get writes(){return writes}};
 }
@@ -604,4 +604,62 @@ test("exact 光/AIR aliases stay one combined SKU from Owner ON through verified
   assert.equal(f.state.has("companies/hub/rankingSkuMappings/shared"),false,
    "standalone 光 or Air must never be auto-mapped to the historic combined SKU");
  }
+});
+
+
+test("historical count-only groups are OFF until Owner selects them; original finance masters never change",async()=>{
+ const f=fake({includeHistoricalGroups:true}),before=structuredClone([...f.state]);
+ const status=await f.store.readStatus(principal);
+ assert.equal(status.products.length,11);assert(status.products.every(p=>!p.enabled));
+ const old=status.products.find(p=>p.id==="legacyPartnerSku:partnerSku07");
+ assert.equal(old.name,"つばさ・HTB（過去合算）");assert.equal(f.writes,0);
+ assert.deepEqual([...f.state],before);
+ await f.store.saveSwitch({principal,productId:old.id,enabled:true,expectedVersion:0});
+ assert.deepEqual([...f.state].filter(([k])=>!k.includes("/ranking")),before.filter(([k])=>!k.includes("/ranking")));
+ assert.equal([...f.state.keys()].filter(k=>k.startsWith("products/")).length,2);
+ const map=f.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.deepEqual(map.bindings,[{companyId:"partner",productId:"partnerSku07",hubProductId:old.id}]);
+ const cat=f.state.get("companies/hub/rankingCountPublicCatalog/shared");
+ assert.equal(cat.products.find(p=>p.id===old.id).name,old.name);
+ assert.doesNotMatch(JSON.stringify(cat),/revenue|unitPrice|cashback|25000|10000/);
+ // Publication of history never turns the old combined field into new input.
+ const beforeCounts=Object.fromEntries(KEYS.map(k=>[k,k==="つばさ・HTB"?86:0]));
+ const guard=createPartnerSubmissionPublicationGuard({db:f.db});
+ const args={tx:f.tx,scope:{verifiedByServer:true,kind:"partner",uid:"worker",cid:"partner",hubId:"hub"},previousCounts:beforeCounts};
+ assert.equal((await guard({...args,nextCounts:{...beforeCounts}})).verified,true);
+ await assert.rejects(guard({...args,nextCounts:{...beforeCounts,"つばさ・HTB":87}}),/UNVERIFIED/);
+});
+
+test("historical publication preserves version, company override, Owner authorization and unknown-ID rejection",async()=>{
+ const f=fake({includeHistoricalGroups:true}),productId="legacyPartnerSku:partnerSku05";
+ await assert.rejects(f.store.saveSwitch({principal:{...principal,uid:"partner-owner"},productId,enabled:true,expectedVersion:0}),/UNAUTHORIZED/);
+ for(const bad of ["legacyPartnerSku:partnerSku00","legacyPartnerSku:partnerSku10","legacyPartnerSku:unknown"])
+  await assert.rejects(f.store.saveSwitch({principal,productId:bad,enabled:true,expectedVersion:0}),/UNAUTHORIZED/);
+ assert.equal(f.writes,0);
+ await f.store.saveSwitch({principal,productId,enabled:true,expectedVersion:0});
+ await assert.rejects(f.store.saveSwitch({principal,productId,enabled:false,expectedVersion:0}),/UNAUTHORIZED/);
+ await f.store.saveSwitch({principal,productId,enabled:false,expectedVersion:1,partnerCompanyId:"partner"});
+ const s=await f.store.readStatus(principal);
+ assert(s.products.find(p=>p.id===productId).enabled);
+ assert.deepEqual(s.partnerOverrides.partner,[]);
+});
+
+test("actual catalog ON first links exact legacy names; subsequent historic ON retains the binding and combined fallback",async()=>{
+ const f=fake({includeHistoricalGroups:true});
+ const before=structuredClone([...f.state]);
+ const order=["nuro","air","legacyPartnerSku:partnerSku01","legacyPartnerSku:partnerSku05","legacyPartnerSku:partnerSku07"];
+ let version=0;
+ for(const productId of order){
+  const r=await f.store.saveSwitch({principal,productId,enabled:true,expectedVersion:version});
+  assert.equal(r.saved,true);version=r.version;
+ }
+ const map=f.state.get("companies/hub/rankingSkuMappings/shared");
+ assert.deepEqual(map.bindings,[
+  {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+  {companyId:"partner",productId:"partnerSku05",hubProductId:"legacyPartnerSku:partnerSku05"},
+  {companyId:"partner",productId:"partnerSku07",hubProductId:"legacyPartnerSku:partnerSku07"}
+ ]);
+ assert.deepEqual([...f.state].filter(([k])=>!k.includes("/ranking")),before);
+ assert.equal(f.state.get("companies/hub/rankingProductVisibility/shared").version,5);
+ assert.equal(f.state.get("companies/hub/rankingCountPublicCatalog/shared").version,5);
 });

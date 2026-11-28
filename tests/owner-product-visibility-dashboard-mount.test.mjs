@@ -19,8 +19,8 @@ const nodes=n=>[n,...n.children.flatMap(nodes)];
 const visibleText=n=>nodes(n).map(x=>x.textContent).join(" ");
 const owner={uid:"owner",emailVerified:true,getIdToken:async()=>"verified-token"};
 const product=()=>({id:"nuro",name:"NURO光",active:true,enabled:false});
-function harness({getOverride}={}){
- const root=new Node("div"),auth={currentUser:null},calls=[];
+function harness({getOverride,initialUser=null}={}){
+ const root=new Node("div"),auth={currentUser:initialUser},calls=[];
  let listener,unsubscribed=0,version=0,enabled=false;
  const httpsCallable=(_functions,name,options)=>{
   assert.equal(options.timeout,20000);
@@ -110,5 +110,49 @@ test("partner role cannot render owner settings even if callable returns a forge
  assert.equal(await h.emit(owner),false);
  assert.equal(nodes(h.root).filter(x=>x.tagName==="input").length,0);
  assert(visibleText(h.root).includes("管理者"));
+ mount.destroy();
+});
+
+test("initial Auth notification and host refresh share one verified read, regardless of arrival order",async()=>{
+ for(const first of ["host","auth"]){
+  let finish;const pending=new Promise(resolve=>{finish=resolve;});
+  const h=harness({initialUser:owner,getOverride:()=>pending});
+  const mount=mountOwnerProductVisibilityDashboard(h.args);
+  const a=first==="host"?mount.refresh():h.emit(owner);
+  for(let i=0;i<30&&h.calls.length===0;i++)await Promise.resolve();
+  const b=first==="host"?h.emit(owner):mount.refresh();
+  finish({schema:"nico-hub-product-visibility-v1",role:"hub_owner",
+   version:4,hubCompanyId:"hub",products:[product()],partnerOverrides:{}});
+  assert.deepEqual(await Promise.all([a,b]),[true,true],first+": no false host error after a successful read");
+  assert.equal(h.calls.length,1,"initial notification must not issue a competing read");
+  assert.equal(mount.getVersion(),4);
+  assert.equal(nodes(h.root).filter(n=>n.tagName==="input").length,1);
+  assert(h.calls.every(c=>c.name==="getOwnerProductVisibility"));
+  mount.destroy();
+ }
+});
+
+test("a shared initial read cannot survive logout or restore prior Owner controls",async()=>{
+ let finish;const pending=new Promise(resolve=>{finish=resolve;});
+ const h=harness({initialUser:owner,getOverride:()=>pending});
+ const mount=mountOwnerProductVisibilityDashboard(h.args);
+ const a=mount.refresh(),b=h.emit(owner);
+ for(let i=0;i<30&&h.calls.length===0;i++)await Promise.resolve();
+ assert.equal(await h.emit(null),false);
+ finish({schema:"nico-hub-product-visibility-v1",role:"hub_owner",
+  version:4,hubCompanyId:"hub",products:[product()],partnerOverrides:{}});
+ assert.deepEqual(await Promise.all([a,b]),[false,false]);
+ assert.equal(mount.getVersion(),null);assert.equal(h.root.children.length,0);
+ assert(h.calls.every(c=>c.name==="getOwnerProductVisibility"));
+ mount.destroy();
+});
+
+test("an initial null notification still clears controls if the user changed before it arrived",async()=>{
+ const h=harness(),mount=mountOwnerProductVisibilityDashboard(h.args);
+ h.auth.currentUser=owner;
+ assert.equal(await mount.refresh(),true);
+ assert(nodes(h.root).some(n=>n.tagName==="input"));
+ assert.equal(await h.emit(null),false);
+ assert.equal(mount.getVersion(),null);assert.equal(h.root.children.length,0);
  mount.destroy();
 });

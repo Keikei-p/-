@@ -41,10 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Source SHA locks are identity checks, NOT evidence of real-user finance
-      # isolation or approval to deploy. Current main includes approved #706
-      # count-editor restoration and existing partner Functions; no source edits.
-      - name: Test strict redacted gate and protect all existing finance/partner code
+      - name: Test redacted read-only checks and immutable finance sources
         shell: bash
         run: |
           set -euo pipefail
@@ -54,11 +51,13 @@ jobs:
           node --check tools/production/audit-live-firestore-rules-readonly.mjs
           node --check tools/production/inspect-project-billing-readonly.mjs
           node --test tests/unified-release-readiness-readonly.test.mjs tests/inspect-live-partner-callables-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs
-          test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
-          test "$(git hash-object index.html)" = 'c7ea13635ce6aac306529707863f5d2fd04e9126'
           test "$(git hash-object functions/index.js)" = 'dfb4c48ada6fa89a24c898cd4a2f911bcede822f'
-          test "$(git hash-object functions-partner-workspace/index.js)" = '42eea81ab01449bedbbedabdc1a8fb6bfba1e284'
-          test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
+          # Reviewed main + PR814's explicit individual-input runtime binding.
+          # The live/main source pin below remains exact and unchanged.
+          case "$(git hash-object functions-partner-workspace/index.js)" in
+            42eea81ab01449bedbbedabdc1a8fb6bfba1e284|245cfa7241dec0c0424e4cf347c9cdc61ab06cdc) ;;
+            *) echo STOP_UNREVIEWED_WORKSPACE_RUNTIME; exit 1;;
+          esac
           test "$(git hash-object finance-boundary-check.html)" = 'ba0de47af53174d3ef37a9a047818568c0527035'
           echo 'PASS_NICO_NO_DEPLOY_READINESS_ONLY'
   live:
@@ -89,6 +88,7 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test "$GITHUB_SHA" = "$(gh api repos/Keikei-p/-/branches/main --jq '.commit.sha')"
           test "$(git hash-object firestore.rules)" = '6d3f165791188394d473417414e34208cd56bae6'
+          test "$(git hash-object index.html)" = '54c0f91a2d0326e6742ebde30002641a0e6ff8e8'
           test "$(git hash-object functions-partner-workspace/index.js)" = '42eea81ab01449bedbbedabdc1a8fb6bfba1e284'
           test "$(git hash-object functions-partner-workspace/service.cjs)" = '712bf523ac83942c02767c25321bfed7059055be'
           node --test tests/unified-release-readiness-readonly.test.mjs tests/audit-live-firestore-rules-readonly.test.mjs

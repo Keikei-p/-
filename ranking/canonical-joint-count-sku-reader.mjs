@@ -22,7 +22,9 @@ import {mergeVerifiedTwoMonthInputs}
  from "./verified-two-month-count-input.mjs";
 import {linkAllRegisteredCountsWithoutSetup}
  from "./zero-setup-count-linker.mjs";
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+import {historicalCountGroup,withHistoricalCountProducts} from "./historical-count-publication-groups.mjs";
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONTH=/^20\d\d-(0[1-9]|1[0-2])$/;
 const DATE=/^20\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -95,8 +97,9 @@ function partnerRankingSource(source){
 }
 export function composeCanonicalMonthlyRankingInput({
  context,hubSource,partnerSources,skuMap,hubOwnerUid,month,serverAsOf,
- zeroSetupLink=false
+ zeroSetupLink=false,includeHistoricalGroups=false,historicalPublication
 }={}){
+ if(typeof includeHistoricalGroups!=="boolean")STOP();
  if(!context||context.serverVerified!==true||
     !["hub_owner","partner_owner"].includes(context.role)||
     !valid(context.hubCompanyId)||!valid(hubOwnerUid)||
@@ -106,14 +109,16 @@ export function composeCanonicalMonthlyRankingInput({
     context.approvedCompanyIds.length>30||
     !context.approvedCompanyIds.includes(context.hubCompanyId)||
     !array(partnerSources)||!hubSource||
-    (zeroSetupLink!==true&&(
-     !skuMap||skuMap.active!==true||
+    (zeroSetupLink!==true&&!skuMap)||
+    (skuMap!=null&&(
+     skuMap.active!==true||
      skuMap.hubCompanyId!==context.hubCompanyId||
      skuMap.ownerUid!==hubOwnerUid||
      skuMap.reviewedByUid!==hubOwnerUid||
      !Number.isSafeInteger(skuMap.version)||skuMap.version<1||
      !array(skuMap.bindings)||skuMap.bindings.length>1000)))
    STOP();
+ if(historicalPublication!==undefined&&(!includeHistoricalGroups||historicalPublication.hubCompanyId!==context.hubCompanyId||historicalPublication.ownerUid!==hubOwnerUid))STOP();
  const asOf=safeDay(serverAsOf,month);
  const hub=context.hubCompanyId;
  const partners=context.approvedCompanyIds.filter(id=>id!==hub);
@@ -122,6 +127,7 @@ export function composeCanonicalMonthlyRankingInput({
     hubSource.isComplete!==true||hubSource.consentVerified!==true||
     !TIME.test(hubSource.readTime||"")||
     !array(hubSource.products))STOP();
+ if(includeHistoricalGroups)hubSource={...hubSource,products:withHistoricalCountProducts(hubSource.products,hub,{source:true})};
  const sourceProducts=new Map(),hubProducts=new Map();
  const sources=[hubSource,...partnerSources.map(partnerRankingSource)];
  if(!equal(sources.map(s=>s.companyId),context.approvedCompanyIds)||
@@ -139,33 +145,51 @@ export function composeCanonicalMonthlyRankingInput({
   }
   sourceProducts.set(s.companyId,set);
  }
- const seen=new Set();
- const groups=zeroSetupLink===true?
-  linkAllRegisteredCountsWithoutSetup({hubCompanyId:hub,
-   hubSource,partnerSources:sources.slice(1)}):hubSource.products.map(p=>({
-  companyId:hub,productId:p.sourceId,
-  groupId:p.sourceId,groupName:p.name
- }));
- for(const b of zeroSetupLink===true?[]:skuMap.bindings){
+ // A pre-existing Owner-reviewed exact binding is stronger evidence than
+ // a name/alias match. Validate the complete saved mapping BEFORE applying
+ // anything; zero-setup mode must work when no document exists.
+ const reviewedBindings=skuMap?.bindings??[],seen=new Set(),targets=new Set();
+ for(const b of reviewedBindings){
   if(!b||Object.keys(b).sort().join("|")!==
       ["companyId","productId","hubProductId"].sort().join("|")||
      !valid(b.companyId)||!valid(b.productId)||!valid(b.hubProductId)||
      !partners.includes(b.companyId)||
      !sourceProducts.get(b.companyId)?.has(b.productId)||
      !hubProducts.has(b.hubProductId))STOP();
-  const key=b.companyId+":"+b.productId;
-  if(seen.has(key))STOP();
-  seen.add(key);
+  // Read-side defense rejects duplicate targets even in old mapping docs.
+  const key=JSON.stringify([b.companyId,b.productId]);
+  const targetKey=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(key)||targets.has(targetKey))STOP();
+  seen.add(key);targets.add(targetKey);
   const partner=sources.find(s=>s.companyId===b.companyId);
   const originalProduct=partner.products.find(p=>p.sourceId===b.productId);
   const target=hubProducts.get(b.hubProductId);
-  // Legacy combined SB光・AIR may ONLY map to a distinct legacy-combined
-  // hub SKU. Never silently split or claim it is 光 or Air.
-  if(LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC"))&&
+  const historical=historicalCountGroup(b.hubProductId);
+  if(historical&&historical.sourceSkuId!==b.productId)STOP();
+  // A stored OFF mapping must not blank out every other ON ranking.
+  // Zero-setup holds it unmatched; classic mode does not emit the OFF group.
+  // Historic combined light/AIR must never be guessed into separate SKUs.
+  if((b.productId==="partnerSku05"||
+      LEGACY_COMBINED_LIGHT_AIR.test(originalProduct.name.normalize("NFKC")))&&
      !LEGACY_COMBINED_LIGHT_AIR.test(target.name.normalize("NFKC")))STOP();
+  if((b.productId==="partnerSku07"||LEGACY_COMBINED_TSUBASA_HTB.test(originalProduct.name.normalize("NFKC")))&&
+     !LEGACY_COMBINED_TSUBASA_HTB.test(target.name.normalize("NFKC")))STOP();
+ }
+ const groups=zeroSetupLink===true?
+  linkAllRegisteredCountsWithoutSetup({
+   hubCompanyId:hub,hubSource,partnerSources:sources.slice(1),
+   reviewedBindings,...(includeHistoricalGroups&&historicalPublication!==undefined?{historicalPublication}:{})
+  }):hubSource.products.map(p=>({
+   companyId:hub,productId:p.sourceId,
+   groupId:p.sourceId,groupName:p.name
+  }));
+ // Original Owner-reviewed-only mode keeps its existing behavior. Zero-setup
+ // already included reviewed ID precedence above: never double-add a source.
+ if(zeroSetupLink!==true)for(const b of reviewedBindings){
+  if(hubProducts.get(b.hubProductId).active!==true)continue;
   groups.push({
    companyId:b.companyId,productId:b.productId,
-   groupId:b.hubProductId,groupName:target.name
+   groupId:b.hubProductId,groupName:hubProducts.get(b.hubProductId).name
   });
  }
  const result={
@@ -181,8 +205,9 @@ export function composeCanonicalMonthlyRankingInput({
 }
 /**
  * Canonical transaction callback for the existing atomic loader.
- * Requires approved mapping doc. A missing mapping NEVER silently joins
- * SKUs by name; owner's browser-local groups are NOT an authorization.
+ * Strict original mode requires an approved mapping doc. Zero-setup mode
+ * additionally accepts an absent map, but reuses any existing, verified
+ * Owner-reviewed exact IDs before safe aliases; no browser authority.
  */
 function trustedJapanAsOf(month,clock){
  const now=clock();
@@ -197,11 +222,13 @@ function trustedJapanAsOf(month,clock){
   .toISOString().slice(0,10);
  return month===today.slice(0,7)?today:end;
 }
-export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),zeroSetupLink=false}={}){
+export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),zeroSetupLink=false,includeHistoricalGroups=false}={}){
  if(typeof clock!=="function")STOP();
  if(!db||typeof db.collection!=="function")STOP();
  const loadHub=createInternalMonthTransactionReader({db});
- const loadPartner=createPartnerMonthTransactionReader({db,clock});
+ const loadPartner=createPartnerMonthTransactionReader({
+  db,clock,includePrivateCounts:zeroSetupLink===true
+ });
  const loadLegacyQuick=createPartnerLegacyQuickMonthReader({db});
  return async function readCounts({tx,month,context,secondMonth}={}){
   if(!tx||typeof tx.get!=="function"||!context||
@@ -223,20 +250,20 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),z
   const mappingRef=hubRef.collection("rankingSkuMappings").doc("shared");
   const partners=context.approvedCompanyIds.filter(x=>x!==hubId);
   const snapshots=await Promise.all([
-    tx.get(hubRef),...(zeroSetupLink===true?[]:[tx.get(mappingRef)]),
+    tx.get(hubRef),tx.get(mappingRef),
     loadHub({tx,hubCompanyId:hubId,month,context}),
     ...partners.map(partnerCompanyId=>loadPartner({
      tx,hubCompanyId:hubId,partnerCompanyId,month,context
     }))
    ]);
-  const [hubCompanySnap,...rest]=snapshots;
-  const mappingSnap=zeroSetupLink===true?null:rest.shift();
-  const [hubSource,...partnerSources]=rest;
+  const [hubCompanySnap,mappingSnap,hubSource,...partnerSources]=snapshots;
   const hubCompany=doc(hubCompanySnap);
   if(!valid(hubCompany.ownerUid)||hubCompany.active===false||
      zeroSetupLink!==true&&!mappingSnap?.exists)STOP();
   sameTime(hubCompanySnap,hubSource.readTime);
-  if(mappingSnap)sameTime(mappingSnap,hubSource.readTime);
+  // Absent optional mapping is allowed only for zero-setup; any existing
+  // reviewed map must be from the same count snapshot.
+  if(mappingSnap?.exists)sameTime(mappingSnap,hubSource.readTime);
   // Recover legacy company-only daily reports from the SAME verified
   // transaction, without assigning their counts to a guessed staff/team.
   // The legacy reader rejects overlap with staff-summary or staff entries.
@@ -246,10 +273,19 @@ export function createCanonicalCountTransactionReader({db,clock=()=>new Date(),z
     source:partnerSources[i]
    })
   ));
+  let historicalPublication;
+  if(includeHistoricalGroups&&zeroSetupLink){
+   const policy=await tx.get(hubRef.collection("rankingProductVisibility").doc("shared"));
+   if(policy?.exists){
+    sameTime(policy,hubSource.readTime);
+    historicalPublication=doc(policy);
+    if(historicalPublication.ownerUid!==hubCompany.ownerUid||historicalPublication.hubCompanyId!==hubId)STOP();
+   }
+  }
   const original=composeCanonicalMonthlyRankingInput({
    context,hubSource,partnerSources,
-   skuMap:zeroSetupLink===true?null:doc(mappingSnap),
-   zeroSetupLink,hubOwnerUid:hubCompany.ownerUid,
+   skuMap:mappingSnap.exists?doc(mappingSnap):null,
+   zeroSetupLink,includeHistoricalGroups,historicalPublication,hubOwnerUid:hubCompany.ownerUid,
    month,serverAsOf:trustedJapanAsOf(month,clock)
   });
   const primary={...original,unassigned:legacyByCompany.flat()};

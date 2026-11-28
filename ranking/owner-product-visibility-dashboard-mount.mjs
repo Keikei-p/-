@@ -40,8 +40,10 @@ export function mountOwnerProductVisibilityDashboard({
   load:args=>bridge.load(args),
   save:args=>bridge.save(args)
  });
- let destroyed=false,unsubscribe=()=>{};
+ let destroyed=false,unsubscribe=()=>{},inflight=null,firstAuthNotification=true;
+ const initialUser=auth.currentUser;
  const reset=()=>{
+  inflight=null;
   bridge.onAuthChange();
   panel.onAuthChange();
  };
@@ -50,17 +52,28 @@ export function mountOwnerProductVisibilityDashboard({
   if(!auth.currentUser||auth.currentUser.emailVerified!==true){
    reset();return false;
   }
-  return panel.refresh();
+  const user=auth.currentUser;
+  if(inflight?.user===user)return inflight.promise;
+  const request={user,promise:panel.refresh()};
+  inflight=request;
+  try{return await request.promise;}
+  finally{if(inflight===request)inflight=null;}
  };
  try{
   const off=onAuthStateChanged(auth,user=>{
    if(destroyed)return false;
-   reset();
+   // Firebase announces the already-current user after registration. That
+   // initial notification is not an account change: share a concurrent host
+   // read so a valid response cannot leave a false failure in the host UI.
+   const initialSameUser=firstAuthNotification&&user?.emailVerified===true&&user===initialUser&&
+    auth.currentUser===user;
+   firstAuthNotification=false;
+   if(!initialSameUser)reset();
    if(!user||user.emailVerified!==true||
       auth.currentUser!==user)return false;
    // Auth change invalidates any in-flight response; the panel rechecks the
    // same Firebase user object before rendering a confirmed server result.
-   return panel.refresh();
+   return refresh();
   });
   if(typeof off!=="function")stop();
   unsubscribe=off;

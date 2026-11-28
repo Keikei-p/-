@@ -17,7 +17,7 @@ import {existingPublicNameApprovalPairVerified}
 
 const ID=/^[A-Za-z0-9_-]{1,128}$/;
 const MONTH=/^(20\d\d)-(0[1-9]|1[0-2])$/;
-const MAX_ENTRIES=2000,MAX_TEAMS=150,MAX_STAFF=150;
+const MAX_ENTRIES=2000,MAX_TEAMS=150,MAX_STAFF=150,MAX_PRIVATE=100;
 const FORBIDDEN_NAME=/(?:売上|単価|収益|原価|価格|報酬|利益|キャッシュバック|cash[\s_-]*back|revenue|unit[\s_-]*price|commission|salary|(?:^|[^A-Za-z])CB(?:$|[^A-Za-z])|[¥￥$€]|[0-9０-９][0-9０-９.,，]*\s*(?:万円|千円|円)|[\r\n\t@])/i;
 const halt=()=>{throw Error("PARTNER_RANK_LIVE_MONTH_NOT_APPROVED_OR_INCOMPLETE");};
 const tokyoMonth=clock=>{
@@ -88,7 +88,10 @@ function approvedServerContext(ctx,hub,partner) {
  * loader; it must never create a nested transaction or accept client proofs.
  * The outer caller must use db.runTransaction(..., {readOnly:true}).
  */
-export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}) {
+export function createPartnerMonthTransactionReader({
+ db,clock=()=>new Date(),includePrivateCounts=false
+}={}) {
+ if(typeof includePrivateCounts!=="boolean")halt();
  if(!db||typeof db.collection!=="function")throw Error("missing server Firestore");
  return async function readPartnerMonthInTransaction({
   tx,hubCompanyId,partnerCompanyId,month,context
@@ -109,18 +112,24 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
   const entryQuery=partner.collection("partnerWorkEntries")
    .where("date",">=",days[0])
    .where("date","<=",days.at(-1)).limit(MAX_ENTRIES+1);
+  const privateQuery=includePrivateCounts?
+   partner.collection("partnerPrivateProducts").limit(MAX_PRIVATE+1):null;
   const daily=days.map(day=>hub.collection("partnerWorkCountDays").doc(day)
    .collection("reports").doc(partnerCompanyId));
   // Every result is from the SAME caller-owned read-only transaction. No
    // independent client GETs can supply faux completeness/readTime proof.
-   const [hubSnap,partnerSnap,relSnap,teamSnap,staffSnap,entrySnap,...dailySnaps]=
+   const [hubSnap,partnerSnap,relSnap,teamSnap,staffSnap,entrySnap,...tail]=
     await Promise.all([
      tx.get(hub),tx.get(partner),tx.get(rel),
      tx.get(teamQuery),tx.get(staffQuery),tx.get(entryQuery),
+     ...(includePrivateCounts?[tx.get(privateQuery)]:[]),
      ...daily.map(ref=>tx.get(ref))
     ]);
+   const privateSnap=includePrivateCounts?tail.shift():null;
+   const dailySnaps=tail;
    const {key,iso}=isoTime(entrySnap);
-   for(const snap of [hubSnap,partnerSnap,relSnap,teamSnap,staffSnap,...dailySnaps])
+   for(const snap of [hubSnap,partnerSnap,relSnap,teamSnap,staffSnap,
+     ...(includePrivateCounts?[privateSnap]:[]),...dailySnaps])
     requireSameTime(snap,key);
    const hubCompany=doc(hubSnap),partnerCompany=doc(partnerSnap),
      relation=doc(relSnap);
@@ -150,8 +159,10 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
    }
    if(!Array.isArray(entrySnap?.docs)||!Array.isArray(teamSnap?.docs)||
       !Array.isArray(staffSnap?.docs)||
+      (includePrivateCounts&&!Array.isArray(privateSnap?.docs))||
       entrySnap.docs.length>MAX_ENTRIES||teamSnap.docs.length>MAX_TEAMS||
-      staffSnap.docs.length>MAX_STAFF)halt();
+      staffSnap.docs.length>MAX_STAFF||
+      (includePrivateCounts&&privateSnap.docs.length>MAX_PRIVATE))halt();
    const teams=teamSnap.docs.map(s=>{
     const t=doc(s);
     if(!id(s.id)||t.companyId!==partnerCompanyId)halt();
@@ -185,6 +196,15 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
     if(Object.hasOwn(row,"id")&&row.id!==s.id)halt();
     return {...row,id:s.id};
    });
+   const privateProducts=includePrivateCounts?privateSnap.docs.map(sn=>{
+    const p=doc(sn);
+    if(!id(sn.id)||p.companyId!==partnerCompanyId||
+       p.origin!=="partner_custom"||p.visibility!=="private"||
+       typeof p.active!=="boolean"||typeof p.name!=="string")
+      halt();
+    return {id:sn.id,companyId:p.companyId,origin:p.origin,
+     visibility:p.visibility,name:p.name,active:p.active};
+   }):undefined;
    const summaries=[];
    for(let i=0;i<dailySnaps.length;i++){
     const snapshot=dailySnaps[i];
@@ -192,6 +212,24 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
     const s=doc(snapshot);
     if(s.date!==days[i])halt();
     summaries.push(s);
+   }
+   // New individual ledger fields require the same-snapshot Owner public catalog.
+   // Older readers must stop rather than publish an incomplete total.
+   let individualPublicCatalog;
+   if([...entries,...summaries].some(row=>Object.hasOwn(row,"ownerProductCounts")||
+      Object.hasOwn(row,"ownerProductTotalCount"))){
+    if(!includePrivateCounts)halt();
+    const [catalogSnap,visibilitySnap]=await Promise.all([
+     tx.get(hub.collection("rankingCountPublicCatalog").doc("shared")),
+     tx.get(hub.collection("rankingProductVisibility").doc("shared"))]);
+    requireSameTime(catalogSnap,key);requireSameTime(visibilitySnap,key);
+    const catalog=doc(catalogSnap),visibility=doc(visibilitySnap);
+    if(!id(hubCompany.ownerUid)||catalog.ownerUid!==hubCompany.ownerUid||
+       visibility.ownerUid!==hubCompany.ownerUid||visibility.hubCompanyId!==hubCompanyId||
+       !Number.isSafeInteger(visibility.version)||visibility.version<1||
+       catalog.version!==visibility.version||Object.keys(catalog).some(k=>
+        !["schema","hubCompanyId","ownerUid","version","createdAt","updatedAt","products"].includes(k)))halt();
+    individualPublicCatalog=catalog;
    }
    // The only two ways to pass are: complete empty month OR every saved
    // entry exactly agrees with the owner company's dated count summary.
@@ -201,8 +239,11 @@ export function createPartnerMonthTransactionReader({db,clock=()=>new Date()}={}
     relation,proof:{
      serverVerified:true,countSharingVerified:true,
      completeMonthEntriesRead:true,completeMonthSummariesRead:true,
-     historicalTeamsVerified:true,snapshotConsistent:true
-    },teams,entries,summaries
+     historicalTeamsVerified:true,snapshotConsistent:true,
+     ...(includePrivateCounts?{completePrivateProductCatalogueRead:true}:{}),
+     ...(individualPublicCatalog?{completeIndividualCatalogRead:true}:{})
+    },teams,entries,summaries,
+    includePrivateCounts,privateProducts,individualPublicCatalog
    });
    // No raw staff documents or user-private data may leave this reader.
    const result={...source,roster:activeRoster,publicNamesVerified};

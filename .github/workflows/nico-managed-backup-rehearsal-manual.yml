@@ -5,12 +5,16 @@ on:
     paths:
       - 'tools/production/rehearse-managed-backup.mjs'
       - 'tests/managed-backup-rehearsal.test.mjs'
+      - 'tools/production/review-managed-backup-cloud-shell.mjs'
+      - 'tests/managed-backup-cloud-shell-review.test.mjs'
       - '.github/workflows/nico-managed-backup-rehearsal-manual.yml'
   push:
     branches: [main]
     paths:
       - 'tools/production/rehearse-managed-backup.mjs'
       - 'tests/managed-backup-rehearsal.test.mjs'
+      - 'tools/production/review-managed-backup-cloud-shell.mjs'
+      - 'tests/managed-backup-cloud-shell-review.test.mjs'
       - '.github/workflows/nico-managed-backup-rehearsal-manual.yml'
   workflow_dispatch:
     inputs:
@@ -58,6 +62,8 @@ jobs:
             *) echo STOP_UNREVIEWED_RULES; exit 1;;
           esac
           node --check tools/production/rehearse-managed-backup.mjs
+          node --check tools/production/review-managed-backup-cloud-shell.mjs
+          node --test tests/managed-backup-cloud-shell-review.test.mjs
           node --test tests/managed-backup-rehearsal.test.mjs tests/managed-backup-restore-preflight-readonly.test.mjs tools/readonly-backup/backup.test.mjs
           npx --yes firebase-tools@15.34.1 emulators:exec --project demo-sales-restore --only firestore 'node --test tests/managed-backup-rehearsal.test.mjs'
   manual:

@@ -2,90 +2,51 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {summarizeBackups,inspect} from "../tools/production/inspect-firestore-backups-readonly.mjs";
 const database="projects/sales-management-cc116/databases/(default)";
-test("read-only backup metadata reports READY but never asserts actual restore",()=>{
- const s=summarizeBackups({backups:[
-  {database,state:"READY",snapshotTime:"2026-11-01T12:00:00Z"},
-  {database,state:"CREATING",snapshotTime:"2026-11-01T13:00:00Z"},
-  {database:"projects/sales-management-cc116/databases/other",state:"READY",snapshotTime:"2026-11-01T12:00:00Z"}
- ]});
- assert.equal(s.managedBackupsFound,2);
- assert.equal(s.readyBackups,1);
- assert.equal(s.actualRestoreVerified,false);
- assert.equal(s.allFirestoreDocumentsAudited,false);
+const backup={name:"projects/sales-management-cc116/locations/asia-northeast1/backups/synthetic-backup",
+ database,databaseUid:"synthetic-source-uid",state:"READY",
+ snapshotTime:new Date(Date.now()-3600000).toISOString(),
+ expireTime:new Date(Date.now()+7*86400000).toISOString()};
+
+test("official Backup schema is sufficient for inventory, never capacity or restoration proof",()=>{
+ const result=summarizeBackups({backups:[backup,
+  {...backup,state:"CREATING"}, {...backup,database:database+"-other"}]});
+ assert.equal(result.managedBackupsFound,2);
+ assert.equal(result.readyBackups,1);
+ assert.equal(result.recentReadyWithin48hAndExpiryBuffer,1);
+ assert.equal(result.backupApiProvidesSizeAndDocumentCount,false);
+ assert.equal(result.restoreCapacityAndCostVerified,false);
+ assert.equal(result.actualRestoreVerified,false);
+ assert.equal(result.allFirestoreDocumentsAudited,false);
 });
-test("read-only inventory reports stats availability without exposing backup size or IDs",()=>{
- const older={database,state:"READY",snapshotTime:"2026-11-14T00:00:00Z",
-  expireTime:"2026-11-21T00:00:00Z",stats:{documentCount:"2",sizeBytes:"512"}};
- const missing={database,state:"READY",snapshotTime:"2026-11-16T12:00:00Z",
-  expireTime:"2026-11-21T00:00:00Z"};
- const malformed={...missing,stats:{documentCount:"no",sizeBytes:"512"}};
- const r=summarizeBackups({backups:[older,missing,malformed]});
- assert.equal(r.readyBackups,3);
- assert.equal(r.readyMissingStats,1);
- assert.equal(r.readyMalformedStats,1);
- assert.equal(r.readyWithValidStats,1);
- assert.equal(r.actualRestoreVerified,false);
- assert.equal(r.allFirestoreDocumentsAudited,false);
- for(const k of Object.keys(r))assert(!/sizeBytes|documentCount|backupId|uid|token/i.test(k));
- assert(!JSON.stringify(r).includes("512"));
- assert(!JSON.stringify(r).includes("no"));
+test("invented stats never authorize a budget or appear in reports",()=>{
+ const s=summarizeBackups({backups:[{...backup,stats:{sizeBytes:"512",documentCount:"2"}}]});
+ assert.equal(s.restoreCapacityAndCostVerified,false);
+ assert.deepEqual(s,summarizeBackups({backups:[backup]}));
+ for(const value of ["512",backup.name,backup.databaseUid,"readyMissingStats","recentReadyWithinAuditBudget"])
+  assert(!JSON.stringify(s).includes(value));
 });
-test("incomplete response or unreachable backup location blocks inventory",()=>{
- assert.throws(()=>summarizeBackups({backups:[],unreachable:["asia-northeast1"]}),/STOP_BACKUP_LOCATIONS_UNREACHABLE/);
- assert.throws(()=>summarizeBackups({backups:{"bad":1}}),/STOP_BACKUP_RESPONSE_MALFORMED/);
+test("incomplete, malformed or unreachable inventories stop",()=>{
+ for(const [body,reason] of [
+  [{backups:[],unreachable:["asia-northeast1"]},"LOCATIONS_UNREACHABLE"],
+  [{backups:{}},"RESPONSE_MALFORMED"],
+  [{backups:[],nextPageToken:"more"},"INVENTORY_INCOMPLETE"],
+  [{backups:[],unreachable:{}},"UNREACHABLE_RESPONSE"]
+ ])assert.throws(()=>summarizeBackups(body),new RegExp(reason));
 });
-test("read-only detail GET recovers materialized stats without disclosing bytes, docs or names",async()=>{
- const name="projects/sales-management-cc116/locations/asia-northeast1/backups/backup-abc";
- const snapshot=new Date(Date.now()-3600000).toISOString();
- const expiry=new Date(Date.now()+7*86400000).toISOString();
- const backup={name,database,databaseUid:"synthetic-uid",state:"READY",
-  snapshotTime:snapshot,expireTime:expiry};
+test("one GET uses the official schema; no redundant detail retry for nonexistent stats",async()=>{
  let calls=0;
- const result=await inspect({getToken:async()=>"fake-secret",
-  request:async(url,opts)=>{
-   calls++;
-   assert.equal(opts.method,"GET");assert.equal(opts.redirect,"error");
-   assert(url.startsWith("https://firestore.googleapis.com/v1/"));
-   assert.equal(url,calls===1?
-    "https://firestore.googleapis.com/v1/projects/sales-management-cc116/locations/-/backups":
-    "https://firestore.googleapis.com/v1/"+name);
-   return {ok:true,json:async()=>calls===1?
-    {backups:[{...backup}],unreachable:[]}:
-    {...backup,stats:{documentCount:"2",sizeBytes:"512"}}};
-  }});
- assert.equal(calls,2);
- assert.equal(result.detailGetsAttempted,1);
- assert.equal(result.detailStatsRecovered,1);
- assert.equal(result.recentReadyWithValidStats,1);
- assert.equal(result.recentReadyWithinAuditBudget,1);
+ const result=await inspect({getToken:async()=>"fake-secret",request:async(url,opts)=>{
+  calls++;
+  assert.equal(url,"https://firestore.googleapis.com/v1/projects/sales-management-cc116/locations/-/backups");
+  assert.equal(opts.method,"GET");assert.equal(opts.redirect,"error");
+  return {ok:true,json:async()=>({backups:[backup]})};
+ }});
+ assert.equal(calls,1);assert.equal(result.readyBackups,1);
+ assert.equal(result.restoreCapacityAndCostVerified,false);
  assert(!JSON.stringify(result).includes("fake-secret"));
- assert(!JSON.stringify(result).includes(name));
- assert(!JSON.stringify(result).includes("512"));
 });
-test("backup detail mismatches stop without merging metadata or writing",async()=>{
- const name="projects/sales-management-cc116/locations/asia-northeast1/backups/backup-abc";
- const backup={name,database,databaseUid:"same",state:"READY",
-  snapshotTime:new Date(Date.now()-3600000).toISOString(),
-  expireTime:new Date(Date.now()+7*86400000).toISOString()};
- let calls=0;
- await assert.rejects(inspect({getToken:async()=>"fake-secret",
-  request:async(_url,opts)=>{
-   assert.equal(opts.method,"GET");calls++;
-   return {ok:true,json:async()=>calls===1?
-    {backups:[backup],unreachable:[]}:
-    {...backup,databaseUid:"other",stats:{documentCount:"2",sizeBytes:"512"}}};
-  }}),/STOP_BACKUP_DETAIL_MISMATCH/);
- assert.equal(calls,2);
-});
-test("audit only performs a GET and reports insufficient permissions without leaking token",async()=>{
- let calls=0;
- const result=await inspect({getToken:async()=>"fake-secret",
-  request:async(url,opts)=>{calls++;assert.match(url,/\/locations\/-\/backups$/);
-   assert.equal(opts.method,"GET");assert.equal(opts.redirect,"error");
-   return {ok:true,json:async()=>({backups:[]})};
-  }});
- assert.equal(calls,1);
- assert.equal(result.readyBackups,0);
- await assert.rejects(inspect({getToken:async()=>"fake-secret",
-  request:async()=>({ok:false,status:403})}),/STOP_BACKUP_LIST_HTTP_403/);
+test("empty result and denied API remain distinct, without token disclosure",async()=>{
+ const r=await inspect({getToken:async()=>"fake-secret",request:async()=>({ok:true,json:async()=>({backups:[]})})});
+ assert.equal(r.readyBackups,0);
+ await assert.rejects(inspect({getToken:async()=>"fake-secret",request:async()=>({ok:false,status:403})}),/STOP_BACKUP_LIST_HTTP_403/);
 });

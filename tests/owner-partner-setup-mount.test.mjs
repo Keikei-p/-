@@ -24,7 +24,7 @@ function fixture(role="hub",multi="none"){
  }]};
  const products={schema:"nico-hub-product-visibility-v1",role:"hub_owner",
   version:1,hubCompanyId:"hub",products:[
-   {id:"nuro",name:"NURO光",active:true,enabled:true},
+   {id:"nuro",name:"NURO",active:true,enabled:true},
    {id:"air",name:"SoftBank Air",active:true,enabled:false}
   ],partnerOverrides:multi==="none"?{partner:[]}:{}};
  const mapping={schema:"nico-owner-reviewed-sku-map-v1",hubCompanyId:"hub",
@@ -165,7 +165,7 @@ test("inactive or malformed partner relation never grants Owner SKU settings",as
   assert.equal(await ctl.refresh(),false);
   assert(!bad.calls.some(x=>x.name==="getOwnerProductVisibility"||
    x.name==="getOwnerReviewedSkuMapping"),"never mount hub tools from invalid company data");
-  assert.doesNotMatch(content(bad.root),/機密売上|協力店A|NURO光/);
+  assert.doesNotMatch(content(bad.root),/機密売上|協力店A|NURO/);
   ctl.destroy();
  }
 });
@@ -196,7 +196,7 @@ test("global and partner ON/OFF keep the same fresh revision without reloading t
  assert.equal(partnerAir.disabled,false,
   "newly ON SKU becomes selectable for partner without page reload");
  assert.equal(partnerAir.checked,false,"existing company override stays OFF");
- const [,partnerNuro]=switches("NURO光");
+ const [,partnerNuro]=switches("NURO");
  partnerNuro.checked=true;
  await partnerNuro.fire("change");
  [globalAir]=switches("SoftBank Air");
@@ -218,9 +218,9 @@ test("three registered partners preview three exact mappings but no write on ini
  const trigger=walk(f.root).find(x=>x.tagName==="button"&&
   x.textContent==="上記3件を全社まとめて保存");
  assert(trigger);
- assert.match(content(f.root),/協力店A：NURO → NURO光/);
- assert.match(content(f.root),/協力店B：NURO → NURO光/);
- assert.match(content(f.root),/協力店C：NURO → NURO光/);
+ assert.match(content(f.root),/協力店A：NURO → NURO/);
+ assert.match(content(f.root),/協力店B：NURO → NURO/);
+ assert.match(content(f.root),/協力店C：NURO → NURO/);
  assert(!f.calls.some(x=>x.name==="setOwnerReviewedSkuMapping"),
   "no automatic Firestore mappings on page load");
  ctl.destroy();
@@ -258,8 +258,8 @@ test("third-company denial stops batch and keeps first two audited confirmed cha
  assert.equal(f.mapping.version,2);
  assert.equal(f.mapping.bindings.length,2);
  assert.match(content(f.root),/全社一括連携を停止しました。保存確認済み2件/);
- assert.match(content(f.root),/協力店C：NURO → NURO光/);
- assert(!content(f.root).includes("協力店A：NURO → NURO光"),
+ assert.match(content(f.root),/協力店C：NURO → NURO/);
+ assert(!content(f.root).includes("協力店A：NURO → NURO"),
   "no already-saved proposal left in the updated batch");
  ctl.destroy();
 });
@@ -281,7 +281,7 @@ test("global Owner ON immediately unlocks three-company exact SKU preview withou
  assert.equal(await ctl.refresh(),true);
  assert.match(content(f.root),/全社一括連携の未設定候補はありません/);
  const nuroSwitches=()=>walk(f.root).filter(x=>x.tagName==="label"&&
-  x.children.some(y=>y.tagName==="span"&&y.textContent==="NURO光"))
+  x.children.some(y=>y.tagName==="span"&&y.textContent==="NURO"))
   .map(x=>x.children.find(y=>y.tagName==="input"));
  const globalNuro=nuroSwitches()[0];
  globalNuro.checked=true;
@@ -308,14 +308,14 @@ test("partner-specific ON refreshes only that company's exact mapping candidates
  assert.equal(await ctl.refresh(),true);
  assert.match(content(f.root),/全社一括連携の未設定候補はありません/);
  const partnerNuro=walk(f.root).filter(x=>x.tagName==="label"&&
-  x.children.some(y=>y.tagName==="span"&&y.textContent==="NURO光"))
+  x.children.some(y=>y.tagName==="span"&&y.textContent==="NURO"))
   .map(x=>x.children.find(y=>y.tagName==="input"))[1];
  partnerNuro.checked=true;
  await partnerNuro.fire("change");
  assert.match(content(f.root),/上記1件を全社まとめて保存/);
- assert.match(content(f.root),/協力店A：NURO → NURO光/);
- assert.doesNotMatch(content(f.root),/協力店B：NURO → NURO光/);
- assert.doesNotMatch(content(f.root),/協力店C：NURO → NURO光/);
+ assert.match(content(f.root),/協力店A：NURO → NURO/);
+ assert.doesNotMatch(content(f.root),/協力店B：NURO → NURO/);
+ assert.doesNotMatch(content(f.root),/協力店C：NURO → NURO/);
  assert.deepEqual(f.products.partnerOverrides.partner,["nuro"]);
  assert.deepEqual(f.products.partnerOverrides.partner2,[]);
  assert.deepEqual(f.products.partnerOverrides.partner3,[]);
@@ -333,9 +333,9 @@ test("manually reviewed company mapping immediately leaves the other two compani
  assert.equal(f.mapping.version,1);
  assert.deepEqual(f.mapping.bindings.map(b=>b.companyId),["partner"]);
  assert.match(content(f.root),/上記2件を全社まとめて保存/);
- assert.doesNotMatch(content(f.root),/協力店A：NURO → NURO光/);
- assert.match(content(f.root),/協力店B：NURO → NURO光/);
- assert.match(content(f.root),/協力店C：NURO → NURO光/);
+ assert.doesNotMatch(content(f.root),/協力店A：NURO → NURO/);
+ assert.match(content(f.root),/協力店B：NURO → NURO/);
+ assert.match(content(f.root),/協力店C：NURO → NURO/);
  assert.equal(f.calls.filter(x=>x.name==="setOwnerReviewedSkuMapping").length,1);
  ctl.destroy();
 });

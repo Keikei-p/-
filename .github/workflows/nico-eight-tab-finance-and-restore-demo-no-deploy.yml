@@ -1,0 +1,85 @@
+name: NICO shared count finance fence and backup restore DEMO ONLY
+on:
+  push:
+    branches: [fix/partner-eight-tab-release-preflight-20261118]
+    paths:
+      - '.github/workflows/nico-eight-tab-finance-and-restore-demo-no-deploy.yml'
+      - 'security/secondary-finance-read-fence.mjs'
+      - 'tests/secondary-finance-read-fence-emulator.test.mjs'
+      - 'tests/secondary-finance-counts-integration-emulator.test.mjs'
+      - 'tests/managed-backup-rehearsal.test.mjs'
+      - 'tests/restore-guard.test.mjs'
+      - 'scripts/ci/verify-partner-unified-count-details.cjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-finance-count-and-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: demo-nico-secondary-finance-fence
+      GCLOUD_PROJECT: demo-nico-secondary-finance-fence
+      GOOGLE_CLOUD_PROJECT: demo-nico-secondary-finance-fence
+      FIREBASE_SERVICE_ACCOUNT_JSON: ''
+      GOOGLE_APPLICATION_CREDENTIALS: ''
+      FIREBASE_TOKEN: ''
+      NICO_RULES_APPROVAL: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Enforce local DEMO identity and immutable production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FIREBASE_PROJECT_ID" = 'demo-nico-secondary-finance-fence'
+          test "$GCLOUD_PROJECT" = 'demo-nico-secondary-finance-fence'
+          test "$GOOGLE_CLOUD_PROJECT" = 'demo-nico-secondary-finance-fence'
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_TOKEN"
+          test -z "$NICO_RULES_APPROVAL"
+          test "$(git hash-object firestore.rules)" = 6d3f165791188394d473417414e34208cd56bae6
+          test "$(git hash-object functions-partner-workspace/service.cjs)" = 712bf523ac83942c02767c25321bfed7059055be
+          test "$(git hash-object functions/index.js)" = dfb4c48ada6fa89a24c898cd4a2f911bcede822f
+          test "$(node -p "require('./firebase.json').firestore.rules")" = firestore.rules
+          node --check security/secondary-finance-read-fence.mjs
+          node --check tools/readonly-backup/restore-emulator.mjs
+          node --test tests/restore-guard.test.mjs tests/managed-backup-rehearsal.test.mjs
+          node security/secondary-finance-read-fence.mjs --check
+          echo 'SYNTHETIC_BACKUP_RESTORE_GUARD_PASS_NO_PRODUCTION_RESTORE'
+      - name: Install only localhost emulator and existing test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix tests --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --prefix functions-partner-workspace --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --global firebase-tools@15.34.1 --no-audit --no-fund
+      - name: Run real Firebase Rules engine for synthetic secondary finance GET/LIST and count save
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$GOOGLE_APPLICATION_CREDENTIALS"
+          test -z "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          firebase emulators:exec --project demo-nico-secondary-finance-fence --only firestore \
+            'node --test --test-concurrency=1 tests/secondary-finance-read-fence-emulator.test.mjs tests/secondary-finance-counts-integration-emulator.test.mjs'
+          echo 'DEMO_ORIGINAL_RULES_SECONDARY_FINANCE_RISK_REPRODUCED'
+          echo 'DEMO_CANDIDATE_RULES_SECONDARY_FINANCE_DENIAL_TESTED'
+          echo 'DEMO_COUNT_SAVE_AND_CORRECTION_COMPATIBILITY_TESTED'
+      - name: Explicitly withhold live access and production approval
+        if: always()
+        shell: bash
+        run: |
+          echo 'REAL_PARTNER_FINANCE_GET_LIST_DENIAL_PROVEN=false'
+          echo 'LIVE_BACKUP_ISOLATED_RESTORE_PROVEN=false'
+          echo 'PRODUCTION_FIRESTORE_WRITES=0'
+          echo 'PRODUCTION_RULES_WRITES=0'
+          echo 'PRODUCTION_DEPLOYED=false'

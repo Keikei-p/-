@@ -21,6 +21,34 @@ export function verifiedCount(value){
  return Number(raw);
 }
 
+// Exact count-only catalog and ledger; never infer identity from display labels.
+const individualId=x=>typeof x==="string"&&/^[A-Za-z0-9_:-]{1,200}$/.test(x)&&
+ !["__proto__","constructor","prototype"].includes(x)&&
+ !x.startsWith("legacyPartnerSku:")&&!x.startsWith("partnerPrivate:");
+export function verifiedIndividualCatalog(raw){
+ if(!Array.isArray(raw)||raw.length>1000)throw Error("INVALID_INDIVIDUAL_CATALOG");
+ const ids=new Set();
+ return raw.map(p=>{
+  if(!object(p)||Object.keys(p).sort().join("|")!=="id|name"||
+     !individualId(p.id)||ids.has(p.id)||typeof p.name!=="string"||
+     !p.name.trim()||p.name.length>80||/[\x00-\x1f\x7f@]/.test(p.name)||
+     MONEY.test(p.name.normalize("NFKC")))throw Error("INVALID_INDIVIDUAL_CATALOG");
+  ids.add(p.id);return {id:p.id,name:p.name};
+ });
+}
+export function verifiedIndividualCounts(raw,expectedIds,allowDraft=false){
+ if(!object(raw)||Object.keys(raw).length>1000||
+    (expectedIds!==undefined&&(!Array.isArray(expectedIds)||
+     new Set(expectedIds).size!==expectedIds.length||
+     Object.keys(raw).length!==expectedIds.length||
+     expectedIds.some(id=>!Object.hasOwn(raw,id)))))throw Error("INVALID_INDIVIDUAL_COUNTS");
+ const counts=Object.fromEntries(Object.entries(raw).map(([id,value])=>{
+  if(!individualId(id)||(!allowDraft&&!Number.isSafeInteger(value)))throw Error("INVALID_INDIVIDUAL_COUNTS");
+  return [id,verifiedCount(value)];
+ }));
+ if(sum(counts)>2000000)throw Error("INVALID_INDIVIDUAL_COUNTS");
+ return counts;
+}
 export function normalizedSplit(combined,raw){
  const n=verifiedCount(combined);
  if(raw==null)return {"SB光":0,"SB AIR":0,"旧未分類":n};
@@ -46,7 +74,7 @@ export function preservedCombinedSplit(previousCombined,previousBreakdown,nextCo
 }
 
 export function correctionPayload({
- date,partnerCompanyId,previous,draftCounts,draftSb,correctionReason
+ date,partnerCompanyId,previous,draftCounts,draftSb,correctionReason,draftOwnerProductCounts
 }){
  if(!DATE.test(date)||!ID.test(partnerCompanyId||"")||
   !previous||!ID.test(previous.staffId||"")||
@@ -62,11 +90,19 @@ export function correctionPayload({
  const oldCounts=Object.fromEntries(COUNT_KEYS.map(k=>
   [k,verifiedCount(previous.counts?.[k])]));
  const oldSb=normalizedSplit(oldCounts["SB光・AIR"],previous.sbBreakdown);
- const changed=COUNT_KEYS.some(k=>counts[k]!==oldCounts[k])||
+ const oldChanged=COUNT_KEYS.some(k=>counts[k]!==oldCounts[k])||
    SB_PARTS.some(k=>sbBreakdown[k]!==oldSb[k]);
+ let ownerProductCounts,changed=oldChanged;
+ if(previous.ownerProductCounts!==undefined||draftOwnerProductCounts!==undefined){
+  const prior=verifiedIndividualCounts(previous.ownerProductCounts);
+  if(oldChanged||previous.ownerProductTotalCount!==sum(prior))throw Error("INDIVIDUAL_LEGACY_IMMUTABLE");
+  ownerProductCounts=verifiedIndividualCounts(draftOwnerProductCounts,Object.keys(prior),true);
+  changed=Object.keys(prior).some(id=>ownerProductCounts[id]!==prior[id]);
+ }
  if(!changed)throw Error("NO_CHANGES");
  return {date,partnerCompanyId,staffId:previous.staffId,
-  expectedVersion:previous.version,counts,sbBreakdown,correctionReason:reason};
+  expectedVersion:previous.version,counts,sbBreakdown,correctionReason:reason,
+  ...(ownerProductCounts===undefined?{}:{ownerProductCounts})};
 }
 
 export function verifyCorrectionReadback(saved,requested,lookup){
@@ -86,6 +122,15 @@ export function verifyCorrectionReadback(saved,requested,lookup){
   for(const k of COUNT_KEYS)if(row.counts?.[k]!==requested.counts[k])return false;
   const split=normalizedSplit(row.counts["SB光・AIR"],row.sbBreakdown);
   for(const k of SB_PARTS)if(split[k]!==requested.sbBreakdown[k])return false;
+  if(requested.ownerProductCounts!==undefined){
+   if(lookup.sharedCatalogMode!=="owner-products-count-only-v1"||lookup.sharedCatalogVerified!==true)return false;
+   const ids=verifiedIndividualCatalog(lookup.ownerProducts).map(p=>p.id);
+   const want=verifiedIndividualCounts(requested.ownerProductCounts,ids);
+   const actual=verifiedIndividualCounts(row.ownerProductCounts,ids);
+   const ack=verifiedIndividualCounts(saved.ownerProductCounts,ids);
+   if(row.ownerProductTotalCount!==sum(want)||saved.ownerProductTotalCount!==sum(want)||
+      ids.some(id=>actual[id]!==want[id]||ack[id]!==want[id]))return false;
+  }else if(row.ownerProductCounts!==undefined||saved.ownerProductCounts!==undefined)return false;
  }catch{return false;}
  return true;
 }
@@ -133,11 +178,14 @@ export function mountOwnerCorrection({
  status.setAttribute("role","status");status.setAttribute("aria-live","polite");
  const editor=el("div");editor.hidden=true;editor.style.cssText="display:grid;gap:10px";
  const gridInputs={},sbInputs={};
+ const legacyLabels=new Map();
+ const individualFields=el("div","");individualFields.style.cssText=fields.style.cssText;
+ const individualInputs=new Map();
  for(const key of COUNT_KEYS){
   const l=el("label","",key),input=el("input");
   input.type="number";input.min="0";input.max="9999";input.step="1";input.inputMode="numeric";
   input.setAttribute("aria-label",key+"の件数");input.style.cssText="width:100%;min-height:44px";
-  gridInputs[key]=input;l.append(input);fields.append(l);
+  gridInputs[key]=input;legacyLabels.set(input,l);l.append(input);fields.append(l);
  }
  for(const key of SB_PARTS){
   const l=el("label","",key),input=el("input");
@@ -171,7 +219,8 @@ export function mountOwnerCorrection({
   reason.disabled=value||canCorrect()!==true;
   for(const button of companyButtons.values())button.disabled=value;
   for(const input of Object.values(gridInputs))
-   input.disabled=value||canCorrect()!==true;
+   input.disabled=value||canCorrect()!==true||current?.ownerProducts!==undefined;
+  for(const input of individualInputs.values())input.disabled=value||canCorrect()!==true;
   // Splitting old combined 光/AIR figures is explicitly deferred. These
   // fields are display-only, even after enabling Owner count corrections.
   for(const input of Object.values(sbInputs))input.disabled=true;
@@ -179,7 +228,25 @@ export function mountOwnerCorrection({
  function redraw(){
   selected=current?.entries.find(x=>x.staffId===staffSelect.value)||null;
   editor.hidden=!selected;
+  individualFields.replaceChildren();individualInputs.clear();
+  fields.replaceChildren(...Object.values(gridInputs).map(input=>legacyLabels.get(input)));
   if(!selected)return;
+  const individual=current.ownerProducts!==undefined;
+  hint.textContent=individual?"旧登録の件数・内訳は保持します。公開中の個別商材だけを訂正できます。":
+   "光とAIRは現在も旧合算で管理しています。内訳の分離は後日の正式承認まで行いません。旧未分類の件数は「SB光・AIR」に一致します。";
+  if(individual){
+   fields.append(individualFields);
+   for(const product of verifiedIndividualCatalog(current.ownerProducts)){
+    const label=el("label","",product.name),input=el("input");
+    input.type="number";input.min="0";input.max="9999";input.step="1";input.inputMode="numeric";
+    input.style.cssText="width:100%;min-height:44px";
+    input.setAttribute("aria-label",product.name+"の個別件数");
+    input.value=String(selected.ownerProductCounts[product.id]);
+    input.disabled=busy||canCorrect()!==true;
+    individualInputs.set(product.id,input);label.append(input);individualFields.append(label);
+   }
+  }
+  for(const input of Object.values(gridInputs))input.disabled=individual||busy||canCorrect()!==true;
   for(const key of COUNT_KEYS)gridInputs[key].value=String(selected.counts[key]);
   const split=normalizedSplit(selected.counts["SB光・AIR"],selected.sbBreakdown);
   for(const key of SB_PARTS)sbInputs[key].value=String(split[key]);
@@ -202,7 +269,12 @@ export function mountOwnerCorrection({
    if(data?.role!=="hub"||data?.scope!=="existing-partner-counts-only"||
      data.partnerCompanyId!==id||data.date!==day||!Array.isArray(data.entries))
     throw Error("OWNER_LIST_UNVERIFIED");
+   const individual=data.ownerProducts!==undefined;
+   const productIds=individual?verifiedIndividualCatalog(data.ownerProducts).map(p=>p.id):null;
+   if(individual&&(data.sharedCatalogVerified!==true||data.sharedCatalogMode!=="owner-products-count-only-v1"))throw Error("OWNER_CATALOG_UNVERIFIED");
    for(const row of data.entries){
+    if(individual&&sum(verifiedIndividualCounts(row.ownerProductCounts,productIds))!==row.ownerProductTotalCount)
+     throw Error("OWNER_ROW_TOTAL_UNVERIFIED");
     if(!ID.test(row.staffId||"")||!Number.isSafeInteger(row.version)||
      !object(row.counts)||!Number.isSafeInteger(row.totalCount))
       throw Error("OWNER_ROW_UNVERIFIED");
@@ -239,13 +311,14 @@ export function mountOwnerCorrection({
     draftSb:preservedCombinedSplit(
      selected.counts["SB光・AIR"],selected.sbBreakdown,
      gridInputs["SB光・AIR"].value),
-    correctionReason:reason.value
+    correctionReason:reason.value,
+    ...(current.ownerProducts===undefined?{}:{draftOwnerProductCounts:Object.fromEntries([...individualInputs].map(([id,input])=>[id,input.value]))})
    });
   }catch(err){
    setStatus(err.message==="NO_CHANGES"?"変更がありません。":"件数・光/AIR内訳・訂正理由を確認してください。");return;
   }
   const summary=selected.staffName+"（第"+selected.version+"版）\n変更後合計："+
-   sum(req.counts)+"件\n光："+req.sbBreakdown["SB光"]+"、AIR："+req.sbBreakdown["SB AIR"]+
+   (sum(req.counts)+sum(req.ownerProductCounts??{}))+"件\n光："+req.sbBreakdown["SB光"]+"、AIR："+req.sbBreakdown["SB AIR"]+
    "、旧未分類："+req.sbBreakdown["旧未分類"]+"\nこの内容で訂正履歴を残しますか？";
   if(!confirmChange(summary))return;
   lock(true);setStatus("訂正を保存・再照合しています…");

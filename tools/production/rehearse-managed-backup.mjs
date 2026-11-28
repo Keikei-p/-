@@ -4,6 +4,7 @@
  * No document mutations, Rules changes, deployments, IAM grants or schedules.
  */
 import {readFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -30,7 +31,9 @@ const OPERATION=new RegExp('^'+TARGET+'/operations/[A-Za-z0-9_-]{1,300}$');
 const STOP=code=>{throw Error('STOP_MANAGED_REHEARSAL_'+code)};
 const obj=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const same=(a,b)=>{try{return canonical(a)===canonical(b)}catch{return false}};
-const limit=32*1024*1024;
+const legacyLimit=32*1024*1024;
+export const MAX_APPROVED_RESTORE_BYTES=128*1024*1024;
+const ESTIMATE_APPROVAL='RESTORE_128MIB_JPY500_TEMPORARY_DATABASE_AND_CLEAN_UP';
 const documentRead=(method,url,body)=>typeof url==='string'&&
  (url.startsWith(API+DEFAULT_DOCS+'/')||url===API+DEFAULT_DOCS+':listCollectionIds')&&
  validateSafeCall(method,url,body);
@@ -61,8 +64,8 @@ export function selectBackup(databases,backups,now,reviewedBudget){
 }
 
 /** Independent reviewed bounds, NEVER fields read from the Backup resource.
- * The production entry point has no capacity/pricing evidence provider yet;
- * restore remains blocked until that provider has been implemented/reviewed.
+ * Legacy callers retain their 32 MiB ceiling. The explicitly approved Cloud
+ * Shell aggregate route additionally binds live measurements and public JPY prices.
  * Synthetic lifecycle tests inject a budget; that is not live cost proof.
  */
 export function validateReviewedBudget(budget,{selected,current,now}){
@@ -77,8 +80,32 @@ export function validateReviewedBudget(budget,{selected,current,now}){
     !Number.isFinite(budget.authorizedMaxJpy)||budget.authorizedMaxJpy<=0||
     budget.authorizedMaxJpy>500||budget.estimatedAdditionalCostJpy>budget.authorizedMaxJpy)
   STOP('RESTORE_CAPACITY_AND_COST_EVIDENCE_INVALID');
+ const estimated=budget.capacityEvidenceKind==='owner-approved-aggregate-estimate-v1';
  if(!Number.isSafeInteger(budget.sizeUpperBoundBytes)||budget.sizeUpperBoundBytes<1||
-    budget.sizeUpperBoundBytes>limit)STOP('BACKUP_SIZE_BUDGET');
+    budget.sizeUpperBoundBytes>(estimated?MAX_APPROVED_RESTORE_BYTES:legacyLimit))STOP('BACKUP_SIZE_BUDGET');
+ if(estimated){
+  const a=budget.capacityEvidence,q=budget.pricingEvidence?.quote,c=budget.pricingEvidence?.cost;
+  const at=Date.parse(q?.reviewedAt),sample=Date.parse(a?.latestSample);
+  const rates=['restorePerGiB','readPer100000','storagePerGiBMonth','egressPerGiB'];
+  if(budget.estimateApproval!==ESTIMATE_APPROVAL||budget.sizeUpperBoundBytes!==MAX_APPROVED_RESTORE_BYTES||
+     budget.maxBillableReads!==400000||budget.networkUpperBoundBytes!==2**30||budget.retentionDays!==2||
+     budget.exactBackupSizeVerified!==false||budget.hardBillingCapVerified!==false||
+     a?.metric!=='firestore.googleapis.com/storage/backups_storage_bytes'||
+     !Number.isInteger(a.samples)||a.samples<2||!Number.isSafeInteger(a.maxObservedAllBackupBytes)||
+     a.maxObservedAllBackupBytes<1||a.maxObservedAllBackupBytes>MAX_APPROVED_RESTORE_BYTES||
+     a.estimateCapacityCeilingBytes!==MAX_APPROVED_RESTORE_BYTES||a.exactBackupSizeVerified!==false||
+     a.exactBackupDocumentCountVerified!==false||!Number.isFinite(sample)||sample>now||now-sample>600000||
+     sample<Date.parse(selected.snapshotTime)+600000||
+     q?.source!=='https://cloudbilling.googleapis.com/v1beta/skus'||q.currency!=='JPY'||
+     !Number.isFinite(at)||at>now||now-at>3600000||
+     q.reviewedDate!==new Date(now).toISOString().slice(0,10)||
+     rates.some(k=>!Number.isFinite(q[k])||q[k]<=0))STOP('APPROVED_ESTIMATE_EVIDENCE');
+  const gib=Math.ceil(MAX_APPROVED_RESTORE_BYTES/2**30);
+  const expected=Math.ceil((gib*q.restorePerGiB+4*q.readPer100000+
+   gib*q.storagePerGiBMonth/28*2+q.egressPerGiB)*1.1*2);
+  if(c?.currency!=='JPY'||c.authorizedLimit!==500||c.includingTaxAndMargin!==expected||
+     budget.estimatedAdditionalCostJpy!==expected)STOP('APPROVED_ESTIMATE_COST_DRIFT');
+ }
  if(!Number.isSafeInteger(budget.maxDocuments)||budget.maxDocuments<1||
     budget.maxDocuments>10000)STOP('BACKUP_DOCUMENT_COUNT_BUDGET');
  return Object.freeze({...budget});
@@ -89,6 +116,7 @@ export function inspectBackup(databases,backups,now){
  if(!report.backupRestoreMetadataPreflightPassed)STOP('NO_RECENT_BACKUP_OR_DESTINATION_OCCUPIED');
  const current=databases.databases.find(x=>x.name===SOURCE);
  if(current.locationId!=='asia-northeast1')STOP('SOURCE_LOCATION');
+ if(current.databaseEdition!=null&&current.databaseEdition!=='STANDARD')STOP('UNREVIEWED_DATABASE_EDITION');
  const selected=backups.backups.filter(x=>x.database===SOURCE&&x.databaseUid===current.uid&&
   x.state==='READY'&&Date.parse(x.snapshotTime)<=now&&now-Date.parse(x.snapshotTime)<=48*3600000&&
   Date.parse(x.expireTime)>now+24*3600000)
@@ -128,12 +156,36 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
  if(!['inspect','rehearse'].includes(mode)||typeof send!=='function')STOP('MODE_OR_TRANSPORT');
  if(mode==='rehearse')emulatorBase(emulatorHost,'demo-sales-restore');
  let selected,operation,createdUid,cleanupEtag,started;
+ let executionBudget,cleanupPhase=false;
+ const executionStart=now(),usage={requests:0,readUnitsUpperBound:0,responseBytes:0,networkBytesUpperBound:0};
  const call=async(method,url,body,options={})=>{
   if(!permittedCall(method,url,body,{backup:selected?.name,operation,...options}))STOP('UNAPPROVED_ENDPOINT');
-  const response=await send(method,url,body);
+  const bounded=executionBudget?.capacityEvidenceKind==='owner-approved-aggregate-estimate-v1';
+  if(bounded&&!cleanupPhase&&(now()-executionStart>45*60000||
+     usage.readUnitsUpperBound>=executionBudget.maxBillableReads-1000||
+     usage.networkBytesUpperBound>=executionBudget.networkUpperBoundBytes-1048576))STOP('EXECUTION_BUDGET');
+  const response=await send(method,url,body);usage.requests++;
+  if(bounded)usage.networkBytesUpperBound+=4096+Buffer.byteLength(JSON.stringify(body??{}));
   if(response?.status===404&&options.allow404===true)return null;
   if(response?.status!==200)STOP('HTTP_'+(Number.isInteger(response?.status)?response.status:'UNKNOWN'));
-  let data;try{data=await response.json()}catch{STOP('RESPONSE_JSON');}
+  let data;
+  try{
+   if(bounded&&typeof response.arrayBuffer==='function'){
+    const bytes=Buffer.from(await response.arrayBuffer());usage.responseBytes+=bytes.length;
+    usage.networkBytesUpperBound+=Math.ceil(bytes.length*1.1);
+    data=JSON.parse(bytes.toString('utf8'));
+   }else{
+    data=await response.json();
+    if(bounded){const bytes=Buffer.byteLength(JSON.stringify(data));usage.responseBytes+=bytes;usage.networkBytesUpperBound+=Math.ceil(bytes*1.1);}
+   }
+  }catch{STOP('RESPONSE_JSON');}
+  if(bounded){
+   usage.readUnitsUpperBound+=1+(Array.isArray(data?.documents)?data.documents.length:0);
+   if(!cleanupPhase&&(usage.readUnitsUpperBound>executionBudget.maxBillableReads-1000||
+      usage.networkBytesUpperBound>executionBudget.networkUpperBoundBytes-1048576))STOP('EXECUTION_BUDGET');
+   if(usage.readUnitsUpperBound>executionBudget.maxBillableReads||
+      usage.networkBytesUpperBound>executionBudget.networkUpperBoundBytes)STOP('CLEANUP_EXECUTION_BUDGET');
+  }
   if(!obj(data))STOP('RESPONSE_SHAPE');return data;
  };
  const read=async(requireBudget=true)=>{
@@ -147,11 +199,14 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
     (permissions.permissions??[]).some(x=>typeof x!=='string'))STOP('IAM_RESPONSE');
  const missingPermissions=PERMISSIONS.filter(x=>!permissions.permissions?.includes(x));
  const initial=await read(mode!=='inspect');selected=initial.selected;
+ executionBudget=initial.budget;
  if(await call('GET',RULES,undefined,{allow404:true})!==null)STOP('DESTINATION_RULES_ALREADY_EXIST');
  const budgetVerified=mode==='rehearse';
  const proof={project:PROJECT,mode,backupSnapshotTime:selected.snapshotTime,
   backupApiProvidesSizeAndDocumentCount:false,
-  backupSizeWithin32MiB:budgetVerified,
+  backupSizeWithin32MiB:budgetVerified&&initial.budget.sizeUpperBoundBytes<=legacyLimit,
+  approvedAggregate128MiBEstimate:budgetVerified&&initial.budget.capacityEvidenceKind==='owner-approved-aggregate-estimate-v1',
+  exactBackupSizeVerified:false,hardBillingCapVerified:false,
   restoreCapacityAndCostVerified:budgetVerified,
   restoreBlockedByMissingCapacityAndCostEvidence:!budgetVerified,
   missingPermissions,sourceDocumentWrites:0,sourceRulesWrites:0,deployments:0,
@@ -211,8 +266,11 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
    backupMatchesCurrentDocumentFields:same(fields(before),fields(restored)),
    // A backup may predate legitimate changes; never "repair" or overwrite them.
    productionDataReplacedOrReclassified:false};
- }catch(e){failure=e;}
+  log({verificationBeforeCleanup:{...result}});
+ }catch(e){failure=e;log({verificationFailed:true,
+  stopReason:/^STOP_MANAGED_REHEARSAL_[A-Z0-9_]+$/.test(e?.message||'')?e.message:'REDACTED_VERIFICATION_FAILURE'});}
  finally{
+  cleanupPhase=true;
   if(attempted){
    try{
     const latest=await call('GET',API+TARGET,undefined,{allow404:true});
@@ -224,20 +282,81 @@ export async function rehearse({mode='inspect',send,restore=restoreToLocalEmulat
      // Never disable a delete-protection policy set by another operator.
      if(db.deleteProtectionState==='DELETE_PROTECTION_ENABLED')STOP('TEMPORARY_DELETE_PROTECTED');
      cleanupEtag=db.etag;
-     await wait(await call('DELETE',API+TARGET+'?etag='+encodeURIComponent(cleanupEtag),undefined,{etag:cleanupEtag}),30);
-     if(await call('GET',API+TARGET,undefined,{allow404:true})!==null)STOP('TEMPORARY_CLEANUP_NOT_CONFIRMED');
+     const deletion=await call('DELETE',API+TARGET+'?etag='+encodeURIComponent(cleanupEtag),undefined,{etag:cleanupEtag});
+     if(deletion.error)STOP('TEMPORARY_DELETE_FAILED');
+     // A deleted database's operation endpoint can disappear with it. The
+     // authoritative postcondition is 404 for OUR fixed, UID/etag-verified DB,
+     // not continued availability of its operation resource. Never re-delete.
+     let absent=false;
+     for(let attempt=0;attempt<108;attempt++){
+      const remaining=await call('GET',API+TARGET,undefined,{allow404:true});
+      if(remaining===null){absent=true;break;}
+      validateRestoredDatabase(remaining,{backup:selected.name,sourceUid:initial.current.uid,
+       started,operation,uid:createdUid});
+      await pause(10000);
+     }
+     if(!absent)STOP('TEMPORARY_CLEANUP_NOT_CONFIRMED');
      if(result)result.temporaryDatabaseDeleted=true;
      log({temporaryDatabaseDeleted:true,sourceDocumentWrites:0});
     }
-   }catch{
-    log({temporaryDatabaseCleanupRequired:true,sourceDocumentWrites:0});
+   }catch(e){
+    log({temporaryDatabaseCleanupRequired:true,sourceDocumentWrites:0,
+     stopReason:/^STOP_MANAGED_REHEARSAL_[A-Z0-9_]+$/.test(e?.message||'')?e.message:'REDACTED_CLEANUP_FAILURE'});
     STOP('TEMPORARY_CLEANUP_REQUIRES_OPERATOR');
    }
   }
  }
  if(failure)throw failure;
  if(!result?.temporaryDatabaseDeleted)STOP('CLEANUP_UNPROVEN');
+ if(executionBudget.capacityEvidenceKind==='owner-approved-aggregate-estimate-v1')
+  result.executionUsage={...usage,elapsedMs:now()-executionStart,
+   estimatedAdditionalCostJpy:executionBudget.estimatedAdditionalCostJpy,authorizedMaxJpy:500};
  return result;
+}
+
+async function cloudShellMain(){
+ const env=process.env,[, ,mode,sha,confirmation]=process.argv;
+ if(mode!=='rehearse-approved-aggregate'||process.argv.length!==5||
+    confirmation!==ESTIMATE_APPROVAL||env.CLOUD_SHELL!=='true'||env.DEVSHELL_PROJECT_ID!==PROJECT||
+    !/^[a-f0-9]{40}$/.test(sha||''))STOP('MANUAL_CLOUD_SHELL_GATE');
+ const run=(cmd,args)=>execFileSync(cmd,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:30000}).trim();
+ if(run('git',['rev-parse','HEAD'])!==sha||run('gcloud',['config','get-value','project'])!==PROJECT)STOP('CHECKOUT_OR_PROJECT');
+ run('git',['diff','--exit-code','HEAD','--','tools/production','tools/readonly-backup']);
+ if(JSON.parse(readFileSync(new URL('../../.firebaserc',import.meta.url),'utf8')).projects.default!==PROJECT)STOP('PROJECT');
+ emulatorBase(env.FIRESTORE_EMULATOR_HOST,'demo-sales-restore');
+ const {reviewLiveQuote,reviewAggregateBudget,approveAggregateBudget,livePriceUrls}=
+  await import('./review-managed-backup-cloud-shell.mjs');
+ let token,lastTokenRead=0;
+ const send=async(method,url,body)=>{
+  if(!token||Date.now()-lastTokenRead>60000){token=run('gcloud',['auth','print-access-token']);lastTokenRead=Date.now();}
+  if(!token)STOP('IDENTITY');
+  return fetch(url,{method,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(30000),
+   headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+   ...(body===undefined?{}:{body:JSON.stringify(body)})});
+ };
+ let databases,backups;
+ const read=async url=>{
+  if(![DATABASES_URL,BACKUPS_URL,...livePriceUrls()].includes(url)&&
+     !url.startsWith('https://monitoring.googleapis.com/v3/projects/'+PROJECT+'/timeSeries?'))STOP('EVIDENCE_GET_SCOPE');
+  const r=await send('GET',url);
+  if(r.status!==200)STOP('EVIDENCE_HTTP_'+r.status);
+  const data=await r.json();
+  if(url===DATABASES_URL)databases=data;if(url===BACKUPS_URL)backups=data;
+  return data;
+ };
+ const quote=await reviewLiveQuote({read});
+ const review=await reviewAggregateBudget({read,quote,inspect:()=>rehearse({mode:'inspect',send})});
+ const remaining=Number(env.NICO_REMAINING_REHEARSAL_BUDGET_JPY??500);
+ if(!Number.isInteger(remaining)||remaining<1||remaining>500)STOP('REMAINING_COST_BUDGET');
+ const reviewedBudget={...approveAggregateBudget({review,databases,backups,confirmation}),authorizedMaxJpy:remaining};
+ if(reviewedBudget.estimatedAdditionalCostJpy>remaining)STOP('CUMULATIVE_COST_BUDGET');
+ console.log('NICO_MANAGED_REHEARSAL_ESTIMATE '+JSON.stringify({
+  backupSnapshotTime:review.backupSnapshotTime,capacity:review.capacity,aggregate:review.aggregate,
+  quote,estimatedCost:review.estimatedCost,missingPermissions:review.missingPermissions,
+  exactBackupSizeVerified:false,hardBillingCapVerified:false,authorizedMaxJpy:500}));
+ const output=await rehearse({mode:'rehearse',send,reviewedBudget,emulatorHost:env.FIRESTORE_EMULATOR_HOST,
+  log:x=>console.log('NICO_MANAGED_REHEARSAL_CHECK '+JSON.stringify(x))});
+ console.log('NICO_MANAGED_REHEARSAL_RESULT '+JSON.stringify(output));
 }
 
 async function main(){
@@ -264,7 +383,7 @@ async function main(){
  console.log('NICO_MANAGED_REHEARSAL_RESULT '+JSON.stringify(output));
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))
- main().catch(e=>{
-  console.error(/^STOP_MANAGED_(?:REHEARSAL|BACKUP_PREFLIGHT)_[A-Z0-9_]+$/.test(e?.message||'')?
+ (process.argv[2]==='rehearse-approved-aggregate'?cloudShellMain():main()).catch(e=>{
+  console.error(/^STOP_(?:MANAGED_(?:REHEARSAL|BACKUP_PREFLIGHT)|CLOUD_SHELL_BACKUP_REVIEW)_[A-Z0-9_]+$/.test(e?.message||'')?
    e.message:'STOP_MANAGED_REHEARSAL_REDACTED_FAILURE');process.exitCode=1;
  });

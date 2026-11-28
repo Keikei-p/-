@@ -7,8 +7,12 @@
  * previousCounts and nextCounts from the same transaction (never browser
  * supplied previousCounts). OFF counts are immutable, not silently reset.
  */
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
 const {allowedPartnerCategories}=require("./approved-published-categories.cjs");
+const {reconcileOwnerApprovedIndividualCounts}=require("./owner-approved-individual-count-input.cjs");
+// Strict old 光/AIR combined names only. Generic "旧合算"/"未分類" alone
+// never authorizes an unrelated partner count input or publish target.
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const KEYS=Object.freeze(["NURO","SBMNP","YMMNP","YM純新規","SB光・AIR","ウォーター",
  "つばさ・HTB","太陽光・蓄電池AP","U-NEXT"]);
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
@@ -16,6 +20,8 @@ const MONEY=/(?:単価|売上|収益|利益|報酬|原価|価格|キャッシュ
 const deny=()=>{throw Error("PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED");};
 const id=x=>typeof x==="string"&&ID.test(x)&&
  !["__proto__","constructor","prototype"].includes(x);
+const privateSku=x=>typeof x==="string"&&
+ id(x.match(/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/)?.[1]);
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const snap=x=>x?.exists===true&&typeof x.data==="function"?x.data():null;
 const unique=x=>Array.isArray(x)&&x.length<=1000&&x.every(id)&&
@@ -60,7 +66,7 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
  for(const b of mapping.bindings){
   if(!exact(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||b.companyId===hubId||
-     !/^partnerSku0[1-9]$/.test(b.productId)||!id(b.hubProductId)||
+     (!/^partnerSku0[1-9]$/.test(b.productId)&&!privateSku(b.productId))||!id(b.hubProductId)||
      !catalog.has(b.hubProductId))deny();
   const key=JSON.stringify([b.companyId,b.productId]);
   if(seen.has(key))deny();
@@ -73,6 +79,12 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
   // Never interpret old combined SB光・AIR as either new 光 or Air.
   if(b.productId==="partnerSku05"&&
      !LEGACY_COMBINED_LIGHT_AIR.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
+  if(b.productId==="partnerSku07"&&
+     !LEGACY_COMBINED_TSUBASA_HTB.test(catalog.get(b.hubProductId).name.normalize("NFKC")))deny();
+  if(b.hubProductId.startsWith("legacyPartnerSku:")){
+   if(b.hubProductId!=="legacyPartnerSku:"+b.productId)deny();
+   continue;
+  }
   mapped.set(b.productId,b.hubProductId);
  }
  const allowed=new Set();
@@ -83,11 +95,19 @@ function validatePolicy({hubId,partnerId,ownerUid,visibility,mapping,products}){
      partnerAllowed.has(hubProductId)&&catalog.get(hubProductId).active!==false)
    allowed.add(KEYS[i]);
  }
+ // Existing reviewed bindings are validated independently above. Permit
+ // only additional uniquely matched count-only ON categories authorized by
+ // the SAME Owner publication and public catalog (no business data reads).
+ let published;
+ try{published=allowedPartnerCategories({
+  hubId,cid:partnerId,ownerUid,visibility,mapping,products
+ });}catch{deny();}
+ for(const key of published)allowed.add(key);
  return {allowed,version:visibility.version};
 }
 function createPartnerSubmissionPublicationGuard({db}={}){
  if(typeof db?.collection!=="function")deny();
- return async function verify({tx,scope,previousCounts,nextCounts}={}){
+ return async function verify({tx,scope,previousCounts,nextCounts,individual}={}){
   if(typeof tx?.get!=="function"||!scope||
      scope.verifiedByServer!==true||scope.kind!=="partner"||
      !id(scope.uid)||!id(scope.cid)||!id(scope.hubId)||
@@ -140,8 +160,15 @@ function createPartnerSubmissionPublicationGuard({db}={}){
    // OFF is a publication setting, never a destructive history migration.
    if(!policy.allowed.has(key)&&after[key]!==before[key])deny();
   }
+  // Only the isolated staged caller opts in. Reuse this very same verified
+  // snapshot; do not accept a browser-supplied publication or Owner identity.
+  let individualResult;
+  if(individual!==undefined)individualResult=reconcileOwnerApprovedIndividualCounts({
+   scope:{...scope,ownerUid:h.ownerUid},visibility,publicCatalog,
+   previous:individual.previous,requested:individual.requested});
   return Object.freeze({verified:true,publicationVersion:policy.version,
-   enabledCategories:Object.freeze(KEYS.filter(k=>policy.allowed.has(k)))});
+   enabledCategories:Object.freeze(KEYS.filter(k=>policy.allowed.has(k))),
+   ...(individualResult===undefined?{}:{individual:individualResult})});
  };
 }
 

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {inventoryPartnerFullHistory,LEGACY_PARTNER_CATEGORIES as KEYS}
  from "../ranking/partner-full-history-inventory.mjs";
+import {HISTORICAL_COUNT_GROUPS} from "../ranking/historical-count-publication-groups.mjs";
 
 const key="one_inventory_only_private_pseudonym_seed";
 const counts=(nuro=0,sb=0)=>Object.fromEntries(KEYS.map(k=>[k,k==="NURO"?nuro:k==="SB光・AIR"?sb:0]));
@@ -9,6 +10,21 @@ const product=(id,name)=>({id,companyId:"hub_private_id",name,active:true});
 const proof=()=>({serverVerified:true,snapshotConsistent:true,completeCompanies:true,
  completeRelations:true,completeEntries:true,completePrivateProducts:true,completeReports:true,
  completeOwnerProducts:true,completeSettings:true,readTime:"2026-11-17T00:00:00.000Z"});
+
+test("read-only inventory verifies explicitly published historical identities without new product masters",()=>{
+ const input=historicalFixture(),h=input.hubs[0];
+ h.catalog.products.push(...HISTORICAL_COUNT_GROUPS.map(({id,name})=>product(id,name)));
+ h.visibility.enabledHubProductIds.push(...HISTORICAL_COUNT_GROUPS.map(p=>p.id));
+ for(const b of h.mapping.bindings)b.hubProductId='legacyPartnerSku:'+b.productId;
+ const before=structuredClone(input),r=inventoryPartnerFullHistory(input);
+ assert.equal(r.originalTotalCount,14);assert.equal(r.mappedTotalCount,10);assert.equal(r.heldTotalCount,4);
+ assert.equal(r.overlapDayCount,0);assert.equal(r.summaryMismatchDayCount,0);
+ assert.deepEqual(input,before);
+ h.mapping.bindings[0].hubProductId='legacyPartnerSku:partnerSku09';
+ const wrong=inventoryPartnerFullHistory(input);
+ assert.equal(wrong.heldCountsByReason.held_historical_source_mismatch,3);
+ assert.equal(wrong.originalTotalCount,14);assert.equal(wrong.sourceConservationVerified,true);
+});
 export function historicalFixture(){
  const products=[product("nuro_private_id","NURO"),product("combined_private_id","SB光・AIR（旧合算）"),
   product("custom_private_id","独自サービス"),product("addon_private_id","新規商材"),product("air_private_id","SoftBank Air")];
@@ -64,7 +80,7 @@ test("exact names are candidates only; reviewed private ID mapping is separately
  assert.equal(p.exactNameCandidates.length,1);
  assert.equal(p.candidateOnly,true);
  assert.equal(p.mappedCount,0);
- input.hubs[0].mapping.bindings.push({companyId:"partner_private_id",productId:"private_sku_id",hubProductId:"custom_private_id"});
+ input.hubs[0].mapping.bindings.push({companyId:"partner_private_id",productId:"partnerPrivate:private_sku_id",hubProductId:"custom_private_id"});
  const matched=inventoryPartnerFullHistory(input);
  assert.equal(matched.originalTotalCount,14);
  assert.equal(matched.mappedTotalCount,14);
@@ -72,6 +88,20 @@ test("exact names are candidates only; reviewed private ID mapping is separately
  assert.deepEqual(matched.heldCountsByReason,{},
   "approved mapping never leaves unexplained held counts");
  assert.equal(matched.candidateMappingsApplied,0,"inventory still performs no mapping writes");
+});
+test("case changes, whitespace changes and ambiguous names never create review candidates",()=>{
+ const input=historicalFixture();
+ input.companies[0].privateProducts[0].name="service a";
+ input.hubs[0].ownerProducts[2].name="Service A";
+ const privateRow=()=>inventoryPartnerFullHistory(input).companies[0].products
+  .find(p=>p.sourceKind==="ledger_private");
+ assert.deepEqual(privateRow().exactNameCandidates,[]);
+ input.hubs[0].ownerProducts[2].name="servicea";
+ assert.deepEqual(privateRow().exactNameCandidates,[]);
+ input.hubs[0].ownerProducts[2].name="service a";
+ assert.equal(privateRow().exactNameCandidates.length,1);
+ input.hubs[0].ownerProducts.push({...product("ambiguous", "service a"),active:false});
+ assert.deepEqual(privateRow().exactNameCandidates,[]);
 });
 
 test("global and company OFF hold every historical source unchanged",()=>{
@@ -192,4 +222,77 @@ test("incomplete proof, duplicate originals, corrupt totals and unsafe count IDs
   x=>{x.companies[0].entries[0].privateCounts=JSON.parse('{"__proto__":1}');},
   x=>{x.companies[0].entries[0].id="forged";}
  ]){const input=historicalFixture();change(input);assert.throws(()=>inventoryPartnerFullHistory(input),/^Error: PARTNER_FULL_HISTORY_/);}
+});
+
+
+test("pseudonymous full-history audit holds false combined labels without rewriting source totals",()=>{
+ for(const label of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const input=historicalFixture(),before=structuredClone(input.companies);
+  input.hubs[0].ownerProducts[1].name=label;
+  const result=inventoryPartnerFullHistory(input);
+  assert.equal(result.originalTotalCount,14);
+  assert.equal(result.mappedTotalCount,8);
+  assert.equal(result.heldTotalCount,6);
+  assert(result.companies[0].products.some(p=>
+   p.sourceKind==="ledger_legacy"&&p.legacyCombined&&
+   p.state==="held_legacy_combined"&&p.heldCount===2));
+  assert.deepEqual(input.companies,before);
+  assert.equal(result.productionDocumentWrites,0);
+ }
+});
+
+
+test("old 86 combined energy cases and separate published IDs coexist without rewriting or double counting",()=>{
+ const f=historicalFixture(),h=f.hubs[0],e=f.companies[0].entries[0],report=f.reports[0];
+ h.catalog.products.push(product("htb_private_id","HTB"),product("tsubasa_private_id","つばさ電気"));
+ h.visibility.enabledHubProductIds.push("htb_private_id","tsubasa_private_id");
+ e.counts=counts();e.counts["つばさ・HTB"]=86;e.totalCount=86;
+ e.privateCounts={};e.privateTotalCount=0;e.publishedCounts={htb_private_id:3,tsubasa_private_id:2};e.publishedTotalCount=5;
+ report.counts=structuredClone(e.counts);report.totalCount=86;
+ report.publishedCounts=structuredClone(e.publishedCounts);report.publishedTotalCount=5;
+ const before=structuredClone(f),r=inventoryPartnerFullHistory(f);
+ assert.equal(r.originalTotalCount,91);assert.equal(r.heldTotalCount,86);assert.equal(r.mappedTotalCount,5);
+ assert.equal(r.overlapDayCount,0);assert.equal(r.summaryMismatchDayCount,0);
+ const energy=r.companies[0].products.find(p=>p.legacyEnergyCombined&&p.originalCount>0);
+ assert.equal(energy.originalCount,86);assert.equal(energy.heldCount,86);
+ assert.deepEqual(f,before);
+ // A bad old mapping does not become evidence that these are all HTB cases.
+ delete e.publishedCounts;delete e.publishedTotalCount;delete report.publishedCounts;delete report.publishedTotalCount;
+ h.mapping.bindings.push({companyId:"partner_private_id",productId:"partnerSku07",hubProductId:"htb_private_id"});
+ const held=inventoryPartnerFullHistory(f);
+ assert.equal(held.heldCountsByReason.held_legacy_energy_combined,86);
+ assert.equal(held.mappedTotalCount,0);
+});
+
+test("explicit ON historical identity links unmapped original counts without any mapping write",()=>{
+ const input=historicalFixture(),hub=input.hubs[0];
+ hub.mapping.bindings=hub.mapping.bindings.filter(b=>b.productId!=="partnerSku05");
+ const group=HISTORICAL_COUNT_GROUPS.find(g=>g.sourceSkuId==="partnerSku05");
+ hub.catalog.products.push(product(group.id,group.name));
+ hub.visibility.enabledHubProductIds.push(group.id);
+ const before=structuredClone(input),r=inventoryPartnerFullHistory(input);
+ assert.equal(r.originalTotalCount,14);assert.equal(r.mappedTotalCount,10);assert.equal(r.heldTotalCount,4);
+ assert.equal(r.mappingWrites,0);assert.deepEqual(input,before);
+ hub.visibility.enabledHubProductIds=hub.visibility.enabledHubProductIds.filter(id=>id!==group.id);
+ const off=inventoryPartnerFullHistory(input);
+ assert.equal(off.mappedTotalCount,8);assert.equal(off.heldTotalCount,6);
+});
+test("new Owner individual ledger participates in full-history conservation and summary mismatch checks",()=>{
+ const input=historicalFixture(),hub=input.hubs[0],entry=input.companies[0].entries[0],report=input.reports[0];
+ hub.catalog.products.push(product("hikari","光"));
+ hub.visibility.enabledHubProductIds.push("hikari");
+ Object.assign(entry,{ownerProductCounts:{hikari:3},ownerProductTotalCount:3});
+ Object.assign(report,{ownerProductCounts:{hikari:3},ownerProductTotalCount:3});
+ const original=structuredClone(input),r=inventoryPartnerFullHistory(input);
+ assert.equal(r.originalTotalCount,17);assert.equal(r.mappedTotalCount,13);assert.equal(r.heldTotalCount,4);
+ assert.equal(r.companies[0].products.find(p=>p.sourceKind==="ledger_individual").mappedCount,3);
+ assert.deepEqual(input,original);
+ report.ownerProductCounts.hikari=2;report.ownerProductTotalCount=2;
+ const mismatch=inventoryPartnerFullHistory(input);
+ assert.equal(mismatch.originalTotalCount,null);assert.equal(mismatch.summaryMismatchDayCount,1);
+ assert.equal(mismatch.nonOverlappingSourceCounts.originalCount,17);
+ report.ownerProductCounts.hikari=3;report.ownerProductTotalCount=3;
+ entry.ownerProductCounts={addon_private_id:3};report.ownerProductCounts={addon_private_id:3};
+ const overlap=inventoryPartnerFullHistory(input);
+ assert.equal(overlap.originalTotalCount,null);assert.equal(overlap.productSourceOverlapDayCount,1);
 });

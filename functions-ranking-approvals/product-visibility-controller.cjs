@@ -82,7 +82,7 @@ function makeProductVisibilityCallables({
   try{
    const [,store]=await imports();
    return verifyStatus(await store.createOwnerProductVisibilityStore({
-    db,FieldValue
+    db,FieldValue,includeHistoricalGroups:true
    }).readStatus(principal));
   }catch{deny();}
  };
@@ -98,7 +98,7 @@ function makeProductVisibilityCallables({
   try{
    const [,store]=await imports();
    const out=await store.createOwnerProductVisibilityStore({
-    db,FieldValue
+    db,FieldValue,includeHistoricalGroups:true
    }).saveSwitch({principal,productId:d.productId,enabled:d.enabled,
     expectedVersion:d.expectedVersion,partnerCompanyId:d.partnerCompanyId});
    if(!exact(out,["saved","version","productId","enabled","partnerCompanyId"])||

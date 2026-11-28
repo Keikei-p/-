@@ -33,9 +33,13 @@ before(async()=>{
      process.env.GOOGLE_APPLICATION_CREDENTIALS||
      process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
    throw Error('REFUSE_NON_DEMO_SECONDARY_FINANCE_FENCE_TEST');
-  const {proposeSecondaryFinanceFence}=await import('../security/secondary-finance-read-fence.mjs');
-  rules=proposeSecondaryFinanceFence(reviewedOriginal);
-  if(rules===reviewedOriginal||!rules.includes('activeSecondaryPartnerContext()'))
+  const {proposeSecondaryFinanceFence,originalRules}=await import('../security/secondary-finance-read-fence.mjs');
+  const baseline=originalRules();
+  const reviewedCandidate=proposeSecondaryFinanceFence(baseline);
+  if(reviewedOriginal!==baseline && reviewedOriginal!==reviewedCandidate)
+   throw Error('FINANCE_FENCE_UNREVIEWED_PRODUCTION_RULES');
+  rules=reviewedCandidate;
+  if(rules===baseline||!rules.includes('activeSecondaryPartnerContext()'))
    throw Error('FINANCE_FENCE_NOT_APPLIED');
  }
  env=await initializeTestEnvironment({projectId,firestore:{rules}});
@@ -813,7 +817,11 @@ test('existing-email secondary partner: active server context blocks four financ
   originalProfile=(await getDoc(doc(ctx.firestore(),'users','owner'))).data();
  });
  const db=dbFor('owner');
- const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1';
+ // Original baseline demonstrates the old gap; the PR's reviewed Rules
+ // must deny by default, even without the optional emulator review flag.
+ const withCandidate=process.env.NICO_EMULATOR_REVIEW_SECONDARY_FENCE==='1'
+   || fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')
+        .includes('function activeSecondaryPartnerContext()');
  for(const [coll,id] of finance){
   const single=getDoc(doc(db,coll,id));
   if(withCandidate)await assertFails(single,

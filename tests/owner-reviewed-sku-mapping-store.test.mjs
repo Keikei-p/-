@@ -4,7 +4,7 @@ import {createOwnerReviewedSkuMappingStore}
  from "../ranking/owner-reviewed-sku-mapping-store.mjs";
 
 const owner={uid:"owner",emailVerified:true};
-function fake(){
+function fake({includeHistoricalGroups=false}={}){
  const state=new Map([
   ["users/owner",{uid:"owner",companyId:"hub",companyRole:"owner",
     active:true,accessKind:"internal"}],
@@ -22,10 +22,15 @@ function fake(){
  ]);
  let writes=0,serial=0;
  const ref=path=>({path,doc(id){return ref(path+"/"+(id??("audit"+(++serial))))},
-  collection(name){return ref(path+"/"+name)}});
+  collection(name){return ref(path+"/"+name)},limit(n){return {path,max:n}}});
+ const snap=(path,value)=>({id:path.split("/").at(-1),
+  exists:value!==undefined,data(){return structuredClone(value)}});
  const tx={
-  async get(r){const value=state.get(r.path);
-   return {exists:value!==undefined,data(){return structuredClone(value)}}},
+  async get(r){
+   if(r.max)return {docs:[...state].filter(([path])=>path.startsWith(r.path+"/"))
+    .slice(0,r.max).map(([path,value])=>snap(path,value))};
+   return snap(r.path,state.get(r.path));
+  },
   create(r,value){if(state.has(r.path))throw Error("ALREADY_EXISTS");
    writes++;state.set(r.path,structuredClone(value))},
   update(r,value){if(!state.has(r.path))throw Error("NO_DOC");
@@ -33,7 +38,7 @@ function fake(){
  };
  const db={collection:ref,async runTransaction(fn){return fn(tx)}};
  const FieldValue={serverTimestamp:()=>"SERVER_TIMESTAMP"};
- const store=createOwnerReviewedSkuMappingStore({db,FieldValue});
+ const store=createOwnerReviewedSkuMappingStore({db,FieldValue,includeHistoricalGroups});
  return {store,state,get writes(){return writes}};
 }
 test("missing owner-reviewed mapping starts at empty version 0, never auto-joins labels",async()=>{
@@ -63,6 +68,39 @@ test("owner writes exact approved NURO mapping, version + append-only audit, no 
   partnerProductId:"partnerSku02",hubProductId:"air",expectedVersion:0}),
   /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
  assert.equal(f.writes,2);
+});
+test("owner can list and review a retired private SKU in the selected company's catalog",async()=>{
+ const f=fake(),path="companies/partner/partnerPrivateProducts/retired";
+ const product={companyId:"partner",origin:"partner_custom",visibility:"private",
+  name:"受付終了プラン",active:false,unitPrice:10300};
+ f.state.set(path,product);
+ const initial=await f.store.status(owner,"partner");
+ assert.deepEqual(initial.partnerProducts,[{id:"partnerPrivate:retired",
+  name:"受付終了プラン",active:false}]);
+ assert.doesNotMatch(JSON.stringify(initial),/unitPrice|10300/);
+ const result=await f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerPrivate:retired",hubProductId:"nuro",expectedVersion:0});
+ assert.equal(result.saved,true);
+ const reviewed=await f.store.status(owner);
+ assert.deepEqual(reviewed.bindings,[{companyId:"partner",
+  productId:"partnerPrivate:retired",hubProductId:"nuro"}]);
+ assert.deepEqual(f.state.get(path),product);
+ assert.equal(f.writes,2);
+});
+test("unknown or foreign private IDs and a private combined label going to solo Air cannot be mapped",async()=>{
+ const f=fake();
+ const binding={principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerPrivate:legacy",hubProductId:"air",expectedVersion:0};
+ await assert.rejects(f.store.change(binding),/UNVERIFIED/);
+ const path="companies/partner/partnerPrivateProducts/legacy";
+ const row={companyId:"foreign",origin:"partner_custom",visibility:"private",
+  name:"SB光・AIR（旧合算）",active:false};
+ f.state.set(path,row);
+ await assert.rejects(f.store.status(owner,"partner"),/UNVERIFIED/);
+ await assert.rejects(f.store.change({...binding,hubProductId:"legacy"}),/UNVERIFIED/);
+ f.state.set(path,{...row,companyId:"partner"});
+ await assert.rejects(f.store.change(binding),/UNVERIFIED/);
+ assert.equal(f.writes,0);
 });
 test("old combined 光・AIR cannot map to independent Air, stays intact; explicit combined SKU allowed",async()=>{
  const f=fake();
@@ -161,4 +199,83 @@ test("Owner can explicitly review exact 光/AIR variants, never independent 光 
   }),/OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
   assert.equal(f.writes,0);
  }
+});
+
+test("stored duplicate hub targets fail closed before owner reads or edits, without ledger writes",async()=>{
+ const f=fake(),path="companies/hub/rankingSkuMappings/shared";
+ const original={hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
+  active:true,version:7,bindings:[
+   {companyId:"partner",productId:"partnerSku01",hubProductId:"nuro"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"nuro"}
+  ]};
+ f.state.set(path,structuredClone(original));
+ await assert.rejects(f.store.status(owner,"partner"),/OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+ await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",
+  partnerProductId:"partnerSku03",hubProductId:"air",expectedVersion:7}),
+  /OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+ assert.equal(f.writes,0);
+ assert.deepEqual(f.state.get(path),original);
+});
+test("stored target identity uses unambiguous company and hub ID tuple",async()=>{
+ const f=fake();
+ f.state.set("companies/hub/rankingSkuMappings/shared",{
+  hubCompanyId:"hub",ownerUid:"owner",reviewedByUid:"owner",
+  active:true,version:2,bindings:[
+   {companyId:"partner:a",productId:"partnerSku01",hubProductId:"b"},
+   {companyId:"partner",productId:"partnerSku02",hubProductId:"a:b"}
+  ]
+ });
+ const result=await f.store.status(owner);
+ assert.equal(result.bindings.length,2);
+ assert.equal(f.writes,0);
+});
+
+
+test("historic 光/AIR never maps to an unrelated product labeled only 旧合算 or 未分類",async()=>{
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const f=fake();
+  f.state.set("products/nuro",{...f.state.get("products/nuro"),name});
+  await assert.rejects(f.store.change({principal:owner,
+   partnerCompanyId:"partner",partnerProductId:"partnerSku05",
+   hubProductId:"nuro",expectedVersion:0}),/OWNER_SKU_MAPPING_REVIEW_UNVERIFIED/);
+  assert.equal(f.writes,0,name+" must never modify a saved mapping or count");
+ }
+ for(const name of ["SB光・AIR（旧合算）","光/AIR","ソフトバンク光/Air"]){
+  const f=fake();
+  f.state.set("products/legacy",{...f.state.get("products/legacy"),name});
+  const applied=await f.store.change({principal:owner,
+   partnerCompanyId:"partner",partnerProductId:"partnerSku05",
+   hubProductId:"legacy",expectedVersion:0});
+  assert.equal(applied.saved,true,name+" is a genuine combined product");
+ }
+});
+
+
+test("old legacy and archived private つばさ/HTB cannot become either standalone product or 光/AIR",async()=>{
+ for(const source of ["partnerSku07","partnerPrivate:energy"]){
+  const f=fake();
+  f.state.set("companies/partner/partnerPrivateProducts/energy",{companyId:"partner",name:"つばさ・HTB（旧合算）",active:false,origin:"partner_custom",visibility:"private"});
+  for(const [id,name] of [["htb","HTB"],["tsubasa","つばさ電気"],["generic","旧合算"],["combined","SB光・AIR"]]){
+   f.state.set("products/"+id,{companyId:"hub",name,active:true});
+   await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:id,expectedVersion:0}),/UNVERIFIED/);
+  }
+  assert.equal(f.writes,0);
+  f.state.set("products/energy",{companyId:"hub",name:"つばさ・HTB（旧合算）",active:true});
+  assert.equal((await f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:"energy",expectedVersion:0})).saved,true);
+  assert.equal(f.state.get("companies/partner/partnerPrivateProducts/energy").active,false);
+ }
+});
+
+
+test("explicit Owner historical mapping uses the same source identity without registering a sales product",async()=>{
+ const f=fake({includeHistoricalGroups:true}),before=[...f.state].filter(([p])=>p.startsWith("products/"));
+ const target="legacyPartnerSku:partnerSku07";
+ for(const source of ["partnerSku01","partnerSku05","partnerPrivate:energy"])
+  await assert.rejects(f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:source,hubProductId:target,expectedVersion:0}),/UNVERIFIED/);
+ assert.equal(f.writes,0);
+ const saved=await f.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:"partnerSku07",hubProductId:target,expectedVersion:0});
+ assert(saved.saved);assert.equal(saved.version,1);
+ assert.deepEqual([...f.state].filter(([p])=>p.startsWith("products/")),before);
+ const old=fake();
+ await assert.rejects(old.store.change({principal:owner,partnerCompanyId:"partner",partnerProductId:"partnerSku07",hubProductId:target,expectedVersion:0}),/UNVERIFIED/);
 });

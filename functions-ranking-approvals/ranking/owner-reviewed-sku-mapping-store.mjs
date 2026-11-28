@@ -9,17 +9,27 @@
  */
 import {PARTNER_RANK_SKUS} from "./partner-workspace-count-source.mjs";
 
-const LEGACY_COMBINED_LIGHT_AIR=/(?:SB光・AIR|旧合算|未分類|^(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)$)/i;
+import {historicalCountGroup} from "./historical-count-publication-groups.mjs";
+const LEGACY_COMBINED_LIGHT_AIR=/(?:^|[\s（(])(?:SB|ソフトバンク)?光\s*[/／・]\s*(?:AIR|エアー)(?=$|[\s）)（(])/i;
+const LEGACY_COMBINED_TSUBASA_HTB=/(?:^|[\s（(])(?:つばさ|翼)\s*[/／・]\s*HTB(?=$|[\s）)（(])/i;
 const ID=/^[A-Za-z0-9_:-]{1,200}$/;
 const MONEY=/(?:売上|単価|報酬|利益|キャッシュバック|[¥￥$€]|(?:CB|revenue|unitPrice|cashback)[\s:_=-]*[0-9０-９]|[0-9０-９][0-9０-９,.，]*\s*(?:円|万円))/i;
 const SKU=new Set(PARTNER_RANK_SKUS.map(p=>p.id));
+const PRIVATE=/^partnerPrivate:([A-Za-z0-9_-]{1,128})$/;
+const MAX_PRIVATE=100;
 const stop=()=>{throw Error("OWNER_SKU_MAPPING_REVIEW_UNVERIFIED");};
 const id=s=>typeof s==="string"&&ID.test(s)&&
  !["prototype","constructor","__proto__"].includes(s);
+const privateId=value=>{
+ const raw=typeof value==="string"?value.match(PRIVATE)?.[1]:null;
+ return id(raw)?raw:null;
+};
+const isOwnerReviewPartnerSku=value=>SKU.has(value)||privateId(value)!==null;
 const obj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x);
 const read=s=>s?.exists===true&&typeof s.data==="function"?s.data():null;
 const label=s=>typeof s==="string"&&s.trim().length>0&&
- s.length<=80&&!MONEY.test(s)?s.trim():stop();
+ s.length<=80&&!/[\x00-\x1f\x7f@]/.test(s)&&
+ !MONEY.test(s.normalize("NFKC"))?s.trim():stop();
 const shape=(o,keys)=>obj(o)&&
  Object.keys(o).sort().join("|")===keys.slice().sort().join("|");
 function mapping(doc,hub,uid){
@@ -29,22 +39,34 @@ function mapping(doc,hub,uid){
     doc.active!==true||
     !Number.isSafeInteger(doc.version)||doc.version<1||
     !Array.isArray(doc.bindings)||doc.bindings.length>1000)stop();
- const seen=new Set();
+ // A persisted duplicate target is as unsafe as a duplicate source:
+ // it can count one hub product twice even if all future writes are guarded.
+ // Tuple keys avoid ambiguous separators in legitimate colon-bearing IDs.
+ const seen=new Set(),targets=new Set();
  for(const b of doc.bindings){
   if(!shape(b,["companyId","productId","hubProductId"])||
      !id(b.companyId)||b.companyId===hub||
-     !SKU.has(b.productId)||!id(b.hubProductId))stop();
-  const k=b.companyId+":"+b.productId;
-  if(seen.has(k))stop();
-  seen.add(k);
+     !isOwnerReviewPartnerSku(b.productId)||!id(b.hubProductId))stop();
+  const k=JSON.stringify([b.companyId,b.productId]);
+  const target=JSON.stringify([b.companyId,b.hubProductId]);
+  if(seen.has(k)||targets.has(target))stop();
+  seen.add(k);targets.add(target);
  }
  return {version:doc.version,bindings:doc.bindings.map(b=>({...b}))};
 }
-export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
- if(!db?.collection||typeof db.runTransaction!=="function"||
+export function createOwnerReviewedSkuMappingStore({db,FieldValue,includeHistoricalGroups=false}={}){
+ if(typeof includeHistoricalGroups!=="boolean"||!db?.collection||typeof db.runTransaction!=="function"||
     typeof FieldValue?.serverTimestamp!=="function")stop();
  const c=id=>db.collection("companies").doc(id);
  const ref=hub=>c(hub).collection("rankingSkuMappings").doc("shared");
+ const privateProducts=partnerId=>c(partnerId).collection("partnerPrivateProducts");
+ function privateProduct(snap,partnerId){
+  const row=read(snap),sourceId="partnerPrivate:"+snap?.id;
+  if(!id(snap?.id)||!privateId(sourceId)||!obj(row)||row.companyId!==partnerId||
+     row.origin!=="partner_custom"||row.visibility!=="private"||
+     typeof row.active!=="boolean")stop();
+  return {id:sourceId,name:label(row.name),active:row.active};
+ }
  async function verifyOwner(tx,principal){
   if(!id(principal?.uid)||principal.emailVerified!==true)stop();
   const [us,ctx]=await Promise.all([
@@ -82,18 +104,23 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
      relation.partnerCompanyId!==partnerId||
      relation.countSharingApproved!==true)stop();
  }
- async function status(principal){
+ async function status(principal,partnerCompanyId){
   return db.runTransaction(async tx=>{
    const {hub,uid}=await verifyOwner(tx,principal);
    const saved=mapping(read(await tx.get(ref(hub))),hub,uid);
-   return {schema:"nico-owner-reviewed-sku-map-v1",
+   const result={schema:"nico-owner-reviewed-sku-map-v1",
     hubCompanyId:hub,version:saved.version,
     bindings:saved.bindings};
+   if(partnerCompanyId===undefined)return result;
+   await verifyPartner(tx,hub,partnerCompanyId);
+   const snapshot=await tx.get(privateProducts(partnerCompanyId).limit(MAX_PRIVATE+1));
+   if(!Array.isArray(snapshot?.docs)||snapshot.docs.length>MAX_PRIVATE)stop();
+   return {...result,partnerProducts:snapshot.docs.map(snap=>privateProduct(snap,partnerCompanyId))};
   },{readOnly:true});
  }
  async function change({principal,partnerCompanyId,partnerProductId,
    hubProductId,expectedVersion}={}){
-  if(!id(partnerCompanyId)||!SKU.has(partnerProductId)||
+  if(!id(partnerCompanyId)||!isOwnerReviewPartnerSku(partnerProductId)||
      (hubProductId!==null&&!id(hubProductId))||
      !Number.isSafeInteger(expectedVersion)||
      expectedVersion<0||expectedVersion>=100000)stop();
@@ -114,14 +141,26 @@ export function createOwnerReviewedSkuMappingStore({db,FieldValue}={}){
       b.companyId===partnerCompanyId&&b.productId!==partnerProductId&&
       b.hubProductId===hubProductId))stop();
    if(hubProductId!==null){
-    const product=read(await tx.get(db.collection("products").doc(hubProductId)));
+    const originalId=privateId(partnerProductId);
+    const historical=historicalCountGroup(hubProductId);
+    if(historical&&(!includeHistoricalGroups||historical.sourceSkuId!==partnerProductId))stop();
+    const [targetSnap,sourceSnap]=await Promise.all([
+     historical?null:tx.get(db.collection("products").doc(hubProductId)),
+     originalId===null?null:tx.get(privateProducts(partnerCompanyId).doc(originalId))
+    ]);
+    const product=historical?{companyId:hub,name:historical.name,active:true}:read(targetSnap);
     if(!obj(product)||product.companyId!==hub||
        product.active===false)stop();
     const name=label(product.name);
     // The old combined SB光・AIR value may ONLY map to a distinct combined
     // hub product, NEVER infer any separate Hikari or Air counts.
-    if(partnerProductId==="partnerSku05"&&
+    const sourceName=originalId===null?null:privateProduct(sourceSnap,partnerCompanyId).name;
+    if((partnerProductId==="partnerSku05"||
+        (sourceName!==null&&LEGACY_COMBINED_LIGHT_AIR.test(sourceName.normalize("NFKC"))))&&
        !LEGACY_COMBINED_LIGHT_AIR.test(name.normalize("NFKC")))stop();
+    if((partnerProductId==="partnerSku07"||
+        (sourceName!==null&&LEGACY_COMBINED_TSUBASA_HTB.test(sourceName.normalize("NFKC"))))&&
+       !LEGACY_COMBINED_TSUBASA_HTB.test(name.normalize("NFKC")))stop();
    }
    if(prevId===hubProductId)return {
     saved:false,version:previous.version,partnerCompanyId,

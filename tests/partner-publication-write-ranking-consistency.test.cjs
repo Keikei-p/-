@@ -66,6 +66,33 @@ test("unverified browser scope cannot bypass publication",async()=>{
 });
 
 
+test("UI and write allowlists reject misleading old combined targets consistently",async()=>{
+ const canonical=await import("../ranking/approved-published-categories.mjs");
+ for(const name of ["NURO旧合算","U-NEXT（未分類）","太陽光/AIR（旧合算）"]){
+  const unrelated={id:"wrong",companyId:hubId,name,active:true};
+  const owner={...visibility,enabledHubProductIds:["wrong"]};
+  const chosen={...mapping,bindings:[
+   {companyId:cid,productId:"partnerSku05",hubProductId:"wrong"}]};
+  const args={hubId,cid,ownerUid,visibility:owner,
+   mapping:chosen,products:[unrelated]};
+  for(const readAllowed of [allowedPartnerCategories,canonical.allowedPartnerCategories])
+   assert.throws(()=>readAllowed(args),/PARTNER_PUBLICATION_UNVERIFIED/,name);
+  const {tx,verify,scope}=fixture({visible:owner,mapped:chosen,
+   publicCatalog:{...catalog,products:[unrelated]}});
+  await assert.rejects(verify({tx,scope,
+   previousCounts:zeros(),nextCounts:{...zeros(),"SB光・AIR":1}}),
+   /PARTNER_SUBMISSION_PUBLICATION_UNVERIFIED/);
+ }
+ const valid={id:"combined",companyId:hubId,name:"光/AIR",active:true};
+ const goodVisibility={...visibility,enabledHubProductIds:["combined"]};
+ const goodMapping={...mapping,bindings:[
+  {companyId:cid,productId:"partnerSku05",hubProductId:"combined"}]};
+ const params={hubId,cid,ownerUid,visibility:goodVisibility,
+  mapping:goodMapping,products:[valid]};
+ for(const readAllowed of [allowedPartnerCategories,canonical.allowedPartnerCategories])
+  assert.deepEqual(readAllowed(params),["SB光・AIR"]);
+});
+
 test("global OFF cannot be overridden by a partner-specific ON, and never rewrites history",async()=>{
  const globallyOff={...visibility,version:2,enabledHubProductIds:[],
   partnerOverrides:{[cid]:["nuro"]}};
