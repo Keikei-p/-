@@ -54,7 +54,7 @@ export const INTEGRATED_CANDIDATE=Object.freeze({
   "functions-partner-workspace/index.js": "245cfa7241dec0c0424e4cf347c9cdc61ab06cdc",
   "functions-partner-workspace/service.cjs": "17540d18ac2bc90a77a6507f52cb2b53e3f23102",
   "firestore.rules": "9eca5c49957d370bbf092b9783dfa0e97f1a735a",
-  "index.html": "44026484b6acc86e9b8b0e0c3fa4521fafeeae2a",
+  "index.html": "c6e416bee43b41ace58f0149e22744ec3ecf79d7", // Owner-approved email-only entry, PR #828
   "partner-workspace.html": "c4a51077dd05099e644b1bdc3dcdba05924a0d94",
   "functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
   "functions-ranking-approvals/functions-partner-workspace/workspace-identity.cjs": "e06305c7dd151a3e5bab93a394396754fd25088e",
