@@ -56,6 +56,8 @@ test("fresh partner owner with company GET denied can prove same-hub finance GET
   if(name!=="getPartnerWorkspace")throw Error("NO_FALLBACK_ALLOWED");
   calls.push({caller:auth.currentUser.uid,input});
   const date=input.date;
+  if(auth.currentUser===owner&&input.ownerSetupCompaniesOnly!==true)
+   throw Error("OWNER_SETUP_ONLY_REQUIRED");
   if(auth.currentUser===owner)return {data:{
    role:"hub",date,registeredCompanies:[
     {partnerCompanyId:partner,name:"協力店A",active:true}
@@ -82,6 +84,7 @@ test("fresh partner owner with company GET denied can prove same-hub finance GET
  assert.equal(calls.length,1);
  assert.equal(calls[0].caller,owner.uid);
  assert.equal(calls[0].input.date.length,10);
+ assert.equal(calls[0].input.ownerSetupCompaniesOnly,true);
  const first=rawFinance.slice();
  assert.equal(first.length,4);
  assert(first.every(x=>x.token==="hub-token"));
@@ -94,6 +97,7 @@ test("fresh partner owner with company GET denied can prove same-hub finance GET
  assert.match(el("counts").textContent,/協力店件数の読取成功/);
  assert.equal(calls.length,2);
  assert.equal(calls[1].caller,verifiedPartner.uid);
+ assert.equal(calls[1].input.ownerSetupCompaniesOnly,undefined);
  assert.equal(rawFinance.length,8);
  assert(rawFinance.slice(4).every(x=>x.token==="partner-token"));
  assert.equal(rawFinance.slice(4).filter(x=>x.method==="GET").length,2);

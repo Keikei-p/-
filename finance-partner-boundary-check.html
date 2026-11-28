@@ -330,7 +330,7 @@ $("run").onclick=async()=>{
       ownerHandoff=null;
       if(["products","records"].every(name=>ID.test(ids[name]||""))){
         try{
-          const reply=(await countView({date})).data;
+          const reply=(await countView({date,ownerSetupCompaniesOnly:true})).data;
           const partners=reply?.registeredCompanies;
           if(reply?.role==="hub"&&reply?.date===date&&
              Array.isArray(partners)&&partners.length<=100&&
@@ -355,7 +355,11 @@ $("run").onclick=async()=>{
     if(countVerified)label("counts","協力店件数の読取成功","pass");
     else if(account.role==="owner")label("counts","自社Owner（協力店の確認外）");
     else label("counts","協力店件数は未確認","unknown");
-    $("status").textContent="診断終了。金額遮断の本番承認には別途、独立した実UID照合が必要です。";
+    $("status").textContent=account.role==="owner"&&!ownerHandoff?
+      "Ownerの協力店所属引継ぎを確認できませんでした。協力店へ切り替える前に再検証してください（本番承認不可）。":
+      account.role==="unknown"?
+      "協力店所属を照合できませんでした。金額遮断は未確認です（本番承認不可）。":
+      "診断終了。金額遮断の本番承認には別途、独立した実UID照合が必要です。";
   }catch{
     for(const name of ["products","records","counts"])label(name,"未確認");
     label("identity","認証・所属の確認が必要");
